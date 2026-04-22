@@ -18,6 +18,28 @@ export const MAP_CALIBRATION: Record<string, MapCalibration> = {
 
 export const RADAR_SIZE = 1024;
 
+// Crop region in radar pixels (0..RADAR_SIZE) for each map, trimming the
+// empty black borders around the actual playable area. x/y is the top-left
+// of the crop, size is a square side.
+export type MapCrop = { x: number; y: number; size: number };
+
+// ~1.08x crop: trim 8% of each side
+export const MAP_CROP: Record<string, MapCrop> = {
+  de_inferno: { x: 38, y: 38, size: 948 },
+  de_mirage: { x: 38, y: 38, size: 948 },
+  de_dust2: { x: 38, y: 38, size: 948 },
+  de_nuke: { x: 38, y: 38, size: 948 },
+  de_overpass: { x: 38, y: 38, size: 948 },
+  de_ancient: { x: 38, y: 38, size: 948 },
+  de_anubis: { x: 38, y: 38, size: 948 },
+  de_train: { x: 38, y: 38, size: 948 },
+  de_vertigo: { x: 38, y: 38, size: 948 },
+};
+
+export function cropFor(map: string): MapCrop {
+  return MAP_CROP[map] ?? { x: 0, y: 0, size: RADAR_SIZE };
+}
+
 export function worldToRadar(
   worldX: number,
   worldY: number,

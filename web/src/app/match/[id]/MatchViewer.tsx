@@ -13,6 +13,7 @@ import { PlayerHUD } from "@/components/replay/PlayerHUD";
 import { Loader2, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { MatchData } from "@/lib/types";
+import { cropFor, RADAR_SIZE } from "@/lib/maps";
 
 const DRAW_WIDTH = 3;
 const MIN_MAP = 360;
@@ -32,7 +33,6 @@ export default function MatchViewer({ id }: { id: string }) {
   const match = useReplay((s) => s.match);
   const currentRoundIdx = useReplay((s) => s.currentRoundIdx);
   const setTime = useReplay((s) => s.setTime);
-  const time = useReplay((s) => s.time) ?? 0;
   const togglePlay = useReplay((s) => s.togglePlay);
 
   const [loading, setLoading] = useState(true);
@@ -55,7 +55,8 @@ export default function MatchViewer({ id }: { id: string }) {
       const rect = el.getBoundingClientRect();
       const w = rect.width;
       const h = rect.height;
-      const size = Math.max(MIN_MAP, Math.min(MAX_MAP, Math.floor(Math.min(w, h))));
+      const availW = w - 72;
+      const size = Math.max(MIN_MAP, Math.min(MAX_MAP, Math.floor(Math.min(availW, h))));
       setMapSize(size);
     };
     const ro = new ResizeObserver(() => {
@@ -147,6 +148,11 @@ export default function MatchViewer({ id }: { id: string }) {
     a: round?.scoreA ?? 0,
     b: round?.scoreB ?? 0,
   };
+  const crop = cropFor(match.meta.map);
+  const cropScale = RADAR_SIZE / crop.size;
+  const innerSize = mapSize * cropScale;
+  const cropTx = -crop.x * (mapSize / crop.size);
+  const cropTy = -crop.y * (mapSize / crop.size);
 
   return (
     <div className="h-screen flex flex-col bg-[#060807] text-neutral-100">
@@ -180,21 +186,17 @@ export default function MatchViewer({ id }: { id: string }) {
         <RoundList />
 
         <main
-          ref={mainRef}
-          className="relative flex-1 flex min-h-0 items-center justify-center overflow-hidden"
+          className="relative flex-1 flex min-h-0 flex-col overflow-hidden"
         >
-          <div className="pointer-events-none absolute left-2 top-1/2 z-20 -translate-y-1/2">
-            <div className="pointer-events-auto">
-              <DrawingToolbar
-                tool={tool}
-                setTool={setTool}
-                color={color}
-                setColor={setColor}
-                strokes={strokes}
-                setStrokes={setStrokes}
-              />
-            </div>
-          </div>
+          <div ref={mainRef} className="flex min-h-0 flex-1 items-center justify-center gap-1.5">
+          <DrawingToolbar
+            tool={tool}
+            setTool={setTool}
+            color={color}
+            setColor={setColor}
+            strokes={strokes}
+            setStrokes={setStrokes}
+          />
 
             <div
               className="relative overflow-hidden bg-black/25"
@@ -234,24 +236,33 @@ export default function MatchViewer({ id }: { id: string }) {
               }}
             >
               <div
-                className="relative"
                 style={{
                   width: mapSize,
                   height: mapSize,
+                  overflow: "hidden",
                   transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
                   transformOrigin: "center center",
                   transition: panState.current.dragging ? "none" : "transform 80ms linear",
                 }}
               >
-                <MapRenderer size={mapSize} />
-                <DrawingLayer
-                  size={mapSize}
-                  tool={tool}
-                  color={color}
-                  width={DRAW_WIDTH}
-                  strokes={strokes}
-                  setStrokes={setStrokes}
-                />
+                <div
+                  className="relative"
+                  style={{
+                    width: innerSize,
+                    height: innerSize,
+                    transform: `translate(${cropTx}px, ${cropTy}px)`,
+                  }}
+                >
+                  <MapRenderer size={innerSize} />
+                  <DrawingLayer
+                    size={innerSize}
+                    tool={tool}
+                    color={color}
+                    width={DRAW_WIDTH}
+                    strokes={strokes}
+                    setStrokes={setStrokes}
+                  />
+                </div>
               </div>
               {zoom > 1 && (
                 <button
@@ -265,18 +276,14 @@ export default function MatchViewer({ id }: { id: string }) {
                 </button>
               )}
             </div>
+          </div>
 
-          <div
-            className="pointer-events-none absolute bottom-2 left-1/2 z-20 w-full -translate-x-1/2 px-14"
-            style={{ maxWidth: Math.min(mapSize + 120, 1400) }}
-          >
-            <div className="pointer-events-auto flex items-center gap-2 rounded-md border border-white/[0.08] bg-[#0b0f0d]/92 px-2 py-0.5 shadow-xl shadow-black/40 backdrop-blur">
+          <div className="shrink-0 px-2 pb-1.5 pt-1">
+            <div className="mx-auto flex items-center gap-2 rounded-md border border-white/[0.08] bg-[#0b0f0d]/92 px-2 py-0.5 shadow-xl shadow-black/40 backdrop-blur"
+                 style={{ maxWidth: Math.min(mapSize + 120, 1400) }}>
               <Controls />
               <div className="min-w-0 flex-1">
                 <Timeline />
-              </div>
-              <div className="shrink-0 font-mono text-[11px] tabular-nums text-neutral-500">
-                {(time ?? 0).toFixed(2)}s
               </div>
             </div>
           </div>
