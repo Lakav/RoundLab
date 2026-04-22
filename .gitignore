@@ -1,0 +1,51 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# Next.js
+.next/
+out/
+build/
+next-env.d.ts
+*.tsbuildinfo
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-debug.log*
+
+# env
+.env
+.env.*
+!.env.example
+
+# Vercel
+.vercel/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# local agent files
+.claude/
+
+# CS2 demo inputs and generated parser outputs
+*.dem
+*.dem.zst
+*.json.gz
+web/data/
+test.json
+test.json.gz
+
+# compiled binaries
+parser/parser
+parser/*.exe
+
+# temp / caches
+coverage/
+tmp/
+temp/
