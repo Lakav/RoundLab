@@ -1,10 +1,21 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Application, Assets, Container, Graphics, Sprite, Text } from "pixi.js";
+import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
 import { useReplay } from "@/lib/replay-store";
 import { MAP_CALIBRATION, RADAR_SIZE, worldToRadar } from "@/lib/maps";
 import type { Frame, PlayerPos, ProjectilePos, UtilityEffect } from "@/lib/types";
+import { iconPathFor } from "@/lib/icons";
+
+const iconTextureCache = new Map<string, Promise<Texture>>();
+function loadIconTexture(path: string): Promise<Texture> {
+  let p = iconTextureCache.get(path);
+  if (!p) {
+    p = Assets.load(path) as Promise<Texture>;
+    iconTextureCache.set(path, p);
+  }
+  return p;
+}
 
 function sampleFrame(frames: Frame[], t: number): PlayerPos[] {
   if (!frames || frames.length === 0) return [];
@@ -90,44 +101,27 @@ function sampleProjectiles(frames: Frame[], t: number): ProjectilePos[] {
   });
 }
 
-function utilKind(name: string) {
-  const n = name.toLowerCase();
-  if (n.includes("smoke")) return { code: "S", shape: "smoke" as const };
-  if (n.includes("flash")) return { code: "F", shape: "flash" as const };
-  if (n.includes("molotov")) return { code: "M", shape: "fire" as const };
-  if (n.includes("incendiary")) return { code: "I", shape: "fire" as const };
-  if (n.includes("explosive") || n.includes("he grenade")) return { code: "H", shape: "he" as const };
-  if (n.includes("decoy")) return { code: "D", shape: "decoy" as const };
-  return { code: "N", shape: "grenade" as const };
+function fitSprite(sprite: Sprite, max: number) {
+  const tex = sprite.texture;
+  if (!tex || !tex.width || !tex.height) {
+    sprite.width = max;
+    sprite.height = max;
+    return;
+  }
+  const ratio = tex.width / tex.height;
+  if (ratio >= 1) {
+    sprite.width = max;
+    sprite.height = max / ratio;
+  } else {
+    sprite.height = max;
+    sprite.width = max * ratio;
+  }
 }
 
 function teamColor(team?: number) {
   if (team === 3) return 0x5ab0ff;
   if (team === 2) return 0xf5b042;
   return 0xe5e7eb;
-}
-
-function itemCode(name?: string) {
-  if (!name) return "";
-  const n = name.toLowerCase();
-  if (n.includes("flash")) return "FLASH";
-  if (n.includes("smoke")) return "SMOKE";
-  if (n.includes("molotov")) return "MOLO";
-  if (n.includes("incendiary")) return "INC";
-  if (n.includes("explosive") || n.includes("he grenade")) return "HE";
-  if (n.includes("decoy")) return "DECOY";
-  if (n.includes("awp")) return "AWP";
-  if (n.includes("ak")) return "AK";
-  if (n.includes("m4")) return "M4";
-  if (n.includes("galil")) return "GALIL";
-  if (n.includes("famas")) return "FAMAS";
-  if (n.includes("deagle") || n.includes("desert eagle")) return "DEAGLE";
-  if (n.includes("usp")) return "USP";
-  if (n.includes("glock")) return "GLOCK";
-  if (n.includes("p250")) return "P250";
-  if (n.includes("knife")) return "";
-  if (n.includes("bomb") || n.includes("c4")) return "";
-  return name.toUpperCase().replace(/^WEAPON_/, "").slice(0, 8);
 }
 
 function displayName(name?: string) {
@@ -140,7 +134,8 @@ type PlayerSprite = {
   hpRing: Graphics;
   arrow: Graphics;
   label: Text;
-  held: Text;
+  held: Sprite;
+  heldPath: string | null;
   armor: Graphics;
 };
 
@@ -169,54 +164,25 @@ function heightLift(z: number) {
 
 function drawUtilityIcon(
   layer: Container,
-  kind: ReturnType<typeof utilKind>,
+  name: string,
   x: number,
   y: number,
   color: number
 ) {
-  const icon = new Container();
-  icon.position.set(x, y);
-
-  const body = new Graphics();
-  if (kind.shape === "smoke") {
-    body.roundRect(-5, -7, 10, 14, 3)
-      .fill({ color, alpha: 0.95 })
-      .circle(4, -6, 3)
-      .stroke({ color, width: 1.5, alpha: 0.95 });
-  } else if (kind.shape === "flash") {
-    body.circle(0, 0, 6)
-      .fill({ color, alpha: 0.95 })
-      .moveTo(-9, 0)
-      .lineTo(9, 0)
-      .moveTo(0, -9)
-      .lineTo(0, 9)
-      .stroke({ color, width: 1.4, alpha: 0.9 });
-  } else if (kind.shape === "fire") {
-    body.moveTo(0, -9)
-      .quadraticCurveTo(8, -2, 4, 7)
-      .quadraticCurveTo(0, 11, -5, 7)
-      .quadraticCurveTo(-9, 0, 0, -9)
-      .fill({ color, alpha: 0.95 });
-  } else if (kind.shape === "he") {
-    body.roundRect(-6, -6, 12, 12, 2)
-      .fill({ color, alpha: 0.95 })
-      .moveTo(-8, -8)
-      .lineTo(8, 8)
-      .moveTo(8, -8)
-      .lineTo(-8, 8)
-      .stroke({ color, width: 1.2, alpha: 0.7 });
-  } else if (kind.shape === "decoy") {
-    body.roundRect(-5, -8, 10, 16, 5)
-      .fill({ color, alpha: 0.95 })
-      .circle(0, 0, 2)
-      .fill({ color: 0x0b0f0d, alpha: 0.8 });
-  } else {
-    body.roundRect(-5, -7, 10, 14, 3).fill({ color, alpha: 0.95 });
-  }
-
-  body.stroke({ color: 0x050706, width: 1.5, alpha: 0.85 });
-  icon.addChild(body);
-  layer.addChild(icon);
+  const path = iconPathFor(name);
+  if (!path) return;
+  const sprite = new Sprite();
+  sprite.anchor.set(0.5);
+  sprite.position.set(x, y);
+  sprite.tint = color;
+  layer.addChild(sprite);
+  loadIconTexture(path)
+    .then((tex) => {
+      if (sprite.destroyed) return;
+      sprite.texture = tex;
+      fitSprite(sprite, 16);
+    })
+    .catch(() => {});
 }
 
 function drawArmorBadge(g: Graphics, armor: number, helmet?: boolean) {
@@ -314,7 +280,6 @@ function drawProjectile(
   throwerTeams: Map<number, number>,
   toRadar: (x: number, y: number, z?: number) => { x: number; y: number }
 ) {
-  const kind = utilKind(projectile.type);
   const color = teamColor(projectile.thrower ? throwerTeams.get(projectile.thrower) : undefined);
   const points: { x: number; y: number }[] = [];
   for (let i = frames.length - 1; i >= 0 && points.length < 18; i--) {
@@ -339,7 +304,7 @@ function drawProjectile(
   const shadow = toRadar(projectile.x, projectile.y, 0);
   trail.circle(shadow.x, shadow.y, 4).fill({ color: 0x000000, alpha: 0.25 });
   layer.addChild(trail);
-  drawUtilityIcon(layer, kind, p.x, p.y, color);
+  drawUtilityIcon(layer, projectile.type, p.x, p.y, color);
 }
 
 export function MapRenderer({ size = 800 }: { size?: number }) {
@@ -473,21 +438,23 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
         const p = toRadar(frame.bomb.x, frame.bomb.y, frame.bomb.z);
         if (frame.bomb.status === "planted") {
           const pulse = 0.65 + Math.sin(time * 7) * 0.25;
-          const marker = new Graphics()
+          const ring = new Graphics()
             .circle(p.x, p.y, 15 + pulse * 4)
-            .stroke({ color: 0xfbbf24, width: 2, alpha: 0.35 + pulse * 0.25 })
-            .circle(p.x, p.y, 5)
-            .fill({ color: 0xfbbf24, alpha: 1 });
-          utilityLayer.addChild(marker);
-          drawLabel(utilityLayer, "C4", p.x, p.y - 16, 0xfbbf24);
-        } else {
-          const marker = new Graphics()
-            .circle(p.x, p.y, 6)
-            .fill({ color: 0xfbbf24, alpha: 0.95 })
-            .stroke({ color: 0x0f0a00, width: 1.5 });
-          utilityLayer.addChild(marker);
-          drawLabel(utilityLayer, "C4", p.x, p.y - 13, 0xfbbf24);
+            .stroke({ color: 0xef4444, width: 2, alpha: 0.45 + pulse * 0.35 });
+          utilityLayer.addChild(ring);
         }
+        const bombSprite = new Sprite();
+        bombSprite.anchor.set(0.5);
+        bombSprite.position.set(p.x, p.y);
+        bombSprite.tint = frame.bomb.status === "planted" ? 0xef4444 : 0xfbbf24;
+        utilityLayer.addChild(bombSprite);
+        loadIconTexture("/icons/c4.svg")
+          .then((tex) => {
+            if (bombSprite.destroyed) return;
+            bombSprite.texture = tex;
+            fitSprite(bombSprite, 18);
+          })
+          .catch(() => {});
       }
 
       for (const projectile of projectiles) {
@@ -518,19 +485,11 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
             },
           });
           label.anchor.set(0.5, 1);
-          label.position.set(0, -16);
-          const held = new Text({
-            text: "",
-            style: {
-              fontFamily: "ui-sans-serif, system-ui",
-              fontSize: 8,
-              fontWeight: "700",
-              fill: 0xe5e7eb,
-              stroke: { color: 0x000000, width: 3 },
-            },
-          });
+          label.position.set(0, -13);
+          const held = new Sprite();
           held.anchor.set(0.5, 0);
-          held.position.set(0, 12);
+          held.position.set(0, 8);
+          held.visible = false;
           const armor = new Graphics();
           armor.position.set(0, 0);
           container.addChild(arrow);
@@ -540,28 +499,57 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
           container.addChild(label);
           container.addChild(held);
           layer.addChild(container);
-          s = { container, dot, hpRing, arrow, label, held, armor };
+          s = { container, dot, hpRing, arrow, label, held, heldPath: null, armor };
           spritesRef.current.set(p.id, s);
         }
         const baseColor = p.hasBomb ? 0xef4444 : teamColor(p.team);
         const hpPct = Math.max(0, Math.min(100, p.hp)) / 100;
         s.dot.clear()
-          .circle(0, 0, 8)
+          .circle(0, 0, 5)
           .fill({ color: baseColor, alpha: p.hp > 0 ? 0.95 : 0.35 })
-          .stroke({ color: 0x050706, width: 1.5, alpha: 1 });
+          .stroke({ color: 0x050706, width: 1, alpha: 1 });
         s.hpRing.clear();
         if (p.hp > 0) {
-          s.hpRing.arc(0, 0, 10.5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * hpPct)
-            .stroke({ color: baseColor, width: 2.2, alpha: 0.95 });
+          const barW = 12;
+          const armorPct = Math.max(0, Math.min(100, p.armor)) / 100;
+          s.hpRing
+            .rect(-barW / 2, -10, barW, 1.6)
+            .fill({ color: 0x000000, alpha: 0.55 })
+            .rect(-barW / 2, -10, barW * hpPct, 1.6)
+            .fill({ color: baseColor, alpha: 1 });
+          if (p.armor > 0 || p.helmet) {
+            s.hpRing
+              .rect(-barW / 2, -8, barW, 1.2)
+              .fill({ color: 0x000000, alpha: 0.55 })
+              .rect(-barW / 2, -8, barW * armorPct, 1.2)
+              .fill({ color: p.helmet ? 0x6ee7b7 : 0xd4d4d8, alpha: 1 });
+          }
         }
         s.arrow.clear()
-          .moveTo(0, -4)
-          .lineTo(14, 0)
-          .lineTo(0, 4)
-          .lineTo(0, -4)
+          .moveTo(0, -2.5)
+          .lineTo(9, 0)
+          .lineTo(0, 2.5)
+          .lineTo(0, -2.5)
           .fill({ color: baseColor, alpha: p.hp > 0 ? 0.95 : 0.35 });
         drawArmorBadge(s.armor, p.armor, p.helmet);
-        s.held.text = itemCode(p.active);
+        const heldPath = p.hp > 0 ? iconPathFor(p.active) : null;
+        if (heldPath !== s.heldPath) {
+          s.heldPath = heldPath;
+          if (!heldPath) {
+            s.held.visible = false;
+          } else {
+            const sprite = s.held;
+            loadIconTexture(heldPath)
+              .then((tex) => {
+                if (sprite.destroyed || s!.heldPath !== heldPath) return;
+                sprite.texture = tex;
+                fitSprite(sprite, 11);
+                sprite.visible = true;
+              })
+              .catch(() => {});
+          }
+        }
+        s.held.tint = baseColor;
         s.container.position.set(px, py);
         s.arrow.rotation = (-p.yaw * Math.PI) / 180;
         s.container.alpha = p.hp > 0 ? 1 : 0.35;

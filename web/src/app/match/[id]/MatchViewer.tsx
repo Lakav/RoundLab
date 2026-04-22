@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useReplay } from "@/lib/replay-store";
 import { MapRenderer } from "@/components/replay/MapRenderer";
@@ -14,8 +14,11 @@ import { Loader2, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { MatchData } from "@/lib/types";
 
-const MAP_SIZE = 760;
 const DRAW_WIDTH = 3;
+const MIN_MAP = 360;
+const MAX_MAP = 2000;
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 4;
 
 function hideKnifeRound(data: MatchData): MatchData {
   // Current demos start with a knife round. This is intentionally frontend-only
@@ -37,6 +40,39 @@ export default function MatchViewer({ id }: { id: string }) {
 
   const [tool, setTool] = useState<DrawTool>("none");
   const [color, setColor] = useState("#ef4444");
+  const mainRef = useRef<HTMLDivElement>(null);
+  const [mapSize, setMapSize] = useState(600);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const panState = useRef({ dragging: false, lastX: 0, lastY: 0 });
+
+  useEffect(() => {
+    if (loading) return;
+    const el = mainRef.current;
+    if (!el) return;
+    let raf = 0;
+    const compute = () => {
+      const rect = el.getBoundingClientRect();
+      const w = rect.width;
+      const h = rect.height;
+      const size = Math.max(MIN_MAP, Math.min(MAX_MAP, Math.floor(Math.min(w, h))));
+      setMapSize(size);
+    };
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(compute);
+    });
+    ro.observe(el);
+    compute();
+    return () => {
+      ro.disconnect();
+      cancelAnimationFrame(raf);
+    };
+  }, [loading]);
+
+  useEffect(() => {
+    setPan({ x: 0, y: 0 });
+  }, [zoom, mapSize]);
   const [strokesByRound, setStrokesByRound] = useState<Record<number, Stroke[]>>({});
   const strokes = strokesByRound[currentRoundIdx] ?? [];
   const setStrokes = (s: Stroke[]) =>
@@ -114,84 +150,102 @@ export default function MatchViewer({ id }: { id: string }) {
 
   return (
     <div className="h-screen flex flex-col bg-[#060807] text-neutral-100">
-      <header className="flex h-16 shrink-0 items-center gap-4 border-b border-white/[0.07] bg-[#080b0a]/95 px-5 backdrop-blur">
-        <Link href="/">
-          <Button variant="ghost" size="icon" className="text-neutral-500 hover:bg-white/[0.06] hover:text-white">
-            <ChevronLeft className="size-4" />
-          </Button>
+      <header className="flex h-7 shrink-0 items-center gap-2 border-b border-white/[0.07] bg-[#080b0a]/95 px-2 text-[11px] backdrop-blur">
+        <Link href="/" className="text-neutral-500 hover:text-white">
+          <ChevronLeft className="size-4" />
         </Link>
-        <div className="flex min-w-0 items-center gap-4">
-          <div className="flex size-8 items-center justify-center rounded border border-emerald-400/20 bg-emerald-400/10 text-[11px] font-black tracking-tight text-emerald-300">
-            RL
-          </div>
-          <div className="min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-neutral-500">
-              RoundLab
-            </div>
-            <div className="truncate text-sm font-medium text-neutral-200">
-              {match.meta.map.replace("de_", "")} review
-            </div>
-          </div>
-          <div className="h-7 w-px bg-white/10" />
-          <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
-            <span className="truncate text-sky-300">{match.meta.teamA || "CT"}</span>
-            <span className="rounded border border-white/10 bg-white/[0.04] px-2 py-1 font-mono text-sm text-neutral-200">
-              {match.meta.scoreA}:{match.meta.scoreB}
+        <span className="text-[10px] font-black tracking-tight text-emerald-300">RL</span>
+        <span className="truncate font-medium text-neutral-300">
+          {match.meta.map.replace("de_", "")}
+        </span>
+        <span className="h-4 w-px bg-white/10" />
+        <span className="truncate text-sky-300">{match.meta.teamA || "CT"}</span>
+        <span className="rounded border border-white/10 bg-white/[0.04] px-1.5 font-mono text-neutral-200">
+          {match.meta.scoreA}:{match.meta.scoreB}
+        </span>
+        <span className="truncate text-amber-300">{match.meta.teamB || "T"}</span>
+        <div className="ml-auto flex items-center gap-2 text-neutral-500">
+          <span className="font-mono text-sm text-neutral-200">{score.a}:{score.b}</span>
+          <span className="text-neutral-700">·</span>
+          <span>R{currentRoundIdx + 1}/{match.rounds.length}</span>
+          {round && (
+            <span className={round.winner === "CT" ? "text-sky-300" : "text-amber-300"}>
+              {round.winner}
             </span>
-            <span className="truncate text-amber-300">{match.meta.teamB || "T"}</span>
-          </div>
-        </div>
-        <div className="ml-auto flex items-center gap-5">
-          <div className="hidden text-right sm:block">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-neutral-600">
-              Current score
-            </div>
-            <div className="font-mono text-2xl font-semibold leading-none text-neutral-100">
-              {score.a}:{score.b}
-            </div>
-          </div>
-          <div className="text-right text-xs text-neutral-500">
-            <div className="font-semibold uppercase tracking-[0.2em] text-neutral-600">
-              Round
-            </div>
-            <div>
-              <span className="text-neutral-200">{currentRoundIdx + 1}</span>
-              <span className="text-neutral-700"> / {match.rounds.length}</span>
-              {round && (
-                <>
-                  <span className="mx-2 text-neutral-700">·</span>
-                  <span className={round.winner === "CT" ? "text-sky-300" : "text-amber-300"}>
-                    {round.winner}
-                  </span>
-                </>
-              )}
-            </div>
-          </div>
+          )}
         </div>
       </header>
 
-      <div className="flex-1 flex overflow-hidden bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:28px_28px]">
+      <div className="flex-1 flex min-h-0 overflow-hidden bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:28px_28px]">
         <RoundList />
 
-        <main className="flex-1 flex flex-col items-center justify-center gap-4 overflow-auto p-4 xl:p-6">
-          <div className="flex items-center justify-center gap-4">
-            <DrawingToolbar
-              tool={tool}
-              setTool={setTool}
-              color={color}
-              setColor={setColor}
-              strokes={strokes}
-              setStrokes={setStrokes}
-            />
+        <main
+          ref={mainRef}
+          className="relative flex-1 flex min-h-0 items-center justify-center overflow-hidden"
+        >
+          <div className="pointer-events-none absolute left-2 top-1/2 z-20 -translate-y-1/2">
+            <div className="pointer-events-auto">
+              <DrawingToolbar
+                tool={tool}
+                setTool={setTool}
+                color={color}
+                setColor={setColor}
+                strokes={strokes}
+                setStrokes={setStrokes}
+              />
+            </div>
+          </div>
 
-            <div className="relative rounded-2xl border border-white/[0.08] bg-black/25 p-2 shadow-2xl shadow-black/40">
+            <div
+              className="relative overflow-hidden bg-black/25"
+              onWheel={(e) => {
+                if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
+                  e.preventDefault();
+                  const delta = -e.deltaY * 0.0015;
+                  setZoom((z) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z + delta * z)));
+                }
+              }}
+              onPointerDown={(e) => {
+                if (tool !== "none") return;
+                if (zoom <= 1) return;
+                panState.current = { dragging: true, lastX: e.clientX, lastY: e.clientY };
+                (e.target as Element).setPointerCapture?.(e.pointerId);
+              }}
+              onPointerMove={(e) => {
+                if (!panState.current.dragging) return;
+                const dx = e.clientX - panState.current.lastX;
+                const dy = e.clientY - panState.current.lastY;
+                panState.current.lastX = e.clientX;
+                panState.current.lastY = e.clientY;
+                const max = (mapSize * (zoom - 1)) / 2;
+                setPan((p) => ({
+                  x: Math.max(-max, Math.min(max, p.x + dx)),
+                  y: Math.max(-max, Math.min(max, p.y + dy)),
+                }));
+              }}
+              onPointerUp={() => {
+                panState.current.dragging = false;
+              }}
+              onPointerCancel={() => {
+                panState.current.dragging = false;
+              }}
+              style={{
+                cursor: zoom > 1 && tool === "none" ? (panState.current.dragging ? "grabbing" : "grab") : undefined,
+              }}
+            >
               <div
                 className="relative"
-                style={{ width: MAP_SIZE, height: MAP_SIZE }}
+                style={{
+                  width: mapSize,
+                  height: mapSize,
+                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                  transformOrigin: "center center",
+                  transition: panState.current.dragging ? "none" : "transform 80ms linear",
+                }}
               >
-                <MapRenderer size={MAP_SIZE} />
+                <MapRenderer size={mapSize} />
                 <DrawingLayer
-                  size={MAP_SIZE}
+                  size={mapSize}
                   tool={tool}
                   color={color}
                   width={DRAW_WIDTH}
@@ -199,17 +253,29 @@ export default function MatchViewer({ id }: { id: string }) {
                   setStrokes={setStrokes}
                 />
               </div>
+              {zoom > 1 && (
+                <button
+                  onClick={() => {
+                    setZoom(1);
+                    setPan({ x: 0, y: 0 });
+                  }}
+                  className="absolute right-3 top-3 rounded-md border border-white/10 bg-black/60 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-300 hover:bg-black/80"
+                >
+                  Reset · {zoom.toFixed(1)}x
+                </button>
+              )}
             </div>
-          </div>
 
           <div
-            className="w-full rounded-2xl border border-white/[0.08] bg-[#0b0f0d]/95 px-4 py-3 shadow-2xl shadow-black/30 backdrop-blur"
-            style={{ maxWidth: MAP_SIZE + 16 }}
+            className="pointer-events-none absolute bottom-2 left-1/2 z-20 w-full -translate-x-1/2 px-14"
+            style={{ maxWidth: Math.min(mapSize + 120, 1400) }}
           >
-            <Timeline />
-            <div className="mt-3 flex items-center justify-between">
+            <div className="pointer-events-auto flex items-center gap-2 rounded-md border border-white/[0.08] bg-[#0b0f0d]/92 px-2 py-0.5 shadow-xl shadow-black/40 backdrop-blur">
               <Controls />
-              <div className="font-mono text-xs tabular-nums text-neutral-500">
+              <div className="min-w-0 flex-1">
+                <Timeline />
+              </div>
+              <div className="shrink-0 font-mono text-[11px] tabular-nums text-neutral-500">
                 {(time ?? 0).toFixed(2)}s
               </div>
             </div>

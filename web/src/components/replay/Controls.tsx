@@ -30,37 +30,37 @@ export function Controls() {
         size="icon"
         onClick={() => skip(-5)}
         title="-5s (J)"
-        className="size-8 text-neutral-500 hover:bg-white/[0.06] hover:text-white"
+        className="size-6 text-neutral-500 hover:bg-white/[0.06] hover:text-white"
       >
-        <Rewind className="size-4" />
+        <Rewind className="size-3.5" />
       </Button>
       <Button
         size="icon"
         onClick={togglePlay}
         title="Play/Pause (Space)"
-        className="size-10 rounded-full bg-emerald-300 text-[#06100b] shadow-lg shadow-emerald-500/15 hover:bg-emerald-200"
+        className="size-7 rounded-full bg-emerald-300 text-[#06100b] shadow shadow-emerald-500/15 hover:bg-emerald-200"
       >
-        {playing ? <Pause className="size-4 fill-current" /> : <Play className="size-4 fill-current" />}
+        {playing ? <Pause className="size-3.5 fill-current" /> : <Play className="size-3.5 fill-current" />}
       </Button>
       <Button
         variant="ghost"
         size="icon"
         onClick={() => skip(5)}
         title="+5s (L)"
-        className="size-8 text-neutral-500 hover:bg-white/[0.06] hover:text-white"
+        className="size-6 text-neutral-500 hover:bg-white/[0.06] hover:text-white"
       >
-        <FastForward className="size-4" />
+        <FastForward className="size-3.5" />
       </Button>
 
-      <div className="mx-2 h-5 w-px bg-white/10" />
+      <div className="mx-1.5 h-4 w-px bg-white/10" />
 
-      <div className="flex items-center gap-0.5 rounded-lg border border-white/[0.06] bg-black/20 p-0.5">
+      <div className="flex items-center gap-0.5 rounded border border-white/[0.06] bg-black/20 p-0.5">
         {SPEEDS.map((s) => (
           <button
             key={s}
             onClick={() => setSpeed(s)}
             className={cn(
-              "h-6 rounded-md px-2 text-[11px] font-semibold tabular-nums transition-colors",
+              "h-5 rounded px-1.5 text-[10px] font-semibold tabular-nums transition-colors",
               speed === s
                 ? "bg-white text-neutral-950"
                 : "text-neutral-500 hover:bg-white/[0.05] hover:text-white"
