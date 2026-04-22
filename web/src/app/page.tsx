@@ -53,20 +53,29 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100">
+    <div className="min-h-screen bg-[#060807] text-neutral-100">
       <div
         aria-hidden
-        className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(56,189,248,0.08),_transparent_60%)]"
+        className="pointer-events-none fixed inset-0 bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:30px_30px]"
       />
-      <div className="relative max-w-3xl mx-auto px-6 py-20">
+      <div className="relative mx-auto max-w-3xl px-6 py-16">
         <div className="flex items-center gap-3 mb-14">
-          <div className="size-9 rounded-lg bg-gradient-to-br from-sky-500 to-amber-500 flex items-center justify-center">
-            <Crosshair className="size-5 text-neutral-950" strokeWidth={2.5} />
+          <div className="flex size-10 items-center justify-center rounded border border-emerald-400/20 bg-emerald-400/10">
+            <Crosshair className="size-5 text-emerald-300" strokeWidth={2.5} />
           </div>
           <div>
-            <h1 className="text-xl font-semibold tracking-tight">GOTV Analyser</h1>
-            <p className="text-xs text-neutral-500">CS2 demo replay & analysis</p>
+            <h1 className="text-2xl font-semibold tracking-tight">RoundLab</h1>
+            <p className="text-xs text-neutral-500">CS2 round review workspace</p>
           </div>
+        </div>
+
+        <div className="mb-8">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-emerald-300">
+            Demo to decisions
+          </div>
+          <p className="mt-3 max-w-2xl text-4xl font-semibold tracking-tight text-neutral-100">
+            Replay every round, draw the call, fix the mistake.
+          </p>
         </div>
 
         <div
@@ -83,18 +92,17 @@ export default function Home() {
             if (f) onFile(f);
           }}
           className={
-            "relative rounded-2xl border-2 border-dashed transition-all cursor-pointer " +
-            "flex flex-col items-center justify-center text-center gap-4 py-16 px-8 " +
+            "relative flex cursor-pointer flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed px-8 py-16 text-center transition-all " +
             (dragOver
-              ? "border-sky-400 bg-sky-400/5"
+              ? "border-emerald-300 bg-emerald-300/5"
               : uploading
-                ? "border-white/10 bg-white/[0.02]"
-                : "border-white/10 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04]")
+                ? "border-white/10 bg-black/20"
+                : "border-white/10 bg-black/20 hover:border-emerald-300/30 hover:bg-white/[0.035]")
           }
         >
           {uploading ? (
             <>
-              <Loader2 className="size-10 animate-spin text-sky-400" />
+              <Loader2 className="size-10 animate-spin text-emerald-300" />
               <div>
                 <div className="font-medium">Parsing demo…</div>
                 <div className="text-sm text-neutral-500 mt-1">
@@ -104,8 +112,8 @@ export default function Home() {
             </>
           ) : (
             <>
-              <div className="size-12 rounded-xl bg-white/5 flex items-center justify-center">
-                <Upload className="size-5 text-neutral-400" />
+              <div className="flex size-12 items-center justify-center rounded-xl bg-white/[0.04]">
+                <Upload className="size-5 text-emerald-300" />
               </div>
               <div>
                 <div className="font-medium text-neutral-100">
@@ -137,7 +145,7 @@ export default function Home() {
 
         {matches.length > 0 && (
           <div className="mt-12">
-            <h2 className="text-[11px] uppercase tracking-widest font-semibold text-neutral-500 mb-3 px-1">
+            <h2 className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-neutral-600">
               Recent matches
             </h2>
             <div className="space-y-2">
@@ -145,7 +153,7 @@ export default function Home() {
                 <div
                   key={m.id}
                   onClick={() => router.push(`/match/${m.id}`)}
-                  className="group rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] hover:border-white/10 transition-all p-4 flex items-center justify-between cursor-pointer"
+                  className="group flex cursor-pointer items-center justify-between rounded-xl border border-white/[0.06] bg-black/20 p-4 transition-all hover:border-emerald-300/20 hover:bg-white/[0.035]"
                 >
                   <div>
                     <div className="font-mono text-sm text-neutral-200">
@@ -158,7 +166,7 @@ export default function Home() {
                   </div>
                   <Button
                     size="sm"
-                    className="bg-white text-neutral-950 hover:bg-neutral-200"
+                    className="bg-emerald-300 text-[#06100b] hover:bg-emerald-200"
                   >
                     <Play className="size-3.5 fill-current" /> Open
                   </Button>

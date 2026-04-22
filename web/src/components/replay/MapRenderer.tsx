@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { Application, Assets, Container, Graphics, Sprite, Text } from "pixi.js";
 import { useReplay } from "@/lib/replay-store";
 import { MAP_CALIBRATION, RADAR_SIZE, worldToRadar } from "@/lib/maps";
-import type { Frame, PlayerPos } from "@/lib/types";
+import type { Frame, PlayerPos, ProjectilePos, UtilityEffect } from "@/lib/types";
 
 function sampleFrame(frames: Frame[], t: number): PlayerPos[] {
   if (!frames || frames.length === 0) return [];
@@ -40,17 +40,313 @@ function sampleFrame(frames: Frame[], t: number): PlayerPos[] {
   return out;
 }
 
+function nearestFrame(frames: Frame[], t: number): Frame | null {
+  if (!frames || frames.length === 0) return null;
+  if (t <= frames[0].t) return frames[0];
+  if (t >= frames[frames.length - 1].t) return frames[frames.length - 1];
+  let lo = 0;
+  let hi = frames.length - 1;
+  while (lo < hi - 1) {
+    const mid = (lo + hi) >> 1;
+    if (frames[mid].t <= t) lo = mid;
+    else hi = mid;
+  }
+  return Math.abs(frames[lo].t - t) <= Math.abs(frames[hi].t - t) ? frames[lo] : frames[hi];
+}
+
+function framePair(frames: Frame[], t: number): { a: Frame; b: Frame; alpha: number } | null {
+  if (!frames || frames.length === 0) return null;
+  if (t <= frames[0].t) return { a: frames[0], b: frames[0], alpha: 0 };
+  if (t >= frames[frames.length - 1].t) {
+    const last = frames[frames.length - 1];
+    return { a: last, b: last, alpha: 0 };
+  }
+  let lo = 0;
+  let hi = frames.length - 1;
+  while (lo < hi - 1) {
+    const mid = (lo + hi) >> 1;
+    if (frames[mid].t <= t) lo = mid;
+    else hi = mid;
+  }
+  const a = frames[lo];
+  const b = frames[hi];
+  return { a, b, alpha: (t - a.t) / (b.t - a.t || 1) };
+}
+
+function sampleProjectiles(frames: Frame[], t: number): ProjectilePos[] {
+  const pair = framePair(frames, t);
+  if (!pair) return [];
+  const { a, b, alpha } = pair;
+  const from = new Map((a.projectiles ?? []).map((p) => [p.id, p]));
+  return (b.projectiles ?? []).map((pb) => {
+    const pa = from.get(pb.id);
+    if (!pa) return pb;
+    return {
+      ...pb,
+      x: pa.x + (pb.x - pa.x) * alpha,
+      y: pa.y + (pb.y - pa.y) * alpha,
+      z: pa.z + (pb.z - pa.z) * alpha,
+    };
+  });
+}
+
+function utilKind(name: string) {
+  const n = name.toLowerCase();
+  if (n.includes("smoke")) return { code: "S", shape: "smoke" as const };
+  if (n.includes("flash")) return { code: "F", shape: "flash" as const };
+  if (n.includes("molotov")) return { code: "M", shape: "fire" as const };
+  if (n.includes("incendiary")) return { code: "I", shape: "fire" as const };
+  if (n.includes("explosive") || n.includes("he grenade")) return { code: "H", shape: "he" as const };
+  if (n.includes("decoy")) return { code: "D", shape: "decoy" as const };
+  return { code: "N", shape: "grenade" as const };
+}
+
+function teamColor(team?: number) {
+  if (team === 3) return 0x5ab0ff;
+  if (team === 2) return 0xf5b042;
+  return 0xe5e7eb;
+}
+
+function itemCode(name?: string) {
+  if (!name) return "";
+  const n = name.toLowerCase();
+  if (n.includes("flash")) return "FLASH";
+  if (n.includes("smoke")) return "SMOKE";
+  if (n.includes("molotov")) return "MOLO";
+  if (n.includes("incendiary")) return "INC";
+  if (n.includes("explosive") || n.includes("he grenade")) return "HE";
+  if (n.includes("decoy")) return "DECOY";
+  if (n.includes("awp")) return "AWP";
+  if (n.includes("ak")) return "AK";
+  if (n.includes("m4")) return "M4";
+  if (n.includes("galil")) return "GALIL";
+  if (n.includes("famas")) return "FAMAS";
+  if (n.includes("deagle") || n.includes("desert eagle")) return "DEAGLE";
+  if (n.includes("usp")) return "USP";
+  if (n.includes("glock")) return "GLOCK";
+  if (n.includes("p250")) return "P250";
+  if (n.includes("knife")) return "";
+  if (n.includes("bomb") || n.includes("c4")) return "";
+  return name.toUpperCase().replace(/^WEAPON_/, "").slice(0, 8);
+}
+
+function displayName(name?: string) {
+  return name === "L999" ? "grosNoob" : name ?? "";
+}
+
 type PlayerSprite = {
   container: Container;
   dot: Graphics;
+  hpRing: Graphics;
   arrow: Graphics;
   label: Text;
+  held: Text;
+  armor: Graphics;
 };
+
+function drawLabel(layer: Container, text: string, x: number, y: number, color = 0xfbbf24) {
+  const label = new Text({
+    text,
+    style: {
+      fontFamily: "ui-sans-serif, system-ui",
+      fontSize: 9,
+      fontWeight: "800",
+      fill: 0x0f0a00,
+    },
+  });
+  label.anchor.set(0.5);
+  label.position.set(x, y);
+  const bg = new Graphics()
+    .roundRect(-9, -6, 18, 12, 3)
+    .fill({ color, alpha: 1 });
+  label.addChildAt(bg, 0);
+  layer.addChild(label);
+}
+
+function heightLift(z: number) {
+  return Math.max(0, Math.min(22, Math.abs(z) / 35));
+}
+
+function drawUtilityIcon(
+  layer: Container,
+  kind: ReturnType<typeof utilKind>,
+  x: number,
+  y: number,
+  color: number
+) {
+  const icon = new Container();
+  icon.position.set(x, y);
+
+  const body = new Graphics();
+  if (kind.shape === "smoke") {
+    body.roundRect(-5, -7, 10, 14, 3)
+      .fill({ color, alpha: 0.95 })
+      .circle(4, -6, 3)
+      .stroke({ color, width: 1.5, alpha: 0.95 });
+  } else if (kind.shape === "flash") {
+    body.circle(0, 0, 6)
+      .fill({ color, alpha: 0.95 })
+      .moveTo(-9, 0)
+      .lineTo(9, 0)
+      .moveTo(0, -9)
+      .lineTo(0, 9)
+      .stroke({ color, width: 1.4, alpha: 0.9 });
+  } else if (kind.shape === "fire") {
+    body.moveTo(0, -9)
+      .quadraticCurveTo(8, -2, 4, 7)
+      .quadraticCurveTo(0, 11, -5, 7)
+      .quadraticCurveTo(-9, 0, 0, -9)
+      .fill({ color, alpha: 0.95 });
+  } else if (kind.shape === "he") {
+    body.roundRect(-6, -6, 12, 12, 2)
+      .fill({ color, alpha: 0.95 })
+      .moveTo(-8, -8)
+      .lineTo(8, 8)
+      .moveTo(8, -8)
+      .lineTo(-8, 8)
+      .stroke({ color, width: 1.2, alpha: 0.7 });
+  } else if (kind.shape === "decoy") {
+    body.roundRect(-5, -8, 10, 16, 5)
+      .fill({ color, alpha: 0.95 })
+      .circle(0, 0, 2)
+      .fill({ color: 0x0b0f0d, alpha: 0.8 });
+  } else {
+    body.roundRect(-5, -7, 10, 14, 3).fill({ color, alpha: 0.95 });
+  }
+
+  body.stroke({ color: 0x050706, width: 1.5, alpha: 0.85 });
+  icon.addChild(body);
+  layer.addChild(icon);
+}
+
+function drawArmorBadge(g: Graphics, armor: number, helmet?: boolean) {
+  g.clear();
+  if (armor <= 0 && !helmet) return;
+
+  const color = 0x050706;
+  g.moveTo(0, -5.4)
+    .lineTo(5, -3.6)
+    .lineTo(5, 0.6)
+    .bezierCurveTo(5, 3.7, 3.1, 6, 0, 7)
+    .bezierCurveTo(-3.1, 6, -5, 3.7, -5, 0.6)
+    .lineTo(-5, -3.6)
+    .lineTo(0, -5.4)
+    .stroke({ color, width: 1.35, alpha: 0.96 });
+
+  if (helmet) {
+    g.moveTo(-3.3, 1.2)
+      .bezierCurveTo(-3.2, -1.9, 3.2, -1.9, 3.3, 1.2)
+      .lineTo(2.1, 1.2)
+      .bezierCurveTo(2, -0.6, -2, -0.6, -2.1, 1.2)
+      .lineTo(-3.3, 1.2)
+      .stroke({ color, width: 1.2, alpha: 0.96 });
+  }
+}
+
+function drawEffect(
+  layer: Container,
+  effect: UtilityEffect,
+  time: number,
+  toRadar: (x: number, y: number, z?: number) => { x: number; y: number }
+) {
+  const p = toRadar(effect.x, effect.y, effect.z);
+  const age = Math.max(0, time - effect.start);
+  const total = Math.max(0.1, effect.end - effect.start);
+  const life = Math.max(0, Math.min(1, age / total));
+  const g = new Graphics();
+
+  if (effect.type === "smoke") {
+    const fade = life > 0.82 ? 1 - (life - 0.82) / 0.18 : Math.min(1, age / 1.2);
+    g.circle(p.x, p.y, 34)
+      .fill({ color: 0x9ca3af, alpha: 0.18 * fade })
+      .circle(p.x - 9, p.y + 4, 24)
+      .fill({ color: 0xd1d5db, alpha: 0.1 * fade })
+      .circle(p.x + 11, p.y - 6, 27)
+      .fill({ color: 0x6b7280, alpha: 0.13 * fade })
+      .stroke({ color: 0xe5e7eb, width: 1, alpha: 0.15 * fade });
+    layer.addChild(g);
+    return;
+  }
+
+  if (effect.type === "flash") {
+    const radius = 12 + life * 38;
+    g.circle(p.x, p.y, radius)
+      .stroke({ color: 0xffffff, width: 3, alpha: 1 - life })
+      .circle(p.x, p.y, 7)
+      .fill({ color: 0xffffff, alpha: 0.8 * (1 - life) });
+    layer.addChild(g);
+    return;
+  }
+
+  if (effect.type === "he") {
+    g.circle(p.x, p.y, 12 + life * 28)
+      .stroke({ color: 0x86efac, width: 2, alpha: 1 - life })
+      .circle(p.x, p.y, 5)
+      .fill({ color: 0x86efac, alpha: 0.5 * (1 - life) });
+    layer.addChild(g);
+    return;
+  }
+
+  if (effect.type === "fire") {
+    const flicker = 0.85 + Math.sin(time * 12 + effect.x) * 0.12;
+    g.circle(p.x, p.y, 28 * flicker)
+      .fill({ color: 0xfb923c, alpha: 0.18 })
+      .circle(p.x + 7, p.y - 3, 18)
+      .fill({ color: 0xf97316, alpha: 0.22 })
+      .circle(p.x - 8, p.y + 5, 16)
+      .fill({ color: 0xfacc15, alpha: 0.14 });
+    layer.addChild(g);
+    return;
+  }
+
+  if (effect.type === "decoy") {
+    g.circle(p.x, p.y, 18)
+      .stroke({ color: 0xa78bfa, width: 1.5, alpha: 0.35 + Math.sin(time * 8) * 0.15 });
+    layer.addChild(g);
+  }
+}
+
+function drawProjectile(
+  layer: Container,
+  projectile: ProjectilePos,
+  frames: Frame[],
+  time: number,
+  throwerTeams: Map<number, number>,
+  toRadar: (x: number, y: number, z?: number) => { x: number; y: number }
+) {
+  const kind = utilKind(projectile.type);
+  const color = teamColor(projectile.thrower ? throwerTeams.get(projectile.thrower) : undefined);
+  const points: { x: number; y: number }[] = [];
+  for (let i = frames.length - 1; i >= 0 && points.length < 18; i--) {
+    const frame = frames[i];
+    if (frame.t > time || frame.t < time - 2.2) continue;
+    const p = frame.projectiles?.find((candidate) => candidate.id === projectile.id);
+    if (!p) continue;
+    points.push(toRadar(p.x, p.y, p.z));
+  }
+  points.reverse();
+
+  const trail = new Graphics();
+  if (points.length > 1) {
+    trail.moveTo(points[0].x, points[0].y);
+    for (const point of points.slice(1)) {
+      trail.lineTo(point.x, point.y);
+    }
+    trail.stroke({ color, width: 2, alpha: 0.45 });
+  }
+
+  const p = toRadar(projectile.x, projectile.y, projectile.z);
+  const shadow = toRadar(projectile.x, projectile.y, 0);
+  trail.circle(shadow.x, shadow.y, 4).fill({ color: 0x000000, alpha: 0.25 });
+  layer.addChild(trail);
+  drawUtilityIcon(layer, kind, p.x, p.y, color);
+}
 
 export function MapRenderer({ size = 800 }: { size?: number }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const bgLayerRef = useRef<Container | null>(null);
+  const utilityLayerRef = useRef<Container | null>(null);
   const playerLayerRef = useRef<Container | null>(null);
   const spritesRef = useRef<Map<number, PlayerSprite>>(new Map());
   const loadedMapRef = useRef<string | null>(null);
@@ -77,12 +373,18 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
         return;
       }
       const bgLayer = new Container();
+      const utilityLayer = new Container();
       const playerLayer = new Container();
       app.stage.addChild(bgLayer);
+      app.stage.addChild(utilityLayer);
       app.stage.addChild(playerLayer);
+      app.canvas.style.position = "absolute";
+      app.canvas.style.inset = "0";
+      app.canvas.style.zIndex = "1";
       host.appendChild(app.canvas);
       appRef.current = app;
       bgLayerRef.current = bgLayer;
+      utilityLayerRef.current = utilityLayer;
       playerLayerRef.current = playerLayer;
     })();
 
@@ -140,15 +442,57 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       state.step(dt);
       const { match, currentRoundIdx, time } = useReplay.getState();
       const layer = playerLayerRef.current;
-      if (!match || !layer) return;
+      const utilityLayer = utilityLayerRef.current;
+      if (!match || !layer || !utilityLayer) return;
       const round = match.rounds[currentRoundIdx];
       if (!round) return;
       const calib = MAP_CALIBRATION[match.meta.map];
       if (!calib) return;
 
       const positions = sampleFrame(round.frames, time);
+      const frame = nearestFrame(round.frames, time);
+      const projectiles = sampleProjectiles(round.frames, time);
+      const throwerTeams = new Map(positions.map((p) => [p.id, p.team]));
       const scale = size / RADAR_SIZE;
       const seen = new Set<number>();
+      for (const child of utilityLayer.removeChildren()) {
+        child.destroy({ children: true });
+      }
+
+      const toRadar = (x: number, y: number, z = 0) => {
+        const p = worldToRadar(x, y, calib);
+        return { x: p.x * scale, y: p.y * scale - heightLift(z) };
+      };
+
+      for (const effect of round.effects ?? []) {
+        if (time < effect.start || time > effect.end) continue;
+        drawEffect(utilityLayer, effect, time, toRadar);
+      }
+
+      if (frame?.bomb && frame.bomb.status !== "carried") {
+        const p = toRadar(frame.bomb.x, frame.bomb.y, frame.bomb.z);
+        if (frame.bomb.status === "planted") {
+          const pulse = 0.65 + Math.sin(time * 7) * 0.25;
+          const marker = new Graphics()
+            .circle(p.x, p.y, 15 + pulse * 4)
+            .stroke({ color: 0xfbbf24, width: 2, alpha: 0.35 + pulse * 0.25 })
+            .circle(p.x, p.y, 5)
+            .fill({ color: 0xfbbf24, alpha: 1 });
+          utilityLayer.addChild(marker);
+          drawLabel(utilityLayer, "C4", p.x, p.y - 16, 0xfbbf24);
+        } else {
+          const marker = new Graphics()
+            .circle(p.x, p.y, 6)
+            .fill({ color: 0xfbbf24, alpha: 0.95 })
+            .stroke({ color: 0x0f0a00, width: 1.5 });
+          utilityLayer.addChild(marker);
+          drawLabel(utilityLayer, "C4", p.x, p.y - 13, 0xfbbf24);
+        }
+      }
+
+      for (const projectile of projectiles) {
+        drawProjectile(utilityLayer, projectile, round.frames, time, throwerTeams, toRadar);
+      }
 
       for (const p of positions) {
         seen.add(p.id);
@@ -158,21 +502,13 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
 
         let s = spritesRef.current.get(p.id);
         if (!s) {
-          const color = p.team === 3 ? 0x5ab0ff : 0xf5b042;
           const container = new Container();
-          const arrow = new Graphics()
-            .moveTo(0, -4)
-            .lineTo(14, 0)
-            .lineTo(0, 4)
-            .lineTo(0, -4)
-            .fill({ color, alpha: 0.95 });
-          const dot = new Graphics()
-            .circle(0, 0, 8)
-            .fill(color)
-            .stroke({ color: 0x0a0a0a, width: 1.5 });
+          const arrow = new Graphics();
+          const dot = new Graphics();
+          const hpRing = new Graphics();
           const playerInfo = match.players.find((pl) => pl.steamId === p.id);
           const label = new Text({
-            text: playerInfo?.name ?? "",
+            text: displayName(playerInfo?.name),
             style: {
               fontFamily: "ui-sans-serif, system-ui",
               fontSize: 11,
@@ -182,14 +518,50 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
             },
           });
           label.anchor.set(0.5, 1);
-          label.position.set(0, -13);
+          label.position.set(0, -16);
+          const held = new Text({
+            text: "",
+            style: {
+              fontFamily: "ui-sans-serif, system-ui",
+              fontSize: 8,
+              fontWeight: "700",
+              fill: 0xe5e7eb,
+              stroke: { color: 0x000000, width: 3 },
+            },
+          });
+          held.anchor.set(0.5, 0);
+          held.position.set(0, 12);
+          const armor = new Graphics();
+          armor.position.set(0, 0);
           container.addChild(arrow);
           container.addChild(dot);
+          container.addChild(hpRing);
+          container.addChild(armor);
           container.addChild(label);
+          container.addChild(held);
           layer.addChild(container);
-          s = { container, dot, arrow, label };
+          s = { container, dot, hpRing, arrow, label, held, armor };
           spritesRef.current.set(p.id, s);
         }
+        const baseColor = p.hasBomb ? 0xef4444 : teamColor(p.team);
+        const hpPct = Math.max(0, Math.min(100, p.hp)) / 100;
+        s.dot.clear()
+          .circle(0, 0, 8)
+          .fill({ color: baseColor, alpha: p.hp > 0 ? 0.95 : 0.35 })
+          .stroke({ color: 0x050706, width: 1.5, alpha: 1 });
+        s.hpRing.clear();
+        if (p.hp > 0) {
+          s.hpRing.arc(0, 0, 10.5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * hpPct)
+            .stroke({ color: baseColor, width: 2.2, alpha: 0.95 });
+        }
+        s.arrow.clear()
+          .moveTo(0, -4)
+          .lineTo(14, 0)
+          .lineTo(0, 4)
+          .lineTo(0, -4)
+          .fill({ color: baseColor, alpha: p.hp > 0 ? 0.95 : 0.35 });
+        drawArmorBadge(s.armor, p.armor, p.helmet);
+        s.held.text = itemCode(p.active);
         s.container.position.set(px, py);
         s.arrow.rotation = (-p.yaw * Math.PI) / 180;
         s.container.alpha = p.hp > 0 ? 1 : 0.35;
@@ -211,7 +583,19 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
     <div
       ref={hostRef}
       style={{ width: size, height: size }}
-      className="relative rounded-xl overflow-hidden ring-1 ring-white/10 shadow-2xl shadow-black/50 bg-neutral-950"
-    />
+      className="relative overflow-hidden rounded-xl bg-[#050706] ring-1 ring-white/[0.08]"
+    >
+      {map && (
+        // The radar is kept in the DOM instead of only in Pixi: it is more
+        // reliable across browsers/headless renderers while Pixi handles motion.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={`/radars/${map}.png`}
+          alt=""
+          className="absolute inset-0 z-0 size-full select-none object-cover opacity-95"
+          draggable={false}
+        />
+      )}
+    </div>
   );
 }

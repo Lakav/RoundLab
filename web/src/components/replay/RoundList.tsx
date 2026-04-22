@@ -11,45 +11,58 @@ export function RoundList() {
   if (!match) return null;
 
   return (
-    <ScrollArea className="h-full w-52 shrink-0 border-r border-white/5 bg-neutral-950">
+    <ScrollArea className="h-full w-56 shrink-0 border-r border-white/[0.07] bg-[#080b0a]/95">
       <div className="p-3">
-        <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold mb-2 px-1">
-          Rounds
+        <div className="mb-3 px-1">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-neutral-600">
+            Scoreline
+          </div>
+          <div className="mt-1 text-xs text-neutral-500">
+            Round by round
+          </div>
         </div>
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           {match.rounds.map((r, i) => {
-            const kills = r.events.filter((e) => e.type === "kill").length;
             const active = currentRoundIdx === i;
+            const scoreA = r.scoreA ?? 0;
+            const scoreB = r.scoreB ?? 0;
+            const ctWon = r.winner === "CT";
+            const tWon = r.winner === "T";
             return (
               <button
                 key={r.number}
                 onClick={() => setRound(i)}
                 className={cn(
-                  "w-full text-left rounded-lg px-3 py-2 text-sm transition-all",
-                  "border border-transparent",
+                  "group w-full rounded-xl border px-3 py-2.5 text-left text-sm transition-all",
                   active
-                    ? "bg-white/10 border-white/10"
-                    : "hover:bg-white/[0.04] hover:border-white/5"
+                    ? "border-emerald-400/30 bg-emerald-400/[0.08] shadow-[inset_3px_0_0_rgba(52,211,153,0.9)]"
+                    : "border-white/[0.04] bg-white/[0.015] hover:border-white/[0.08] hover:bg-white/[0.04]"
                 )}
               >
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold tabular-nums">
-                    <span className="text-neutral-500 mr-1">#</span>
-                    {r.number}
-                  </span>
-                  <span
-                    className={cn(
-                      "text-[10px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded",
-                      r.winner === "CT"
-                        ? "bg-sky-500/15 text-sky-400"
-                        : "bg-amber-500/15 text-amber-400"
-                    )}
-                  >
-                    {r.winner}
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-mono text-lg font-semibold tabular-nums tracking-tight text-neutral-100">
+                    <span
+                      className={cn(
+                        "inline-block min-w-4 text-sky-500 transition-all",
+                        ctWon && "scale-110 text-sky-200 drop-shadow-[0_0_8px_rgba(125,211,252,0.45)]"
+                      )}
+                    >
+                      {scoreA}
+                    </span>
+                    <span className="mx-0.5 text-neutral-600">:</span>
+                    <span
+                      className={cn(
+                        "inline-block min-w-4 text-amber-500 transition-all",
+                        tWon && "scale-110 text-amber-200 drop-shadow-[0_0_8px_rgba(252,211,77,0.45)]"
+                      )}
+                    >
+                      {scoreB}
+                    </span>
                   </span>
                 </div>
-                <div className="text-[11px] text-neutral-500 mt-0.5">
-                  {kills} kills · {Math.round(r.duration)}s
+                <div className="mt-1 flex items-center justify-between text-[11px] text-neutral-500">
+                  <span>Round {i + 1}</span>
+                  <span>{Math.round(r.duration)}s</span>
                 </div>
               </button>
             );

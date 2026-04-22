@@ -30,7 +30,7 @@ export function Controls() {
         size="icon"
         onClick={() => skip(-5)}
         title="-5s (J)"
-        className="text-neutral-400 hover:text-white hover:bg-white/5 size-8"
+        className="size-8 text-neutral-500 hover:bg-white/[0.06] hover:text-white"
       >
         <Rewind className="size-4" />
       </Button>
@@ -38,7 +38,7 @@ export function Controls() {
         size="icon"
         onClick={togglePlay}
         title="Play/Pause (Space)"
-        className="bg-white text-neutral-950 hover:bg-neutral-200 size-9 rounded-full"
+        className="size-10 rounded-full bg-emerald-300 text-[#06100b] shadow-lg shadow-emerald-500/15 hover:bg-emerald-200"
       >
         {playing ? <Pause className="size-4 fill-current" /> : <Play className="size-4 fill-current" />}
       </Button>
@@ -47,23 +47,23 @@ export function Controls() {
         size="icon"
         onClick={() => skip(5)}
         title="+5s (L)"
-        className="text-neutral-400 hover:text-white hover:bg-white/5 size-8"
+        className="size-8 text-neutral-500 hover:bg-white/[0.06] hover:text-white"
       >
         <FastForward className="size-4" />
       </Button>
 
-      <div className="h-5 w-px bg-white/10 mx-2" />
+      <div className="mx-2 h-5 w-px bg-white/10" />
 
-      <div className="flex items-center gap-0.5 bg-white/5 rounded-md p-0.5">
+      <div className="flex items-center gap-0.5 rounded-lg border border-white/[0.06] bg-black/20 p-0.5">
         {SPEEDS.map((s) => (
           <button
             key={s}
             onClick={() => setSpeed(s)}
             className={cn(
-              "px-2 h-6 text-[11px] font-semibold tabular-nums rounded transition-colors",
+              "h-6 rounded-md px-2 text-[11px] font-semibold tabular-nums transition-colors",
               speed === s
                 ? "bg-white text-neutral-950"
-                : "text-neutral-400 hover:text-white"
+                : "text-neutral-500 hover:bg-white/[0.05] hover:text-white"
             )}
           >
             {s}×

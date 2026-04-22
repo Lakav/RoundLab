@@ -21,8 +21,6 @@ type Props = {
   setTool: (t: DrawTool) => void;
   color: string;
   setColor: (c: string) => void;
-  width: number;
-  setWidth: (w: number) => void;
   strokes: Stroke[];
   setStrokes: (s: Stroke[]) => void;
 };
@@ -41,13 +39,11 @@ export function DrawingToolbar({
   setTool,
   color,
   setColor,
-  width,
-  setWidth,
   strokes,
   setStrokes,
 }: Props) {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-xl border border-white/10 bg-neutral-900/90 p-2 shadow-2xl shadow-black/30 backdrop-blur">
+    <div className="flex flex-col items-center gap-2 rounded-2xl border border-white/[0.08] bg-[#0b0f0d]/95 p-2 shadow-2xl shadow-black/35 backdrop-blur">
       <div className="flex flex-col gap-0.5">
         {TOOLS.map(({ value, icon: Icon, title }) => (
           <button
@@ -55,10 +51,10 @@ export function DrawingToolbar({
             onClick={() => setTool(value)}
             title={title}
             className={cn(
-              "size-9 rounded-lg flex items-center justify-center transition-colors",
+              "size-9 rounded-xl flex items-center justify-center transition-colors",
               tool === value
-                ? "bg-white text-neutral-950"
-                : "text-neutral-400 hover:bg-white/5 hover:text-white"
+                ? "bg-emerald-300 text-[#06100b]"
+                : "text-neutral-500 hover:bg-white/[0.06] hover:text-white"
             )}
           >
             <Icon className="size-4" />
@@ -66,7 +62,7 @@ export function DrawingToolbar({
         ))}
       </div>
 
-      <div className="h-px w-8 bg-white/10" />
+      <div className="h-px w-8 bg-white/[0.08]" />
 
       <div className="grid grid-cols-2 gap-1">
         {COLORS.map((c) => (
@@ -82,33 +78,13 @@ export function DrawingToolbar({
         ))}
       </div>
 
-      <div className="h-px w-8 bg-white/10" />
-
-      <div className="flex flex-col items-center gap-1 py-1">
-        <span className="text-[9px] uppercase tracking-widest text-neutral-500 font-semibold">
-          size
-        </span>
-        <input
-          type="range"
-          min={1}
-          max={10}
-          value={width}
-          onChange={(e) => setWidth(Number(e.target.value))}
-          className="h-4 w-16 -rotate-90 accent-white -my-6"
-          title="Stroke width"
-        />
-        <span className="text-[10px] tabular-nums text-neutral-400 mt-6">{width}</span>
-      </div>
-
-      <div className="h-px w-8 bg-white/10" />
-
       <Button
         size="icon"
         variant="ghost"
         onClick={() => setStrokes(strokes.slice(0, -1))}
         disabled={strokes.length === 0}
         title="Undo (Cmd+Z)"
-        className="size-9 text-neutral-400 hover:text-white hover:bg-white/5 disabled:opacity-30"
+        className="size-9 text-neutral-500 hover:text-white hover:bg-white/[0.06] disabled:opacity-30"
       >
         <Undo2 className="size-4" />
       </Button>
@@ -118,7 +94,7 @@ export function DrawingToolbar({
         onClick={() => setStrokes([])}
         disabled={strokes.length === 0}
         title="Clear all"
-        className="size-9 text-neutral-400 hover:text-red-400 hover:bg-white/5 disabled:opacity-30"
+        className="size-9 text-neutral-500 hover:text-red-400 hover:bg-white/[0.06] disabled:opacity-30"
       >
         <Trash2 className="size-4" />
       </Button>

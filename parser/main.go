@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 
 	dem "github.com/markus-wa/demoinfocs-golang/v4/pkg/demoinfocs"
 	common "github.com/markus-wa/demoinfocs-golang/v4/pkg/demoinfocs/common"
@@ -33,8 +34,10 @@ type Player struct {
 }
 
 type Frame struct {
-	T       float64     `json:"t"`       // seconds from round start
-	Players []PlayerPos `json:"players"` // only alive players
+	T           float64         `json:"t"`       // seconds from round start
+	Players     []PlayerPos     `json:"players"` // only alive players
+	Bomb        *BombState      `json:"bomb,omitempty"`
+	Projectiles []ProjectilePos `json:"projectiles,omitempty"`
 }
 
 type PlayerPos struct {
@@ -47,30 +50,65 @@ type PlayerPos struct {
 	Armor   int      `json:"armor"`
 	Helmet  bool     `json:"helmet,omitempty"`
 	Kit     bool     `json:"kit,omitempty"`
-	Team    uint8    `json:"team"` // 2=T, 3=CT
+	HasBomb bool     `json:"hasBomb,omitempty"`
+	Team    uint8    `json:"team"`             // 2=T, 3=CT
 	Active  string   `json:"active,omitempty"` // active weapon name
 	Weapons []string `json:"weapons,omitempty"`
 }
 
+type BombState struct {
+	X       float32 `json:"x"`
+	Y       float32 `json:"y"`
+	Z       float32 `json:"z"`
+	Status  string  `json:"status"` // carried, dropped, planted
+	Carrier uint64  `json:"carrier,omitempty"`
+}
+
+type ProjectilePos struct {
+	ID      int64   `json:"id"`
+	Type    string  `json:"type"`
+	X       float32 `json:"x"`
+	Y       float32 `json:"y"`
+	Z       float32 `json:"z"`
+	Thrower uint64  `json:"thrower,omitempty"`
+}
+
+type UtilityEffect struct {
+	ID    int64   `json:"id,omitempty"`
+	Type  string  `json:"type"` // smoke, flash, he, fire, decoy, bomb_planted
+	Start float64 `json:"start"`
+	End   float64 `json:"end"`
+	X     float32 `json:"x"`
+	Y     float32 `json:"y"`
+	Z     float32 `json:"z"`
+}
+
 type Event struct {
-	T       float64 `json:"t"`
-	Type    string  `json:"type"` // kill, bomb_planted, bomb_defused, bomb_exploded, round_end
-	Killer  uint64  `json:"killer,omitempty"`
-	Victim  uint64  `json:"victim,omitempty"`
-	Assist  uint64  `json:"assist,omitempty"`
-	Weapon  string  `json:"weapon,omitempty"`
-	HS      bool    `json:"hs,omitempty"`
-	Winner  string  `json:"winner,omitempty"`
+	T      float64 `json:"t"`
+	Type   string  `json:"type"` // kill, bomb_planted, bomb_defused, bomb_exploded, round_end
+	Killer uint64  `json:"killer,omitempty"`
+	Victim uint64  `json:"victim,omitempty"`
+	Assist uint64  `json:"assist,omitempty"`
+	Weapon string  `json:"weapon,omitempty"`
+	HS     bool    `json:"hs,omitempty"`
+	Winner string  `json:"winner,omitempty"`
 }
 
 type Round struct {
-	Number    int     `json:"number"`
-	StartTick int     `json:"startTick"`
-	EndTick   int     `json:"endTick"`
-	Duration  float64 `json:"duration"`
-	Winner    string  `json:"winner"`
-	Frames    []Frame `json:"frames"`
-	Events    []Event `json:"events"`
+	Number        int             `json:"number"`
+	StartTick     int             `json:"startTick"`     // live round start, after freezetime
+	FreezeEndTick int             `json:"freezeEndTick"` // same as StartTick once known
+	EndTick       int             `json:"endTick"`
+	Duration      float64         `json:"duration"`
+	Winner        string          `json:"winner"`
+	WinnerName    string          `json:"winnerName,omitempty"`
+	ScoreA        int             `json:"scoreA"`
+	ScoreB        int             `json:"scoreB"`
+	Frames        []Frame         `json:"frames"`
+	Events        []Event         `json:"events"`
+	Effects       []UtilityEffect `json:"effects,omitempty"`
+	LiveStarted   bool            `json:"-"`
+	TeamScores    map[string]int  `json:"-"`
 }
 
 type Output struct {
@@ -132,9 +170,47 @@ func main() {
 	}
 
 	knownPlayers := map[uint64]bool{}
+	teamScores := map[string]int{}
 	var currentRound *Round
 	roundNumber := 0
 	roundStartTick := 0
+	bombPlanted := false
+	smokeEffects := map[int]int{}
+	decoyEffects := map[int]int{}
+	infernoEffects := map[int64]int{}
+
+	beginLiveRound := func(tick int) {
+		if currentRound == nil || currentRound.LiveStarted {
+			return
+		}
+		currentRound.StartTick = tick
+		currentRound.FreezeEndTick = tick
+		currentRound.LiveStarted = true
+		currentRound.Frames = []Frame{}
+		currentRound.Events = []Event{}
+	}
+
+	roundTime := func() (float64, bool) {
+		if currentRound == nil || !currentRound.LiveStarted {
+			return 0, false
+		}
+		tick := p.GameState().IngameTick()
+		if tick < currentRound.StartTick {
+			return 0, false
+		}
+		return float64(tick-currentRound.StartTick) / tickRate, true
+	}
+
+	rememberTeam := func(ts *common.TeamState, score int) {
+		if ts == nil {
+			return
+		}
+		name := ts.ClanName()
+		if name == "" {
+			name = fmt.Sprintf("team_%d", ts.ID())
+		}
+		teamScores[name] = score
+	}
 
 	addPlayer := func(pl *common.Player) {
 		if pl == nil || pl.SteamID64 == 0 || knownPlayers[pl.SteamID64] {
@@ -151,31 +227,55 @@ func main() {
 	p.RegisterEventHandler(func(e events.RoundStart) {
 		roundNumber++
 		roundStartTick = p.GameState().IngameTick()
+		bombPlanted = false
+		smokeEffects = map[int]int{}
+		decoyEffects = map[int]int{}
+		infernoEffects = map[int64]int{}
 		currentRound = &Round{
-			Number:    roundNumber,
-			StartTick: roundStartTick,
-			Frames:    []Frame{},
-			Events:    []Event{},
+			Number:        roundNumber,
+			StartTick:     roundStartTick,
+			FreezeEndTick: roundStartTick,
+			Frames:        []Frame{},
+			Events:        []Event{},
+			Effects:       []UtilityEffect{},
+			TeamScores:    map[string]int{},
 		}
+	})
+
+	p.RegisterEventHandler(func(e events.RoundFreezetimeEnd) {
+		beginLiveRound(p.GameState().IngameTick())
 	})
 
 	p.RegisterEventHandler(func(e events.RoundEnd) {
 		if currentRound == nil {
 			return
 		}
+		if !currentRound.LiveStarted {
+			beginLiveRound(roundStartTick)
+		}
 		endTick := p.GameState().IngameTick()
 		currentRound.EndTick = endTick
 		currentRound.Duration = float64(endTick-currentRound.StartTick) / tickRate
 		currentRound.Winner = teamStr(e.Winner)
+		if e.WinnerState != nil {
+			currentRound.WinnerName = e.WinnerState.ClanName()
+			rememberTeam(e.WinnerState, e.WinnerState.Score())
+		}
+		if e.LoserState != nil {
+			rememberTeam(e.LoserState, e.LoserState.Score())
+		}
+		for name, score := range teamScores {
+			currentRound.TeamScores[name] = score
+		}
 		output.Rounds = append(output.Rounds, *currentRound)
 		currentRound = nil
 	})
 
 	p.RegisterEventHandler(func(e events.Kill) {
-		if currentRound == nil {
+		t, ok := roundTime()
+		if !ok {
 			return
 		}
-		t := float64(p.GameState().IngameTick()-currentRound.StartTick) / tickRate
 		ev := Event{T: t, Type: "kill", HS: e.IsHeadshot}
 		if e.Killer != nil {
 			ev.Killer = e.Killer.SteamID64
@@ -193,25 +293,159 @@ func main() {
 	})
 
 	p.RegisterEventHandler(func(e events.BombPlanted) {
-		if currentRound == nil {
+		t, ok := roundTime()
+		if !ok {
 			return
 		}
-		t := float64(p.GameState().IngameTick()-currentRound.StartTick) / tickRate
+		bombPlanted = true
+		if bomb := p.GameState().Bomb(); bomb != nil {
+			pos := bomb.Position()
+			currentRound.Effects = append(currentRound.Effects, UtilityEffect{
+				Type:  "bomb_planted",
+				Start: t,
+				End:   t + 45,
+				X:     float32(pos.X),
+				Y:     float32(pos.Y),
+				Z:     float32(pos.Z),
+			})
+		}
 		currentRound.Events = append(currentRound.Events, Event{T: t, Type: "bomb_planted"})
 	})
 	p.RegisterEventHandler(func(e events.BombDefused) {
-		if currentRound == nil {
+		t, ok := roundTime()
+		if !ok {
 			return
 		}
-		t := float64(p.GameState().IngameTick()-currentRound.StartTick) / tickRate
+		bombPlanted = false
 		currentRound.Events = append(currentRound.Events, Event{T: t, Type: "bomb_defused"})
 	})
 	p.RegisterEventHandler(func(e events.BombExplode) {
-		if currentRound == nil {
+		t, ok := roundTime()
+		if !ok {
 			return
 		}
-		t := float64(p.GameState().IngameTick()-currentRound.StartTick) / tickRate
+		bombPlanted = false
 		currentRound.Events = append(currentRound.Events, Event{T: t, Type: "bomb_exploded"})
+	})
+
+	p.RegisterEventHandler(func(e events.SmokeStart) {
+		t, ok := roundTime()
+		if !ok {
+			return
+		}
+		idx := len(currentRound.Effects)
+		smokeEffects[e.GrenadeEntityID] = idx
+		currentRound.Effects = append(currentRound.Effects, UtilityEffect{
+			ID:    int64(e.GrenadeEntityID),
+			Type:  "smoke",
+			Start: t,
+			End:   t + 18,
+			X:     float32(e.Position.X),
+			Y:     float32(e.Position.Y),
+			Z:     float32(e.Position.Z),
+		})
+	})
+	p.RegisterEventHandler(func(e events.SmokeExpired) {
+		t, ok := roundTime()
+		if !ok {
+			return
+		}
+		if idx, found := smokeEffects[e.GrenadeEntityID]; found && idx < len(currentRound.Effects) {
+			currentRound.Effects[idx].End = t
+		}
+	})
+	p.RegisterEventHandler(func(e events.FlashExplode) {
+		t, ok := roundTime()
+		if !ok {
+			return
+		}
+		currentRound.Effects = append(currentRound.Effects, UtilityEffect{
+			ID:    int64(e.GrenadeEntityID),
+			Type:  "flash",
+			Start: t,
+			End:   t + 0.8,
+			X:     float32(e.Position.X),
+			Y:     float32(e.Position.Y),
+			Z:     float32(e.Position.Z),
+		})
+	})
+	p.RegisterEventHandler(func(e events.HeExplode) {
+		t, ok := roundTime()
+		if !ok {
+			return
+		}
+		currentRound.Effects = append(currentRound.Effects, UtilityEffect{
+			ID:    int64(e.GrenadeEntityID),
+			Type:  "he",
+			Start: t,
+			End:   t + 0.7,
+			X:     float32(e.Position.X),
+			Y:     float32(e.Position.Y),
+			Z:     float32(e.Position.Z),
+		})
+	})
+	p.RegisterEventHandler(func(e events.DecoyStart) {
+		t, ok := roundTime()
+		if !ok {
+			return
+		}
+		idx := len(currentRound.Effects)
+		decoyEffects[e.GrenadeEntityID] = idx
+		currentRound.Effects = append(currentRound.Effects, UtilityEffect{
+			ID:    int64(e.GrenadeEntityID),
+			Type:  "decoy",
+			Start: t,
+			End:   t + 15,
+			X:     float32(e.Position.X),
+			Y:     float32(e.Position.Y),
+			Z:     float32(e.Position.Z),
+		})
+	})
+	p.RegisterEventHandler(func(e events.DecoyExpired) {
+		t, ok := roundTime()
+		if !ok {
+			return
+		}
+		if idx, found := decoyEffects[e.GrenadeEntityID]; found && idx < len(currentRound.Effects) {
+			currentRound.Effects[idx].End = t
+		}
+	})
+	p.RegisterEventHandler(func(e events.InfernoStart) {
+		t, ok := roundTime()
+		if !ok || e.Inferno == nil {
+			return
+		}
+		fires := e.Inferno.Fires().Active().List()
+		if len(fires) == 0 {
+			return
+		}
+		var x, y, z float64
+		for _, fire := range fires {
+			x += fire.X
+			y += fire.Y
+			z += fire.Z
+		}
+		n := float64(len(fires))
+		idx := len(currentRound.Effects)
+		infernoEffects[e.Inferno.UniqueID()] = idx
+		currentRound.Effects = append(currentRound.Effects, UtilityEffect{
+			ID:    e.Inferno.UniqueID(),
+			Type:  "fire",
+			Start: t,
+			End:   t + 7,
+			X:     float32(x / n),
+			Y:     float32(y / n),
+			Z:     float32(z / n),
+		})
+	})
+	p.RegisterEventHandler(func(e events.InfernoExpired) {
+		t, ok := roundTime()
+		if !ok || e.Inferno == nil {
+			return
+		}
+		if idx, found := infernoEffects[e.Inferno.UniqueID()]; found && idx < len(currentRound.Effects) {
+			currentRound.Effects[idx].End = t
+		}
 	})
 
 	// Sample positions per frame
@@ -220,11 +454,61 @@ func main() {
 			return
 		}
 		tick := p.GameState().IngameTick()
+		if !currentRound.LiveStarted {
+			if p.GameState().IsFreezetimePeriod() {
+				return
+			}
+			beginLiveRound(tick)
+		}
 		if (tick-currentRound.StartTick)%sampleEveryTicks != 0 {
 			return
 		}
 		t := float64(tick-currentRound.StartTick) / tickRate
 		frame := Frame{T: t, Players: []PlayerPos{}}
+		var bombCarrier uint64
+		if bomb := p.GameState().Bomb(); bomb != nil && bomb.Carrier != nil {
+			bombCarrier = bomb.Carrier.SteamID64
+			pos := bomb.Position()
+			frame.Bomb = &BombState{
+				X:       float32(pos.X),
+				Y:       float32(pos.Y),
+				Z:       float32(pos.Z),
+				Status:  "carried",
+				Carrier: bombCarrier,
+			}
+		} else if bomb := p.GameState().Bomb(); bomb != nil {
+			pos := bomb.Position()
+			if pos.X != 0 || pos.Y != 0 || pos.Z != 0 {
+				status := "dropped"
+				if bombPlanted {
+					status = "planted"
+				}
+				frame.Bomb = &BombState{
+					X:      float32(pos.X),
+					Y:      float32(pos.Y),
+					Z:      float32(pos.Z),
+					Status: status,
+				}
+			}
+		}
+		for _, proj := range p.GameState().GrenadeProjectiles() {
+			if proj == nil || proj.WeaponInstance == nil {
+				continue
+			}
+			pos := proj.Position()
+			var thrower uint64
+			if proj.Thrower != nil {
+				thrower = proj.Thrower.SteamID64
+			}
+			frame.Projectiles = append(frame.Projectiles, ProjectilePos{
+				ID:      proj.UniqueID(),
+				Type:    proj.WeaponInstance.String(),
+				X:       float32(pos.X),
+				Y:       float32(pos.Y),
+				Z:       float32(pos.Z),
+				Thrower: thrower,
+			})
+		}
 		for _, pl := range p.GameState().Participants().Playing() {
 			if pl == nil || !pl.IsAlive() {
 				continue
@@ -253,6 +537,7 @@ func main() {
 				Armor:   pl.Armor(),
 				Helmet:  pl.HasHelmet(),
 				Kit:     pl.HasDefuseKit(),
+				HasBomb: pl.SteamID64 == bombCarrier,
 				Team:    uint8(pl.Team),
 				Active:  active,
 				Weapons: weapons,
@@ -272,12 +557,30 @@ func main() {
 	output.Meta.DurationSec = float64(p.GameState().IngameTick()) / tickRate
 	gs := p.GameState()
 	if ct := gs.TeamCounterTerrorists(); ct != nil {
-		output.Meta.TeamA = ct.ClanName()
-		output.Meta.ScoreA = ct.Score()
+		rememberTeam(ct, ct.Score())
 	}
 	if tt := gs.TeamTerrorists(); tt != nil {
-		output.Meta.TeamB = tt.ClanName()
-		output.Meta.ScoreB = tt.Score()
+		rememberTeam(tt, tt.Score())
+	}
+
+	teamNames := []string{}
+	for name := range teamScores {
+		teamNames = append(teamNames, name)
+	}
+	sort.Slice(teamNames, func(i, j int) bool {
+		return teamScores[teamNames[i]] > teamScores[teamNames[j]]
+	})
+	if len(teamNames) >= 2 {
+		teamAName := teamNames[0]
+		teamBName := teamNames[1]
+		output.Meta.TeamA = teamAName
+		output.Meta.TeamB = teamBName
+		output.Meta.ScoreA = teamScores[teamAName]
+		output.Meta.ScoreB = teamScores[teamBName]
+		for i := range output.Rounds {
+			output.Rounds[i].ScoreA = output.Rounds[i].TeamScores[teamAName]
+			output.Rounds[i].ScoreB = output.Rounds[i].TeamScores[teamBName]
+		}
 	}
 
 	// Write gzipped JSON

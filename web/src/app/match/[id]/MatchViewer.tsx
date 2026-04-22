@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import type { MatchData } from "@/lib/types";
 
 const MAP_SIZE = 760;
+const DRAW_WIDTH = 3;
 
 function hideKnifeRound(data: MatchData): MatchData {
   // Current demos start with a knife round. This is intentionally frontend-only
@@ -36,7 +37,6 @@ export default function MatchViewer({ id }: { id: string }) {
 
   const [tool, setTool] = useState<DrawTool>("none");
   const [color, setColor] = useState("#ef4444");
-  const [width, setWidth] = useState(3);
   const [strokesByRound, setStrokesByRound] = useState<Record<number, Stroke[]>>({});
   const strokes = strokesByRound[currentRoundIdx] ?? [];
   const setStrokes = (s: Stroke[]) =>
@@ -107,43 +107,70 @@ export default function MatchViewer({ id }: { id: string }) {
   }
 
   const round = match.rounds[currentRoundIdx];
+  const score = {
+    a: round?.scoreA ?? 0,
+    b: round?.scoreB ?? 0,
+  };
 
   return (
-    <div className="h-screen flex flex-col bg-neutral-950 text-neutral-100">
-      <header className="flex items-center gap-4 px-5 h-14 border-b border-white/5 shrink-0 bg-neutral-950/90 backdrop-blur">
+    <div className="h-screen flex flex-col bg-[#060807] text-neutral-100">
+      <header className="flex h-16 shrink-0 items-center gap-4 border-b border-white/[0.07] bg-[#080b0a]/95 px-5 backdrop-blur">
         <Link href="/">
-          <Button variant="ghost" size="icon" className="text-neutral-400 hover:text-white hover:bg-white/5">
+          <Button variant="ghost" size="icon" className="text-neutral-500 hover:bg-white/[0.06] hover:text-white">
             <ChevronLeft className="size-4" />
           </Button>
         </Link>
-        <div className="flex items-center gap-3">
-          <div className="text-xs uppercase tracking-widest text-neutral-500 font-semibold">
-            {match.meta.map.replace("de_", "")}
+        <div className="flex min-w-0 items-center gap-4">
+          <div className="flex size-8 items-center justify-center rounded border border-emerald-400/20 bg-emerald-400/10 text-[11px] font-black tracking-tight text-emerald-300">
+            RL
           </div>
-          <div className="h-4 w-px bg-white/10" />
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <span className="text-sky-400">{match.meta.teamA}</span>
-            <span className="tabular-nums text-neutral-400">
-              {match.meta.scoreA} : {match.meta.scoreB}
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-neutral-500">
+              RoundLab
+            </div>
+            <div className="truncate text-sm font-medium text-neutral-200">
+              {match.meta.map.replace("de_", "")} review
+            </div>
+          </div>
+          <div className="h-7 w-px bg-white/10" />
+          <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
+            <span className="truncate text-sky-300">{match.meta.teamA || "CT"}</span>
+            <span className="rounded border border-white/10 bg-white/[0.04] px-2 py-1 font-mono text-sm text-neutral-200">
+              {match.meta.scoreA}:{match.meta.scoreB}
             </span>
-            <span className="text-amber-400">{match.meta.teamB}</span>
+            <span className="truncate text-amber-300">{match.meta.teamB || "T"}</span>
           </div>
         </div>
-        <div className="ml-auto text-xs text-neutral-500">
-          Round <span className="text-neutral-200 font-semibold">{round?.number}</span>
-          <span className="text-neutral-600"> / {match.rounds.length}</span>
-          {round && (
-            <>
-              <span className="mx-2 text-neutral-700">·</span>
-              <span className={round.winner === "CT" ? "text-sky-400" : "text-amber-400"}>
-                {round.winner} win
-              </span>
-            </>
-          )}
+        <div className="ml-auto flex items-center gap-5">
+          <div className="hidden text-right sm:block">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-neutral-600">
+              Current score
+            </div>
+            <div className="font-mono text-2xl font-semibold leading-none text-neutral-100">
+              {score.a}:{score.b}
+            </div>
+          </div>
+          <div className="text-right text-xs text-neutral-500">
+            <div className="font-semibold uppercase tracking-[0.2em] text-neutral-600">
+              Round
+            </div>
+            <div>
+              <span className="text-neutral-200">{currentRoundIdx + 1}</span>
+              <span className="text-neutral-700"> / {match.rounds.length}</span>
+              {round && (
+                <>
+                  <span className="mx-2 text-neutral-700">·</span>
+                  <span className={round.winner === "CT" ? "text-sky-300" : "text-amber-300"}>
+                    {round.winner}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </header>
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:28px_28px]">
         <RoundList />
 
         <main className="flex-1 flex flex-col items-center justify-center gap-4 overflow-auto p-4 xl:p-6">
@@ -153,37 +180,37 @@ export default function MatchViewer({ id }: { id: string }) {
               setTool={setTool}
               color={color}
               setColor={setColor}
-              width={width}
-              setWidth={setWidth}
               strokes={strokes}
               setStrokes={setStrokes}
             />
 
-            <div
-              className="relative"
-              style={{ width: MAP_SIZE, height: MAP_SIZE }}
-            >
-              <MapRenderer size={MAP_SIZE} />
-              <DrawingLayer
-                size={MAP_SIZE}
-                tool={tool}
-                color={color}
-                width={width}
-                strokes={strokes}
-                setStrokes={setStrokes}
-              />
+            <div className="relative rounded-2xl border border-white/[0.08] bg-black/25 p-2 shadow-2xl shadow-black/40">
+              <div
+                className="relative"
+                style={{ width: MAP_SIZE, height: MAP_SIZE }}
+              >
+                <MapRenderer size={MAP_SIZE} />
+                <DrawingLayer
+                  size={MAP_SIZE}
+                  tool={tool}
+                  color={color}
+                  width={DRAW_WIDTH}
+                  strokes={strokes}
+                  setStrokes={setStrokes}
+                />
+              </div>
             </div>
           </div>
 
           <div
-            className="w-full rounded-xl border border-white/5 bg-neutral-900/85 backdrop-blur px-4 py-3 flex flex-col gap-3 shadow-xl shadow-black/20"
-            style={{ maxWidth: MAP_SIZE }}
+            className="w-full rounded-2xl border border-white/[0.08] bg-[#0b0f0d]/95 px-4 py-3 shadow-2xl shadow-black/30 backdrop-blur"
+            style={{ maxWidth: MAP_SIZE + 16 }}
           >
             <Timeline />
-            <div className="flex items-center justify-between">
+            <div className="mt-3 flex items-center justify-between">
               <Controls />
-              <div className="text-xs text-neutral-500 tabular-nums">
-                t = {(time ?? 0).toFixed(2)}s
+              <div className="font-mono text-xs tabular-nums text-neutral-500">
+                {(time ?? 0).toFixed(2)}s
               </div>
             </div>
           </div>

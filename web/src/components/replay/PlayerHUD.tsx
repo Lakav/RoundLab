@@ -1,9 +1,10 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useReplay } from "@/lib/replay-store";
 import { cn } from "@/lib/utils";
 import type { Frame, PlayerPos } from "@/lib/types";
-import { Crosshair, Shield } from "lucide-react";
+import { Crosshair } from "lucide-react";
 
 function sample(frames: Frame[], t: number): PlayerPos[] {
   if (!frames || frames.length === 0) return [];
@@ -34,25 +35,34 @@ export function PlayerHUD() {
   const t = match.players.filter((p) => p.team === "T");
 
   return (
-    <aside className="w-72 shrink-0 overflow-y-auto border-l border-white/5 bg-neutral-950">
+    <aside className="w-64 shrink-0 border-l border-white/[0.07] bg-[#080b0a]/95 px-2 py-3">
       <Section title="Counter-Terrorists" accent="sky" players={ct} byId={byId} />
       <Section title="Terrorists" accent="amber" players={t} byId={byId} />
     </aside>
   );
 }
 
-function weaponLabel(name?: string) {
+function itemCode(name?: string) {
   if (!name) return "";
-  return name
-    .replace("Incendiary Grenade", "Inc")
-    .replace("High Explosive Grenade", "HE")
-    .replace("HE Grenade", "HE")
-    .replace("Smoke Grenade", "Smoke")
-    .replace("Flashbang", "Flash")
-    .replace("Molotov", "Molo")
-    .replace("Desert Eagle", "Deagle")
-    .replace("Silenced M4A1", "M4A1-S")
-    .replace("USP-S", "USP");
+  const normalized = name.toLowerCase();
+  if (normalized.includes("flash")) return "F";
+  if (normalized.includes("smoke")) return "S";
+  if (normalized.includes("molotov")) return "M";
+  if (normalized.includes("incendiary")) return "I";
+  if (normalized.includes("explosive") || normalized.includes("he grenade")) return "H";
+  if (normalized.includes("decoy")) return "D";
+  if (normalized.includes("knife")) return "K";
+  if (normalized.includes("bomb") || normalized.includes("c4")) return "C4";
+  if (normalized.includes("awp")) return "AWP";
+  if (normalized.includes("ak")) return "AK";
+  if (normalized.includes("m4")) return "M4";
+  if (normalized.includes("galil")) return "GAL";
+  if (normalized.includes("famas")) return "FAM";
+  if (normalized.includes("deagle") || normalized.includes("desert eagle")) return "DE";
+  if (normalized.includes("usp")) return "USP";
+  if (normalized.includes("glock")) return "GLK";
+  if (normalized.includes("p250")) return "P250";
+  return name.slice(0, 3).toUpperCase();
 }
 
 function isUtility(name: string) {
@@ -61,10 +71,14 @@ function isUtility(name: string) {
 
 function inventory(pos?: PlayerPos) {
   const weapons = pos?.weapons ?? [];
-  const active = pos?.active ?? weapons.find((w) => !isUtility(w) && w !== "Knife") ?? "";
+  const active = pos?.active ?? weapons.find((w) => !isUtility(w) && w !== "Knife" && w !== "C4") ?? "";
   const utility = weapons.filter(isUtility);
-  const guns = weapons.filter((w) => !isUtility(w) && w !== "Knife" && w !== active);
+  const guns = weapons.filter((w) => !isUtility(w) && w !== "Knife" && w !== "C4" && w !== active);
   return { active, guns, utility };
+}
+
+function displayName(name: string) {
+  return name === "L999" ? "grosNoob" : name;
 }
 
 function Section({
@@ -79,16 +93,16 @@ function Section({
   byId: Map<number, PlayerPos>;
 }) {
   return (
-    <div className="px-3 py-4 border-b border-white/5">
+    <div className="mb-3">
       <div
         className={cn(
-          "text-[10px] uppercase tracking-widest font-semibold mb-3",
-          accent === "sky" ? "text-sky-400" : "text-amber-400"
+          "mb-2 px-1 text-[9px] font-semibold uppercase tracking-[0.22em]",
+          accent === "sky" ? "text-sky-300" : "text-amber-300"
         )}
       >
         {title}
       </div>
-      <div className="space-y-1.5">
+      <div className="space-y-1">
         {players.map((p) => {
           const pos = byId.get(p.steamId);
           const hp = pos?.hp ?? 0;
@@ -99,110 +113,126 @@ function Section({
             <div
               key={p.steamId}
               className={cn(
-                "rounded-lg border border-white/5 bg-white/[0.03] px-2.5 py-2",
+                "rounded-lg border border-white/[0.05] bg-white/[0.025] px-2 py-1.5 transition-colors",
+                pos?.hasBomb && "border-red-400/45 bg-red-500/[0.08]",
                 !alive && "opacity-40"
               )}
             >
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
                 <span
                   className={cn(
-                    "text-sm font-medium truncate",
+                    "min-w-0 flex-1 truncate text-xs font-medium text-neutral-200",
+                    pos?.hasBomb && "text-red-300",
                     !alive && "line-through"
                   )}
                 >
-                  {p.name}
+                  {displayName(p.name)}
                 </span>
-                <span className="text-xs tabular-nums text-neutral-400 ml-2">
+                <span className="w-6 shrink-0 text-right font-mono text-[11px] tabular-nums text-neutral-500">
                   {hp}
                 </span>
               </div>
 
-              <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/5">
+              <div className="mt-1 h-0.5 overflow-hidden rounded-full bg-black/35">
                 <div
                   className={cn(
                     "h-full transition-all",
-                    accent === "sky" ? "bg-sky-500" : "bg-amber-500"
+                    accent === "sky" ? "bg-sky-300" : "bg-amber-300"
                   )}
                   style={{ width: `${Math.max(0, Math.min(100, hp))}%` }}
                 />
               </div>
 
-              <div className="mt-2 flex items-center gap-1.5 text-[10px] text-neutral-400">
-                <span
-                  className={cn(
-                    "inline-flex h-5 min-w-9 items-center justify-center gap-1 rounded border px-1.5 tabular-nums",
-                    armor > 0
-                      ? "border-white/10 bg-white/[0.04] text-neutral-200"
-                      : "border-white/5 text-neutral-600"
-                  )}
-                  title="Kevlar"
-                >
-                  <Shield className="size-3" />
-                  {armor}
-                </span>
-                <span
-                  className={cn(
-                    "inline-flex h-5 w-6 items-center justify-center rounded border text-[10px] font-semibold",
-                    pos?.helmet
-                      ? "border-white/10 bg-white/[0.04] text-neutral-100"
-                      : "border-white/5 text-neutral-600"
-                  )}
-                  title="Helmet"
-                >
-                  H
-                </span>
+              <div className="mt-1.5 flex items-center gap-1 overflow-hidden">
+                <ArmorChip armor={armor} helmet={Boolean(pos?.helmet)} />
                 {pos?.kit && (
-                  <span
-                    className="inline-flex h-5 items-center rounded border border-sky-400/20 bg-sky-400/10 px-1.5 text-[10px] font-semibold text-sky-300"
-                    title="Defuse kit"
-                  >
+                  <IconChip active title="Defuse kit" className="text-sky-200">
                     KIT
-                  </span>
+                  </IconChip>
                 )}
+
+                {inv.active && (
+                  <IconChip active title={inv.active}>
+                    <Crosshair className="size-3" />
+                    {itemCode(inv.active)}
+                  </IconChip>
+                )}
+
+                {inv.utility.slice(0, 4).map((u, idx) => (
+                  <IconChip key={`${u}-${idx}`} active title={u} className="text-emerald-200">
+                    {itemCode(u)}
+                  </IconChip>
+                ))}
               </div>
-
-              {(inv.active || inv.guns.length > 0 || inv.utility.length > 0) && (
-                <div className="mt-2 space-y-1.5">
-                  {inv.active && (
-                    <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-neutral-200">
-                      <Crosshair className="size-3 shrink-0 text-neutral-500" />
-                      <span className="truncate font-medium">
-                        {weaponLabel(inv.active)}
-                      </span>
-                    </div>
-                  )}
-
-                  {inv.guns.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {inv.guns.slice(0, 3).map((w, idx) => (
-                        <span
-                          key={`${w}-${idx}`}
-                          className="rounded border border-white/5 bg-white/[0.03] px-1.5 py-0.5 text-[10px] text-neutral-400"
-                        >
-                          {weaponLabel(w)}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {inv.utility.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {inv.utility.map((u, idx) => (
-                        <span
-                          key={`${u}-${idx}`}
-                          className="rounded border border-emerald-400/15 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] text-emerald-300"
-                        >
-                          {weaponLabel(u)}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           );
         })}
       </div>
     </div>
+  );
+}
+
+function ArmorChip({ armor, helmet }: { armor: number; helmet: boolean }) {
+  const active = armor > 0 || helmet;
+  return (
+    <IconChip
+      active={active}
+      title={helmet ? `Kevlar + helmet ${armor}` : armor > 0 ? `Kevlar ${armor}` : "No armor"}
+      className={cn(
+        "w-8 px-0",
+        helmet
+          ? "border-emerald-300/25 bg-emerald-300/[0.09] text-emerald-100"
+          : armor > 0 && "text-neutral-200"
+      )}
+    >
+      <span className="relative inline-flex size-4 items-center justify-center">
+        <svg
+          viewBox="0 0 16 16"
+          aria-hidden="true"
+          className={cn("size-4", !active && "opacity-35")}
+        >
+          <path
+            d="M8 1.8 13 3.6v4.2c0 3.1-1.9 5.4-5 6.4-3.1-1-5-3.3-5-6.4V3.6L8 1.8Z"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinejoin="round"
+          />
+          {helmet && (
+            <path
+              d="M4.7 8.4a3.3 3.3 0 0 1 6.6 0h-1.2a2.1 2.1 0 0 0-4.2 0H4.7Z"
+              fill="currentColor"
+            />
+          )}
+        </svg>
+      </span>
+    </IconChip>
+  );
+}
+
+function IconChip({
+  active,
+  title,
+  className,
+  children,
+}: {
+  active: boolean;
+  title: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <span
+      title={title}
+      className={cn(
+        "inline-flex h-5 shrink-0 items-center justify-center gap-0.5 rounded border px-1 text-[9px] font-semibold leading-none",
+        active
+          ? "border-white/10 bg-white/[0.045] text-neutral-200"
+          : "border-white/[0.05] text-neutral-700",
+        className
+      )}
+    >
+      {children}
+    </span>
   );
 }
