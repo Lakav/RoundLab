@@ -22,10 +22,10 @@ const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
 
 function hideKnifeRound(data: MatchData): MatchData {
-  // Current demos start with a knife round. This is intentionally frontend-only
-  // for now so the parsed source data stays complete.
-  if (data.rounds.length <= 1) return data;
-  return { ...data, rounds: data.rounds.slice(1) };
+  // Remove round 0 (knife round) if present.
+  if (data.rounds.length === 0 || data.rounds[0].number !== 0) return data;
+  const filtered = { ...data, rounds: data.rounds.slice(1) };
+  return filtered;
 }
 
 export default function MatchViewer({ id }: { id: string }) {

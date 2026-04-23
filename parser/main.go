@@ -253,9 +253,6 @@ func main() {
 		if !currentRound.LiveStarted {
 			beginLiveRound(roundStartTick)
 		}
-		endTick := p.GameState().IngameTick()
-		currentRound.EndTick = endTick
-		currentRound.Duration = float64(endTick-currentRound.StartTick) / tickRate
 		currentRound.Winner = teamStr(e.Winner)
 		if e.WinnerState != nil {
 			currentRound.WinnerName = e.WinnerState.ClanName()
@@ -267,6 +264,15 @@ func main() {
 		for name, score := range teamScores {
 			currentRound.TeamScores[name] = score
 		}
+	})
+
+	p.RegisterEventHandler(func(e events.RoundEndOfficial) {
+		if currentRound == nil {
+			return
+		}
+		endTick := p.GameState().IngameTick()
+		currentRound.EndTick = endTick
+		currentRound.Duration = float64(endTick-currentRound.StartTick) / tickRate
 		output.Rounds = append(output.Rounds, *currentRound)
 		currentRound = nil
 	})
@@ -549,6 +555,28 @@ func main() {
 	if err := p.ParseToEnd(); err != nil {
 		fmt.Fprintln(os.Stderr, "parse error:", err)
 	}
+
+	// Flush a trailing round the demo never officially ended.
+	if currentRound != nil {
+		endTick := p.GameState().IngameTick()
+		currentRound.EndTick = endTick
+		if currentRound.LiveStarted && endTick > currentRound.StartTick {
+			currentRound.Duration = float64(endTick-currentRound.StartTick) / tickRate
+		}
+		output.Rounds = append(output.Rounds, *currentRound)
+		currentRound = nil
+	}
+
+	// Drop rounds with no frames (warmup, aborted) and renumber starting from 0.
+	kept := output.Rounds[:0]
+	for _, r := range output.Rounds {
+		if len(r.Frames) == 0 {
+			continue
+		}
+		r.Number = len(kept)
+		kept = append(kept, r)
+	}
+	output.Rounds = kept
 
 	// Final metadata (map name is populated during parse for CS2 demos)
 	if h := p.Header(); h.MapName != "" {
