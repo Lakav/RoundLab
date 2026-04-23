@@ -41,19 +41,21 @@ type Frame struct {
 }
 
 type PlayerPos struct {
-	ID      uint64   `json:"id"`
-	X       float32  `json:"x"`
-	Y       float32  `json:"y"`
-	Z       float32  `json:"z"`
-	Yaw     float32  `json:"yaw"`
-	HP      int      `json:"hp"`
-	Armor   int      `json:"armor"`
-	Helmet  bool     `json:"helmet,omitempty"`
-	Kit     bool     `json:"kit,omitempty"`
-	HasBomb bool     `json:"hasBomb,omitempty"`
-	Team    uint8    `json:"team"`             // 2=T, 3=CT
-	Active  string   `json:"active,omitempty"` // active weapon name
-	Weapons []string `json:"weapons,omitempty"`
+	ID          uint64   `json:"id"`
+	X           float32  `json:"x"`
+	Y           float32  `json:"y"`
+	Z           float32  `json:"z"`
+	Yaw         float32  `json:"yaw"`
+	HP          int      `json:"hp"`
+	Armor       int      `json:"armor"`
+	Helmet      bool     `json:"helmet,omitempty"`
+	Kit         bool     `json:"kit,omitempty"`
+	HasBomb     bool     `json:"hasBomb,omitempty"`
+	Team        uint8    `json:"team"`                  // 2=T, 3=CT
+	Active      string   `json:"active,omitempty"`      // active weapon name
+	Weapons     []string `json:"weapons,omitempty"`
+	FlashLeft   float32  `json:"flashLeft,omitempty"`   // seconds remaining of full flash
+	FlashTotal  float32  `json:"flashTotal,omitempty"`  // seconds total flash duration
 }
 
 type BombState struct {
@@ -533,20 +535,27 @@ func main() {
 			if aw := pl.ActiveWeapon(); aw != nil {
 				active = aw.String()
 			}
+			flashLeft := float32(pl.FlashDurationTimeRemaining().Seconds())
+			if flashLeft < 0 {
+				flashLeft = 0
+			}
+			flashTotal := float32(pl.FlashDuration)
 			frame.Players = append(frame.Players, PlayerPos{
-				ID:      pl.SteamID64,
-				X:       float32(pos.X),
-				Y:       float32(pos.Y),
-				Z:       float32(pos.Z),
-				Yaw:     float32(pl.ViewDirectionX()),
-				HP:      pl.Health(),
-				Armor:   pl.Armor(),
-				Helmet:  pl.HasHelmet(),
-				Kit:     pl.HasDefuseKit(),
-				HasBomb: pl.SteamID64 == bombCarrier,
-				Team:    uint8(pl.Team),
-				Active:  active,
-				Weapons: weapons,
+				ID:         pl.SteamID64,
+				X:          float32(pos.X),
+				Y:          float32(pos.Y),
+				Z:          float32(pos.Z),
+				Yaw:        float32(pl.ViewDirectionX()),
+				HP:         pl.Health(),
+				Armor:      pl.Armor(),
+				Helmet:     pl.HasHelmet(),
+				Kit:        pl.HasDefuseKit(),
+				HasBomb:    pl.SteamID64 == bombCarrier,
+				Team:       uint8(pl.Team),
+				Active:     active,
+				Weapons:    weapons,
+				FlashLeft:  flashLeft,
+				FlashTotal: flashTotal,
 			})
 		}
 		currentRound.Frames = append(currentRound.Frames, frame)

@@ -31,6 +31,8 @@ export type PlayerPos = {
   team: number; // 2=T, 3=CT
   active?: string;
   weapons?: string[];
+  flashLeft?: number;
+  flashTotal?: number;
 };
 
 export type BombState = {

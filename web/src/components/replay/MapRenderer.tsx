@@ -137,6 +137,7 @@ type PlayerSprite = {
   held: Sprite;
   heldPath: string | null;
   armor: Graphics;
+  flashArc: Graphics;
 };
 
 function drawLabel(layer: Container, text: string, x: number, y: number, color = 0xfbbf24) {
@@ -209,6 +210,21 @@ function drawArmorBadge(g: Graphics, armor: number, helmet?: boolean) {
   }
 }
 
+function drawTimerArc(
+  g: Graphics,
+  cx: number,
+  cy: number,
+  radius: number,
+  lifeRemaining: number, // 0..1 where 1 = full
+  color: number,
+  width: number
+) {
+  if (lifeRemaining <= 0) return;
+  const start = -Math.PI / 2;
+  const end = start + Math.PI * 2 * lifeRemaining;
+  g.arc(cx, cy, radius, start, end).stroke({ color, width, alpha: 0.9 });
+}
+
 function drawEffect(
   layer: Container,
   effect: UtilityEffect,
@@ -219,48 +235,96 @@ function drawEffect(
   const age = Math.max(0, time - effect.start);
   const total = Math.max(0.1, effect.end - effect.start);
   const life = Math.max(0, Math.min(1, age / total));
+  const remaining = 1 - life;
   const g = new Graphics();
 
   if (effect.type === "smoke") {
-    const fade = life > 0.82 ? 1 - (life - 0.82) / 0.18 : Math.min(1, age / 1.2);
-    g.circle(p.x, p.y, 34)
-      .fill({ color: 0x9ca3af, alpha: 0.18 * fade })
-      .circle(p.x - 9, p.y + 4, 24)
-      .fill({ color: 0xd1d5db, alpha: 0.1 * fade })
-      .circle(p.x + 11, p.y - 6, 27)
-      .fill({ color: 0x6b7280, alpha: 0.13 * fade })
-      .stroke({ color: 0xe5e7eb, width: 1, alpha: 0.15 * fade });
+    const fadeIn = Math.min(1, age / 0.6);
+    const fadeOut = life > 0.9 ? 1 - (life - 0.9) / 0.1 : 1;
+    const alpha = fadeIn * fadeOut;
+    const radius = 30;
+    g.circle(p.x, p.y, radius)
+      .fill({ color: 0xe5e7eb, alpha: 0.78 * alpha })
+      .circle(p.x, p.y, radius)
+      .stroke({ color: 0xf3f4f6, width: 1.5, alpha: 0.9 * alpha });
+    drawTimerArc(g, p.x, p.y, radius + 4, remaining, 0xffffff, 2);
     layer.addChild(g);
     return;
   }
 
   if (effect.type === "flash") {
-    const radius = 12 + life * 38;
-    g.circle(p.x, p.y, radius)
-      .stroke({ color: 0xffffff, width: 3, alpha: 1 - life })
-      .circle(p.x, p.y, 7)
-      .fill({ color: 0xffffff, alpha: 0.8 * (1 - life) });
+    const pulseR = 8 + life * 36;
+    g.circle(p.x, p.y, pulseR)
+      .stroke({ color: 0xfffbeb, width: 3, alpha: 1 - life });
+    if (life < 0.25) {
+      g.circle(p.x, p.y, 14)
+        .fill({ color: 0xffffff, alpha: 0.95 * (1 - life * 4) });
+      for (let i = 0; i < 8; i++) {
+        const ang = (i / 8) * Math.PI * 2;
+        const inner = 16;
+        const outer = 16 + (1 - life * 4) * 18;
+        g.moveTo(p.x + Math.cos(ang) * inner, p.y + Math.sin(ang) * inner)
+          .lineTo(p.x + Math.cos(ang) * outer, p.y + Math.sin(ang) * outer)
+          .stroke({ color: 0xffffff, width: 2.5, alpha: 0.9 * (1 - life * 4) });
+      }
+    }
     layer.addChild(g);
     return;
   }
 
   if (effect.type === "he") {
-    g.circle(p.x, p.y, 12 + life * 28)
-      .stroke({ color: 0x86efac, width: 2, alpha: 1 - life })
-      .circle(p.x, p.y, 5)
-      .fill({ color: 0x86efac, alpha: 0.5 * (1 - life) });
+    if (life < 0.35) {
+      const burst = life / 0.35;
+      const coreR = 6 + burst * 18;
+      const shockR = 10 + burst * 42;
+      g.circle(p.x, p.y, coreR)
+        .fill({ color: 0xfef3c7, alpha: 1 - burst })
+        .circle(p.x, p.y, coreR * 0.7)
+        .fill({ color: 0xfbbf24, alpha: 0.9 * (1 - burst) })
+        .circle(p.x, p.y, coreR * 0.4)
+        .fill({ color: 0xf97316, alpha: 0.9 * (1 - burst) });
+      g.circle(p.x, p.y, shockR)
+        .stroke({ color: 0xfbbf24, width: 3, alpha: 0.9 * (1 - burst) });
+      for (let i = 0; i < 12; i++) {
+        const ang = (i / 12) * Math.PI * 2 + effect.x;
+        const inner = 8 + burst * 10;
+        const outer = inner + 12 + burst * 20;
+        g.moveTo(p.x + Math.cos(ang) * inner, p.y + Math.sin(ang) * inner)
+          .lineTo(p.x + Math.cos(ang) * outer, p.y + Math.sin(ang) * outer)
+          .stroke({ color: 0xfacc15, width: 2, alpha: (1 - burst) * 0.85 });
+      }
+      g.circle(p.x, p.y, shockR + 4)
+        .stroke({ color: 0xffffff, width: 1.5, alpha: 0.6 * (1 - burst) });
+    } else {
+      const smokeFade = 1 - (life - 0.35) / 0.65;
+      g.circle(p.x, p.y, 14)
+        .fill({ color: 0x4b5563, alpha: 0.35 * smokeFade })
+        .circle(p.x + 4, p.y - 3, 10)
+        .fill({ color: 0x6b7280, alpha: 0.25 * smokeFade });
+    }
     layer.addChild(g);
     return;
   }
 
   if (effect.type === "fire") {
-    const flicker = 0.85 + Math.sin(time * 12 + effect.x) * 0.12;
-    g.circle(p.x, p.y, 28 * flicker)
-      .fill({ color: 0xfb923c, alpha: 0.18 })
-      .circle(p.x + 7, p.y - 3, 18)
-      .fill({ color: 0xf97316, alpha: 0.22 })
-      .circle(p.x - 8, p.y + 5, 16)
-      .fill({ color: 0xfacc15, alpha: 0.14 });
+    const radius = 26;
+    const flicker = 0.9 + Math.sin(time * 14 + effect.x) * 0.1;
+    g.circle(p.x, p.y, radius * flicker)
+      .fill({ color: 0xf97316, alpha: 0.28 });
+    for (let i = 0; i < 6; i++) {
+      const ang = (i / 6) * Math.PI * 2 + time * 0.8;
+      const dist = radius * 0.55;
+      const flameR = 10 + Math.sin(time * 10 + i) * 3;
+      const fx = p.x + Math.cos(ang) * dist;
+      const fy = p.y + Math.sin(ang) * dist;
+      g.circle(fx, fy, flameR)
+        .fill({ color: 0xfbbf24, alpha: 0.45 })
+        .circle(fx, fy, flameR * 0.6)
+        .fill({ color: 0xef4444, alpha: 0.5 });
+    }
+    g.circle(p.x, p.y, 8 + Math.sin(time * 20) * 2)
+      .fill({ color: 0xfacc15, alpha: 0.8 });
+    drawTimerArc(g, p.x, p.y, radius + 5, remaining, 0xfb923c, 2);
     layer.addChild(g);
     return;
   }
@@ -492,22 +556,21 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
           held.visible = false;
           const armor = new Graphics();
           armor.position.set(0, 0);
+          const flashArc = new Graphics();
           container.addChild(arrow);
           container.addChild(dot);
           container.addChild(hpRing);
           container.addChild(armor);
+          container.addChild(flashArc);
           container.addChild(label);
           container.addChild(held);
           layer.addChild(container);
-          s = { container, dot, hpRing, arrow, label, held, heldPath: null, armor };
+          s = { container, dot, hpRing, arrow, label, held, heldPath: null, armor, flashArc };
           spritesRef.current.set(p.id, s);
         }
         const baseColor = p.hasBomb ? 0xef4444 : teamColor(p.team);
         const hpPct = Math.max(0, Math.min(100, p.hp)) / 100;
-        s.dot.clear()
-          .circle(0, 0, 6.5)
-          .fill({ color: baseColor, alpha: p.hp > 0 ? 0.95 : 0.35 })
-          .stroke({ color: 0x050706, width: 1, alpha: 1 });
+        s.dot.clear();
         s.hpRing.clear();
         if (p.hp > 0) {
           const barW = 12;
@@ -526,12 +589,25 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
           }
         }
         s.arrow.clear()
-          .moveTo(0, -2.5)
+          .moveTo(9, 0)
+          .lineTo(-5, -6)
+          .lineTo(-2.5, 0)
+          .lineTo(-5, 6)
           .lineTo(9, 0)
-          .lineTo(0, 2.5)
-          .lineTo(0, -2.5)
-          .fill({ color: baseColor, alpha: p.hp > 0 ? 0.95 : 0.35 });
+          .fill({ color: baseColor, alpha: p.hp > 0 ? 0.95 : 0.35 })
+          .stroke({ color: 0x050706, width: 1, alpha: 1 });
         s.armor.clear();
+        s.flashArc.clear();
+        if (p.hp > 0 && p.flashLeft && p.flashLeft > 0 && p.flashTotal && p.flashTotal > 0) {
+          const fracRemaining = Math.max(0, Math.min(1, p.flashLeft / p.flashTotal));
+          const start = -Math.PI / 2;
+          const end = start + Math.PI * 2 * fracRemaining;
+          s.flashArc
+            .circle(0, 0, 10)
+            .stroke({ color: 0x1f2937, width: 1.5, alpha: 0.5 })
+            .arc(0, 0, 10, start, end)
+            .stroke({ color: 0xfffbeb, width: 2, alpha: 0.95 });
+        }
         const heldPath = p.hp > 0 ? iconPathFor(p.active) : null;
         if (heldPath !== s.heldPath) {
           s.heldPath = heldPath;
