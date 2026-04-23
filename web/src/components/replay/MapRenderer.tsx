@@ -550,37 +550,35 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
         if (t.includes("molotov") || t.includes("incendiary") || t.includes("inferno")) return "fire";
         if (t.includes("decoy")) return "decoy";
         if (t.includes("flash")) return "flash";
-        if (t.includes("hegrenade") || t.includes("he_") || t === "he") return "he";
+        if (t.startsWith("he") || t.includes("high explosive")) return "he";
         return null;
       };
-      // Track first detonation time per effect type — once any effect of
-      // that type has started, we consider the corresponding projectile gone
-      // if it lingers close to an effect origin.
-      for (const projectile of projectiles) {
-        const effectType = projectileTypeToEffect(projectile.type);
-        if (effectType) {
-          const pr = toRadar(projectile.x, projectile.y, projectile.z);
-          let suppressed = false;
-          for (const e of round.effects ?? []) {
-            if (e.type !== effectType) continue;
-            if (time < e.start) continue;
-            const ep = toRadar(e.x, e.y, e.z);
-            const dx = ep.x - pr.x;
-            const dy = ep.y - pr.y;
-            // Wider radius; HE effect can report position slightly offset
-            if (dx * dx + dy * dy < 150 * 150) {
-              suppressed = true;
-              break;
-            }
-            // HE explodes in the air: if this effect started more than 0.3s
-            // ago and we only have one HE projectile, treat it as gone.
-            if (effectType === "he" && time - e.start > 0.25) {
-              suppressed = true;
-              break;
-            }
+
+      // For each started effect, match it to the projectile whose trajectory
+      // passes closest to the effect origin at time == effect.start. That
+      // projectile's id is then considered detonated → suppressed from now on.
+      const detonatedIds = new Set<number>();
+      for (const e of round.effects ?? []) {
+        if (time < e.start) continue;
+        // sample projectiles at the instant the effect started
+        const sampled = sampleProjectiles(round.frames, e.start);
+        let bestId: number | null = null;
+        let bestDist = Infinity;
+        for (const sp of sampled) {
+          if (projectileTypeToEffect(sp.type) !== e.type) continue;
+          const dx = sp.x - e.x;
+          const dy = sp.y - e.y;
+          const d = dx * dx + dy * dy;
+          if (d < bestDist) {
+            bestDist = d;
+            bestId = sp.id;
           }
-          if (suppressed) continue;
         }
+        if (bestId !== null) detonatedIds.add(bestId);
+      }
+
+      for (const projectile of projectiles) {
+        if (detonatedIds.has(projectile.id)) continue;
         drawProjectile(utilityLayer, projectile, round.frames, time, throwerTeams, toRadar);
       }
 
