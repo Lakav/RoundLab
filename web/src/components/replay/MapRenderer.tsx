@@ -184,6 +184,11 @@ function isPistolWeapon(name?: string) {
   return /deagle|revolver|usp|glock|p2000|p250|five|tec|cz|elite|dual/.test(n);
 }
 
+const SHOOT_ROTATION_OFFSET = 0;
+const PLAYER_ARROW_TIP_OFFSET = 9;
+const SHOOT_FORWARD_OFFSET = 8;
+const SHOOT_SIDE_OFFSET = -4;
+
 function teamColor(team?: number) {
   if (team === 3) return 0x5ab0ff;
   if (team === 2) return 0xf5b042;
@@ -414,37 +419,62 @@ function drawWeaponFire(
   layer: Container,
   fire: WeaponFireEvent,
   time: number,
-  toRadar: (x: number, y: number, z?: number) => { x: number; y: number }
+  toRadar: (x: number, y: number, z?: number) => { x: number; y: number },
+  shooterLive?: PlayerPos
 ) {
   if (isUtilityWeapon(fire.weapon)) return;
   const age = time - fire.t;
   const duration = isKnifeWeapon(fire.weapon) ? 0.18 : 0.14;
   if (age < 0 || age > duration) return;
   const alpha = 1 - age / duration;
-  const start = toRadar(fire.x, fire.y, fire.z);
-  const angle = (-fire.yaw * Math.PI) / 180;
+  // Anchor the shot to the live interpolated player (same source as the
+  // rendered arrow) so position and facing always agree visually.
+  // Important: pass z=0 because the player marker itself is rendered
+  // without heightLift, so we must not offset the shot either.
+  const start = shooterLive
+    ? toRadar(shooterLive.x, shooterLive.y, 0)
+    : toRadar(fire.x, fire.y, 0);
+  const yaw = shooterLive ? shooterLive.yaw : fire.yaw;
+  const angle = (-yaw * Math.PI) / 180;
+  // shoot.svg naturally points to the right (angle 0). quick-slash too.
+  // We rotate in-place from the sprite center and then push it forward so
+  // the sprite's back edge sits exactly at the arrow tip.
+  const isKnife = isKnifeWeapon(fire.weapon);
+  const spriteAngle = angle + SHOOT_ROTATION_OFFSET;
+
+  // Target box for this weapon.
+  const pistol = !isKnife && isPistolWeapon(fire.weapon);
+  const maxW = isKnife ? 26 : pistol ? 22 : 30;
+  const maxH = isKnife ? 18 : pistol ? 13 : 16;
+
+  // Compute the final forward offset synchronously so the sprite is
+  // correctly placed on the very first frame, even before the texture
+  // resolves. We approximate width by maxW (exact for shoot.svg, near
+  // exact for quick-slash once loaded).
+  const forward = PLAYER_ARROW_TIP_OFFSET + maxW / 2;
+  const px = start.x + Math.cos(angle) * forward;
+  const py = start.y + Math.sin(angle) * forward;
+
   const sprite = new Sprite();
-  sprite.anchor.set(isKnifeWeapon(fire.weapon) ? 0.22 : 0.18, 0.5);
-  sprite.position.set(start.x, start.y);
-  sprite.rotation = angle;
+  sprite.anchor.set(0.5, 0.5);
+  sprite.position.set(px, py);
+  sprite.rotation = spriteAngle;
   sprite.alpha = 0.95 * alpha;
   layer.addChild(sprite);
 
-  const texturePath = isKnifeWeapon(fire.weapon) ? "/icons/quick-slash.svg" : "/icons/shoot.svg";
+  const texturePath = isKnife ? "/icons/quick-slash.svg" : "/icons/shoot.svg";
   loadIconTexture(texturePath)
     .then((tex) => {
       if (sprite.destroyed) return;
       sprite.texture = tex;
-      if (isKnifeWeapon(fire.weapon)) {
-        fitSpriteBox(sprite, 29, 20);
-      } else {
-        const pistol = isPistolWeapon(fire.weapon);
-        fitSpriteBox(sprite, pistol ? 21 : 29, pistol ? 12.8 : 15.8);
-        sprite.position.set(
-          start.x + Math.cos(angle) * (pistol ? 8.2 : 9.8),
-          start.y + Math.sin(angle) * (pistol ? 8.2 : 9.8)
-        );
-      }
+      fitSpriteBox(sprite, maxW, maxH);
+      // Refine using the true rendered width (matters for quick-slash
+      // whose aspect is narrower than its max box).
+      const trueForward = PLAYER_ARROW_TIP_OFFSET + sprite.width / 2;
+      sprite.position.set(
+        start.x + Math.cos(angle) * trueForward,
+        start.y + Math.sin(angle) * trueForward
+      );
     })
     .catch(() => {
       sprite.destroy();
@@ -593,9 +623,11 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       const visibleFires: WeaponFireEvent[] = (round.weaponFires ?? []).filter(
         (fire) => fire.t <= time && time - fire.t <= 0.24
       );
+      const liveById = new Map(positions.map((p) => [p.id, p]));
       const recentFireByShooter = new Map<number, WeaponFireEvent>();
       for (const fire of visibleFires) {
-        drawWeaponFire(utilityLayer, fire, time, toRadar);
+        const live = fire.shooter ? liveById.get(fire.shooter) : undefined;
+        drawWeaponFire(utilityLayer, fire, time, toRadar, live);
         if (fire.shooter) recentFireByShooter.set(fire.shooter, fire);
       }
 
