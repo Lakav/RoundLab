@@ -36,7 +36,7 @@ export default function Home() {
     setError(null);
     setUploading(true);
     try {
-      const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
+      const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB
       const uploadId = crypto.randomUUID();
       const totalChunks = Math.ceil(f.size / CHUNK_SIZE);
 
