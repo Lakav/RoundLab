@@ -3,7 +3,6 @@ import { randomUUID } from "crypto";
 import { writeFile, mkdir, appendFile, unlink, readFile } from "fs/promises";
 import { spawn } from "child_process";
 import path from "path";
-import { ZstdCodec } from "zstd-codec";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -88,9 +87,9 @@ export async function POST(req: NextRequest) {
 
         if (isZst) {
           try {
-            const zstd = new ZstdCodec();
+            const { decompress } = await import("node-zstd");
             const compressed = await readFile(demoPath);
-            const decompressed = await zstd.decompress(compressed);
+            const decompressed = await decompress(compressed);
             await writeFile(demoPath, decompressed);
           } catch (e) {
             console.error("Zstd decompression failed:", e);
@@ -125,8 +124,8 @@ export async function POST(req: NextRequest) {
 
     if (isZst) {
       try {
-        const zstd = new ZstdCodec();
-        const decompressed = await zstd.decompress(buf);
+        const { decompress } = await import("node-zstd");
+        const decompressed = await decompress(buf);
         await writeFile(demoPath, decompressed);
       } catch (e) {
         console.error("Zstd decompression failed:", e);
