@@ -160,7 +160,6 @@ export default function MatchViewer({ id }: { id: string }) {
         <Link href="/" className="text-neutral-500 hover:text-white">
           <ChevronLeft className="size-4" />
         </Link>
-        <span className="text-[10px] font-black tracking-tight text-emerald-300">RL</span>
         <span className="truncate font-medium text-neutral-300">
           {match.meta.map.replace("de_", "")}
         </span>
@@ -169,7 +168,6 @@ export default function MatchViewer({ id }: { id: string }) {
         <span className="rounded border border-white/10 bg-white/[0.04] px-1.5 font-mono text-neutral-200">
           {match.meta.scoreA}:{match.meta.scoreB}
         </span>
-        <span className="truncate text-amber-300">{match.meta.teamB || "T"}</span>
         <div className="ml-auto flex items-center gap-2 text-neutral-500">
           <span className="font-mono text-sm text-neutral-200">{score.a}:{score.b}</span>
           <span className="text-neutral-700">·</span>

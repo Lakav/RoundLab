@@ -35,6 +35,8 @@ export function DrawingLayer({
   const redraw = () => {
     const c = canvasRef.current;
     if (!c) return;
+    c.width = size;
+    c.height = size;
     const ctx = c.getContext("2d");
     if (!ctx) return;
     ctx.clearRect(0, 0, size, size);
@@ -47,7 +49,9 @@ export function DrawingLayer({
   const pt = (e: React.PointerEvent) => {
     const c = canvasRef.current!;
     const r = c.getBoundingClientRect();
-    return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+    const w = c.width || size;
+    const h = c.height || size;
+    return { x: (e.clientX - r.left) / (r.width || w), y: (e.clientY - r.top) / (r.height || h) };
   };
 
   const onDown = (e: React.PointerEvent) => {

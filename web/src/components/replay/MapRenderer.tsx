@@ -505,7 +505,7 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
         const baseColor = p.hasBomb ? 0xef4444 : teamColor(p.team);
         const hpPct = Math.max(0, Math.min(100, p.hp)) / 100;
         s.dot.clear()
-          .circle(0, 0, 5)
+          .circle(0, 0, 6.5)
           .fill({ color: baseColor, alpha: p.hp > 0 ? 0.95 : 0.35 })
           .stroke({ color: 0x050706, width: 1, alpha: 1 });
         s.hpRing.clear();
@@ -531,7 +531,7 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
           .lineTo(0, 2.5)
           .lineTo(0, -2.5)
           .fill({ color: baseColor, alpha: p.hp > 0 ? 0.95 : 0.35 });
-        drawArmorBadge(s.armor, p.armor, p.helmet);
+        s.armor.clear();
         const heldPath = p.hp > 0 ? iconPathFor(p.active) : null;
         if (heldPath !== s.heldPath) {
           s.heldPath = heldPath;
