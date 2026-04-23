@@ -86,15 +86,7 @@ export async function POST(req: NextRequest) {
         const isZst = fileName_str.endsWith(".zst");
 
         if (isZst) {
-          try {
-            const { decompress } = await import("node-zstd");
-            const compressed = await readFile(demoPath);
-            const decompressed = await decompress(compressed);
-            await writeFile(demoPath, decompressed);
-          } catch (e) {
-            console.error("Zstd decompression failed:", e);
-            return NextResponse.json({ error: "zstd decode failed", details: e instanceof Error ? e.message : String(e) }, { status: 500 });
-          }
+          return NextResponse.json({ error: "Zstd compressed files not supported. Please upload .dem files directly." }, { status: 400 });
         }
 
         // Process the demo
@@ -123,17 +115,10 @@ export async function POST(req: NextRequest) {
     const buf = Buffer.from(await file.arrayBuffer());
 
     if (isZst) {
-      try {
-        const { decompress } = await import("node-zstd");
-        const decompressed = await decompress(buf);
-        await writeFile(demoPath, decompressed);
-      } catch (e) {
-        console.error("Zstd decompression failed:", e);
-        return NextResponse.json({ error: "zstd decode failed", details: e instanceof Error ? e.message : String(e) }, { status: 500 });
-      }
-    } else {
-      await writeFile(demoPath, buf);
+      return NextResponse.json({ error: "Zstd compressed files not supported. Please upload .dem files directly." }, { status: 400 });
     }
+
+    await writeFile(demoPath, buf);
 
     const { success, stderr } = await processDemo(id, demoPath);
     if (!success) {
