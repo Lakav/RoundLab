@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { writeFile, mkdir, appendFile, unlink, readFile } from "fs/promises";
 import { spawn } from "child_process";
 import path from "path";
+import { ZstdCodec } from "zstd-codec";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -86,12 +87,14 @@ export async function POST(req: NextRequest) {
         const isZst = fileName_str.endsWith(".zst");
 
         if (isZst) {
-          const zstPath = `${demoPath}.zst`;
-          // Move the file to .zst extension
-          await import("fs/promises").then(m => m.rename(demoPath, zstPath));
-          const { code, stderr } = await run("zstd", ["-d", "-f", zstPath, "-o", demoPath]);
-          if (code !== 0) {
-            return NextResponse.json({ error: "zstd decode failed", stderr }, { status: 500 });
+          try {
+            const zstd = new ZstdCodec();
+            const compressed = await readFile(demoPath);
+            const decompressed = await zstd.decompress(compressed);
+            await writeFile(demoPath, decompressed);
+          } catch (e) {
+            console.error("Zstd decompression failed:", e);
+            return NextResponse.json({ error: "zstd decode failed", details: e instanceof Error ? e.message : String(e) }, { status: 500 });
           }
         }
 
@@ -121,11 +124,13 @@ export async function POST(req: NextRequest) {
     const buf = Buffer.from(await file.arrayBuffer());
 
     if (isZst) {
-      const zstPath = path.join(DEMO_DIR, `${id}.dem.zst`);
-      await writeFile(zstPath, buf);
-      const { code, stderr } = await run("zstd", ["-d", "-f", zstPath, "-o", demoPath]);
-      if (code !== 0) {
-        return NextResponse.json({ error: "zstd decode failed", stderr }, { status: 500 });
+      try {
+        const zstd = new ZstdCodec();
+        const decompressed = await zstd.decompress(buf);
+        await writeFile(demoPath, decompressed);
+      } catch (e) {
+        console.error("Zstd decompression failed:", e);
+        return NextResponse.json({ error: "zstd decode failed", details: e instanceof Error ? e.message : String(e) }, { status: 500 });
       }
     } else {
       await writeFile(demoPath, buf);
