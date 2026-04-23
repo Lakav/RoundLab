@@ -36,7 +36,12 @@ export const useReplay = create<ReplayState>((set, get) => ({
     if (!round) return;
     const next = s.time + dt * s.speed;
     if (next >= round.duration) {
-      set({ time: round.duration, playing: false });
+      const nextIdx = s.currentRoundIdx + 1;
+      if (nextIdx < s.match.rounds.length) {
+        set({ currentRoundIdx: nextIdx, time: 0, playing: true });
+      } else {
+        set({ time: round.duration, playing: false });
+      }
     } else {
       set({ time: next });
     }

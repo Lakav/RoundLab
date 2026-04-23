@@ -4,9 +4,6 @@ import { Button } from "@/components/ui/button";
 import {
   MousePointer2,
   Pencil,
-  ArrowRight,
-  Square,
-  Circle,
   Eraser,
   Trash2,
   Undo2,
@@ -28,9 +25,6 @@ type Props = {
 const TOOLS: { value: DrawTool; icon: React.ComponentType<{ className?: string }>; title: string }[] = [
   { value: "none", icon: MousePointer2, title: "Select (V)" },
   { value: "pen", icon: Pencil, title: "Pen (P)" },
-  { value: "arrow", icon: ArrowRight, title: "Arrow (A)" },
-  { value: "rect", icon: Square, title: "Rectangle (R)" },
-  { value: "ellipse", icon: Circle, title: "Ellipse (E)" },
   { value: "eraser", icon: Eraser, title: "Eraser" },
 ];
 

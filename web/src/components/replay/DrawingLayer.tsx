@@ -58,6 +58,7 @@ export function DrawingLayer({
     if (tool === "none") return;
     e.currentTarget.setPointerCapture(e.pointerId);
     const p = pt(e);
+    console.warn("DRAW down", { tool, p, size });
     if (tool === "eraser") {
       // remove the topmost stroke hit
       const hit = findHit(strokes, p, size);
@@ -101,6 +102,7 @@ export function DrawingLayer({
       style={{
         position: "absolute",
         inset: 0,
+        zIndex: 10,
         pointerEvents: tool === "none" ? "none" : "auto",
         cursor: tool === "none" ? "default" : "crosshair",
       }}

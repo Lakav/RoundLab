@@ -73,7 +73,7 @@ export default function MatchViewer({ id }: { id: string }) {
 
   useEffect(() => {
     setPan({ x: 0, y: 0 });
-  }, [zoom, mapSize]);
+  }, [mapSize]);
   const [strokesByRound, setStrokesByRound] = useState<Record<number, Stroke[]>>({});
   const strokes = strokesByRound[currentRoundIdx] ?? [];
   const setStrokes = (s: Stroke[]) =>
@@ -117,9 +117,6 @@ export default function MatchViewer({ id }: { id: string }) {
         togglePlay();
       } else if (e.key === "v") setTool("none");
       else if (e.key === "p") setTool("pen");
-      else if (e.key === "a") setTool("arrow");
-      else if (e.key === "r") setTool("rect");
-      else if (e.key === "e") setTool("ellipse");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -201,8 +198,21 @@ export default function MatchViewer({ id }: { id: string }) {
               onWheel={(e) => {
                 if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
                   e.preventDefault();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const cx = e.clientX - rect.left - rect.width / 2;
+                  const cy = e.clientY - rect.top - rect.height / 2;
                   const delta = -e.deltaY * 0.0015;
-                  setZoom((z) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z + delta * z)));
+                  const nz = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom + delta * zoom));
+                  if (nz === zoom) return;
+                  const ratio = nz / zoom;
+                  const nx = cx - (cx - pan.x) * ratio;
+                  const ny = cy - (cy - pan.y) * ratio;
+                  const max = (mapSize * (nz - 1)) / 2;
+                  setZoom(nz);
+                  setPan({
+                    x: Math.max(-max, Math.min(max, nx)),
+                    y: Math.max(-max, Math.min(max, ny)),
+                  });
                 }
               }}
               onPointerDown={(e) => {
