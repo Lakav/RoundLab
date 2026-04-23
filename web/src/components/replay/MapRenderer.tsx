@@ -169,6 +169,21 @@ function heldWeaponBox(name?: string): { width: number; height: number } {
   return { width: 31, height: 10 };
 }
 
+function isUtilityWeapon(name?: string) {
+  const n = name?.toLowerCase() ?? "";
+  return /grenade|flashbang|molotov|incendiary|decoy|c4|bomb/.test(n);
+}
+
+function isKnifeWeapon(name?: string) {
+  const n = name?.toLowerCase() ?? "";
+  return /knife|bayonet|karambit/.test(n);
+}
+
+function isPistolWeapon(name?: string) {
+  const n = name?.toLowerCase() ?? "";
+  return /deagle|revolver|usp|glock|p2000|p250|five|tec|cz|elite|dual/.test(n);
+}
+
 function teamColor(team?: number) {
   if (team === 3) return 0x5ab0ff;
   if (team === 2) return 0xf5b042;
@@ -195,7 +210,6 @@ type PlayerSprite = {
   label: Text;
   held: Sprite;
   heldPath: string | null;
-  shotFlash: Graphics;
   flashArc: Graphics;
 };
 
@@ -402,29 +416,39 @@ function drawWeaponFire(
   time: number,
   toRadar: (x: number, y: number, z?: number) => { x: number; y: number }
 ) {
+  if (isUtilityWeapon(fire.weapon)) return;
   const age = time - fire.t;
-  if (age < 0 || age > 0.24) return;
-  const alpha = 1 - age / 0.24;
+  const duration = isKnifeWeapon(fire.weapon) ? 0.18 : 0.14;
+  if (age < 0 || age > duration) return;
+  const alpha = 1 - age / duration;
   const start = toRadar(fire.x, fire.y, fire.z);
   const angle = (-fire.yaw * Math.PI) / 180;
-  const length = 42;
-  const endX = start.x + Math.cos(angle) * length;
-  const endY = start.y + Math.sin(angle) * length;
-  const sideColor = teamColor(fire.team);
-  const g = new Graphics();
-  const pulse = age / 0.24;
-  g.circle(start.x, start.y, 9 + pulse * 10)
-    .stroke({ color: sideColor, width: 1.6, alpha: 0.45 * alpha });
-  g.moveTo(start.x, start.y)
-    .lineTo(endX, endY)
-    .stroke({ color: 0xf2f2f2, width: 2.4, alpha: 0.72 * alpha });
-  g.moveTo(start.x, start.y)
-    .lineTo(start.x + Math.cos(angle - 0.12) * (length * 0.75), start.y + Math.sin(angle - 0.12) * (length * 0.75))
-    .lineTo(start.x + Math.cos(angle + 0.12) * (length * 0.75), start.y + Math.sin(angle + 0.12) * (length * 0.75))
-    .lineTo(start.x, start.y)
-    .fill({ color: sideColor, alpha: 0.2 * alpha });
-  g.circle(endX, endY, 3.2).fill({ color: 0xfffbeb, alpha: 0.95 * alpha });
-  layer.addChild(g);
+  const sprite = new Sprite();
+  sprite.anchor.set(isKnifeWeapon(fire.weapon) ? 0.22 : 0.18, 0.5);
+  sprite.position.set(start.x, start.y);
+  sprite.rotation = angle;
+  sprite.alpha = 0.95 * alpha;
+  layer.addChild(sprite);
+
+  const texturePath = isKnifeWeapon(fire.weapon) ? "/icons/quick-slash.svg" : "/icons/shoot.svg";
+  loadIconTexture(texturePath)
+    .then((tex) => {
+      if (sprite.destroyed) return;
+      sprite.texture = tex;
+      if (isKnifeWeapon(fire.weapon)) {
+        fitSpriteBox(sprite, 29, 20);
+      } else {
+        const pistol = isPistolWeapon(fire.weapon);
+        fitSpriteBox(sprite, pistol ? 21 : 29, pistol ? 12.8 : 15.8);
+        sprite.position.set(
+          start.x + Math.cos(angle) * (pistol ? 8.2 : 9.8),
+          start.y + Math.sin(angle) * (pistol ? 8.2 : 9.8)
+        );
+      }
+    })
+    .catch(() => {
+      sprite.destroy();
+    });
 }
 
 export function MapRenderer({ size = 800 }: { size?: number }) {
@@ -547,7 +571,6 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       })();
       const projectiles = sampleProjectiles(round.frames, time);
       const throwerTeams = new Map(positions.map((p) => [p.id, p.team]));
-      const playerById = new Map(positions.map((p) => [p.id, p]));
       const scale = size / RADAR_SIZE;
       const seen = new Set<number>();
       for (const child of utilityLayer.removeChildren()) {
@@ -570,23 +593,6 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       const visibleFires: WeaponFireEvent[] = (round.weaponFires ?? []).filter(
         (fire) => fire.t <= time && time - fire.t <= 0.24
       );
-      if (visibleFires.length === 0) {
-        for (const kill of round.events ?? []) {
-          if (kill.type !== "kill" || !kill.killer || kill.t > time || time - kill.t > 0.24) continue;
-          const killer = playerById.get(kill.killer);
-          if (!killer) continue;
-          visibleFires.push({
-            t: kill.t,
-            shooter: kill.killer,
-            weapon: kill.weapon,
-            x: killer.x,
-            y: killer.y,
-            z: killer.z,
-            yaw: killer.yaw,
-            team: killer.team,
-          });
-        }
-      }
       const recentFireByShooter = new Map<number, WeaponFireEvent>();
       for (const fire of visibleFires) {
         drawWeaponFire(utilityLayer, fire, time, toRadar);
@@ -701,14 +707,12 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
           const arrowRotator = new Container();
           const arrow = new Graphics();
           arrowRotator.addChild(arrow);
-          const shotFlash = new Graphics();
           const flashArc = new Graphics();
 
           container.addChild(held);
           container.addChild(labelBadge);
           container.addChild(dot);
           container.addChild(arrowRotator);
-          arrowRotator.addChild(shotFlash);
           container.addChild(hpRing);
           container.addChild(flashArc);
           layer.addChild(container);
@@ -722,7 +726,6 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
             label,
             held,
             heldPath: null,
-            shotFlash,
             flashArc,
           };
           spritesRef.current.set(p.id, s);
@@ -744,20 +747,12 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
           .fill({ color: baseColor, alpha: alive ? 0.98 : 0.35 })
           .stroke({ color: 0xffffff, width: 1.7, alpha: alive ? 0.96 : 0.35 });
 
-        s.shotFlash.clear();
         const shot = recentFireByShooter.get(p.id);
-        if (alive && shot) {
+        if (alive && shot && !isUtilityWeapon(shot.weapon)) {
           const shotAge = Math.max(0, time - shot.t);
-          const shotAlpha = Math.max(0, 1 - shotAge / 0.24);
-          s.shotFlash
-            .moveTo(MARKER_R + 2, 0)
-            .lineTo(MARKER_R + 16, -4.6)
-            .lineTo(MARKER_R + 12, 0)
-            .lineTo(MARKER_R + 16, 4.6)
-            .lineTo(MARKER_R + 2, 0)
-            .fill({ color: 0xfffbeb, alpha: 0.72 * shotAlpha })
-            .stroke({ color: baseColor, width: 1.2, alpha: 0.8 * shotAlpha });
-          s.arrowRotator.scale.set(1 + shotAlpha * 0.18);
+          const shotDuration = isKnifeWeapon(shot.weapon) ? 0.18 : 0.14;
+          const shotAlpha = Math.max(0, 1 - shotAge / shotDuration);
+          s.arrowRotator.scale.set(1 + shotAlpha * (isKnifeWeapon(shot.weapon) ? 0.05 : 0.03));
         } else {
           s.arrowRotator.scale.set(1);
         }
