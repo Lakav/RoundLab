@@ -36,15 +36,50 @@ export default function Home() {
     setError(null);
     setUploading(true);
     try {
-      const fd = new FormData();
-      fd.append("file", f);
-      const r = await fetch("/api/upload", { method: "POST", body: fd });
-      const json = await r.json();
-      if (!r.ok) {
-        setError(json.error || "Upload failed");
+      const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
+      const uploadId = crypto.randomUUID();
+      const totalChunks = Math.ceil(f.size / CHUNK_SIZE);
+
+      // If file is small enough, send as single chunk
+      if (totalChunks === 1) {
+        const fd = new FormData();
+        fd.append("file", f);
+        const r = await fetch("/api/upload", { method: "POST", body: fd });
+        const json = await r.json();
+        if (!r.ok) {
+          setError(json.error || "Upload failed");
+          return;
+        }
+        router.push(`/match/${json.id}`);
         return;
       }
-      router.push(`/match/${json.id}`);
+
+      // Send file in chunks
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, f.size);
+        const blob = f.slice(start, end);
+        const chunkFile = new File([blob], `chunk-${i}`, { type: "application/octet-stream" });
+
+        const fd = new FormData();
+        fd.append("chunk", chunkFile);
+        fd.append("chunkIndex", i.toString());
+        fd.append("totalChunks", totalChunks.toString());
+        fd.append("uploadId", uploadId);
+        fd.append("fileName", f.name);
+
+        const r = await fetch("/api/upload", { method: "POST", body: fd });
+        const json = await r.json();
+        if (!r.ok) {
+          setError(json.error || "Upload failed");
+          return;
+        }
+
+        // On last chunk, redirect
+        if (i === totalChunks - 1) {
+          router.push(`/match/${json.id}`);
+        }
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Upload failed");
     } finally {

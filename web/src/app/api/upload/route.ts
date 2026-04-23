@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { writeFile, mkdir } from "fs/promises";
+import { writeFile, mkdir, appendFile, unlink } from "fs/promises";
 import { spawn } from "child_process";
 import path from "path";
 
@@ -10,6 +10,7 @@ export const maxDuration = 300;
 const DATA_DIR = path.join(process.cwd(), "data");
 const DEMO_DIR = path.join(DATA_DIR, "demos");
 const PARSED_DIR = path.join(DATA_DIR, "parsed");
+const CHUNKS_DIR = path.join(DATA_DIR, "chunks");
 const PARSER_BIN = path.join(process.cwd(), "..", "parser", "parser");
 
 function run(cmd: string, args: string[]): Promise<{ code: number; stderr: string }> {
@@ -22,11 +23,84 @@ function run(cmd: string, args: string[]): Promise<{ code: number; stderr: strin
   });
 }
 
+async function processDemo(id: string, demoPath: string): Promise<{ success: boolean; stderr: string }> {
+  const outPath = path.join(PARSED_DIR, `${id}.json.gz`);
+  const { code, stderr } = await run(PARSER_BIN, ["-in", demoPath, "-out", outPath]);
+  return { success: code === 0, stderr };
+}
+
 export async function POST(req: NextRequest) {
   await mkdir(DEMO_DIR, { recursive: true });
   await mkdir(PARSED_DIR, { recursive: true });
+  await mkdir(CHUNKS_DIR, { recursive: true });
 
   const form = await req.formData();
+
+  // Check if this is a chunk upload
+  const chunkIndex = form.get("chunkIndex");
+  const totalChunks = form.get("totalChunks");
+  const uploadId = form.get("uploadId");
+  const fileName = form.get("fileName");
+  const chunk = form.get("chunk");
+
+  if (chunkIndex !== null && totalChunks !== null && uploadId && chunk instanceof File) {
+    // Handle chunk upload
+    const index = parseInt(chunkIndex.toString(), 10);
+    const total = parseInt(totalChunks.toString(), 10);
+
+    const chunkDir = path.join(CHUNKS_DIR, uploadId.toString());
+    await mkdir(chunkDir, { recursive: true });
+
+    const chunkPath = path.join(chunkDir, `chunk-${index}`);
+    const buf = Buffer.from(await chunk.arrayBuffer());
+    await writeFile(chunkPath, buf);
+
+    // Check if all chunks are received
+    if (index === total - 1) {
+      // Assemble chunks
+      const demoPath = path.join(DEMO_DIR, `${uploadId}.dem`);
+      const writeStream = await writeFile(demoPath, "");
+
+      for (let i = 0; i < total; i++) {
+        const chunkFile = path.join(chunkDir, `chunk-${i}`);
+        const data = await import("fs/promises").then(m => m.readFile(chunkFile));
+        await appendFile(demoPath, data);
+      }
+
+      // Clean up chunk directory
+      for (let i = 0; i < total; i++) {
+        await unlink(path.join(chunkDir, `chunk-${i}`)).catch(() => {});
+      }
+      await mkdir(chunkDir).catch(() => {});
+
+      // Check if file is zst compressed
+      const fileName_str = fileName?.toString().toLowerCase() || "";
+      const isZst = fileName_str.endsWith(".zst");
+
+      let finalDemoPath = demoPath;
+      if (isZst) {
+        const zstPath = `${demoPath}.zst`;
+        const fs = await import("fs/promises");
+        await fs.rename(demoPath, zstPath);
+        const { code, stderr } = await run("zstd", ["-d", "-f", zstPath, "-o", demoPath]);
+        if (code !== 0) {
+          return NextResponse.json({ error: "zstd decode failed", stderr }, { status: 500 });
+        }
+      }
+
+      // Process the demo
+      const { success, stderr } = await processDemo(uploadId.toString(), finalDemoPath);
+      if (!success) {
+        return NextResponse.json({ error: "parser failed", stderr }, { status: 500 });
+      }
+
+      return NextResponse.json({ id: uploadId });
+    }
+
+    return NextResponse.json({ success: true, chunk: index, of: total });
+  }
+
+  // Handle single-file upload (backwards compatibility)
   const file = form.get("file");
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "no file" }, { status: 400 });
@@ -50,9 +124,8 @@ export async function POST(req: NextRequest) {
     await writeFile(demoPath, buf);
   }
 
-  const outPath = path.join(PARSED_DIR, `${id}.json.gz`);
-  const { code, stderr } = await run(PARSER_BIN, ["-in", demoPath, "-out", outPath]);
-  if (code !== 0) {
+  const { success, stderr } = await processDemo(id, demoPath);
+  if (!success) {
     return NextResponse.json({ error: "parser failed", stderr }, { status: 500 });
   }
 
