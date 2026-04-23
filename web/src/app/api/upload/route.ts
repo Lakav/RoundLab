@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { writeFile, mkdir, appendFile, unlink } from "fs/promises";
+import { writeFile, mkdir, appendFile, unlink, readFile } from "fs/promises";
 import { spawn } from "child_process";
 import path from "path";
 
@@ -30,104 +30,118 @@ async function processDemo(id: string, demoPath: string): Promise<{ success: boo
 }
 
 export async function POST(req: NextRequest) {
-  await mkdir(DEMO_DIR, { recursive: true });
-  await mkdir(PARSED_DIR, { recursive: true });
-  await mkdir(CHUNKS_DIR, { recursive: true });
+  try {
+    await mkdir(DEMO_DIR, { recursive: true });
+    await mkdir(PARSED_DIR, { recursive: true });
+    await mkdir(CHUNKS_DIR, { recursive: true });
 
-  const form = await req.formData();
+    const form = await req.formData();
 
-  // Check if this is a chunk upload
-  const chunkIndex = form.get("chunkIndex");
-  const totalChunks = form.get("totalChunks");
-  const uploadId = form.get("uploadId");
-  const fileName = form.get("fileName");
-  const chunk = form.get("chunk");
+    // Check if this is a chunk upload
+    const chunkIndex = form.get("chunkIndex");
+    const totalChunks = form.get("totalChunks");
+    const uploadId = form.get("uploadId");
+    const fileName = form.get("fileName");
+    const chunk = form.get("chunk");
 
-  if (chunkIndex !== null && totalChunks !== null && uploadId && chunk instanceof File) {
-    // Handle chunk upload
-    const index = parseInt(chunkIndex.toString(), 10);
-    const total = parseInt(totalChunks.toString(), 10);
+    if (chunkIndex !== null && totalChunks !== null && uploadId && chunk instanceof File) {
+      // Handle chunk upload
+      const index = parseInt(chunkIndex.toString(), 10);
+      const total = parseInt(totalChunks.toString(), 10);
 
-    const chunkDir = path.join(CHUNKS_DIR, uploadId.toString());
-    await mkdir(chunkDir, { recursive: true });
+      const chunkDir = path.join(CHUNKS_DIR, uploadId.toString());
+      await mkdir(chunkDir, { recursive: true });
 
-    const chunkPath = path.join(chunkDir, `chunk-${index}`);
-    const buf = Buffer.from(await chunk.arrayBuffer());
-    await writeFile(chunkPath, buf);
+      const chunkPath = path.join(chunkDir, `chunk-${index}`);
+      const buf = Buffer.from(await chunk.arrayBuffer());
+      await writeFile(chunkPath, buf);
 
-    // Check if all chunks are received
-    if (index === total - 1) {
-      // Assemble chunks
-      const demoPath = path.join(DEMO_DIR, `${uploadId}.dem`);
-      const writeStream = await writeFile(demoPath, "");
+      // Check if all chunks are received
+      if (index === total - 1) {
+        // Assemble chunks
+        const demoPath = path.join(DEMO_DIR, `${uploadId}.dem`);
 
-      for (let i = 0; i < total; i++) {
-        const chunkFile = path.join(chunkDir, `chunk-${i}`);
-        const data = await import("fs/promises").then(m => m.readFile(chunkFile));
-        await appendFile(demoPath, data);
-      }
+        // Create empty file
+        await writeFile(demoPath, "");
 
-      // Clean up chunk directory
-      for (let i = 0; i < total; i++) {
-        await unlink(path.join(chunkDir, `chunk-${i}`)).catch(() => {});
-      }
-      await mkdir(chunkDir).catch(() => {});
-
-      // Check if file is zst compressed
-      const fileName_str = fileName?.toString().toLowerCase() || "";
-      const isZst = fileName_str.endsWith(".zst");
-
-      let finalDemoPath = demoPath;
-      if (isZst) {
-        const zstPath = `${demoPath}.zst`;
-        const fs = await import("fs/promises");
-        await fs.rename(demoPath, zstPath);
-        const { code, stderr } = await run("zstd", ["-d", "-f", zstPath, "-o", demoPath]);
-        if (code !== 0) {
-          return NextResponse.json({ error: "zstd decode failed", stderr }, { status: 500 });
+        // Append all chunks in order
+        for (let i = 0; i < total; i++) {
+          const chunkFile = path.join(chunkDir, `chunk-${i}`);
+          try {
+            const data = await readFile(chunkFile);
+            await appendFile(demoPath, data);
+          } catch (e) {
+            console.error(`Failed to read chunk ${i}:`, e);
+            throw e;
+          }
         }
+
+        // Clean up chunk directory
+        for (let i = 0; i < total; i++) {
+          await unlink(path.join(chunkDir, `chunk-${i}`)).catch(() => {});
+        }
+
+        // Check if file is zst compressed
+        const fileName_str = fileName?.toString().toLowerCase() || "";
+        const isZst = fileName_str.endsWith(".zst");
+
+        if (isZst) {
+          const zstPath = `${demoPath}.zst`;
+          // Move the file to .zst extension
+          await import("fs/promises").then(m => m.rename(demoPath, zstPath));
+          const { code, stderr } = await run("zstd", ["-d", "-f", zstPath, "-o", demoPath]);
+          if (code !== 0) {
+            return NextResponse.json({ error: "zstd decode failed", stderr }, { status: 500 });
+          }
+        }
+
+        // Process the demo
+        const { success, stderr } = await processDemo(uploadId.toString(), demoPath);
+        if (!success) {
+          return NextResponse.json({ error: "parser failed", stderr }, { status: 500 });
+        }
+
+        return NextResponse.json({ id: uploadId });
       }
 
-      // Process the demo
-      const { success, stderr } = await processDemo(uploadId.toString(), finalDemoPath);
-      if (!success) {
-        return NextResponse.json({ error: "parser failed", stderr }, { status: 500 });
+      return NextResponse.json({ success: true, chunk: index, of: total });
+    }
+
+    // Handle single-file upload (backwards compatibility)
+    const file = form.get("file");
+    if (!(file instanceof File)) {
+      return NextResponse.json({ error: "no file" }, { status: 400 });
+    }
+
+    const id = randomUUID();
+    const origName = file.name.toLowerCase();
+    const isZst = origName.endsWith(".zst");
+    const demoPath = path.join(DEMO_DIR, `${id}.dem`);
+
+    const buf = Buffer.from(await file.arrayBuffer());
+
+    if (isZst) {
+      const zstPath = path.join(DEMO_DIR, `${id}.dem.zst`);
+      await writeFile(zstPath, buf);
+      const { code, stderr } = await run("zstd", ["-d", "-f", zstPath, "-o", demoPath]);
+      if (code !== 0) {
+        return NextResponse.json({ error: "zstd decode failed", stderr }, { status: 500 });
       }
-
-      return NextResponse.json({ id: uploadId });
+    } else {
+      await writeFile(demoPath, buf);
     }
 
-    return NextResponse.json({ success: true, chunk: index, of: total });
-  }
-
-  // Handle single-file upload (backwards compatibility)
-  const file = form.get("file");
-  if (!(file instanceof File)) {
-    return NextResponse.json({ error: "no file" }, { status: 400 });
-  }
-
-  const id = randomUUID();
-  const origName = file.name.toLowerCase();
-  const isZst = origName.endsWith(".zst");
-  const demoPath = path.join(DEMO_DIR, `${id}.dem`);
-
-  const buf = Buffer.from(await file.arrayBuffer());
-
-  if (isZst) {
-    const zstPath = path.join(DEMO_DIR, `${id}.dem.zst`);
-    await writeFile(zstPath, buf);
-    const { code, stderr } = await run("zstd", ["-d", "-f", zstPath, "-o", demoPath]);
-    if (code !== 0) {
-      return NextResponse.json({ error: "zstd decode failed", stderr }, { status: 500 });
+    const { success, stderr } = await processDemo(id, demoPath);
+    if (!success) {
+      return NextResponse.json({ error: "parser failed", stderr }, { status: 500 });
     }
-  } else {
-    await writeFile(demoPath, buf);
-  }
 
-  const { success, stderr } = await processDemo(id, demoPath);
-  if (!success) {
-    return NextResponse.json({ error: "parser failed", stderr }, { status: 500 });
+    return NextResponse.json({ id, stderr });
+  } catch (error) {
+    console.error("Upload error:", error);
+    return NextResponse.json(
+      { error: "Internal server error", details: error instanceof Error ? error.message : String(error) },
+      { status: 500 }
+    );
   }
-
-  return NextResponse.json({ id, stderr });
 }
