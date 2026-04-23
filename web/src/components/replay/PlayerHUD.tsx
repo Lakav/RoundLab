@@ -4,6 +4,7 @@ import { useReplay } from "@/lib/replay-store";
 import { cn } from "@/lib/utils";
 import type { Frame, PlayerPos } from "@/lib/types";
 import { iconPathFor } from "@/lib/icons";
+import { THEME, sideColors } from "@/lib/theme";
 
 function sample(frames: Frame[], t: number): PlayerPos[] {
   if (!frames || frames.length === 0) return [];
@@ -19,7 +20,7 @@ function sample(frames: Frame[], t: number): PlayerPos[] {
   return frames[lo].players;
 }
 
-export function PlayerHUD() {
+export function PlayerHUD({ side }: { side: "CT" | "T" }) {
   const match = useReplay((s) => s.match);
   const currentRoundIdx = useReplay((s) => s.currentRoundIdx);
   const time = useReplay((s) => s.time) ?? 0;
@@ -30,19 +31,62 @@ export function PlayerHUD() {
   const positions = sample(round.frames, time);
   const byId = new Map(positions.map((p) => [p.id, p]));
 
-  const teamA = match.players.filter((p) => p.team === "CT");
-  const teamB = match.players.filter((p) => p.team === "T");
-
-  const firstA = teamA[0] ? byId.get(teamA[0].steamId) : undefined;
-  const accentA: "sky" | "amber" = firstA?.team === 2 ? "amber" : "sky";
-  const accentB: "sky" | "amber" = accentA === "sky" ? "amber" : "sky";
+  const players = match.players
+    .filter((p) => {
+      const pos = byId.get(p.steamId);
+      if (pos) return pos.team === (side === "CT" ? 3 : 2);
+      return p.team === side;
+    })
+    .slice(0, 5);
+  const teamName = side === "CT" ? match.meta.teamA : match.meta.teamB;
+  const teamScore = side === "CT" ? round.scoreA ?? 0 : round.scoreB ?? 0;
 
   return (
-    <aside className="flex h-full w-48 shrink-0 flex-col gap-1 border-l border-white/[0.07] bg-[#080b0a]/95 px-1.5 py-1.5">
-      <Section title={match.meta.teamA || "Team A"} accent={accentA} players={teamA} byId={byId} />
-      <Section title={match.meta.teamB || "Team B"} accent={accentB} players={teamB} byId={byId} />
+    <aside
+      className={cn(
+        "pointer-events-none absolute top-1/2 z-20 flex w-[250px] -translate-y-[48%] flex-col gap-1",
+        side === "CT" ? "left-5" : "right-5"
+      )}
+    >
+      <div
+        className="mb-2 flex items-center gap-2"
+      >
+        <div
+          className="flex size-5 shrink-0 items-center justify-center rounded-full border text-[9px] font-bold"
+          style={{
+            background: side === "CT" ? "#8f2930" : "#93862f",
+            borderColor: side === "CT" ? "#ff8a8f" : "#d4c664",
+            color: "#fff",
+          }}
+        >
+          {(teamName || side).slice(0, 1).toUpperCase()}
+        </div>
+        <span
+          className="flex-1 truncate text-[13px] font-bold uppercase tracking-wide"
+          style={{
+            color: THEME.textBright,
+            textAlign: "left",
+          }}
+        >
+          {teamName || side}
+        </span>
+        <span
+          className="shrink-0 font-mono text-[15px] font-bold tabular-nums"
+          style={{ color: THEME.textBright }}
+        >
+          {teamScore}
+        </span>
+      </div>
+
+      {players.map((p) => (
+        <PlayerRow key={p.steamId} name={p.name} pos={byId.get(p.steamId)} side={side} />
+      ))}
     </aside>
   );
+}
+
+function displayName(name: string) {
+  return name === "L999" ? "grosNoob" : name;
 }
 
 function isUtility(name: string) {
@@ -69,7 +113,7 @@ function gunRank(name: string) {
 
 function inventory(pos?: PlayerPos) {
   const weapons = pos?.weapons ?? [];
-  const active = pos?.active ?? weapons.find((w) => !isUtility(w) && w !== "Knife" && w !== "C4") ?? "";
+  const active = pos?.active ?? "";
   const utility = weapons.filter(isUtility).slice().sort((a, b) => utilityRank(a) - utilityRank(b));
   const guns = weapons
     .filter((w) => !isUtility(w) && w !== "Knife" && w !== "C4")
@@ -77,209 +121,124 @@ function inventory(pos?: PlayerPos) {
     .sort((a, b) => gunRank(a) - gunRank(b));
   const hasKnife = weapons.some((w) => w === "Knife" || /knife|bayonet|karambit/i.test(w));
   const hasC4 = weapons.some((w) => w === "C4" || /bomb/i.test(w));
-  return { active, guns, utility, hasKnife, hasC4 };
+  const primary = guns[0];
+  return { active, guns, utility, hasKnife, hasC4, primary };
 }
 
-function displayName(name: string) {
-  return name === "L999" ? "grosNoob" : name;
-}
-
-function Section({
-  title,
-  accent,
-  players,
-  byId,
+function PlayerRow({
+  name,
+  pos,
+  side,
 }: {
-  title: string;
-  accent: "sky" | "amber";
-  players: { steamId: number; name: string }[];
-  byId: Map<number, PlayerPos>;
+  name: string;
+  pos?: PlayerPos;
+  side: "CT" | "T";
 }) {
+  const hp = pos?.hp ?? 0;
+  const alive = hp > 0;
+  const armor = pos?.armor ?? 0;
+  const money = pos?.money ?? 0;
+  const inv = inventory(pos);
+  const cols = sideColors(side);
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="pointer-events-auto flex flex-col gap-0.5">
       <div
-        className={cn(
-          "mb-1 shrink-0 truncate px-1 text-[11px] font-semibold",
-          accent === "sky" ? "text-sky-300" : "text-amber-300"
-        )}
+        className="flex h-[24px] w-full items-center overflow-hidden rounded-[2px] bg-[#232424]/90 px-2"
       >
-        {title}
+        <span
+          className="flex-1 truncate text-[12px] font-semibold"
+          style={{
+            color: alive ? "#fff" : THEME.textDead,
+            textDecoration: !alive ? "line-through" : undefined,
+            textAlign: "left",
+          }}
+        >
+          {displayName(name)}
+        </span>
+        <span
+          className="shrink-0 px-1 font-mono text-[11px] font-semibold tabular-nums"
+          style={{ color: alive ? "#7b7d7d" : THEME.textDead }}
+        >
+          ${money}
+        </span>
       </div>
-      <div className="grid min-h-0 flex-1 grid-rows-5 gap-0.5 overflow-hidden">
-        {players.map((p) => {
-          const pos = byId.get(p.steamId);
-          const hp = pos?.hp ?? 0;
-          const armor = pos?.armor ?? 0;
-          const alive = hp > 0;
-          const inv = inventory(pos);
-          return (
-            <div
-              key={p.steamId}
-              className={cn(
-                "min-h-0 overflow-hidden rounded border border-white/[0.05] bg-white/[0.025] px-1.5 py-1 transition-colors",
-                pos?.hasBomb && "border-red-400/45 bg-red-500/[0.08]",
-                !alive && "opacity-40"
-              )}
-            >
-              <div className="flex items-center gap-1.5">
-                <span
-                  className={cn(
-                    "min-w-0 flex-1 truncate text-[11px] font-medium text-neutral-200",
-                    pos?.hasBomb && "text-red-300",
-                    !alive && "line-through"
-                  )}
-                >
-                  {displayName(p.name)}
-                </span>
-                <span className="w-5 shrink-0 text-right font-mono text-[10px] tabular-nums text-neutral-500">
-                  {hp}
-                </span>
-              </div>
 
-              <div className="mt-0.5 h-0.5 overflow-hidden rounded-full bg-black/35">
-                <div
-                  className={cn(
-                    "h-full transition-all",
-                    accent === "sky" ? "bg-sky-300" : "bg-amber-300"
-                  )}
-                  style={{ width: `${Math.max(0, Math.min(100, hp))}%` }}
-                />
-              </div>
-              <div className="mt-0.5 h-0.5 overflow-hidden rounded-full bg-black/35">
-                <div
-                  className={cn(
-                    "h-full transition-all",
-                    pos?.helmet ? "bg-emerald-300" : "bg-neutral-300"
-                  )}
-                  style={{ width: `${Math.max(0, Math.min(100, armor))}%` }}
-                />
-              </div>
-
-              <div className="mt-1 flex flex-wrap items-center gap-0.5 overflow-hidden">
-                <ArmorChip armor={armor} helmet={Boolean(pos?.helmet)} />
-                {pos?.kit && (
-                  <SvgChip active title="Defuse kit" src="/icons/defuser.svg" />
-                )}
-
-                {inv.guns.map((w, idx) => {
-                  const isActive = w === inv.active;
-                  return (
-                    <SvgChip
-                      key={`gun-${w}-${idx}`}
-                      active
-                      title={w}
-                      src={iconPathFor(w)}
-                      wide
-                      className={cn(
-                        isActive && "border-emerald-300/30 bg-emerald-300/[0.1] text-emerald-200"
-                      )}
-                    />
-                  );
-                })}
-
-                {inv.hasKnife && (
-                  <SvgChip
-                    active
-                    title="Knife"
-                    src="/icons/knife.svg"
-                    className={cn(
-                      inv.active === "Knife" && "border-emerald-300/30 bg-emerald-300/[0.1] text-emerald-200"
-                    )}
-                  />
-                )}
-
-                {inv.hasC4 && (
-                  <SvgChip
-                    active
-                    title="C4"
-                    src="/icons/c4.svg"
-                    className={cn(
-                      (inv.active === "C4" || pos?.hasBomb) && "border-emerald-300/30 bg-emerald-300/[0.1] text-emerald-200"
-                    )}
-                  />
-                )}
-              </div>
-
-              {inv.utility.length > 0 && (
-                <div className="mt-0.5 flex flex-wrap items-center gap-0.5 overflow-hidden">
-                  {inv.utility.map((u, idx) => (
-                    <SvgChip
-                      key={`util-${u}-${idx}`}
-                      active
-                      title={u}
-                      src={iconPathFor(u)}
-                      className={cn(
-                        u === inv.active && "border-emerald-300/30 bg-emerald-300/[0.1] text-emerald-200"
-                      )}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
+      <div
+        className="flex h-[18px] w-full items-center gap-1.5 px-0.5"
+      >
+        <Icon
+          src={armor > 0 && pos?.helmet ? "/icons/armor_helmet.svg" : "/icons/kevlar.svg"}
+          active={alive && armor > 0}
+          color={armor > 0 ? "#8f9696" : THEME.textDead}
+          size="gear"
+        />
+        {inv.primary && (
+          <Icon
+            src={iconPathFor(inv.primary)}
+            active={alive}
+            color={inv.primary === inv.active ? "#91e268" : "#d6dddd"}
+            size="weapon"
+          />
+        )}
+        {inv.hasC4 && <Icon src="/icons/c4.svg" active color="#fde047" size="gear" />}
+        {pos?.kit && <Icon src="/icons/defuser.svg" active color={cols.soft} size="gear" />}
+        <div className="flex-1" />
+        {inv.utility.map((u, i) => (
+          <Icon
+            key={`u-${i}`}
+            src={iconPathFor(u)}
+            active={alive}
+            color={u === inv.active ? "#91e268" : "#8f9696"}
+            size="utility"
+          />
+        ))}
+        {inv.hasKnife && (
+          <Icon
+            src="/icons/knife.svg"
+            active={alive}
+            color={inv.active === "Knife" ? "#91e268" : "#8f9696"}
+            size="utility"
+          />
+        )}
       </div>
     </div>
   );
 }
 
-function ArmorChip({ armor, helmet }: { armor: number; helmet: boolean }) {
-  const active = armor > 0 || helmet;
-  const src = helmet ? "/icons/armor_helmet.svg" : "/icons/kevlar.svg";
+function Icon({
+  src,
+  active,
+  color,
+  size = "gear",
+}: {
+  src: string | null;
+  active: boolean;
+  color: string;
+  size?: "gear" | "weapon" | "utility";
+}) {
+  if (!src) return null;
   return (
-    <SvgChip
-      active={active}
-      title={helmet ? `Kevlar + helmet ${armor}` : armor > 0 ? `Kevlar ${armor}` : "No armor"}
-      src={src}
+    <span
+      aria-hidden="true"
+      className={cn(
+        "inline-block shrink-0",
+        size === "weapon" && "h-[15px] w-[34px]",
+        size === "gear" && "size-[14px]",
+        size === "utility" && "size-[11px]"
+      )}
+      style={{
+        backgroundColor: active ? color : THEME.textDead,
+        WebkitMaskImage: `url(${src})`,
+        maskImage: `url(${src})`,
+        WebkitMaskRepeat: "no-repeat",
+        maskRepeat: "no-repeat",
+        WebkitMaskPosition: "center",
+        maskPosition: "center",
+        WebkitMaskSize: "contain",
+        maskSize: "contain",
+        opacity: active ? 1 : 0.4,
+      }}
     />
   );
 }
-
-function SvgChip({
-  active,
-  title,
-  src,
-  wide,
-  className,
-}: {
-  active: boolean;
-  title: string;
-  src: string | null;
-  wide?: boolean;
-  className?: string;
-}) {
-  return (
-    <span
-      title={title}
-      className={cn(
-        "inline-flex h-4 shrink-0 items-center justify-center rounded border",
-        wide ? "px-1" : "w-5 px-0",
-        active
-          ? "border-white/10 bg-white/[0.045] text-neutral-200"
-          : "border-white/[0.05] text-neutral-700",
-        className
-      )}
-    >
-      {src ? (
-        <span
-          aria-hidden="true"
-          className={cn(wide ? "h-3 w-7" : "size-3", !active && "opacity-35")}
-          style={{
-            backgroundColor: "currentColor",
-            WebkitMaskImage: `url(${src})`,
-            maskImage: `url(${src})`,
-            WebkitMaskRepeat: "no-repeat",
-            maskRepeat: "no-repeat",
-            WebkitMaskPosition: "center",
-            maskPosition: "center",
-            WebkitMaskSize: "contain",
-            maskSize: "contain",
-          }}
-        />
-      ) : (
-        <span className="text-[9px] font-semibold leading-none">?</span>
-      )}
-    </span>
-  );
-}
-

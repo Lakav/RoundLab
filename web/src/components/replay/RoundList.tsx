@@ -1,8 +1,8 @@
 "use client";
 
 import { useReplay } from "@/lib/replay-store";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { THEME } from "@/lib/theme";
 
 export function RoundList() {
   const match = useReplay((s) => s.match);
@@ -11,75 +11,32 @@ export function RoundList() {
   if (!match) return null;
 
   return (
-    <ScrollArea className="h-full w-24 shrink-0 border-r border-white/[0.07] bg-[#080b0a]/95">
-      <div className="p-1.5">
-        <div className="space-y-1">
-          {match.rounds.map((r, i) => {
-            const active = currentRoundIdx === i;
-            const scoreA = r.scoreA ?? 0;
-            const scoreB = r.scoreB ?? 0;
-            const prev = match.rounds[i - 1];
-            const prevA = prev?.scoreA ?? 0;
-            const prevB = prev?.scoreB ?? 0;
-            const aWon = scoreA > prevA;
-            const bWon = scoreB > prevB;
-            const winnerSide = r.winner;
-            const aIsCT = (aWon && winnerSide === "CT") || (bWon && winnerSide === "T");
-            const leftIsCT = aIsCT;
-            return (
-              <button
-                key={r.number}
-                onClick={() => setRound(i)}
-                className={cn(
-                  "group relative w-full overflow-hidden rounded-md border text-left transition-all",
-                  active
-                    ? "border-emerald-400/60 shadow-[inset_2px_0_0_rgba(52,211,153,0.9)]"
-                    : "border-white/[0.04] hover:border-white/[0.15]"
-                )}
-              >
-                <div
-                  className={cn(
-                    "flex items-stretch font-mono text-sm font-bold tabular-nums leading-none",
-                    active && "ring-1 ring-emerald-400/40"
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "flex w-7 items-center justify-center py-1.5 transition-all",
-                      leftIsCT
-                        ? aWon
-                          ? "bg-sky-500/85 text-white"
-                          : "bg-sky-500/10 text-sky-300/50"
-                        : aWon
-                          ? "bg-amber-500/85 text-white"
-                          : "bg-amber-500/10 text-amber-300/50"
-                    )}
-                  >
-                    {scoreA}
-                  </div>
-                  <div className="flex flex-1 items-center justify-center bg-white/[0.015] px-1 text-[10px] font-medium text-neutral-500">
-                    R{i + 1}
-                  </div>
-                  <div
-                    className={cn(
-                      "flex w-7 items-center justify-center py-1.5 transition-all",
-                      leftIsCT
-                        ? bWon
-                          ? "bg-amber-500/85 text-white"
-                          : "bg-amber-500/10 text-amber-300/50"
-                        : bWon
-                          ? "bg-sky-500/85 text-white"
-                          : "bg-sky-500/10 text-sky-300/50"
-                    )}
-                  >
-                    {scoreB}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </ScrollArea>
+    <div className="flex w-full items-center justify-center gap-5 py-2 font-mono text-[12px] tabular-nums">
+      {match.rounds.map((r, i) => {
+        const active = currentRoundIdx === i;
+        const winner = r.winner;
+        const color =
+          winner === "CT" ? THEME.ct : winner === "T" ? THEME.t : THEME.textMuted;
+        return (
+          <button
+            key={r.number}
+            onClick={() => setRound(i)}
+            className={cn(
+              "relative transition-opacity",
+              active ? "opacity-100" : "opacity-55 hover:opacity-100"
+            )}
+            style={{ color }}
+          >
+            {String(i + 1).padStart(2, "0")}
+            {active && (
+              <span
+                className="absolute -bottom-1 left-0 right-0 h-[2px] rounded-full"
+                style={{ background: color }}
+              />
+            )}
+          </button>
+        );
+      })}
+    </div>
   );
 }

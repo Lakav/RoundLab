@@ -10,21 +10,20 @@ import { Controls } from "@/components/replay/Controls";
 import { Timeline } from "@/components/replay/Timeline";
 import { RoundList } from "@/components/replay/RoundList";
 import { PlayerHUD } from "@/components/replay/PlayerHUD";
-import { Loader2, ChevronLeft } from "lucide-react";
+import { RoundClock } from "@/components/replay/RoundClock";
+import { KillFeed } from "@/components/replay/KillFeed";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { MatchData } from "@/lib/types";
+import type { MatchData, Round } from "@/lib/types";
 import { cropFor, RADAR_SIZE } from "@/lib/maps";
 
 const DRAW_WIDTH = 3;
 const MIN_MAP = 360;
-const MAX_MAP = 2000;
+const MAX_MAP = 760;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
 
 function hideKnifeRound(data: MatchData): MatchData {
-  // Heuristic: round 0 is a knife round only if the score is still 0-0 at
-  // its end AND round 1 ends with a total score of 1 (a real first round
-  // just played). Otherwise the first round is the actual round 1.
   if (data.rounds.length < 2) return data;
   const r0 = data.rounds[0];
   const r1 = data.rounds[1];
@@ -36,6 +35,7 @@ function hideKnifeRound(data: MatchData): MatchData {
 
 export default function MatchViewer({ id }: { id: string }) {
   const setMatch = useReplay((s) => s.setMatch);
+  const setRoundData = useReplay((s) => s.setRoundData);
   const match = useReplay((s) => s.match);
   const currentRoundIdx = useReplay((s) => s.currentRoundIdx);
   const setTime = useReplay((s) => s.setTime);
@@ -50,6 +50,7 @@ export default function MatchViewer({ id }: { id: string }) {
   const [mapSize, setMapSize] = useState(600);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [panning, setPanning] = useState(false);
   const panState = useRef({ dragging: false, lastX: 0, lastY: 0 });
 
   useEffect(() => {
@@ -61,8 +62,7 @@ export default function MatchViewer({ id }: { id: string }) {
       const rect = el.getBoundingClientRect();
       const w = rect.width;
       const h = rect.height;
-      const availW = w - 72;
-      const size = Math.max(MIN_MAP, Math.min(MAX_MAP, Math.floor(Math.min(availW, h))));
+      const size = Math.max(MIN_MAP, Math.min(MAX_MAP, Math.floor(Math.min(w, h) * 0.88)));
       setMapSize(size);
     };
     const ro = new ResizeObserver(() => {
@@ -77,9 +77,6 @@ export default function MatchViewer({ id }: { id: string }) {
     };
   }, [loading]);
 
-  useEffect(() => {
-    setPan({ x: 0, y: 0 });
-  }, [mapSize]);
   const [strokesByRound, setStrokesByRound] = useState<Record<number, Stroke[]>>({});
   const strokes = strokesByRound[currentRoundIdx] ?? [];
   const setStrokes = (s: Stroke[]) =>
@@ -89,7 +86,7 @@ export default function MatchViewer({ id }: { id: string }) {
     let cancel = false;
     (async () => {
       try {
-        const r = await fetch(`/api/match/${id}`);
+        const r = await fetch(`/api/match/${id}/metadata`);
         if (!r.ok) throw new Error("not found");
         const data: MatchData = await r.json();
         if (cancel) return;
@@ -104,6 +101,28 @@ export default function MatchViewer({ id }: { id: string }) {
       cancel = true;
     };
   }, [id, setMatch]);
+
+  useEffect(() => {
+    if (!match) return;
+    const round = match.rounds[currentRoundIdx];
+    if (!round || round.frames.length > 0) return;
+
+    let cancel = false;
+    (async () => {
+      try {
+        const r = await fetch(`/api/match/${id}/round/${round.number}`);
+        if (!r.ok) throw new Error("round not found");
+        const data = (await r.json()) as Round;
+        if (!cancel) setRoundData(round.number, data);
+      } catch (e) {
+        if (!cancel) setErr(e instanceof Error ? e.message : "round load error");
+      }
+    })();
+
+    return () => {
+      cancel = true;
+    };
+  }, [currentRoundIdx, id, match, setRoundData]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -146,11 +165,6 @@ export default function MatchViewer({ id }: { id: string }) {
     );
   }
 
-  const round = match.rounds[currentRoundIdx];
-  const score = {
-    a: round?.scoreA ?? 0,
-    b: round?.scoreB ?? 0,
-  };
   const crop = cropFor(match.meta.map);
   const cropScale = RADAR_SIZE / crop.size;
   const innerSize = mapSize * cropScale;
@@ -158,45 +172,17 @@ export default function MatchViewer({ id }: { id: string }) {
   const cropTy = -crop.y * (mapSize / crop.size);
 
   return (
-    <div className="h-screen flex flex-col bg-[#060807] text-neutral-100">
-      <header className="flex h-7 shrink-0 items-center gap-2 border-b border-white/[0.07] bg-[#080b0a]/95 px-2 text-[11px] backdrop-blur">
-        <Link href="/" className="text-neutral-500 hover:text-white">
-          <ChevronLeft className="size-4" />
-        </Link>
-        <span className="truncate font-medium text-neutral-300">
-          {match.meta.map.replace("de_", "")}
-        </span>
-        <span className="h-4 w-px bg-white/10" />
-        <span className="truncate text-sky-300">{match.meta.teamA || "Team A"}</span>
-        <span className="rounded border border-white/10 bg-white/[0.04] px-1.5 font-mono text-neutral-200">
-          {match.meta.scoreA}:{match.meta.scoreB}
-        </span>
-        <span className="truncate text-amber-300">{match.meta.teamB || "Team B"}</span>
-        <div className="ml-auto flex items-center gap-2 text-neutral-500">
-          <span className="font-mono text-sm text-neutral-200">{score.a}:{score.b}</span>
-          <span className="text-neutral-700">·</span>
-          <span>R{currentRoundIdx + 1}/{match.rounds.length}</span>
-        </div>
-      </header>
+    <div className="h-screen flex flex-col text-neutral-100" style={{ background: "#1d1f1f" }}>
+      <main className="relative flex min-h-0 flex-1 flex-col overflow-visible">
+        <PlayerHUD side="CT" />
+        <PlayerHUD side="T" />
 
-      <div className="flex-1 flex min-h-0 overflow-hidden bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:28px_28px]">
-        <RoundList />
-
-        <main
-          className="relative flex-1 flex min-h-0 flex-col overflow-hidden"
-        >
-          <div ref={mainRef} className="flex min-h-0 flex-1 items-center justify-center gap-1.5">
-          <DrawingToolbar
-            tool={tool}
-            setTool={setTool}
-            color={color}
-            setColor={setColor}
-            strokes={strokes}
-            setStrokes={setStrokes}
-          />
-
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+          <RoundClock />
+          <KillFeed />
+          <div ref={mainRef} className="flex min-h-0 flex-1 items-center justify-center px-[290px] pb-4 pt-6">
             <div
-              className="relative overflow-hidden bg-black/25"
+              className="relative overflow-hidden opacity-90"
               onWheel={(e) => {
                 if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
                   e.preventDefault();
@@ -221,6 +207,7 @@ export default function MatchViewer({ id }: { id: string }) {
                 if (tool !== "none") return;
                 if (zoom <= 1) return;
                 panState.current = { dragging: true, lastX: e.clientX, lastY: e.clientY };
+                setPanning(true);
                 (e.target as Element).setPointerCapture?.(e.pointerId);
               }}
               onPointerMove={(e) => {
@@ -237,12 +224,14 @@ export default function MatchViewer({ id }: { id: string }) {
               }}
               onPointerUp={() => {
                 panState.current.dragging = false;
+                setPanning(false);
               }}
               onPointerCancel={() => {
                 panState.current.dragging = false;
+                setPanning(false);
               }}
               style={{
-                cursor: zoom > 1 && tool === "none" ? (panState.current.dragging ? "grabbing" : "grab") : undefined,
+                cursor: zoom > 1 && tool === "none" ? (panning ? "grabbing" : "grab") : undefined,
               }}
             >
               <div
@@ -252,7 +241,7 @@ export default function MatchViewer({ id }: { id: string }) {
                   overflow: "hidden",
                   transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
                   transformOrigin: "center center",
-                  transition: panState.current.dragging ? "none" : "transform 80ms linear",
+                  transition: panning ? "none" : "transform 80ms linear",
                 }}
               >
                 <div
@@ -287,20 +276,26 @@ export default function MatchViewer({ id }: { id: string }) {
               )}
             </div>
           </div>
+        </div>
 
-          <div className="shrink-0 px-2 pb-1.5 pt-1">
-            <div className="mx-auto flex items-center gap-2 rounded-md border border-white/[0.08] bg-[#0b0f0d]/92 px-2 py-0.5 shadow-xl shadow-black/40 backdrop-blur"
-                 style={{ maxWidth: Math.min(mapSize + 120, 1400) }}>
-              <Controls />
-              <div className="min-w-0 flex-1">
-                <Timeline />
-              </div>
-            </div>
+        <div className="shrink-0 border-t border-dashed border-white/10 bg-[#121414] px-5 pb-3 pt-1">
+          <RoundList />
+          <div className="flex items-center gap-3">
+          <Controls />
+          <div className="min-w-0 flex-1">
+            <Timeline />
           </div>
-        </main>
-
-        <PlayerHUD />
-      </div>
+            <DrawingToolbar
+              tool={tool}
+              setTool={setTool}
+              color={color}
+              setColor={setColor}
+              strokes={strokes}
+              setStrokes={setStrokes}
+            />
+          </div>
+        </div>
+      </main>
     </div>
   );
 }

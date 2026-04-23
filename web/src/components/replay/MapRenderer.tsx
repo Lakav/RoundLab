@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
 import { useReplay } from "@/lib/replay-store";
 import { MAP_CALIBRATION, RADAR_SIZE, worldToRadar } from "@/lib/maps";
-import type { Frame, PlayerPos, ProjectilePos, UtilityEffect } from "@/lib/types";
+import type { Frame, PlayerPos, ProjectilePos, UtilityEffect, WeaponFireEvent } from "@/lib/types";
 import { iconPathFor } from "@/lib/icons";
 
 const iconTextureCache = new Map<string, Promise<Texture>>();
@@ -41,11 +41,25 @@ function sampleFrame(frames: Frame[], t: number): PlayerPos[] {
       out.push(pb);
       continue;
     }
+    // Shortest angular path so turning across the 180/-180 seam doesn't
+    // produce a ~360° spin backwards.
+    let dyaw = pb.yaw - pa.yaw;
+    while (dyaw > 180) dyaw -= 360;
+    while (dyaw < -180) dyaw += 360;
+    // Interpolate flash time so the arc ticks smoothly between 8 Hz samples.
+    const flashA = pa.flashLeft ?? 0;
+    const flashB = pb.flashLeft ?? 0;
+    const flashLeft = flashA > 0 && flashB > 0
+      ? flashA + (flashB - flashA) * alpha
+      : flashA > 0
+      ? Math.max(0, flashA - (b.t - a.t) * alpha)
+      : flashB;
     out.push({
       ...pb,
       x: pa.x + (pb.x - pa.x) * alpha,
       y: pa.y + (pb.y - pa.y) * alpha,
-      yaw: pa.yaw + (pb.yaw - pa.yaw) * alpha,
+      yaw: pa.yaw + dyaw * alpha,
+      flashLeft,
     });
   }
   return out;
@@ -118,10 +132,53 @@ function fitSprite(sprite: Sprite, max: number) {
   }
 }
 
+function fitSpriteBox(sprite: Sprite, maxWidth: number, maxHeight: number) {
+  const tex = sprite.texture;
+  if (!tex || !tex.width || !tex.height) {
+    sprite.width = maxWidth;
+    sprite.height = maxHeight;
+    return;
+  }
+  const ratio = tex.width / tex.height;
+  if (ratio >= maxWidth / maxHeight) {
+    sprite.width = maxWidth;
+    sprite.height = maxWidth / ratio;
+  } else {
+    sprite.height = maxHeight;
+    sprite.width = maxHeight * ratio;
+  }
+}
+
+function heldWeaponBox(name?: string): { width: number; height: number } {
+  const n = name?.toLowerCase() ?? "";
+  if (/grenade|flashbang|molotov|incendiary|decoy|c4|bomb/.test(n)) {
+    return { width: 15, height: 15 };
+  }
+  if (/knife|bayonet|karambit/.test(n)) {
+    return { width: 24, height: 12 };
+  }
+  if (/deagle|revolver|usp|glock|p2000|p250|five|tec|cz|elite|dual/.test(n)) {
+    return { width: 23, height: 11 };
+  }
+  if (/awp|ssg|scout|scar|g3sg/.test(n)) {
+    return { width: 34, height: 10 };
+  }
+  if (/nova|xm1014|sawed|mag-7|mag7|m249|negev/.test(n)) {
+    return { width: 33, height: 11 };
+  }
+  return { width: 31, height: 10 };
+}
+
 function teamColor(team?: number) {
   if (team === 3) return 0x5ab0ff;
   if (team === 2) return 0xf5b042;
   return 0xe5e7eb;
+}
+
+function teamDarkColor(team?: number) {
+  if (team === 3) return 0x195066;
+  if (team === 2) return 0x795322;
+  return 0x303030;
 }
 
 function displayName(name?: string) {
@@ -133,31 +190,14 @@ type PlayerSprite = {
   dot: Graphics;
   hpRing: Graphics;
   arrow: Graphics;
+  arrowRotator: Container;
+  labelBadge: Container;
   label: Text;
   held: Sprite;
   heldPath: string | null;
-  armor: Graphics;
+  shotFlash: Graphics;
   flashArc: Graphics;
 };
-
-function drawLabel(layer: Container, text: string, x: number, y: number, color = 0xfbbf24) {
-  const label = new Text({
-    text,
-    style: {
-      fontFamily: "ui-sans-serif, system-ui",
-      fontSize: 9,
-      fontWeight: "800",
-      fill: 0x0f0a00,
-    },
-  });
-  label.anchor.set(0.5);
-  label.position.set(x, y);
-  const bg = new Graphics()
-    .roundRect(-9, -6, 18, 12, 3)
-    .fill({ color, alpha: 1 });
-  label.addChildAt(bg, 0);
-  layer.addChild(label);
-}
 
 function heightLift(z: number) {
   return Math.max(0, Math.min(22, Math.abs(z) / 35));
@@ -186,30 +226,6 @@ function drawUtilityIcon(
     .catch(() => {});
 }
 
-function drawArmorBadge(g: Graphics, armor: number, helmet?: boolean) {
-  g.clear();
-  if (armor <= 0 && !helmet) return;
-
-  const color = 0x050706;
-  g.moveTo(0, -5.4)
-    .lineTo(5, -3.6)
-    .lineTo(5, 0.6)
-    .bezierCurveTo(5, 3.7, 3.1, 6, 0, 7)
-    .bezierCurveTo(-3.1, 6, -5, 3.7, -5, 0.6)
-    .lineTo(-5, -3.6)
-    .lineTo(0, -5.4)
-    .stroke({ color, width: 1.35, alpha: 0.96 });
-
-  if (helmet) {
-    g.moveTo(-3.3, 1.2)
-      .bezierCurveTo(-3.2, -1.9, 3.2, -1.9, 3.3, 1.2)
-      .lineTo(2.1, 1.2)
-      .bezierCurveTo(2, -0.6, -2, -0.6, -2.1, 1.2)
-      .lineTo(-3.3, 1.2)
-      .stroke({ color, width: 1.2, alpha: 0.96 });
-  }
-}
-
 function drawTimerArc(
   g: Graphics,
   cx: number,
@@ -232,11 +248,29 @@ function drawTimerArc(
   g.addChild(path);
 }
 
+function drawCountdownLabel(layer: Graphics, text: string, x: number, y: number, color = 0xc8c8c8) {
+  const label = new Text({
+    text,
+    style: {
+      fontFamily: "ui-sans-serif, system-ui",
+      fontSize: 24,
+      fontWeight: "700",
+      fill: color,
+    },
+    resolution: 2,
+  });
+  label.anchor.set(0.5);
+  label.scale.set(0.5);
+  label.position.set(x, y);
+  layer.addChild(label);
+}
+
 function drawEffect(
   layer: Container,
   effect: UtilityEffect,
   time: number,
-  toRadar: (x: number, y: number, z?: number) => { x: number; y: number }
+  toRadar: (x: number, y: number, z?: number) => { x: number; y: number },
+  unitsToPx: number
 ) {
   const p = toRadar(effect.x, effect.y, effect.z);
   const age = Math.max(0, time - effect.start);
@@ -249,12 +283,14 @@ function drawEffect(
     const fadeIn = Math.min(1, age / 0.6);
     const fadeOut = life > 0.92 ? 1 - (life - 0.92) / 0.08 : 1;
     const alpha = Math.max(0, fadeIn * fadeOut);
-    const radius = 30;
-    g.circle(p.x, p.y, radius)
-      .fill({ color: 0xe5e7eb, alpha: 0.78 * alpha });
-    g.circle(p.x, p.y, radius)
-      .stroke({ color: 0xf3f4f6, width: 1.5, alpha: 0.9 * alpha });
-    drawTimerArc(g, p.x, p.y, radius + 4, remaining, 0xffffff, 2);
+    // CS2 smoke radius ≈ 144 world units
+    const radius = 144 * unitsToPx;
+    const teamCol = teamColor(effect.team);
+    g.circle(p.x, p.y, radius).fill({ color: 0x9ca3af, alpha: 0.42 * alpha });
+    g.circle(p.x, p.y, radius).stroke({ color: 0x1d1f1f, width: 3.5, alpha: 0.7 * alpha });
+    drawTimerArc(g, p.x, p.y, radius, remaining, teamCol, 2.2);
+    const secsLeft = Math.max(0, Math.ceil(effect.end - time));
+    drawCountdownLabel(g, String(secsLeft), p.x, p.y, 0xb8b8b8);
     layer.addChild(g);
     return;
   }
@@ -280,54 +316,36 @@ function drawEffect(
   }
 
   if (effect.type === "he") {
-    if (life < 0.35) {
-      const burst = life / 0.35;
-      const coreR = 6 + burst * 18;
-      const shockR = 10 + burst * 42;
-      g.circle(p.x, p.y, coreR)
-        .fill({ color: 0xfef3c7, alpha: 1 - burst })
-        .circle(p.x, p.y, coreR * 0.7)
-        .fill({ color: 0xfbbf24, alpha: 0.9 * (1 - burst) })
-        .circle(p.x, p.y, coreR * 0.4)
-        .fill({ color: 0xf97316, alpha: 0.9 * (1 - burst) });
-      g.circle(p.x, p.y, shockR)
-        .stroke({ color: 0xfbbf24, width: 3, alpha: 0.9 * (1 - burst) });
-      for (let i = 0; i < 12; i++) {
-        const ang = (i / 12) * Math.PI * 2 + effect.x;
-        const inner = 8 + burst * 10;
-        const outer = inner + 12 + burst * 20;
-        g.moveTo(p.x + Math.cos(ang) * inner, p.y + Math.sin(ang) * inner)
-          .lineTo(p.x + Math.cos(ang) * outer, p.y + Math.sin(ang) * outer)
-          .stroke({ color: 0xfacc15, width: 2, alpha: (1 - burst) * 0.85 });
-      }
-      g.circle(p.x, p.y, shockR + 4)
-        .stroke({ color: 0xffffff, width: 1.5, alpha: 0.6 * (1 - burst) });
-    } else {
-      const smokeFade = 1 - (life - 0.35) / 0.65;
-      g.circle(p.x, p.y, 14)
-        .fill({ color: 0x4b5563, alpha: 0.35 * smokeFade })
-        .circle(p.x + 4, p.y - 3, 10)
-        .fill({ color: 0x6b7280, alpha: 0.25 * smokeFade });
+    // HE damage radius ≈ 350 world units.
+    const maxR = 200 * unitsToPx;
+    const t01 = Math.min(1, age / 0.9);
+    // White-hot flash in the first 120ms
+    if (age < 0.12) {
+      const flashA = 1 - age / 0.12;
+      const flashR = maxR * 0.35;
+      g.circle(p.x, p.y, flashR).fill({ color: 0xfffbeb, alpha: 0.95 * flashA });
     }
+    // Expanding shockwave
+    const r = maxR * t01;
+    const alpha = 1 - t01;
+    g.circle(p.x, p.y, r * 0.75).fill({ color: 0xf97316, alpha: 0.35 * alpha });
+    g.circle(p.x, p.y, r).stroke({ color: 0xfbbf24, width: 4, alpha });
+    g.circle(p.x, p.y, r + 4).stroke({ color: 0xfffbeb, width: 1.5, alpha: 0.7 * alpha });
+    // Bright core that fades
+    const coreR = 10 * unitsToPx + t01 * 8;
+    g.circle(p.x, p.y, coreR).fill({ color: 0xfde047, alpha: 0.9 * alpha });
     layer.addChild(g);
     return;
   }
 
   if (effect.type === "fire") {
-    const radius = 26;
-    const flicker = 0.9 + Math.sin(time * 14 + effect.x) * 0.1;
-    g.circle(p.x, p.y, radius * flicker).fill({ color: 0xf97316, alpha: 0.28 });
-    for (let i = 0; i < 6; i++) {
-      const ang = (i / 6) * Math.PI * 2 + time * 0.8;
-      const dist = radius * 0.55;
-      const flameR = 10 + Math.sin(time * 10 + i) * 3;
-      const fx = p.x + Math.cos(ang) * dist;
-      const fy = p.y + Math.sin(ang) * dist;
-      g.circle(fx, fy, flameR).fill({ color: 0xfbbf24, alpha: 0.45 });
-      g.circle(fx, fy, flameR * 0.6).fill({ color: 0xef4444, alpha: 0.5 });
-    }
-    g.circle(p.x, p.y, 8 + Math.sin(time * 20) * 2).fill({ color: 0xfacc15, alpha: 0.8 });
-    drawTimerArc(g, p.x, p.y, radius + 5, remaining, 0xfb923c, 2);
+    const radius = 120 * unitsToPx;
+    const alpha = Math.min(1, age / 0.25) * (life > 0.92 ? 1 - (life - 0.92) / 0.08 : 1);
+    g.circle(p.x, p.y, radius).fill({ color: teamDarkColor(effect.team), alpha: 0.32 * alpha });
+    g.circle(p.x, p.y, radius).stroke({ color: 0x1d1f1f, width: 3.5, alpha: 0.65 * alpha });
+    drawTimerArc(g, p.x, p.y, radius, remaining, teamColor(effect.team), 2.2);
+    const secsLeft = Math.max(0, Math.ceil(effect.end - time));
+    drawCountdownLabel(g, String(secsLeft), p.x, p.y, 0xb8b8b8);
     layer.addChild(g);
     return;
   }
@@ -376,6 +394,37 @@ function drawProjectile(
   trail.circle(shadow.x, shadow.y, 4).fill({ color: 0x000000, alpha: 0.25 });
   layer.addChild(trail);
   drawUtilityIcon(layer, projectile.type, p.x, p.y, color);
+}
+
+function drawWeaponFire(
+  layer: Container,
+  fire: WeaponFireEvent,
+  time: number,
+  toRadar: (x: number, y: number, z?: number) => { x: number; y: number }
+) {
+  const age = time - fire.t;
+  if (age < 0 || age > 0.24) return;
+  const alpha = 1 - age / 0.24;
+  const start = toRadar(fire.x, fire.y, fire.z);
+  const angle = (-fire.yaw * Math.PI) / 180;
+  const length = 42;
+  const endX = start.x + Math.cos(angle) * length;
+  const endY = start.y + Math.sin(angle) * length;
+  const sideColor = teamColor(fire.team);
+  const g = new Graphics();
+  const pulse = age / 0.24;
+  g.circle(start.x, start.y, 9 + pulse * 10)
+    .stroke({ color: sideColor, width: 1.6, alpha: 0.45 * alpha });
+  g.moveTo(start.x, start.y)
+    .lineTo(endX, endY)
+    .stroke({ color: 0xf2f2f2, width: 2.4, alpha: 0.72 * alpha });
+  g.moveTo(start.x, start.y)
+    .lineTo(start.x + Math.cos(angle - 0.12) * (length * 0.75), start.y + Math.sin(angle - 0.12) * (length * 0.75))
+    .lineTo(start.x + Math.cos(angle + 0.12) * (length * 0.75), start.y + Math.sin(angle + 0.12) * (length * 0.75))
+    .lineTo(start.x, start.y)
+    .fill({ color: sideColor, alpha: 0.2 * alpha });
+  g.circle(endX, endY, 3.2).fill({ color: 0xfffbeb, alpha: 0.95 * alpha });
+  layer.addChild(g);
 }
 
 export function MapRenderer({ size = 800 }: { size?: number }) {
@@ -448,13 +497,8 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       if (cancel || !bgLayerRef.current) return;
       if (loadedMapRef.current === map) return;
       try {
-        const tex = await Assets.load(`/radars/${map}.png`);
         if (cancel || !bgLayerRef.current) return;
         bgLayerRef.current.removeChildren();
-        const bg = new Sprite(tex);
-        bg.width = size;
-        bg.height = size;
-        bgLayerRef.current.addChild(bg);
         loadedMapRef.current = map;
       } catch (e) {
         console.warn("radar load failed", map, e);
@@ -503,6 +547,7 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       })();
       const projectiles = sampleProjectiles(round.frames, time);
       const throwerTeams = new Map(positions.map((p) => [p.id, p.team]));
+      const playerById = new Map(positions.map((p) => [p.id, p]));
       const scale = size / RADAR_SIZE;
       const seen = new Set<number>();
       for (const child of utilityLayer.removeChildren()) {
@@ -514,11 +559,38 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
         return { x: p.x * scale, y: p.y * scale - heightLift(z) };
       };
 
+      const unitsToPx = scale / calib.scale;
       const activeEffects = (round.effects ?? []).filter(
         (e) => time >= e.start && time <= e.end
       );
       for (const effect of activeEffects) {
-        drawEffect(utilityLayer, effect, time, toRadar);
+        drawEffect(utilityLayer, effect, time, toRadar, unitsToPx);
+      }
+
+      const visibleFires: WeaponFireEvent[] = (round.weaponFires ?? []).filter(
+        (fire) => fire.t <= time && time - fire.t <= 0.24
+      );
+      if (visibleFires.length === 0) {
+        for (const kill of round.events ?? []) {
+          if (kill.type !== "kill" || !kill.killer || kill.t > time || time - kill.t > 0.24) continue;
+          const killer = playerById.get(kill.killer);
+          if (!killer) continue;
+          visibleFires.push({
+            t: kill.t,
+            shooter: kill.killer,
+            weapon: kill.weapon,
+            x: killer.x,
+            y: killer.y,
+            z: killer.z,
+            yaw: killer.yaw,
+            team: killer.team,
+          });
+        }
+      }
+      const recentFireByShooter = new Map<number, WeaponFireEvent>();
+      for (const fire of visibleFires) {
+        drawWeaponFire(utilityLayer, fire, time, toRadar);
+        if (fire.shooter) recentFireByShooter.set(fire.shooter, fire);
       }
 
       if (smoothBomb && smoothBomb.status !== "carried") {
@@ -554,18 +626,23 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
         return null;
       };
 
-      // For each started effect, match it to the projectile whose trajectory
-      // passes closest to the effect origin at time == effect.start. That
-      // projectile's id is then considered detonated → suppressed from now on.
+      // Match each started effect to ONE projectile (1-to-1). We sort
+      // effects by start time and greedily assign the closest unclaimed
+      // projectile of the same type at that instant. This prevents a
+      // second flash/HE in the same spot from being swallowed by the first
+      // detonation's suppression.
       const detonatedIds = new Set<number>();
-      for (const e of round.effects ?? []) {
-        if (time < e.start) continue;
-        // sample projectiles at the instant the effect started
+      const startedEffects = (round.effects ?? [])
+        .filter((e) => time >= e.start)
+        .slice()
+        .sort((a, b) => a.start - b.start);
+      for (const e of startedEffects) {
         const sampled = sampleProjectiles(round.frames, e.start);
         let bestId: number | null = null;
         let bestDist = Infinity;
         for (const sp of sampled) {
           if (projectileTypeToEffect(sp.type) !== e.type) continue;
+          if (detonatedIds.has(sp.id)) continue;
           const dx = sp.x - e.x;
           const dy = sp.y - e.y;
           const d = dx * dx + dy * dy;
@@ -591,88 +668,132 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
         let s = spritesRef.current.get(p.id);
         if (!s) {
           const container = new Container();
-          const arrow = new Graphics();
-          const dot = new Graphics();
-          const hpRing = new Graphics();
           const playerInfo = match.players.find((pl) => pl.steamId === p.id);
+
+          // The held weapon sprite sits above the name badge.
+          const held = new Sprite();
+          held.anchor.set(0.5, 1);
+          held.position.set(0, -22);
+          held.visible = false;
+
+          // Name badge (rounded rect + text) above the dot.
+          const labelBadge = new Container();
+          const badgeBg = new Graphics();
+          labelBadge.addChild(badgeBg);
           const label = new Text({
             text: displayName(playerInfo?.name),
             style: {
               fontFamily: "ui-sans-serif, system-ui",
               fontSize: 44,
-              fontWeight: "700",
-              fill: 0xffffff,
-              dropShadow: {
-                color: 0x000000,
-                alpha: 0.95,
-                blur: 4,
-                distance: 0,
-              },
+              fontWeight: "600",
+              fill: 0x121212,
             },
             resolution: 2,
           });
-          label.anchor.set(0.5, 1);
-          label.scale.set(0.25);
-          label.position.set(0, -13);
-          const held = new Sprite();
-          held.anchor.set(0.5, 0);
-          held.position.set(0, 8);
-          held.visible = false;
-          const armor = new Graphics();
-          armor.position.set(0, 0);
+          label.anchor.set(0.5, 0.5);
+          label.scale.set(0.24);
+          labelBadge.addChild(label);
+          labelBadge.position.set(0, -13);
+
+          // Player arrow wrapped in a rotator.
+          const dot = new Graphics();
+          const hpRing = new Graphics();
+          const arrowRotator = new Container();
+          const arrow = new Graphics();
+          arrowRotator.addChild(arrow);
+          const shotFlash = new Graphics();
           const flashArc = new Graphics();
-          container.addChild(arrow);
-          container.addChild(dot);
-          container.addChild(hpRing);
-          container.addChild(armor);
-          container.addChild(flashArc);
-          container.addChild(label);
+
           container.addChild(held);
+          container.addChild(labelBadge);
+          container.addChild(dot);
+          container.addChild(arrowRotator);
+          arrowRotator.addChild(shotFlash);
+          container.addChild(hpRing);
+          container.addChild(flashArc);
           layer.addChild(container);
-          s = { container, dot, hpRing, arrow, label, held, heldPath: null, armor, flashArc };
+          s = {
+            container,
+            dot,
+            hpRing,
+            arrow,
+            arrowRotator,
+            labelBadge,
+            label,
+            held,
+            heldPath: null,
+            shotFlash,
+            flashArc,
+          };
           spritesRef.current.set(p.id, s);
         }
         const baseColor = p.hasBomb ? 0xef4444 : teamColor(p.team);
+        const alive = p.hp > 0;
         const hpPct = Math.max(0, Math.min(100, p.hp)) / 100;
+        const MARKER_R = 8;
+
+        // CS2Lens-style player marker: just a directional arrow, no round dot.
         s.dot.clear();
+        s.arrow
+          .clear()
+          .moveTo(MARKER_R + 1, 0)
+          .lineTo(-MARKER_R + 1, -5.2)
+          .lineTo(-MARKER_R + 4, 0)
+          .lineTo(-MARKER_R + 1, 5.2)
+          .lineTo(MARKER_R + 1, 0)
+          .fill({ color: baseColor, alpha: alive ? 0.98 : 0.35 })
+          .stroke({ color: 0xffffff, width: 1.7, alpha: alive ? 0.96 : 0.35 });
+
+        s.shotFlash.clear();
+        const shot = recentFireByShooter.get(p.id);
+        if (alive && shot) {
+          const shotAge = Math.max(0, time - shot.t);
+          const shotAlpha = Math.max(0, 1 - shotAge / 0.24);
+          s.shotFlash
+            .moveTo(MARKER_R + 2, 0)
+            .lineTo(MARKER_R + 16, -4.6)
+            .lineTo(MARKER_R + 12, 0)
+            .lineTo(MARKER_R + 16, 4.6)
+            .lineTo(MARKER_R + 2, 0)
+            .fill({ color: 0xfffbeb, alpha: 0.72 * shotAlpha })
+            .stroke({ color: baseColor, width: 1.2, alpha: 0.8 * shotAlpha });
+          s.arrowRotator.scale.set(1 + shotAlpha * 0.18);
+        } else {
+          s.arrowRotator.scale.set(1);
+        }
+
         s.hpRing.clear();
-        if (p.hp > 0) {
-          const barW = 12;
-          const armorPct = Math.max(0, Math.min(100, p.armor)) / 100;
-          s.hpRing
-            .rect(-barW / 2, -10, barW, 1.6)
-            .fill({ color: 0x000000, alpha: 0.55 })
-            .rect(-barW / 2, -10, barW * hpPct, 1.6)
-            .fill({ color: baseColor, alpha: 1 });
-          if (p.armor > 0 || p.helmet) {
-            s.hpRing
-              .rect(-barW / 2, -8, barW, 1.2)
-              .fill({ color: 0x000000, alpha: 0.55 })
-              .rect(-barW / 2, -8, barW * armorPct, 1.2)
-              .fill({ color: p.helmet ? 0x6ee7b7 : 0xd4d4d8, alpha: 1 });
-          }
-        }
-        s.arrow.clear()
-          .moveTo(9, 0)
-          .lineTo(-5, -6)
-          .lineTo(-2.5, 0)
-          .lineTo(-5, 6)
-          .lineTo(9, 0)
-          .fill({ color: baseColor, alpha: p.hp > 0 ? 0.95 : 0.35 })
-          .stroke({ color: 0x050706, width: 1, alpha: 1 });
-        s.armor.clear();
+
+        // Name badge background in team color.
+        const badgeBg = s.labelBadge.getChildAt(0) as Graphics;
+        const labelText = s.labelBadge.getChildAt(1) as Text;
+        const labelWidth = labelText.width;
+        const padX = 4;
+        const padY = 1.5;
+        const bw = labelWidth + padX * 2;
+        const bh = 8;
+        badgeBg.clear();
+        badgeBg.roundRect(-bw / 2, -bh / 2 - padY + 1, bw, bh + padY, 3)
+          .fill({ color: 0x1d1f1f, alpha: alive ? 0.88 : 0.45 });
+        badgeBg.roundRect(-bw / 2, -bh / 2 - padY + 1, bw * hpPct, bh + padY, 3)
+          .fill({ color: baseColor, alpha: alive ? 0.95 : 0.35 });
+        badgeBg.roundRect(-bw / 2, -bh / 2 - padY + 1, bw, bh + padY, 3)
+          .stroke({ color: 0x000000, width: 1, alpha: alive ? 0.55 : 0.3 });
+        labelText.position.set(0, 0);
+        labelText.alpha = alive ? 1 : 0.45;
+
         s.flashArc.clear();
-        if (p.hp > 0 && p.flashLeft && p.flashLeft > 0 && p.flashTotal && p.flashTotal > 0) {
+        if (alive && p.flashLeft && p.flashLeft > 0 && p.flashTotal && p.flashTotal > 0) {
           const fracRemaining = Math.max(0, Math.min(1, p.flashLeft / p.flashTotal));
-          const start = -Math.PI / 2;
-          const end = start + Math.PI * 2 * fracRemaining;
-          s.flashArc
-            .circle(0, 0, 10)
-            .stroke({ color: 0x1f2937, width: 1.5, alpha: 0.5 })
-            .arc(0, 0, 10, start, end)
-            .stroke({ color: 0xfffbeb, width: 2, alpha: 0.95 });
+          const startA = -Math.PI / 2;
+          const endA = startA + Math.PI * 2 * fracRemaining;
+          s.flashArc.moveTo(Math.cos(startA) * (MARKER_R + 4), Math.sin(startA) * (MARKER_R + 4));
+          s.flashArc.arc(0, 0, MARKER_R + 4, startA, endA);
+          s.flashArc.stroke({ color: 0xfffbeb, width: 1.8, alpha: 0.95 });
         }
-        const heldPath = p.hp > 0 ? iconPathFor(p.active) : null;
+
+        const heldPath = alive ? iconPathFor(p.active) : null;
+        const heldBox = heldWeaponBox(p.active);
         if (heldPath !== s.heldPath) {
           s.heldPath = heldPath;
           if (!heldPath) {
@@ -683,16 +804,19 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
               .then((tex) => {
                 if (sprite.destroyed || s!.heldPath !== heldPath) return;
                 sprite.texture = tex;
-                fitSprite(sprite, 11);
+                fitSpriteBox(sprite, heldBox.width, heldBox.height);
                 sprite.visible = true;
               })
               .catch(() => {});
           }
+        } else if (heldPath) {
+          fitSpriteBox(s.held, heldBox.width, heldBox.height);
         }
-        s.held.tint = baseColor;
+        s.held.tint = 0xffffff;
+        s.held.alpha = alive ? 0.46 : 0.16;
         s.container.position.set(px, py);
-        s.arrow.rotation = (-p.yaw * Math.PI) / 180;
-        s.container.alpha = p.hp > 0 ? 1 : 0.35;
+        s.arrowRotator.rotation = (-p.yaw * Math.PI) / 180;
+        s.container.alpha = alive ? 1 : 0.4;
       }
 
       for (const [id, s] of spritesRef.current) {
@@ -711,16 +835,17 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
     <div
       ref={hostRef}
       style={{ width: size, height: size }}
-      className="relative overflow-hidden rounded-xl bg-[#050706] ring-1 ring-white/[0.08]"
+      className="relative overflow-hidden bg-[#1d1f1f]"
     >
       {map && (
         // The radar is kept in the DOM instead of only in Pixi: it is more
         // reliable across browsers/headless renderers while Pixi handles motion.
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={`/radars/${map}.png`}
+          src={`/cs2lens-maps/${map}.png`}
           alt=""
           className="absolute inset-0 z-0 size-full select-none object-cover opacity-95"
+          style={{ mixBlendMode: "lighten" }}
           draggable={false}
         />
       )}

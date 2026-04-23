@@ -8,6 +8,7 @@ type ReplayState = {
   playing: boolean;
   speed: number; // 0.25, 0.5, 1, 2, 4
   setMatch: (m: MatchData) => void;
+  setRoundData: (roundNumber: number, round: Round) => void;
   setRound: (idx: number) => void;
   setTime: (t: number) => void;
   setPlaying: (p: boolean) => void;
@@ -24,6 +25,16 @@ export const useReplay = create<ReplayState>((set, get) => ({
   playing: false,
   speed: 1,
   setMatch: (m) => set({ match: m, currentRoundIdx: 0, time: 0, playing: false }),
+  setRoundData: (roundNumber, round) =>
+    set((s) => {
+      if (!s.match) return s;
+      return {
+        match: {
+          ...s.match,
+          rounds: s.match.rounds.map((r) => (r.number === roundNumber ? round : r)),
+        },
+      };
+    }),
   setRound: (idx) => set({ currentRoundIdx: idx, time: 0, playing: false }),
   setTime: (t) => set({ time: t }),
   setPlaying: (p) => set({ playing: p }),

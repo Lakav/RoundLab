@@ -41,21 +41,21 @@ type Frame struct {
 }
 
 type PlayerPos struct {
-	ID          uint64   `json:"id"`
-	X           float32  `json:"x"`
-	Y           float32  `json:"y"`
-	Z           float32  `json:"z"`
-	Yaw         float32  `json:"yaw"`
-	HP          int      `json:"hp"`
-	Armor       int      `json:"armor"`
-	Helmet      bool     `json:"helmet,omitempty"`
-	Kit         bool     `json:"kit,omitempty"`
-	HasBomb     bool     `json:"hasBomb,omitempty"`
-	Team        uint8    `json:"team"`                  // 2=T, 3=CT
-	Active      string   `json:"active,omitempty"`      // active weapon name
-	Weapons     []string `json:"weapons,omitempty"`
-	FlashLeft   float32  `json:"flashLeft,omitempty"`   // seconds remaining of full flash
-	FlashTotal  float32  `json:"flashTotal,omitempty"`  // seconds total flash duration
+	ID         uint64   `json:"id"`
+	X          float32  `json:"x"`
+	Y          float32  `json:"y"`
+	Z          float32  `json:"z"`
+	Yaw        float32  `json:"yaw"`
+	HP         int      `json:"hp"`
+	Armor      int      `json:"armor"`
+	Helmet     bool     `json:"helmet,omitempty"`
+	Kit        bool     `json:"kit,omitempty"`
+	HasBomb    bool     `json:"hasBomb,omitempty"`
+	Team       uint8    `json:"team"`             // 2=T, 3=CT
+	Active     string   `json:"active,omitempty"` // active weapon name
+	Weapons    []string `json:"weapons,omitempty"`
+	FlashLeft  float32  `json:"flashLeft,omitempty"`  // seconds remaining of full flash
+	FlashTotal float32  `json:"flashTotal,omitempty"` // seconds total flash duration
 }
 
 type BombState struct {
@@ -83,6 +83,18 @@ type UtilityEffect struct {
 	X     float32 `json:"x"`
 	Y     float32 `json:"y"`
 	Z     float32 `json:"z"`
+	Team  uint8   `json:"team,omitempty"` // 2=T, 3=CT
+}
+
+type WeaponFireEvent struct {
+	T       float64 `json:"t"`
+	Shooter uint64  `json:"shooter,omitempty"`
+	Weapon  string  `json:"weapon,omitempty"`
+	X       float32 `json:"x"`
+	Y       float32 `json:"y"`
+	Z       float32 `json:"z"`
+	Yaw     float32 `json:"yaw"`
+	Team    uint8   `json:"team,omitempty"` // 2=T, 3=CT
 }
 
 type Event struct {
@@ -97,20 +109,21 @@ type Event struct {
 }
 
 type Round struct {
-	Number        int             `json:"number"`
-	StartTick     int             `json:"startTick"`     // live round start, after freezetime
-	FreezeEndTick int             `json:"freezeEndTick"` // same as StartTick once known
-	EndTick       int             `json:"endTick"`
-	Duration      float64         `json:"duration"`
-	Winner        string          `json:"winner"`
-	WinnerName    string          `json:"winnerName,omitempty"`
-	ScoreA        int             `json:"scoreA"`
-	ScoreB        int             `json:"scoreB"`
-	Frames        []Frame         `json:"frames"`
-	Events        []Event         `json:"events"`
-	Effects       []UtilityEffect `json:"effects,omitempty"`
-	LiveStarted   bool            `json:"-"`
-	TeamScores    map[string]int  `json:"-"`
+	Number        int               `json:"number"`
+	StartTick     int               `json:"startTick"`     // live round start, after freezetime
+	FreezeEndTick int               `json:"freezeEndTick"` // same as StartTick once known
+	EndTick       int               `json:"endTick"`
+	Duration      float64           `json:"duration"`
+	Winner        string            `json:"winner"`
+	WinnerName    string            `json:"winnerName,omitempty"`
+	ScoreA        int               `json:"scoreA"`
+	ScoreB        int               `json:"scoreB"`
+	Frames        []Frame           `json:"frames"`
+	Events        []Event           `json:"events"`
+	Effects       []UtilityEffect   `json:"effects,omitempty"`
+	WeaponFires   []WeaponFireEvent `json:"weaponFires,omitempty"`
+	LiveStarted   bool              `json:"-"`
+	TeamScores    map[string]int    `json:"-"`
 }
 
 type Output struct {
@@ -302,6 +315,27 @@ func main() {
 		currentRound.Events = append(currentRound.Events, ev)
 	})
 
+	p.RegisterEventHandler(func(e events.WeaponFire) {
+		t, ok := roundTime()
+		if !ok || currentRound == nil || e.Shooter == nil {
+			return
+		}
+		pos := e.Shooter.Position()
+		ev := WeaponFireEvent{
+			T:       t,
+			Shooter: e.Shooter.SteamID64,
+			X:       float32(pos.X),
+			Y:       float32(pos.Y),
+			Z:       float32(pos.Z),
+			Yaw:     float32(e.Shooter.ViewDirectionX()),
+			Team:    uint8(e.Shooter.Team),
+		}
+		if e.Weapon != nil {
+			ev.Weapon = e.Weapon.String()
+		}
+		currentRound.WeaponFires = append(currentRound.WeaponFires, ev)
+	})
+
 	p.RegisterEventHandler(func(e events.BombPlanted) {
 		t, ok := roundTime()
 		if !ok {
@@ -338,6 +372,13 @@ func main() {
 		currentRound.Events = append(currentRound.Events, Event{T: t, Type: "bomb_exploded"})
 	})
 
+	teamOf := func(pl *common.Player) uint8 {
+		if pl == nil {
+			return 0
+		}
+		return uint8(pl.Team)
+	}
+
 	p.RegisterEventHandler(func(e events.SmokeStart) {
 		t, ok := roundTime()
 		if !ok {
@@ -353,6 +394,7 @@ func main() {
 			X:     float32(e.Position.X),
 			Y:     float32(e.Position.Y),
 			Z:     float32(e.Position.Z),
+			Team:  teamOf(e.Thrower),
 		})
 	})
 	p.RegisterEventHandler(func(e events.SmokeExpired) {
@@ -377,6 +419,7 @@ func main() {
 			X:     float32(e.Position.X),
 			Y:     float32(e.Position.Y),
 			Z:     float32(e.Position.Z),
+			Team:  teamOf(e.Thrower),
 		})
 	})
 	p.RegisterEventHandler(func(e events.HeExplode) {
@@ -388,10 +431,11 @@ func main() {
 			ID:    int64(e.GrenadeEntityID),
 			Type:  "he",
 			Start: t,
-			End:   t + 0.7,
+			End:   t + 0.9,
 			X:     float32(e.Position.X),
 			Y:     float32(e.Position.Y),
 			Z:     float32(e.Position.Z),
+			Team:  teamOf(e.Thrower),
 		})
 	})
 	p.RegisterEventHandler(func(e events.DecoyStart) {
@@ -409,6 +453,7 @@ func main() {
 			X:     float32(e.Position.X),
 			Y:     float32(e.Position.Y),
 			Z:     float32(e.Position.Z),
+			Team:  teamOf(e.Thrower),
 		})
 	})
 	p.RegisterEventHandler(func(e events.DecoyExpired) {
@@ -446,6 +491,7 @@ func main() {
 			X:     float32(x / n),
 			Y:     float32(y / n),
 			Z:     float32(z / n),
+			Team:  teamOf(e.Inferno.Thrower()),
 		})
 	})
 	p.RegisterEventHandler(func(e events.GrenadeProjectileDestroy) {

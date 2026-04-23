@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFile } from "fs/promises";
-import path from "path";
-import { isValidMatchId } from "@/server/match-data";
+import { isValidMatchId, readMatchData, toMatchMetadata } from "@/server/match-data";
 
 export const runtime = "nodejs";
 
@@ -13,13 +11,11 @@ export async function GET(
   if (!isValidMatchId(id)) {
     return NextResponse.json({ error: "bad id" }, { status: 400 });
   }
-  const file = path.join(process.cwd(), "data", "parsed", `${id}.json.gz`);
+
   try {
-    const buf = await readFile(file);
-    return new NextResponse(new Uint8Array(buf), {
+    const data = await readMatchData(id);
+    return NextResponse.json(toMatchMetadata(data), {
       headers: {
-        "Content-Type": "application/json",
-        "Content-Encoding": "gzip",
         "Cache-Control": "public, max-age=31536000, immutable",
       },
     });

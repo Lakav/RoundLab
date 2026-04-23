@@ -25,6 +25,7 @@ export type PlayerPos = {
   yaw: number;
   hp: number;
   armor: number;
+  money?: number;
   helmet?: boolean;
   kit?: boolean;
   hasBomb?: boolean;
@@ -75,6 +76,17 @@ export type MatchEvent = {
   winner?: string;
 };
 
+export type WeaponFireEvent = {
+  t: number;
+  shooter?: number;
+  weapon?: string;
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  team?: number;
+};
+
 export type Round = {
   number: number;
   startTick: number;
@@ -88,6 +100,7 @@ export type Round = {
   frames: Frame[];
   events: MatchEvent[];
   effects?: UtilityEffect[];
+  weaponFires?: WeaponFireEvent[];
 };
 
 export type UtilityEffect = {
@@ -98,6 +111,7 @@ export type UtilityEffect = {
   x: number;
   y: number;
   z: number;
+  team?: number; // 2=T, 3=CT
 };
 
 export type MatchData = {

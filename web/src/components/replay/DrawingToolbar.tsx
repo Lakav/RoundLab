@@ -1,13 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import {
-  MousePointer2,
-  Pencil,
-  Eraser,
-  Trash2,
-  Undo2,
-} from "lucide-react";
+import { Eraser, MousePointer2, Pencil, Trash2, Undo2 } from "lucide-react";
 import type { DrawTool, Stroke } from "./DrawingLayer";
 import { cn } from "@/lib/utils";
 
@@ -37,36 +31,34 @@ export function DrawingToolbar({
   setStrokes,
 }: Props) {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-2xl border border-white/[0.08] bg-[#0b0f0d]/95 p-2 shadow-2xl shadow-black/35 backdrop-blur">
-      <div className="flex flex-col gap-0.5">
+    <div className="flex shrink-0 items-center gap-1 text-neutral-500">
+      <div className="flex items-center gap-0.5">
         {TOOLS.map(({ value, icon: Icon, title }) => (
           <button
             key={value}
             onClick={() => setTool(value)}
             title={title}
             className={cn(
-              "size-9 rounded-xl flex items-center justify-center transition-colors",
+              "flex size-7 items-center justify-center rounded-[2px] transition-colors",
               tool === value
-                ? "bg-emerald-300 text-[#06100b]"
-                : "text-neutral-500 hover:bg-white/[0.06] hover:text-white"
+                ? "text-[#d45aff]"
+                : "text-neutral-500 hover:bg-white/[0.05] hover:text-neutral-200"
             )}
           >
-            <Icon className="size-4" />
+            <Icon className="size-3.5" />
           </button>
         ))}
       </div>
 
-      <div className="h-px w-8 bg-white/[0.08]" />
-
-      <div className="grid grid-cols-2 gap-1">
+      <div className="mx-1 flex items-center gap-1">
         {COLORS.map((c) => (
           <button
             key={c}
             onClick={() => setColor(c)}
             style={{ background: c }}
             className={cn(
-              "size-4 rounded-full ring-2 transition-all",
-              color === c ? "ring-white scale-110" : "ring-transparent hover:ring-white/30"
+              "size-3.5 rounded-full ring-1 transition-all",
+              color === c ? "ring-white" : "ring-transparent hover:ring-white/30"
             )}
           />
         ))}
@@ -78,9 +70,9 @@ export function DrawingToolbar({
         onClick={() => setStrokes(strokes.slice(0, -1))}
         disabled={strokes.length === 0}
         title="Undo (Cmd+Z)"
-        className="size-9 text-neutral-500 hover:text-white hover:bg-white/[0.06] disabled:opacity-30"
+        className="size-7 rounded-[2px] text-neutral-500 hover:bg-white/[0.05] hover:text-neutral-200 disabled:opacity-30"
       >
-        <Undo2 className="size-4" />
+        <Undo2 className="size-3.5" />
       </Button>
       <Button
         size="icon"
@@ -88,9 +80,9 @@ export function DrawingToolbar({
         onClick={() => setStrokes([])}
         disabled={strokes.length === 0}
         title="Clear all"
-        className="size-9 text-neutral-500 hover:text-red-400 hover:bg-white/[0.06] disabled:opacity-30"
+        className="size-7 rounded-[2px] text-neutral-500 hover:bg-white/[0.05] hover:text-red-400 disabled:opacity-30"
       >
-        <Trash2 className="size-4" />
+        <Trash2 className="size-3.5" />
       </Button>
     </div>
   );

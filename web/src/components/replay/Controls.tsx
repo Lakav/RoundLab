@@ -1,6 +1,6 @@
 "use client";
 
-import { Play, Pause, Rewind, FastForward } from "lucide-react";
+import { Pause, Play, SkipBack, SkipForward } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useReplay } from "@/lib/replay-store";
 import { cn } from "@/lib/utils";
@@ -24,46 +24,44 @@ export function Controls() {
   };
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex shrink-0 items-center gap-1 text-neutral-500">
       <Button
         variant="ghost"
         size="icon"
         onClick={() => skip(-5)}
         title="-5s (J)"
-        className="size-6 text-neutral-500 hover:bg-white/[0.06] hover:text-white"
+        className="size-6 rounded-[2px] text-neutral-500 hover:bg-white/[0.05] hover:text-neutral-200"
       >
-        <Rewind className="size-3.5" />
+        <SkipBack className="size-3.5" />
       </Button>
       <Button
         size="icon"
         onClick={togglePlay}
         title="Play/Pause (Space)"
-        className="size-7 rounded-full bg-emerald-300 text-[#06100b] shadow shadow-emerald-500/15 hover:bg-emerald-200"
+        className="size-7 rounded-[2px] bg-transparent text-[#6fea76] shadow-none hover:bg-white/[0.05] hover:text-[#8dff91]"
       >
-        {playing ? <Pause className="size-3.5 fill-current" /> : <Play className="size-3.5 fill-current" />}
+        {playing ? <Pause className="size-4 fill-current" /> : <Play className="size-4 fill-current" />}
       </Button>
       <Button
         variant="ghost"
         size="icon"
         onClick={() => skip(5)}
         title="+5s (L)"
-        className="size-6 text-neutral-500 hover:bg-white/[0.06] hover:text-white"
+        className="size-6 rounded-[2px] text-neutral-500 hover:bg-white/[0.05] hover:text-neutral-200"
       >
-        <FastForward className="size-3.5" />
+        <SkipForward className="size-3.5" />
       </Button>
 
-      <div className="mx-1.5 h-4 w-px bg-white/10" />
-
-      <div className="flex items-center gap-0.5 rounded border border-white/[0.06] bg-black/20 p-0.5">
+      <div className="ml-2 flex items-center gap-0.5">
         {SPEEDS.map((s) => (
           <button
             key={s}
             onClick={() => setSpeed(s)}
             className={cn(
-              "h-5 rounded px-1.5 text-[10px] font-semibold tabular-nums transition-colors",
+              "h-5 min-w-7 rounded-[2px] px-1 text-[10px] tabular-nums transition-colors",
               speed === s
                 ? "bg-white text-neutral-950"
-                : "text-neutral-500 hover:bg-white/[0.05] hover:text-white"
+                : "text-neutral-500 hover:bg-white/[0.05] hover:text-neutral-200"
             )}
           >
             {s}×
