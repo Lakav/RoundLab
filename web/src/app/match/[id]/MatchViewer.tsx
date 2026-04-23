@@ -22,10 +22,16 @@ const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
 
 function hideKnifeRound(data: MatchData): MatchData {
-  // Remove round 0 (knife round) if present.
-  if (data.rounds.length === 0 || data.rounds[0].number !== 0) return data;
-  const filtered = { ...data, rounds: data.rounds.slice(1) };
-  return filtered;
+  // Heuristic: round 0 is a knife round only if the score is still 0-0 at
+  // its end AND round 1 ends with a total score of 1 (a real first round
+  // just played). Otherwise the first round is the actual round 1.
+  if (data.rounds.length < 2) return data;
+  const r0 = data.rounds[0];
+  const r1 = data.rounds[1];
+  const r0Total = (r0.scoreA ?? 0) + (r0.scoreB ?? 0);
+  const r1Total = (r1.scoreA ?? 0) + (r1.scoreB ?? 0);
+  if (r0Total !== 0 || r1Total !== 1) return data;
+  return { ...data, rounds: data.rounds.slice(1) };
 }
 
 export default function MatchViewer({ id }: { id: string }) {

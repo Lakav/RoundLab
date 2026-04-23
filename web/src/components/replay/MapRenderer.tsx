@@ -221,8 +221,15 @@ function drawTimerArc(
 ) {
   if (lifeRemaining <= 0) return;
   const start = -Math.PI / 2;
-  const end = start + Math.PI * 2 * lifeRemaining;
-  g.arc(cx, cy, radius, start, end).stroke({ color, width, alpha: 0.9 });
+  const end = start + Math.PI * 2 * Math.min(1, lifeRemaining);
+  // bg ring so we can read remaining at a glance
+  g.circle(cx, cy, radius).stroke({ color: 0x000000, width, alpha: 0.35 });
+  // active arc as its own path so it doesn't connect to previous graphics
+  const path = new Graphics();
+  path.moveTo(cx + Math.cos(start) * radius, cy + Math.sin(start) * radius);
+  path.arc(cx, cy, radius, start, end);
+  path.stroke({ color, width, alpha: 0.95 });
+  g.addChild(path);
 }
 
 function drawEffect(
@@ -537,7 +544,43 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
           .catch(() => {});
       }
 
+      const projectileTypeToEffect = (type: string): string | null => {
+        const t = type.toLowerCase();
+        if (t.includes("smoke")) return "smoke";
+        if (t.includes("molotov") || t.includes("incendiary") || t.includes("inferno")) return "fire";
+        if (t.includes("decoy")) return "decoy";
+        if (t.includes("flash")) return "flash";
+        if (t.includes("hegrenade") || t.includes("he_") || t === "he") return "he";
+        return null;
+      };
+      // Track first detonation time per effect type — once any effect of
+      // that type has started, we consider the corresponding projectile gone
+      // if it lingers close to an effect origin.
       for (const projectile of projectiles) {
+        const effectType = projectileTypeToEffect(projectile.type);
+        if (effectType) {
+          const pr = toRadar(projectile.x, projectile.y, projectile.z);
+          let suppressed = false;
+          for (const e of round.effects ?? []) {
+            if (e.type !== effectType) continue;
+            if (time < e.start) continue;
+            const ep = toRadar(e.x, e.y, e.z);
+            const dx = ep.x - pr.x;
+            const dy = ep.y - pr.y;
+            // Wider radius; HE effect can report position slightly offset
+            if (dx * dx + dy * dy < 150 * 150) {
+              suppressed = true;
+              break;
+            }
+            // HE explodes in the air: if this effect started more than 0.3s
+            // ago and we only have one HE projectile, treat it as gone.
+            if (effectType === "he" && time - e.start > 0.25) {
+              suppressed = true;
+              break;
+            }
+          }
+          if (suppressed) continue;
+        }
         drawProjectile(utilityLayer, projectile, round.frames, time, throwerTeams, toRadar);
       }
 
