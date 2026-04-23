@@ -141,13 +141,23 @@ function PlayerRow({
   const inv = inventory(pos);
   const cols = sideColors(side);
 
+  const hpPct = Math.max(0, Math.min(100, hp));
+
   return (
     <div className="pointer-events-auto flex flex-col gap-0.5">
       <div
-        className="flex h-[24px] w-full items-center overflow-hidden rounded-[2px] bg-[#232424]/90 px-2"
+        className="relative flex h-[24px] w-full items-center overflow-hidden rounded-[2px] bg-[#232424]/90 px-2"
       >
+        {/* HP fill in team color */}
+        <div
+          className="pointer-events-none absolute inset-y-0 left-0 transition-[width] duration-150 ease-out"
+          style={{
+            width: `${hpPct}%`,
+            background: alive ? cols.bg : "transparent",
+          }}
+        />
         <span
-          className="flex-1 truncate text-[12px] font-semibold"
+          className="relative flex-1 truncate text-[12px] font-semibold"
           style={{
             color: alive ? "#fff" : THEME.textDead,
             textDecoration: !alive ? "line-through" : undefined,
@@ -157,8 +167,8 @@ function PlayerRow({
           {displayName(name)}
         </span>
         <span
-          className="shrink-0 px-1 font-mono text-[11px] font-semibold tabular-nums"
-          style={{ color: alive ? "#7b7d7d" : THEME.textDead }}
+          className="relative shrink-0 px-1 font-mono text-[11px] font-semibold tabular-nums"
+          style={{ color: alive ? "#fff" : THEME.textDead }}
         >
           ${money}
         </span>
