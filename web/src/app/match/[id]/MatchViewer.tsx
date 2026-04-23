@@ -167,19 +167,15 @@ export default function MatchViewer({ id }: { id: string }) {
           {match.meta.map.replace("de_", "")}
         </span>
         <span className="h-4 w-px bg-white/10" />
-        <span className="truncate text-sky-300">{match.meta.teamA || "CT"}</span>
+        <span className="truncate text-sky-300">{match.meta.teamA || "Team A"}</span>
         <span className="rounded border border-white/10 bg-white/[0.04] px-1.5 font-mono text-neutral-200">
           {match.meta.scoreA}:{match.meta.scoreB}
         </span>
+        <span className="truncate text-amber-300">{match.meta.teamB || "Team B"}</span>
         <div className="ml-auto flex items-center gap-2 text-neutral-500">
           <span className="font-mono text-sm text-neutral-200">{score.a}:{score.b}</span>
           <span className="text-neutral-700">·</span>
           <span>R{currentRoundIdx + 1}/{match.rounds.length}</span>
-          {round && (
-            <span className={round.winner === "CT" ? "text-sky-300" : "text-amber-300"}>
-              {round.winner}
-            </span>
-          )}
         </div>
       </header>
 
