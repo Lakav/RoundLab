@@ -240,12 +240,12 @@ function drawEffect(
 
   if (effect.type === "smoke") {
     const fadeIn = Math.min(1, age / 0.6);
-    const fadeOut = life > 0.9 ? 1 - (life - 0.9) / 0.1 : 1;
-    const alpha = fadeIn * fadeOut;
+    const fadeOut = life > 0.92 ? 1 - (life - 0.92) / 0.08 : 1;
+    const alpha = Math.max(0, fadeIn * fadeOut);
     const radius = 30;
     g.circle(p.x, p.y, radius)
-      .fill({ color: 0xe5e7eb, alpha: 0.78 * alpha })
-      .circle(p.x, p.y, radius)
+      .fill({ color: 0xe5e7eb, alpha: 0.78 * alpha });
+    g.circle(p.x, p.y, radius)
       .stroke({ color: 0xf3f4f6, width: 1.5, alpha: 0.9 * alpha });
     drawTimerArc(g, p.x, p.y, radius + 4, remaining, 0xffffff, 2);
     layer.addChild(g);
@@ -309,21 +309,17 @@ function drawEffect(
   if (effect.type === "fire") {
     const radius = 26;
     const flicker = 0.9 + Math.sin(time * 14 + effect.x) * 0.1;
-    g.circle(p.x, p.y, radius * flicker)
-      .fill({ color: 0xf97316, alpha: 0.28 });
+    g.circle(p.x, p.y, radius * flicker).fill({ color: 0xf97316, alpha: 0.28 });
     for (let i = 0; i < 6; i++) {
       const ang = (i / 6) * Math.PI * 2 + time * 0.8;
       const dist = radius * 0.55;
       const flameR = 10 + Math.sin(time * 10 + i) * 3;
       const fx = p.x + Math.cos(ang) * dist;
       const fy = p.y + Math.sin(ang) * dist;
-      g.circle(fx, fy, flameR)
-        .fill({ color: 0xfbbf24, alpha: 0.45 })
-        .circle(fx, fy, flameR * 0.6)
-        .fill({ color: 0xef4444, alpha: 0.5 });
+      g.circle(fx, fy, flameR).fill({ color: 0xfbbf24, alpha: 0.45 });
+      g.circle(fx, fy, flameR * 0.6).fill({ color: 0xef4444, alpha: 0.5 });
     }
-    g.circle(p.x, p.y, 8 + Math.sin(time * 20) * 2)
-      .fill({ color: 0xfacc15, alpha: 0.8 });
+    g.circle(p.x, p.y, 8 + Math.sin(time * 20) * 2).fill({ color: 0xfacc15, alpha: 0.8 });
     drawTimerArc(g, p.x, p.y, radius + 5, remaining, 0xfb923c, 2);
     layer.addChild(g);
     return;
@@ -345,23 +341,27 @@ function drawProjectile(
   toRadar: (x: number, y: number, z?: number) => { x: number; y: number }
 ) {
   const color = teamColor(projectile.thrower ? throwerTeams.get(projectile.thrower) : undefined);
-  const points: { x: number; y: number }[] = [];
-  for (let i = frames.length - 1; i >= 0 && points.length < 18; i--) {
-    const frame = frames[i];
+  const raw: { x: number; y: number }[] = [];
+  for (const frame of frames) {
     if (frame.t > time || frame.t < time - 2.2) continue;
-    const p = frame.projectiles?.find((candidate) => candidate.id === projectile.id);
-    if (!p) continue;
-    points.push(toRadar(p.x, p.y, p.z));
+    const fp = frame.projectiles?.find((c) => c.id === projectile.id);
+    if (!fp) continue;
+    raw.push(toRadar(fp.x, fp.y, fp.z));
   }
-  points.reverse();
+  raw.push(toRadar(projectile.x, projectile.y, projectile.z));
 
   const trail = new Graphics();
-  if (points.length > 1) {
-    trail.moveTo(points[0].x, points[0].y);
-    for (const point of points.slice(1)) {
-      trail.lineTo(point.x, point.y);
+  if (raw.length > 1) {
+    trail.moveTo(raw[0].x, raw[0].y);
+    for (let i = 1; i < raw.length - 1; i++) {
+      const cx = raw[i].x;
+      const cy = raw[i].y;
+      const nx = (raw[i].x + raw[i + 1].x) / 2;
+      const ny = (raw[i].y + raw[i + 1].y) / 2;
+      trail.quadraticCurveTo(cx, cy, nx, ny);
     }
-    trail.stroke({ color, width: 2, alpha: 0.45 });
+    trail.lineTo(raw[raw.length - 1].x, raw[raw.length - 1].y);
+    trail.stroke({ color, width: 2, alpha: 0.55 });
   }
 
   const p = toRadar(projectile.x, projectile.y, projectile.z);
@@ -480,6 +480,20 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
 
       const positions = sampleFrame(round.frames, time);
       const frame = nearestFrame(round.frames, time);
+      const bombPair = framePair(round.frames, time);
+      const smoothBomb = (() => {
+        if (!bombPair) return frame?.bomb;
+        const ba = bombPair.a.bomb;
+        const bb = bombPair.b.bomb;
+        if (!bb) return ba;
+        if (!ba || ba.status !== bb.status || ba.carrier !== bb.carrier) return bb;
+        return {
+          ...bb,
+          x: ba.x + (bb.x - ba.x) * bombPair.alpha,
+          y: ba.y + (bb.y - ba.y) * bombPair.alpha,
+          z: ba.z + (bb.z - ba.z) * bombPair.alpha,
+        };
+      })();
       const projectiles = sampleProjectiles(round.frames, time);
       const throwerTeams = new Map(positions.map((p) => [p.id, p.team]));
       const scale = size / RADAR_SIZE;
@@ -493,14 +507,16 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
         return { x: p.x * scale, y: p.y * scale - heightLift(z) };
       };
 
-      for (const effect of round.effects ?? []) {
-        if (time < effect.start || time > effect.end) continue;
+      const activeEffects = (round.effects ?? []).filter(
+        (e) => time >= e.start && time <= e.end
+      );
+      for (const effect of activeEffects) {
         drawEffect(utilityLayer, effect, time, toRadar);
       }
 
-      if (frame?.bomb && frame.bomb.status !== "carried") {
-        const p = toRadar(frame.bomb.x, frame.bomb.y, frame.bomb.z);
-        if (frame.bomb.status === "planted") {
+      if (smoothBomb && smoothBomb.status !== "carried") {
+        const p = toRadar(smoothBomb.x, smoothBomb.y, smoothBomb.z);
+        if (smoothBomb.status === "planted") {
           const pulse = 0.65 + Math.sin(time * 7) * 0.25;
           const ring = new Graphics()
             .circle(p.x, p.y, 15 + pulse * 4)
@@ -510,7 +526,7 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
         const bombSprite = new Sprite();
         bombSprite.anchor.set(0.5);
         bombSprite.position.set(p.x, p.y);
-        bombSprite.tint = frame.bomb.status === "planted" ? 0xef4444 : 0xfbbf24;
+        bombSprite.tint = smoothBomb.status === "planted" ? 0xef4444 : 0xfbbf24;
         utilityLayer.addChild(bombSprite);
         loadIconTexture("/icons/c4.svg")
           .then((tex) => {
@@ -542,13 +558,20 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
             text: displayName(playerInfo?.name),
             style: {
               fontFamily: "ui-sans-serif, system-ui",
-              fontSize: 11,
-              fontWeight: "600",
+              fontSize: 44,
+              fontWeight: "700",
               fill: 0xffffff,
-              stroke: { color: 0x000000, width: 3 },
+              dropShadow: {
+                color: 0x000000,
+                alpha: 0.95,
+                blur: 4,
+                distance: 0,
+              },
             },
+            resolution: 2,
           });
           label.anchor.set(0.5, 1);
+          label.scale.set(0.25);
           label.position.set(0, -13);
           const held = new Sprite();
           held.anchor.set(0.5, 0);

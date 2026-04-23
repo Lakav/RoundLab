@@ -180,6 +180,7 @@ func main() {
 	smokeEffects := map[int]int{}
 	decoyEffects := map[int]int{}
 	infernoEffects := map[int64]int{}
+	detonatedProjectiles := map[int64]bool{}
 
 	beginLiveRound := func(tick int) {
 		if currentRound == nil || currentRound.LiveStarted {
@@ -233,6 +234,7 @@ func main() {
 		smokeEffects = map[int]int{}
 		decoyEffects = map[int]int{}
 		infernoEffects = map[int64]int{}
+		detonatedProjectiles = map[int64]bool{}
 		currentRound = &Round{
 			Number:        roundNumber,
 			StartTick:     roundStartTick,
@@ -446,6 +448,11 @@ func main() {
 			Z:     float32(z / n),
 		})
 	})
+	p.RegisterEventHandler(func(e events.GrenadeProjectileDestroy) {
+		if e.Projectile != nil {
+			detonatedProjectiles[e.Projectile.UniqueID()] = true
+		}
+	})
 	p.RegisterEventHandler(func(e events.InfernoExpired) {
 		t, ok := roundTime()
 		if !ok || e.Inferno == nil {
@@ -501,6 +508,9 @@ func main() {
 		}
 		for _, proj := range p.GameState().GrenadeProjectiles() {
 			if proj == nil || proj.WeaponInstance == nil {
+				continue
+			}
+			if detonatedProjectiles[proj.UniqueID()] {
 				continue
 			}
 			pos := proj.Position()
