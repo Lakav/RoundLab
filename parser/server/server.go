@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"os/exec"
@@ -15,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -144,126 +146,140 @@ func writeJSONError(w http.ResponseWriter, status int, msg string) {
 // zstdMagic is the first 4 bytes of any Zstandard frame.
 var zstdMagic = []byte{0x28, 0xB5, 0x2F, 0xFD}
 
+// Max upload body size (4 GB). Railway doesn't document a hard cap, but very
+// large bodies can be cut by edge proxies — we observe and log Content-Length
+// to distinguish truncated uploads from disk issues.
+const maxUploadBytes = 4 << 30
+
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	// 4 GB max. Browsers will stream multipart.
-	r.Body = http.MaxBytesReader(w, r.Body, 4<<30)
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "parse form failed: "+err.Error())
+
+	log.Printf("upload: remote=%s content-length=%d content-type=%q",
+		r.RemoteAddr, r.ContentLength, r.Header.Get("Content-Type"))
+
+	// Cap the request body so a runaway client can't fill the volume.
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
+
+	// Stream the multipart body directly — don't buffer the whole file.
+	mr, err := r.MultipartReader()
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "not a multipart body: "+err.Error())
 		return
 	}
 
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "no file")
+	var part *multipart.Part
+	var filename string
+	for {
+		p, err := mr.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "multipart read failed: "+err.Error())
+			return
+		}
+		if p.FormName() == "file" {
+			part = p
+			filename = p.FileName()
+			break
+		}
+		_ = p.Close()
+	}
+	if part == nil {
+		writeJSONError(w, http.StatusBadRequest, "no file field in form")
 		return
 	}
-	defer file.Close()
+	defer part.Close()
 
 	id := uuid.New().String()
-	// First write whatever was uploaded to a temp path. We then inspect magic
-	// bytes / filename to decide whether a decompression step is needed.
-	tmpPath := filepath.Join(demoDir, id+".upload")
 	demoPath := filepath.Join(demoDir, id+".dem")
 
-	out, err := os.Create(tmpPath)
+	// Peek the first 4 bytes to decide zstd vs. raw. We stream the rest.
+	peek, err := readAtMost(part, 4)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "could not create file")
+		writeJSONError(w, http.StatusBadRequest, "read peek failed: "+err.Error())
 		return
 	}
-	written, err := io.Copy(out, file)
-	_ = out.Close()
+	filenameLower := strings.ToLower(filename)
+	isZst := strings.HasSuffix(filenameLower, ".zst") || bytes.Equal(peek, zstdMagic)
+	log.Printf("upload: id=%s filename=%q is_zst=%v peek=%x", id, filename, isZst, peek)
+
+	// Reassemble peek + remaining body into a single reader.
+	body := io.MultiReader(bytes.NewReader(peek), part)
+
+	out, err := os.Create(demoPath)
 	if err != nil {
-		_ = os.Remove(tmpPath)
-		writeJSONError(w, http.StatusInternalServerError, "could not save file")
+		log.Printf("upload: create %s failed: %v (disk stats: %s)", demoPath, err, diskStats(demoDir))
+		writeJSONError(w, http.StatusInternalServerError, "could not create file: "+err.Error())
 		return
 	}
-	log.Printf("uploaded %q (%d bytes) -> %s", header.Filename, written, id)
 
-	// Detect zstd either by filename or by magic bytes. Either signal alone is
-	// enough — some browsers strip the .zst when it's a browser-compressed
-	// download, and the magic-byte sniff is cheap and unambiguous.
-	isZst := strings.HasSuffix(strings.ToLower(header.Filename), ".zst")
-	if !isZst {
-		magic, err := readMagic(tmpPath, 4)
-		if err == nil && bytes.Equal(magic, zstdMagic) {
-			isZst = true
-		}
-	}
-
+	var written int64
 	if isZst {
-		log.Printf("decompressing zstd for %s", id)
-		if err := decompressZstd(tmpPath, demoPath); err != nil {
-			_ = os.Remove(tmpPath)
+		log.Printf("upload: id=%s decompressing zstd", id)
+		dec, derr := zstd.NewReader(body, zstd.WithDecoderConcurrency(1))
+		if derr != nil {
+			_ = out.Close()
 			_ = os.Remove(demoPath)
-			log.Printf("zstd decompress failed for %s: %v", id, err)
-			writeJSONError(w, http.StatusBadRequest, "zstd decompress failed: "+err.Error())
+			log.Printf("upload: id=%s zstd init failed: %v", id, derr)
+			writeJSONError(w, http.StatusBadRequest, "zstd init failed: "+derr.Error())
 			return
 		}
-		_ = os.Remove(tmpPath)
+		written, err = io.Copy(out, dec)
+		dec.Close()
 	} else {
-		// No decompression needed — just rename into place.
-		if err := os.Rename(tmpPath, demoPath); err != nil {
-			_ = os.Remove(tmpPath)
-			writeJSONError(w, http.StatusInternalServerError, "could not place file")
-			return
-		}
+		written, err = io.Copy(out, body)
 	}
+	if cerr := out.Close(); cerr != nil && err == nil {
+		err = cerr
+	}
+	if err != nil {
+		_ = os.Remove(demoPath)
+		log.Printf("upload: id=%s save failed after %d bytes: %v (disk stats: %s)",
+			id, written, err, diskStats(demoDir))
+		writeJSONError(w, http.StatusInternalServerError,
+			fmt.Sprintf("could not save file: %v (wrote %d bytes)", err, written))
+		return
+	}
+	log.Printf("upload: id=%s saved %d bytes to %s", id, written, demoPath)
 
 	outPath := filepath.Join(parsedDir, id+".json.gz")
 	cmd := exec.Command("/app/parser", "-in", demoPath, "-out", outPath)
 	stderr, err := cmd.CombinedOutput()
-	// Always clean up the .dem once parsing is done (success or failure).
 	_ = os.Remove(demoPath)
 	if err != nil {
-		log.Printf("parser failed for %s: %v\n%s", id, err, stderr)
+		log.Printf("upload: id=%s parser failed: %v\n%s", id, err, stderr)
 		writeJSONError(w, http.StatusInternalServerError, "parser failed: "+strings.TrimSpace(string(stderr)))
 		return
 	}
+	log.Printf("upload: id=%s parsed -> %s", id, outPath)
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"id": id})
 }
 
-func readMagic(path string, n int) ([]byte, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
+func readAtMost(r io.Reader, n int) ([]byte, error) {
 	buf := make([]byte, n)
-	m, err := io.ReadFull(f, buf)
-	if err != nil && err != io.ErrUnexpectedEOF {
+	m, err := io.ReadFull(r, buf)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
 		return nil, err
 	}
 	return buf[:m], nil
 }
 
-func decompressZstd(srcPath, dstPath string) error {
-	src, err := os.Open(srcPath)
-	if err != nil {
-		return err
+// diskStats returns a short human string describing free/total bytes on the
+// filesystem containing path. Used for diagnostic logging when an upload fails.
+func diskStats(path string) string {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(path, &st); err != nil {
+		return "statfs_err=" + err.Error()
 	}
-	defer src.Close()
-
-	dec, err := zstd.NewReader(src, zstd.WithDecoderConcurrency(1))
-	if err != nil {
-		return err
-	}
-	defer dec.Close()
-
-	dst, err := os.Create(dstPath)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(dst, dec); err != nil {
-		_ = dst.Close()
-		return err
-	}
-	return dst.Close()
+	free := uint64(st.Bavail) * uint64(st.Bsize)
+	total := uint64(st.Blocks) * uint64(st.Bsize)
+	return fmt.Sprintf("free=%dMB total=%dMB", free/1024/1024, total/1024/1024)
 }
 
 // ------- /api/matches -------
