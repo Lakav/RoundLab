@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/klauspost/compress/zstd"
 )
 
 const (
@@ -140,6 +141,9 @@ func writeJSONError(w http.ResponseWriter, status int, msg string) {
 
 // ------- /api/upload -------
 
+// zstdMagic is the first 4 bytes of any Zstandard frame.
+var zstdMagic = []byte{0x28, 0xB5, 0x2F, 0xFD}
+
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -160,9 +164,12 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 
 	id := uuid.New().String()
+	// First write whatever was uploaded to a temp path. We then inspect magic
+	// bytes / filename to decide whether a decompression step is needed.
+	tmpPath := filepath.Join(demoDir, id+".upload")
 	demoPath := filepath.Join(demoDir, id+".dem")
 
-	out, err := os.Create(demoPath)
+	out, err := os.Create(tmpPath)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "could not create file")
 		return
@@ -170,11 +177,41 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	written, err := io.Copy(out, file)
 	_ = out.Close()
 	if err != nil {
-		_ = os.Remove(demoPath)
+		_ = os.Remove(tmpPath)
 		writeJSONError(w, http.StatusInternalServerError, "could not save file")
 		return
 	}
 	log.Printf("uploaded %q (%d bytes) -> %s", header.Filename, written, id)
+
+	// Detect zstd either by filename or by magic bytes. Either signal alone is
+	// enough — some browsers strip the .zst when it's a browser-compressed
+	// download, and the magic-byte sniff is cheap and unambiguous.
+	isZst := strings.HasSuffix(strings.ToLower(header.Filename), ".zst")
+	if !isZst {
+		magic, err := readMagic(tmpPath, 4)
+		if err == nil && bytes.Equal(magic, zstdMagic) {
+			isZst = true
+		}
+	}
+
+	if isZst {
+		log.Printf("decompressing zstd for %s", id)
+		if err := decompressZstd(tmpPath, demoPath); err != nil {
+			_ = os.Remove(tmpPath)
+			_ = os.Remove(demoPath)
+			log.Printf("zstd decompress failed for %s: %v", id, err)
+			writeJSONError(w, http.StatusBadRequest, "zstd decompress failed: "+err.Error())
+			return
+		}
+		_ = os.Remove(tmpPath)
+	} else {
+		// No decompression needed — just rename into place.
+		if err := os.Rename(tmpPath, demoPath); err != nil {
+			_ = os.Remove(tmpPath)
+			writeJSONError(w, http.StatusInternalServerError, "could not place file")
+			return
+		}
+	}
 
 	outPath := filepath.Join(parsedDir, id+".json.gz")
 	cmd := exec.Command("/app/parser", "-in", demoPath, "-out", outPath)
@@ -189,6 +226,44 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"id": id})
+}
+
+func readMagic(path string, n int) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	buf := make([]byte, n)
+	m, err := io.ReadFull(f, buf)
+	if err != nil && err != io.ErrUnexpectedEOF {
+		return nil, err
+	}
+	return buf[:m], nil
+}
+
+func decompressZstd(srcPath, dstPath string) error {
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	dec, err := zstd.NewReader(src, zstd.WithDecoderConcurrency(1))
+	if err != nil {
+		return err
+	}
+	defer dec.Close()
+
+	dst, err := os.Create(dstPath)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(dst, dec); err != nil {
+		_ = dst.Close()
+		return err
+	}
+	return dst.Close()
 }
 
 // ------- /api/matches -------
