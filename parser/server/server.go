@@ -195,7 +195,6 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	defer part.Close()
 
 	id := uuid.New().String()
-	demoPath := filepath.Join(demoDir, id+".dem")
 
 	// Peek the first 4 bytes to decide zstd vs. raw. We stream the rest.
 	peek, err := readAtMost(part, 4)
@@ -210,52 +209,50 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	// Reassemble peek + remaining body into a single reader.
 	body := io.MultiReader(bytes.NewReader(peek), part)
 
-	out, err := os.Create(demoPath)
-	if err != nil {
-		log.Printf("upload: create %s failed: %v (disk stats: %s)", demoPath, err, diskStats(demoDir))
-		writeJSONError(w, http.StatusInternalServerError, "could not create file: "+err.Error())
-		return
-	}
-
-	var written int64
+	// Build the decompressed-dem stream. For .zst, wrap with zstd decoder;
+	// for raw .dem, pass body straight through. Either way the parser CLI
+	// consumes it from stdin — we never materialize the .dem on disk.
+	var demStream io.Reader = body
+	var closeDec func()
 	if isZst {
-		log.Printf("upload: id=%s decompressing zstd", id)
+		log.Printf("upload: id=%s decompressing zstd on the fly", id)
 		dec, derr := zstd.NewReader(body, zstd.WithDecoderConcurrency(1))
 		if derr != nil {
-			_ = out.Close()
-			_ = os.Remove(demoPath)
 			log.Printf("upload: id=%s zstd init failed: %v", id, derr)
 			writeJSONError(w, http.StatusBadRequest, "zstd init failed: "+derr.Error())
 			return
 		}
-		written, err = io.Copy(out, dec)
-		dec.Close()
-	} else {
-		written, err = io.Copy(out, body)
+		demStream = dec
+		closeDec = dec.Close
 	}
-	if cerr := out.Close(); cerr != nil && err == nil {
-		err = cerr
+	if closeDec != nil {
+		defer closeDec()
 	}
-	if err != nil {
-		_ = os.Remove(demoPath)
-		log.Printf("upload: id=%s save failed after %d bytes: %v (disk stats: %s)",
-			id, written, err, diskStats(demoDir))
-		writeJSONError(w, http.StatusInternalServerError,
-			fmt.Sprintf("could not save file: %v (wrote %d bytes)", err, written))
-		return
-	}
-	log.Printf("upload: id=%s saved %d bytes to %s", id, written, demoPath)
 
 	outPath := filepath.Join(parsedDir, id+".json.gz")
-	cmd := exec.Command("/app/parser", "-in", demoPath, "-out", outPath)
-	stderr, err := cmd.CombinedOutput()
-	_ = os.Remove(demoPath)
-	if err != nil {
-		log.Printf("upload: id=%s parser failed: %v\n%s", id, err, stderr)
-		writeJSONError(w, http.StatusInternalServerError, "parser failed: "+strings.TrimSpace(string(stderr)))
+	cmd := exec.Command("/app/parser", "-in", "-", "-out", outPath)
+	cmd.Stdin = demStream
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
+	// Run and collect errors. We intentionally don't set Stdout — parser
+	// writes only to `-out`. Stderr is where it would panic.
+	if err := cmd.Run(); err != nil {
+		// If parser failed, the half-written .json.gz is useless — drop it.
+		_ = os.Remove(outPath)
+		log.Printf("upload: id=%s parser failed: %v (disk stats: %s)\nstderr:\n%s",
+			id, err, diskStats(parsedDir), stderrBuf.String())
+		writeJSONError(w, http.StatusInternalServerError,
+			"parser failed: "+strings.TrimSpace(stderrBuf.String()))
 		return
 	}
-	log.Printf("upload: id=%s parsed -> %s", id, outPath)
+
+	// Log success with disk stats so we can see how much the parsed output cost.
+	if info, statErr := os.Stat(outPath); statErr == nil {
+		log.Printf("upload: id=%s parsed ok (%d bytes output, disk stats: %s)",
+			id, info.Size(), diskStats(parsedDir))
+	} else {
+		log.Printf("upload: id=%s parsed ok (stat failed: %v)", id, statErr)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"id": id})

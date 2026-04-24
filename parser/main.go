@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 
@@ -143,21 +144,27 @@ func teamStr(t common.Team) string {
 }
 
 func main() {
-	in := flag.String("in", "", "input .dem file")
+	in := flag.String("in", "", "input .dem file (use '-' for stdin)")
 	out := flag.String("out", "", "output .json.gz file")
 	flag.Parse()
 	if *in == "" || *out == "" {
-		fmt.Fprintln(os.Stderr, "usage: parser -in demo.dem -out out.json.gz")
+		fmt.Fprintln(os.Stderr, "usage: parser -in demo.dem -out out.json.gz  (use -in - to read from stdin)")
 		os.Exit(2)
 	}
 
-	f, err := os.Open(*in)
-	if err != nil {
-		panic(err)
+	var reader io.Reader
+	if *in == "-" {
+		reader = os.Stdin
+	} else {
+		f, err := os.Open(*in)
+		if err != nil {
+			panic(err)
+		}
+		defer f.Close()
+		reader = f
 	}
-	defer f.Close()
 
-	p := dem.NewParser(f)
+	p := dem.NewParser(reader)
 	defer p.Close()
 
 	header, err := p.ParseHeader()
