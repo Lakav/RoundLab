@@ -20,6 +20,12 @@ on:
       - "v*.*.*"
   workflow_dispatch:
 
+# tauri-action needs to create a release and upload assets. Declaring the
+# permissions explicitly avoids relying on the repo-level default, which is
+# read-only on GitHub Free unless flipped in Settings → Actions.
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
