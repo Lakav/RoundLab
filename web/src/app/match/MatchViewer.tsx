@@ -16,7 +16,7 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { MatchData, Round } from "@/lib/types";
 import { cropFor, RADAR_SIZE } from "@/lib/maps";
-import { apiUrl } from "@/lib/api";
+import { getMatchMetadata, getRound } from "@/lib/api";
 
 const DRAW_WIDTH = 3;
 const MIN_MAP = 360;
@@ -87,14 +87,12 @@ export default function MatchViewer({ id }: { id: string }) {
     let cancel = false;
     (async () => {
       try {
-        const r = await fetch(apiUrl(`/api/match/${id}/metadata`));
-        if (!r.ok) throw new Error("not found");
-        const data: MatchData = await r.json();
+        const data = await getMatchMetadata(id);
         if (cancel) return;
         setMatch(hideKnifeRound(data));
         setLoading(false);
       } catch (e: unknown) {
-        setErr(e instanceof Error ? e.message : "error");
+        setErr(e instanceof Error ? e.message : String(e));
         setLoading(false);
       }
     })();
@@ -111,12 +109,10 @@ export default function MatchViewer({ id }: { id: string }) {
     let cancel = false;
     (async () => {
       try {
-        const r = await fetch(apiUrl(`/api/match/${id}/round/${round.number}`));
-        if (!r.ok) throw new Error("round not found");
-        const data = (await r.json()) as Round;
+        const data: Round = await getRound(id, round.number);
         if (!cancel) setRoundData(round.number, data);
       } catch (e) {
-        if (!cancel) setErr(e instanceof Error ? e.message : "round load error");
+        if (!cancel) setErr(e instanceof Error ? e.message : String(e));
       }
     })();
 

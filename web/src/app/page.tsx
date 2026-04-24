@@ -1,63 +1,42 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Upload, Loader2, Play, Crosshair } from "lucide-react";
-import { apiUrl } from "@/lib/api";
-
-type MatchItem = { id: string; createdAt: number; size: number };
+import { listMatches, parseDemo, pickDemoFile, type MatchSummary } from "@/lib/api";
 
 export default function Home() {
   const router = useRouter();
-  const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [matches, setMatches] = useState<MatchItem[]>([]);
-  const [dragOver, setDragOver] = useState(false);
+  const [matches, setMatches] = useState<MatchSummary[]>([]);
 
   useEffect(() => {
     let cancelled = false;
-
-    fetch(apiUrl("/api/matches"))
-      .then((r) => (r.ok ? r.json() : []))
-      .then((items: MatchItem[]) => {
+    listMatches()
+      .then((items) => {
         if (!cancelled) setMatches(items);
       })
-      .catch(() => {
-        if (!cancelled) setMatches([]);
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
       });
-
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const onFile = async (f: File) => {
+  const onPickAndParse = async () => {
+    if (uploading) return;
     setError(null);
-    setUploading(true);
     try {
-      const fd = new FormData();
-      fd.append("file", f);
-      const r = await fetch(apiUrl("/api/upload"), { method: "POST", body: fd });
-      const text = await r.text();
-      let json: { id?: string; error?: string } = {};
-      try {
-        json = text ? JSON.parse(text) : {};
-      } catch {
-        json = { error: text || "Upload failed" };
-      }
-      if (!r.ok) {
-        setError(json.error || `Upload failed (${r.status})`);
-        return;
-      }
-      if (!json.id) {
-        setError("Upload succeeded but no id returned");
-        return;
-      }
-      router.push(`/match/${json.id}`);
+      const path = await pickDemoFile();
+      if (!path) return;
+      setUploading(true);
+      const id = await parseDemo(path);
+      router.push(`/match/?id=${id}`);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Upload failed");
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setUploading(false);
     }
@@ -76,7 +55,7 @@ export default function Home() {
           </div>
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">RoundLab</h1>
-            <p className="text-xs text-neutral-500">CS2 round review workspace</p>
+            <p className="text-xs text-neutral-500">CS2 round review workspace · Desktop</p>
           </div>
         </div>
 
@@ -90,25 +69,12 @@ export default function Home() {
         </div>
 
         <div
-          onClick={() => !uploading && inputRef.current?.click()}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOver(true);
-          }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragOver(false);
-            const f = e.dataTransfer.files?.[0];
-            if (f) onFile(f);
-          }}
+          onClick={onPickAndParse}
           className={
             "relative flex cursor-pointer flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed px-8 py-16 text-center transition-all " +
-            (dragOver
-              ? "border-emerald-300 bg-emerald-300/5"
-              : uploading
-                ? "border-white/10 bg-black/20"
-                : "border-white/10 bg-black/20 hover:border-emerald-300/30 hover:bg-white/[0.035]")
+            (uploading
+              ? "border-white/10 bg-black/20"
+              : "border-white/10 bg-black/20 hover:border-emerald-300/30 hover:bg-white/[0.035]")
           }
         >
           {uploading ? (
@@ -128,28 +94,18 @@ export default function Home() {
               </div>
               <div>
                 <div className="font-medium text-neutral-100">
-                  Drop a .dem or .dem.zst file
+                  Choose a .dem file
                 </div>
                 <div className="text-sm text-neutral-500 mt-1">
-                  or click to browse
+                  Click to browse — parsing happens locally, nothing uploaded.
                 </div>
               </div>
             </>
           )}
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".dem,.zst"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) onFile(f);
-            }}
-          />
         </div>
 
         {error && (
-          <div className="mt-4 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 px-4 py-3 text-sm">
+          <div className="mt-4 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 px-4 py-3 text-sm whitespace-pre-wrap">
             {error}
           </div>
         )}
@@ -163,7 +119,7 @@ export default function Home() {
               {matches.map((m) => (
                 <div
                   key={m.id}
-                  onClick={() => router.push(`/match/${m.id}`)}
+                  onClick={() => router.push(`/match/?id=${m.id}`)}
                   className="group flex cursor-pointer items-center justify-between rounded-xl border border-white/[0.06] bg-black/20 p-4 transition-all hover:border-emerald-300/20 hover:bg-white/[0.035]"
                 >
                   <div>
