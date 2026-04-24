@@ -6,9 +6,11 @@
 //! - Each match is parsed once, then cached. Subsequent reads stream the
 //!   gzipped JSON on demand — we don't keep the full match in memory.
 
+use std::collections::VecDeque;
 use std::fs;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::SystemTime;
 
 use flate2::read::GzDecoder;
@@ -154,6 +156,78 @@ fn read_match_file(path: &Path) -> Result<MatchFile, String> {
     Ok(m)
 }
 
+// -------------------------- Match cache --------------------------
+//
+// Decoding the gzipped JSON for a full match takes ~50–150 ms on a modern
+// laptop. Without a cache, every round switch pays that cost twice (once
+// for metadata, once for the round itself). We keep the most recently used
+// matches around so adjacent-round navigation is instantaneous.
+
+const CACHE_CAPACITY: usize = 4;
+
+struct MatchCache {
+    // (id, match). Newest at the back; pop_front on eviction.
+    entries: VecDeque<(String, Arc<MatchFile>)>,
+}
+
+impl MatchCache {
+    fn new() -> Self {
+        Self {
+            entries: VecDeque::with_capacity(CACHE_CAPACITY),
+        }
+    }
+
+    fn get(&mut self, id: &str) -> Option<Arc<MatchFile>> {
+        let pos = self.entries.iter().position(|(i, _)| i == id)?;
+        let entry = self.entries.remove(pos)?;
+        let match_arc = Arc::clone(&entry.1);
+        self.entries.push_back(entry);
+        Some(match_arc)
+    }
+
+    fn insert(&mut self, id: String, m: Arc<MatchFile>) {
+        // Replace if present.
+        if let Some(pos) = self.entries.iter().position(|(i, _)| i == &id) {
+            self.entries.remove(pos);
+        }
+        while self.entries.len() >= CACHE_CAPACITY {
+            self.entries.pop_front();
+        }
+        self.entries.push_back((id, m));
+    }
+
+    fn remove(&mut self, id: &str) {
+        if let Some(pos) = self.entries.iter().position(|(i, _)| i == id) {
+            self.entries.remove(pos);
+        }
+    }
+}
+
+fn cache() -> &'static Mutex<MatchCache> {
+    static CACHE: OnceLock<Mutex<MatchCache>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(MatchCache::new()))
+}
+
+fn load_match_cached(app: &AppHandle, id: &str) -> Result<Arc<MatchFile>, String> {
+    if let Ok(mut c) = cache().lock() {
+        if let Some(m) = c.get(id) {
+            return Ok(m);
+        }
+    }
+    let path = parsed_path(app, id)?;
+    let m = Arc::new(read_match_file(&path)?);
+    if let Ok(mut c) = cache().lock() {
+        c.insert(id.to_string(), Arc::clone(&m));
+    }
+    Ok(m)
+}
+
+fn invalidate_cache(id: &str) {
+    if let Ok(mut c) = cache().lock() {
+        c.remove(id);
+    }
+}
+
 // -------------------------- Commands --------------------------
 
 #[tauri::command]
@@ -201,12 +275,11 @@ fn list_matches(app: AppHandle) -> Result<Vec<MatchSummary>, String> {
 /// frontend's `MatchData` type.
 #[tauri::command]
 fn get_match_metadata(app: AppHandle, id: String) -> Result<serde_json::Value, String> {
-    let path = parsed_path(&app, &id)?;
-    let m = read_match_file(&path)?;
+    let m = load_match_cached(&app, &id)?;
     // Strip heavy fields; keep round headers.
     let rounds: Vec<serde_json::Value> = m
         .rounds
-        .into_iter()
+        .iter()
         .map(|r| {
             serde_json::json!({
                 "number": r.number,
@@ -237,14 +310,13 @@ fn get_round(
     id: String,
     number: i64,
 ) -> Result<serde_json::Value, String> {
-    let path = parsed_path(&app, &id)?;
-    let m = read_match_file(&path)?;
+    let m = load_match_cached(&app, &id)?;
     let r = m
         .rounds
-        .into_iter()
+        .iter()
         .find(|r| r.number == number)
         .ok_or_else(|| format!("round {number} not found"))?;
-    Ok(serde_json::to_value(&r).map_err(|e| e.to_string())?)
+    Ok(serde_json::to_value(r).map_err(|e| e.to_string())?)
 }
 
 /// Delete a parsed match.
@@ -254,39 +326,68 @@ fn delete_match(app: AppHandle, id: String) -> Result<(), String> {
     if path.exists() {
         fs::remove_file(&path).map_err(|e| format!("remove: {e}"))?;
     }
+    invalidate_cache(&id);
     Ok(())
+}
+
+/// Options controlling how the sidecar parses a demo. These come from the
+/// user's settings panel on the frontend. Defaults target maximum fidelity
+/// on desktop — the whole point of the native build is that we have the
+/// RAM to afford it.
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct ParseOptions {
+    /// "full" (1:1, ~8Hz), "high" (~4Hz), "medium" (~2Hz), "low" (~1Hz).
+    /// Defaults to "full".
+    #[serde(default)]
+    quality: Option<String>,
+    /// Skip per-frame projectile positions. Defaults to false (projectiles kept).
+    #[serde(default)]
+    skip_projectiles: bool,
+    /// Skip weapon fire events. Defaults to false (weapon fires kept).
+    #[serde(default)]
+    skip_weapon_fires: bool,
 }
 
 /// Parse a local .dem or .dem.zst via the sidecar parser binary.
 ///
-/// The parser accepts `-in <path> -out <path>` — on Tauri we pass the user's
-/// selected file directly so there's no streaming indirection. The parser
-/// itself detects zstd by magic bytes when the input is `-` (stdin), but here
-/// we'd need file-based detection. For v1 of the desktop build we only
-/// support plain .dem; the user can decompress .zst externally first.
-///
-/// TODO: teach the parser to sniff zstd when reading from a file path too,
-/// so .dem.zst works natively. For now we reject .zst and tell the user.
+/// The sidecar now sniffs the first 4 bytes of the input to detect a zstd
+/// frame, so both plain and compressed demos work the same way.
 #[tauri::command]
-async fn parse_demo(app: AppHandle, src_path: String) -> Result<String, String> {
+async fn parse_demo(
+    app: AppHandle,
+    src_path: String,
+    options: Option<ParseOptions>,
+) -> Result<String, String> {
     let src = PathBuf::from(&src_path);
     if !src.exists() {
         return Err(format!("file not found: {src_path}"));
     }
     let lower = src_path.to_lowercase();
-    if lower.ends_with(".zst") {
-        return Err(
-            "Compressed .dem.zst is not yet supported in the desktop build. \
-             Please decompress with `zstd -d` and try again."
-                .into(),
-        );
-    }
-    if !lower.ends_with(".dem") {
-        return Err("expected a .dem file".into());
+    if !(lower.ends_with(".dem") || lower.ends_with(".dem.zst") || lower.ends_with(".zst")) {
+        return Err("expected a .dem or .dem.zst file".into());
     }
 
     let id = uuid::Uuid::new_v4().to_string();
     let out_path = parsed_path(&app, &id)?;
+    let opts = options.unwrap_or_default();
+    let quality = opts.quality.as_deref().unwrap_or("full");
+
+    // Build the argv. The parser auto-detects zstd by peeking 4 bytes.
+    let mut argv: Vec<String> = vec![
+        "-in".into(),
+        src_path.clone(),
+        "-out".into(),
+        out_path.to_string_lossy().into_owned(),
+        "-quality".into(),
+        quality.into(),
+    ];
+    if opts.skip_projectiles {
+        argv.push("-skipProjectiles".into());
+    }
+    if opts.skip_weapon_fires {
+        argv.push("-skipWeaponFires".into());
+    }
 
     // Sidecar named `parser` in tauri.conf.json → expanded to
     // `binaries/parser-<target-triple>` at build/package time.
@@ -294,12 +395,7 @@ async fn parse_demo(app: AppHandle, src_path: String) -> Result<String, String> 
         .shell()
         .sidecar("parser")
         .map_err(|e| format!("sidecar init: {e}"))?
-        .args([
-            "-in",
-            src_path.as_str(),
-            "-out",
-            out_path.to_string_lossy().as_ref(),
-        ]);
+        .args(argv);
 
     let (mut rx, _child) = sidecar.spawn().map_err(|e| format!("spawn parser: {e}"))?;
     let mut stderr = String::new();
@@ -333,6 +429,9 @@ async fn parse_demo(app: AppHandle, src_path: String) -> Result<String, String> 
     if !out_path.exists() {
         return Err("parser finished but produced no output".into());
     }
+    // Invalidate any cached entry for this id (in case of a rare UUID collision
+    // or a replace-in-place workflow down the road).
+    invalidate_cache(&id);
     Ok(id)
 }
 
@@ -343,6 +442,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             list_matches,
             get_match_metadata,

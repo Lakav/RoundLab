@@ -1,0 +1,100 @@
+# Release pipeline for RoundLab desktop.
+#
+# Triggered by pushing a tag of the form `v*.*.*` (e.g. `v0.2.0`). The matrix
+# builds the app for macOS (arm64 + x64) and Windows (x64), bakes the Go sidecar
+# parser into the bundle, and uploads installers to a GitHub release. The release
+# also contains `latest.json`, which the in-app updater polls for new versions.
+#
+# Secrets required on the repo:
+#   TAURI_SIGNING_PRIVATE_KEY           — contents of .tauri-keys/roundlab.key
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  — empty string if the key has no password
+#
+# No Apple / Microsoft code-signing: installs on macOS require right-click →
+# Open (or System Settings → Privacy → Open Anyway); installs on Windows show
+# SmartScreen's "unknown publisher" warning. This is documented in the README.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-arm64
+            os: macos-14
+            rust-target: aarch64-apple-darwin
+            tauri-args: "--target aarch64-apple-darwin"
+          - name: macos-x64
+            os: macos-14
+            rust-target: x86_64-apple-darwin
+            tauri-args: "--target x86_64-apple-darwin"
+          - name: windows-x64
+            os: windows-latest
+            rust-target: x86_64-pc-windows-msvc
+            tauri-args: ""
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-target }}
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache-dependency-path: parser/go.sum
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install frontend dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Go sidecar for ${{ matrix.rust-target }}
+        shell: bash
+        working-directory: web/src-tauri/binaries
+        env:
+          TARGET: ${{ matrix.rust-target }}
+        run: ./build-sidecar.sh
+
+      - name: Build + release (tauri-action)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          # `__VERSION__` is replaced by the tag name (without the leading `v`).
+          tagName: ${{ github.ref_name }}
+          releaseName: "RoundLab ${{ github.ref_name }}"
+          releaseBody: |
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for the full notes.
+
+            **macOS**: unsigned — right-click → Open on first launch.
+            **Windows**: unsigned — click "More info" → "Run anyway" in SmartScreen.
+          releaseDraft: false
+          prerelease: false
+          projectPath: web
+          args: ${{ matrix.tauri-args }}
+          updaterJsonPreferNsis: true

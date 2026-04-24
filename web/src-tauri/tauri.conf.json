@@ -40,5 +40,14 @@
     "shortDescription": "CS2 demo replay workspace",
     "longDescription": "Parse and review CS2 demos locally — no upload, no server."
   },
-  "plugins": {}
+  "plugins": {
+    "updater": {
+      "active": true,
+      "dialog": false,
+      "endpoints": [
+        "https://github.com/julescavanier/gotvanalyser/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVDNDdGQTU5RTk3NUE1RTAKUldUZ3BYWHBXZnBIN0Jmb3orWERNVDhNakh5SXh5akpLQjZDTXhkK3NWbW56Y2ZXMFlRcFAyQ1oK"
+    }
+  }
 }

@@ -119,6 +119,34 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* --- RoundLab design tokens ----------------------------------------------
+ *
+ * The review viewport sets the tone for the whole app: dark, dense, tactical.
+ * These tokens are consumed via `theme(...)` or arbitrary-value Tailwind
+ * (`bg-[var(--rl-surface)]`). Keeping them centralized means the home page
+ * and any future panels share the same language as the match viewer.
+ */
+:root {
+  /* Surfaces */
+  --rl-bg: #1d1f1f;         /* match viewer background */
+  --rl-panel: #121414;      /* HUD / sidebar panels */
+  --rl-panel-2: rgba(0, 0, 0, 0.28); /* card-on-panel tint */
+
+  /* Borders */
+  --rl-border: rgba(255, 255, 255, 0.06);
+  --rl-border-strong: rgba(255, 255, 255, 0.12);
+
+  /* Text */
+  --rl-fg: #f5f5f5;
+  --rl-fg-muted: #a3a3a3;   /* body */
+  --rl-fg-dim: #737373;     /* captions */
+  --rl-fg-faint: #525252;   /* section labels */
+
+  /* Accent */
+  --rl-accent: #6ee7b7;     /* emerald-300 */
+  --rl-accent-soft: rgba(110, 231, 183, 0.15);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

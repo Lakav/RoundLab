@@ -14,6 +14,43 @@ export type MatchSummary = {
   size: number;
 };
 
+/** User-tunable parse options. Defaults mirror the Rust side (`full` quality,
+ *  everything captured). Stored in localStorage under `roundlab.parseOptions`. */
+export type ParseOptions = {
+  quality?: "full" | "high" | "medium" | "low";
+  skipProjectiles?: boolean;
+  skipWeaponFires?: boolean;
+};
+
+export const DEFAULT_PARSE_OPTIONS: ParseOptions = {
+  quality: "full",
+  skipProjectiles: false,
+  skipWeaponFires: false,
+};
+
+const PARSE_OPTIONS_KEY = "roundlab.parseOptions";
+
+export function loadParseOptions(): ParseOptions {
+  if (typeof window === "undefined") return { ...DEFAULT_PARSE_OPTIONS };
+  try {
+    const raw = window.localStorage.getItem(PARSE_OPTIONS_KEY);
+    if (!raw) return { ...DEFAULT_PARSE_OPTIONS };
+    const parsed = JSON.parse(raw) as ParseOptions;
+    return { ...DEFAULT_PARSE_OPTIONS, ...parsed };
+  } catch {
+    return { ...DEFAULT_PARSE_OPTIONS };
+  }
+}
+
+export function saveParseOptions(opts: ParseOptions): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PARSE_OPTIONS_KEY, JSON.stringify(opts));
+  } catch {
+    /* ignore quota / private-mode errors */
+  }
+}
+
 export async function listMatches(): Promise<MatchSummary[]> {
   return invoke<MatchSummary[]>("list_matches");
 }
@@ -30,9 +67,15 @@ export async function deleteMatch(id: string): Promise<void> {
   await invoke("delete_match", { id });
 }
 
-/** Parse a local .dem file. Returns the new match id. */
-export async function parseDemo(srcPath: string): Promise<string> {
-  return invoke<string>("parse_demo", { srcPath });
+/** Parse a local .dem or .dem.zst file. Returns the new match id. */
+export async function parseDemo(
+  srcPath: string,
+  options?: ParseOptions,
+): Promise<string> {
+  return invoke<string>("parse_demo", {
+    srcPath,
+    options: options ?? loadParseOptions(),
+  });
 }
 
 /** Prompt the user for a demo file. Returns null if cancelled. */
@@ -40,7 +83,10 @@ export async function pickDemoFile(): Promise<string | null> {
   const res = await openDialog({
     multiple: false,
     directory: false,
-    filters: [{ name: "CS2 Demo", extensions: ["dem"] }],
+    filters: [
+      // `zst` covers both `.zst` and the common `.dem.zst` naming.
+      { name: "CS2 Demo", extensions: ["dem", "zst"] },
+    ],
   });
   return typeof res === "string" ? res : null;
 }

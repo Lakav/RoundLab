@@ -49,3 +49,14 @@ parser/*.exe
 coverage/
 tmp/
 temp/
+
+# Tauri updater signing keys (private key MUST stay local — .pub can be committed
+# but we keep the whole folder out for simplicity; the public key is embedded in
+# tauri.conf.json).
+.tauri-keys/
+
+# Tauri build artefacts
+web/src-tauri/target/
+web/src-tauri/gen/
+web/src-tauri/binaries/parser-*
+!web/src-tauri/binaries/build-sidecar.sh

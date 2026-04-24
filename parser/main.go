@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"flag"
@@ -8,11 +10,34 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strings"
 
+	"github.com/klauspost/compress/zstd"
 	dem "github.com/markus-wa/demoinfocs-golang/v4/pkg/demoinfocs"
 	common "github.com/markus-wa/demoinfocs-golang/v4/pkg/demoinfocs/common"
 	events "github.com/markus-wa/demoinfocs-golang/v4/pkg/demoinfocs/events"
 )
+
+// zstdMagic is the first 4 bytes of any Zstandard frame (RFC 8478).
+var zstdMagic = []byte{0x28, 0xB5, 0x2F, 0xFD}
+
+// qualityStep maps a human quality label to the frame step. step=1 keeps
+// every sampled frame (~8Hz at 64-tick), step=2 keeps one in two (~4Hz),
+// step=4 keeps one in four (~2Hz), step=8 keeps one in eight (~1Hz).
+// Default is `full` — on desktop we have the RAM.
+func qualityStep(label string) int {
+	switch strings.ToLower(label) {
+	case "low":
+		return 8
+	case "medium", "med":
+		return 4
+	case "high":
+		return 2
+	case "full", "":
+		return 1
+	}
+	return 1
+}
 
 // Output schema (compact). Positions sampled at ~8 Hz (every 8 ticks @ 64 tick).
 // Coordinates are game-world coords; frontend transforms to radar pixels.
@@ -144,24 +169,46 @@ func teamStr(t common.Team) string {
 }
 
 func main() {
-	in := flag.String("in", "", "input .dem file (use '-' for stdin)")
+	in := flag.String("in", "", "input .dem or .dem.zst file (use '-' for stdin — zstd auto-detected)")
 	out := flag.String("out", "", "output .json.gz file")
+	quality := flag.String("quality", "full", "sampling quality: full (~8Hz), high (~4Hz), medium (~2Hz), low (~1Hz)")
+	skipProjectiles := flag.Bool("skipProjectiles", false, "omit per-frame projectile positions")
+	skipWeaponFires := flag.Bool("skipWeaponFires", false, "omit weapon fire events")
 	flag.Parse()
 	if *in == "" || *out == "" {
-		fmt.Fprintln(os.Stderr, "usage: parser -in demo.dem -out out.json.gz  (use -in - to read from stdin)")
+		fmt.Fprintln(os.Stderr, "usage: parser -in demo.dem[.zst] -out out.json.gz [-quality full|high|medium|low]")
 		os.Exit(2)
 	}
+	step := qualityStep(*quality)
 
-	var reader io.Reader
+	// Open the raw input. We then peek 4 bytes to detect a zstd stream and
+	// transparently wrap it with the decoder. This lets callers pipe either
+	// a plain .dem or a .dem.zst without flipping a flag.
+	var rawReader io.Reader
+	filenameLower := strings.ToLower(*in)
 	if *in == "-" {
-		reader = os.Stdin
+		rawReader = os.Stdin
 	} else {
 		f, err := os.Open(*in)
 		if err != nil {
 			panic(err)
 		}
 		defer f.Close()
-		reader = f
+		rawReader = f
+	}
+	buffered := bufio.NewReaderSize(rawReader, 1<<20)
+	peek, _ := buffered.Peek(4)
+	isZst := bytes.Equal(peek, zstdMagic) || strings.HasSuffix(filenameLower, ".zst")
+
+	var reader io.Reader = buffered
+	if isZst {
+		fmt.Fprintln(os.Stderr, "detected zstd stream, decompressing on the fly")
+		dec, err := zstd.NewReader(buffered)
+		if err != nil {
+			panic(fmt.Errorf("zstd init: %w", err))
+		}
+		defer dec.Close()
+		reader = dec
 	}
 
 	p := dem.NewParser(reader)
@@ -176,16 +223,23 @@ func main() {
 	if tickRate <= 0 {
 		tickRate = 64
 	}
-	sampleEveryTicks := int(tickRate / 8)
-	if sampleEveryTicks < 1 {
-		sampleEveryTicks = 8
+	// baseStep = ticks per 8Hz sample. step multiplies it to get the
+	// effective sampling period.
+	baseStep := int(tickRate / 8)
+	if baseStep < 1 {
+		baseStep = 8
+	}
+	sampleEveryTicks := baseStep * step
+	sampleHz := 8 / step
+	if sampleHz < 1 {
+		sampleHz = 1
 	}
 
 	output := Output{
 		Meta: Meta{
 			Map:        header.MapName,
 			TickRate:   tickRate,
-			SampleRate: 8,
+			SampleRate: sampleHz,
 		},
 		Players: []Player{},
 		Rounds:  []Round{},
@@ -323,6 +377,9 @@ func main() {
 	})
 
 	p.RegisterEventHandler(func(e events.WeaponFire) {
+		if *skipWeaponFires {
+			return
+		}
 		t, ok := roundTime()
 		if !ok || currentRound == nil || e.Shooter == nil {
 			return
@@ -559,26 +616,28 @@ func main() {
 				}
 			}
 		}
-		for _, proj := range p.GameState().GrenadeProjectiles() {
-			if proj == nil || proj.WeaponInstance == nil {
-				continue
+		if !*skipProjectiles {
+			for _, proj := range p.GameState().GrenadeProjectiles() {
+				if proj == nil || proj.WeaponInstance == nil {
+					continue
+				}
+				if detonatedProjectiles[proj.UniqueID()] {
+					continue
+				}
+				pos := proj.Position()
+				var thrower uint64
+				if proj.Thrower != nil {
+					thrower = proj.Thrower.SteamID64
+				}
+				frame.Projectiles = append(frame.Projectiles, ProjectilePos{
+					ID:      proj.UniqueID(),
+					Type:    proj.WeaponInstance.String(),
+					X:       float32(pos.X),
+					Y:       float32(pos.Y),
+					Z:       float32(pos.Z),
+					Thrower: thrower,
+				})
 			}
-			if detonatedProjectiles[proj.UniqueID()] {
-				continue
-			}
-			pos := proj.Position()
-			var thrower uint64
-			if proj.Thrower != nil {
-				thrower = proj.Thrower.SteamID64
-			}
-			frame.Projectiles = append(frame.Projectiles, ProjectilePos{
-				ID:      proj.UniqueID(),
-				Type:    proj.WeaponInstance.String(),
-				X:       float32(pos.X),
-				Y:       float32(pos.Y),
-				Z:       float32(pos.Z),
-				Thrower: thrower,
-			})
 		}
 		for _, pl := range p.GameState().Participants().Playing() {
 			if pl == nil || !pl.IsAlive() {

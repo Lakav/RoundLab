@@ -121,6 +121,34 @@ export default function MatchViewer({ id }: { id: string }) {
     };
   }, [currentRoundIdx, id, match, setRoundData]);
 
+  // Prefetch the two neighbouring rounds in the background so switching
+  // rounds feels instantaneous. The Rust side caches the decoded match
+  // across calls, so these fetches are cheap — they mostly re-serialize
+  // the round payload for transit.
+  useEffect(() => {
+    if (!match) return;
+    const neighbours = [currentRoundIdx - 1, currentRoundIdx + 1];
+    let cancel = false;
+    (async () => {
+      for (const idx of neighbours) {
+        if (cancel) return;
+        const r = match.rounds[idx];
+        if (!r || r.frames.length > 0) continue;
+        try {
+          const data: Round = await getRound(id, r.number);
+          if (cancel) return;
+          setRoundData(r.number, data);
+        } catch {
+          // Silent: prefetch is best-effort. The main effect will retry
+          // if the user actually navigates there.
+        }
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [currentRoundIdx, id, match, setRoundData]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;

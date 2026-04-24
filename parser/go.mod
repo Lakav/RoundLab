@@ -3,9 +3,13 @@ module gotvanalyser/parser
 go 1.21.5
 
 require (
+	github.com/klauspost/compress v1.17.11
+	github.com/markus-wa/demoinfocs-golang/v4 v4.5.1
+)
+
+require (
 	github.com/golang/geo v0.0.0-20230421003525-6adc56603217 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
-	github.com/markus-wa/demoinfocs-golang/v4 v4.5.1 // indirect
 	github.com/markus-wa/go-unassert v0.1.3 // indirect
 	github.com/markus-wa/gobitread v0.2.4 // indirect
 	github.com/markus-wa/godispatch v1.4.1 // indirect

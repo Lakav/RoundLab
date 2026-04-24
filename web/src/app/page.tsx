@@ -3,8 +3,22 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Upload, Loader2, Play, Crosshair } from "lucide-react";
-import { listMatches, parseDemo, pickDemoFile, type MatchSummary } from "@/lib/api";
+import {
+  Upload,
+  Loader2,
+  Play,
+  Crosshair,
+  Clock,
+  FileArchive,
+} from "lucide-react";
+import {
+  listMatches,
+  parseDemo,
+  pickDemoFile,
+  type MatchSummary,
+} from "@/lib/api";
+import { SettingsPanel } from "@/components/SettingsPanel";
+import { UpdateChecker } from "@/components/UpdateChecker";
 
 export default function Home() {
   const router = useRouter();
@@ -43,61 +57,88 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-[#060807] text-neutral-100">
+    <div className="min-h-screen text-neutral-100" style={{ background: "var(--rl-bg)" }}>
+      {/* Shared HUD-style grid background. Same as the review viewport. */}
       <div
         aria-hidden
         className="pointer-events-none fixed inset-0 bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:30px_30px]"
       />
-      <div className="relative mx-auto max-w-3xl px-6 py-16">
-        <div className="flex items-center gap-3 mb-14">
-          <div className="flex size-10 items-center justify-center rounded border border-emerald-400/20 bg-emerald-400/10">
-            <Crosshair className="size-5 text-emerald-300" strokeWidth={2.5} />
+
+      <div className="relative mx-auto max-w-3xl px-6 py-12">
+        {/* Top bar: logo + settings button. Mirrors the review HUD corners. */}
+        <div className="relative mb-10 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div
+              className="flex size-9 items-center justify-center rounded-md border"
+              style={{
+                borderColor: "rgba(110,231,183,0.2)",
+                background: "var(--rl-accent-soft)",
+              }}
+            >
+              <Crosshair className="size-4 text-emerald-300" strokeWidth={2.5} />
+            </div>
+            <div>
+              <div className="text-sm font-semibold tracking-tight">RoundLab</div>
+              <div className="text-[10.5px] font-medium uppercase tracking-[0.24em] text-neutral-500">
+                Desktop · v0.1
+              </div>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">RoundLab</h1>
-            <p className="text-xs text-neutral-500">CS2 round review workspace · Desktop</p>
-          </div>
+          <SettingsPanel />
         </div>
 
-        <div className="mb-8">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-emerald-300">
+        {/* Heading — tighter than before, denser, closer to the HUD vocabulary. */}
+        <div className="mb-6">
+          <div className="text-[10.5px] font-semibold uppercase tracking-[0.28em] text-emerald-300">
             Demo to decisions
           </div>
-          <p className="mt-3 max-w-2xl text-4xl font-semibold tracking-tight text-neutral-100">
+          <h1 className="mt-2 max-w-2xl text-[28px] font-semibold leading-[1.1] tracking-tight text-neutral-100">
             Replay every round, draw the call, fix the mistake.
-          </p>
+          </h1>
         </div>
 
+        {/* Upload panel — solid HUD surface, no more dashed card. */}
         <div
           onClick={onPickAndParse}
-          className={
-            "relative flex cursor-pointer flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed px-8 py-16 text-center transition-all " +
-            (uploading
-              ? "border-white/10 bg-black/20"
-              : "border-white/10 bg-black/20 hover:border-emerald-300/30 hover:bg-white/[0.035]")
-          }
+          role="button"
+          tabIndex={0}
+          className={[
+            "relative flex cursor-pointer flex-col items-center justify-center gap-3 overflow-hidden rounded-xl border px-8 py-14 text-center transition-colors",
+            uploading
+              ? "cursor-wait"
+              : "hover:border-emerald-300/25 hover:bg-white/[0.02]",
+          ].join(" ")}
+          style={{
+            background: "var(--rl-panel)",
+            borderColor: "var(--rl-border)",
+          }}
         >
+          {/* Subtle corner ticks to match the viewer's tactical feel. */}
+          <CornerTicks />
+
           {uploading ? (
             <>
-              <Loader2 className="size-10 animate-spin text-emerald-300" />
+              <Loader2 className="size-9 animate-spin text-emerald-300" />
               <div>
-                <div className="font-medium">Parsing demo…</div>
-                <div className="text-sm text-neutral-500 mt-1">
-                  This can take 20–60 seconds for a full match.
+                <div className="text-[13px] font-semibold text-neutral-100">
+                  Parsing demo…
+                </div>
+                <div className="mt-1 text-[11px] text-neutral-500">
+                  Running the sidecar locally — no upload.
                 </div>
               </div>
             </>
           ) : (
             <>
-              <div className="flex size-12 items-center justify-center rounded-xl bg-white/[0.04]">
-                <Upload className="size-5 text-emerald-300" />
+              <div className="flex size-11 items-center justify-center rounded-lg border border-white/[0.06] bg-black/40">
+                <Upload className="size-4 text-emerald-300" />
               </div>
               <div>
-                <div className="font-medium text-neutral-100">
-                  Choose a .dem file
+                <div className="text-[13px] font-semibold text-neutral-100">
+                  Open a .dem or .dem.zst
                 </div>
-                <div className="text-sm text-neutral-500 mt-1">
-                  Click to browse — parsing happens locally, nothing uploaded.
+                <div className="mt-1 text-[11px] text-neutral-500">
+                  Click to browse · files never leave your machine
                 </div>
               </div>
             </>
@@ -105,44 +146,103 @@ export default function Home() {
         </div>
 
         {error && (
-          <div className="mt-4 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 px-4 py-3 text-sm whitespace-pre-wrap">
+          <div className="mt-4 whitespace-pre-wrap rounded-lg border border-red-500/20 bg-red-500/[0.08] px-4 py-3 text-[12px] text-red-300">
             {error}
           </div>
         )}
 
+        <UpdateChecker />
+
+        {/* Recent matches — HUD-style dense rows. */}
         {matches.length > 0 && (
-          <div className="mt-12">
-            <h2 className="mb-3 px-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-neutral-600">
-              Recent matches
-            </h2>
-            <div className="space-y-2">
-              {matches.map((m) => (
-                <div
+          <div className="mt-10">
+            <div className="mb-2 flex items-center justify-between px-0.5">
+              <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.24em] text-neutral-500">
+                Recent matches
+              </h2>
+              <div className="text-[10.5px] uppercase tracking-[0.24em] text-neutral-600">
+                {matches.length} parsed
+              </div>
+            </div>
+            <div className="overflow-hidden rounded-xl border" style={{ borderColor: "var(--rl-border)" }}>
+              {matches.map((m, i) => (
+                <MatchRow
                   key={m.id}
-                  onClick={() => router.push(`/match/?id=${m.id}`)}
-                  className="group flex cursor-pointer items-center justify-between rounded-xl border border-white/[0.06] bg-black/20 p-4 transition-all hover:border-emerald-300/20 hover:bg-white/[0.035]"
-                >
-                  <div>
-                    <div className="font-mono text-sm text-neutral-200">
-                      {m.id.slice(0, 8)}
-                    </div>
-                    <div className="text-xs text-neutral-500 mt-0.5">
-                      {new Date(m.createdAt).toLocaleString()} ·{" "}
-                      {(m.size / 1024 / 1024).toFixed(1)} MB
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    className="bg-emerald-300 text-[#06100b] hover:bg-emerald-200"
-                  >
-                    <Play className="size-3.5 fill-current" /> Open
-                  </Button>
-                </div>
+                  match={m}
+                  first={i === 0}
+                  onOpen={() => router.push(`/match/?id=${m.id}`)}
+                />
               ))}
             </div>
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ------------------------------ pieces ------------------------------
+
+function CornerTicks() {
+  // Four L-shaped ticks in the corners, ~10px long. Visual echo of the
+  // radar frame / tactical HUD.
+  const tick =
+    "pointer-events-none absolute size-3 border-emerald-300/30";
+  return (
+    <>
+      <span className={`${tick} left-2 top-2 border-l border-t`} />
+      <span className={`${tick} right-2 top-2 border-r border-t`} />
+      <span className={`${tick} bottom-2 left-2 border-b border-l`} />
+      <span className={`${tick} bottom-2 right-2 border-b border-r`} />
+    </>
+  );
+}
+
+function MatchRow({
+  match: m,
+  first,
+  onOpen,
+}: {
+  match: MatchSummary;
+  first: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <div
+      onClick={onOpen}
+      className={[
+        "group flex cursor-pointer items-center justify-between px-4 py-3 transition-colors hover:bg-white/[0.025]",
+        first ? "" : "border-t",
+      ].join(" ")}
+      style={{
+        background: "var(--rl-panel)",
+        borderColor: "var(--rl-border)",
+      }}
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-md border border-white/[0.06] bg-black/40">
+          <FileArchive className="size-3.5 text-neutral-400 group-hover:text-emerald-300" />
+        </div>
+        <div className="min-w-0">
+          <div className="font-mono text-[12.5px] text-neutral-200">
+            {m.id.slice(0, 8)}
+            <span className="text-neutral-600">…{m.id.slice(-4)}</span>
+          </div>
+          <div className="mt-0.5 flex items-center gap-2 text-[10.5px] text-neutral-500">
+            <Clock className="size-3" />
+            {new Date(m.createdAt).toLocaleString()}
+            <span className="text-neutral-700">·</span>
+            {(m.size / 1024 / 1024).toFixed(1)} MB
+          </div>
+        </div>
+      </div>
+      <Button
+        size="sm"
+        className="h-7 gap-1.5 rounded-md bg-emerald-300 px-3 text-[11px] font-semibold text-[#06100b] hover:bg-emerald-200"
+      >
+        <Play className="size-3 fill-current" />
+        Open
+      </Button>
     </div>
   );
 }
