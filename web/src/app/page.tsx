@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Upload, Loader2, Play, Crosshair } from "lucide-react";
+import { apiUrl } from "@/lib/api";
 
 type MatchItem = { id: string; createdAt: number; size: number };
 
@@ -18,7 +19,7 @@ export default function Home() {
   useEffect(() => {
     let cancelled = false;
 
-    fetch("/api/matches")
+    fetch(apiUrl("/api/matches"))
       .then((r) => (r.ok ? r.json() : []))
       .then((items: MatchItem[]) => {
         if (!cancelled) setMatches(items);
@@ -36,50 +37,25 @@ export default function Home() {
     setError(null);
     setUploading(true);
     try {
-      const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB
-      const uploadId = crypto.randomUUID();
-      const totalChunks = Math.ceil(f.size / CHUNK_SIZE);
-
-      // If file is small enough, send as single chunk
-      if (totalChunks === 1) {
-        const fd = new FormData();
-        fd.append("file", f);
-        const r = await fetch("/api/upload", { method: "POST", body: fd });
-        const json = await r.json();
-        if (!r.ok) {
-          setError(json.error || "Upload failed");
-          return;
-        }
-        router.push(`/match/${json.id}`);
+      const fd = new FormData();
+      fd.append("file", f);
+      const r = await fetch(apiUrl("/api/upload"), { method: "POST", body: fd });
+      const text = await r.text();
+      let json: { id?: string; error?: string } = {};
+      try {
+        json = text ? JSON.parse(text) : {};
+      } catch {
+        json = { error: text || "Upload failed" };
+      }
+      if (!r.ok) {
+        setError(json.error || `Upload failed (${r.status})`);
         return;
       }
-
-      // Send file in chunks
-      for (let i = 0; i < totalChunks; i++) {
-        const start = i * CHUNK_SIZE;
-        const end = Math.min(start + CHUNK_SIZE, f.size);
-        const blob = f.slice(start, end);
-        const chunkFile = new File([blob], `chunk-${i}`, { type: "application/octet-stream" });
-
-        const fd = new FormData();
-        fd.append("chunk", chunkFile);
-        fd.append("chunkIndex", i.toString());
-        fd.append("totalChunks", totalChunks.toString());
-        fd.append("uploadId", uploadId);
-        fd.append("fileName", f.name);
-
-        const r = await fetch("/api/upload", { method: "POST", body: fd });
-        const json = await r.json();
-        if (!r.ok) {
-          setError(json.error || "Upload failed");
-          return;
-        }
-
-        // On last chunk, redirect
-        if (i === totalChunks - 1) {
-          router.push(`/match/${json.id}`);
-        }
+      if (!json.id) {
+        setError("Upload succeeded but no id returned");
+        return;
       }
+      router.push(`/match/${json.id}`);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Upload failed");
     } finally {

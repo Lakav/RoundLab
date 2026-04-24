@@ -1,30 +1,26 @@
 FROM golang:1.21-alpine AS builder
 
-WORKDIR /build
+WORKDIR /src
 
-# Build the parser
+# --- Build parser CLI ---
 COPY go.mod go.sum ./
 RUN go mod download
 COPY main.go ./
-RUN CGO_ENABLED=0 GOOS=linux go build -o parser main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/parser ./
 
-# Build the server
-WORKDIR /build/server
-COPY server/go.mod ./
+# --- Build HTTP server ---
+WORKDIR /src/server
+COPY server/go.mod server/go.sum ./
 RUN go mod download
 COPY server/server.go ./
-RUN CGO_ENABLED=0 GOOS=linux go build -o server server.go
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/server ./
 
-# Final image
+# --- Final image ---
 FROM alpine:latest
-
+RUN apk add --no-cache ca-certificates && mkdir -p /data/demos /data/parsed
 WORKDIR /app
-
-COPY --from=builder /build/parser /app/parser
-COPY --from=builder /build/server/server /app/server
-
-RUN mkdir -p /data/demos /data/parsed
+COPY --from=builder /out/parser /app/parser
+COPY --from=builder /out/server /app/server
 
 EXPOSE 8080
-
 CMD ["/app/server"]

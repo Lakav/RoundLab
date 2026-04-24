@@ -16,6 +16,7 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { MatchData, Round } from "@/lib/types";
 import { cropFor, RADAR_SIZE } from "@/lib/maps";
+import { apiUrl } from "@/lib/api";
 
 const DRAW_WIDTH = 3;
 const MIN_MAP = 360;
@@ -86,7 +87,7 @@ export default function MatchViewer({ id }: { id: string }) {
     let cancel = false;
     (async () => {
       try {
-        const r = await fetch(`/api/match/${id}/metadata`);
+        const r = await fetch(apiUrl(`/api/match/${id}/metadata`));
         if (!r.ok) throw new Error("not found");
         const data: MatchData = await r.json();
         if (cancel) return;
@@ -110,7 +111,7 @@ export default function MatchViewer({ id }: { id: string }) {
     let cancel = false;
     (async () => {
       try {
-        const r = await fetch(`/api/match/${id}/round/${round.number}`);
+        const r = await fetch(apiUrl(`/api/match/${id}/round/${round.number}`));
         if (!r.ok) throw new Error("round not found");
         const data = (await r.json()) as Round;
         if (!cancel) setRoundData(round.number, data);
