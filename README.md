@@ -49,8 +49,9 @@ Grab the installer for your platform from the
 [latest release](https://github.com/julescavanier/gotvanalyser/releases/latest):
 
 - **macOS (Apple Silicon)** — `RoundLab_<version>_aarch64.dmg`
-- **macOS (Intel)** — `RoundLab_<version>_x64.dmg`
 - **Windows (x64)** — `RoundLab_<version>_x64-setup.exe`
+
+> macOS Intel is not shipped. Build from source if you need it — see "Developing the desktop app" below.
 
 Because builds are **not code-signed** (no Apple Developer / Microsoft
 certificate), you'll see a warning on first launch:
