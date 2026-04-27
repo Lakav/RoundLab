@@ -32,23 +32,40 @@ export function PlayerHUD({ side }: { side: "CT" | "T" }) {
   const byId = new Map(positions.map((p) => [p.id, p]));
   const teamCode = side === "CT" ? 3 : 2;
 
-  // Build the side roster from positions (ground truth: every player
-  // currently in the round, alive or dead) and fall back to match.players
-  // for the static label when a steamId hasn't been seen in any frame yet.
-  const seen = new Set<number>();
+  // Determine each player's team for THIS round by majority vote across
+  // every frame in the round. match.players.team is set at first sighting
+  // (often during warmup) and lies after side-switch / half-time, which
+  // would otherwise put the same player in both HUDs.
+  const teamVotes = new Map<number, { ct: number; t: number }>();
+  for (const frame of round.frames) {
+    for (const pos of frame.players) {
+      let v = teamVotes.get(pos.id);
+      if (!v) {
+        v = { ct: 0, t: 0 };
+        teamVotes.set(pos.id, v);
+      }
+      if (pos.team === 3) v.ct++;
+      else if (pos.team === 2) v.t++;
+    }
+  }
+  const roundTeam = (id: number): number | null => {
+    const v = teamVotes.get(id);
+    if (!v) return null;
+    if (v.ct === 0 && v.t === 0) return null;
+    return v.ct >= v.t ? 3 : 2;
+  };
+
+  // Roster is anchored to the round-wide team assignment, so dead players
+  // keep their slot and the order doesn't reshuffle as the round plays.
   const sidePlayers: { steamId: number; name: string }[] = [];
-  for (const pos of positions) {
-    if (pos.team !== teamCode || seen.has(pos.id)) continue;
-    seen.add(pos.id);
-    const info = match.players.find((p) => p.steamId === pos.id);
-    sidePlayers.push({ steamId: pos.id, name: info?.name ?? "" });
+  for (const id of teamVotes.keys()) {
+    if (roundTeam(id) !== teamCode) continue;
+    const info = match.players.find((p) => p.steamId === id);
+    sidePlayers.push({ steamId: id, name: info?.name ?? "" });
   }
-  for (const p of match.players) {
-    if (seen.has(p.steamId)) continue;
-    if (p.team !== side) continue;
-    seen.add(p.steamId);
-    sidePlayers.push({ steamId: p.steamId, name: p.name });
-  }
+  sidePlayers.sort((a, b) =>
+    a.steamId === b.steamId ? 0 : a.steamId < b.steamId ? -1 : 1,
+  );
   const players = sidePlayers.slice(0, 5);
   const teamName = side === "CT" ? match.meta.teamA : match.meta.teamB;
   const teamScore = side === "CT" ? round.scoreA ?? 0 : round.scoreB ?? 0;

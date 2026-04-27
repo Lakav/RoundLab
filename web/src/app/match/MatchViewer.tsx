@@ -85,6 +85,40 @@ export default function MatchViewer({ id }: { id: string }) {
     };
   }, [loading]);
 
+  const zoomBoxRef = useRef<HTMLDivElement>(null);
+  // React's onWheel is registered as a passive listener, so preventDefault
+  // is silently ignored and the page scrolls (or fights the zoom). We
+  // attach a non-passive native listener to the same element instead.
+  useEffect(() => {
+    const el = zoomBoxRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const cx = e.clientX - rect.left - rect.width / 2;
+      const cy = e.clientY - rect.top - rect.height / 2;
+      const delta = -e.deltaY * 0.0015;
+      setZoom((prevZoom) => {
+        const nz = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prevZoom + delta * prevZoom));
+        if (nz === prevZoom) return prevZoom;
+        const ratio = nz / prevZoom;
+        setPan((p) => {
+          const nx = cx - (cx - p.x) * ratio;
+          const ny = cy - (cy - p.y) * ratio;
+          const max = (mapSize * (nz - 1)) / 2;
+          return {
+            x: Math.max(-max, Math.min(max, nx)),
+            y: Math.max(-max, Math.min(max, ny)),
+          };
+        });
+        return nz;
+      });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [mapSize]);
+
   const [strokesByRound, setStrokesByRound] = useState<Record<number, Stroke[]>>({});
   const strokes = strokesByRound[currentRoundIdx] ?? [];
   const setStrokes = (s: Stroke[]) =>
@@ -233,27 +267,8 @@ export default function MatchViewer({ id }: { id: string }) {
           <KillFeed />
           <div ref={mainRef} className="flex min-h-0 flex-1 items-center justify-center px-[290px] pb-4 pt-6">
             <div
+              ref={zoomBoxRef}
               className="relative overflow-hidden opacity-90"
-              onWheel={(e) => {
-                if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
-                  e.preventDefault();
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const cx = e.clientX - rect.left - rect.width / 2;
-                  const cy = e.clientY - rect.top - rect.height / 2;
-                  const delta = -e.deltaY * 0.0015;
-                  const nz = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom + delta * zoom));
-                  if (nz === zoom) return;
-                  const ratio = nz / zoom;
-                  const nx = cx - (cx - pan.x) * ratio;
-                  const ny = cy - (cy - pan.y) * ratio;
-                  const max = (mapSize * (nz - 1)) / 2;
-                  setZoom(nz);
-                  setPan({
-                    x: Math.max(-max, Math.min(max, nx)),
-                    y: Math.max(-max, Math.min(max, ny)),
-                  });
-                }
-              }}
               onPointerDown={(e) => {
                 if (tool !== "none") return;
                 if (zoom <= 1) return;

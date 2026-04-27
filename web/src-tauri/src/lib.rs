@@ -174,7 +174,39 @@ fn default_match_name(path: &Path, id: &str) -> String {
                 .to_string()
         })
         .filter(|s| !s.is_empty());
-    name.unwrap_or_else(|| id[..8].to_string())
+
+    // Filter out CS2-generated filenames that look like a UUID slug
+    // (e.g. "1-0e1c1545-8f49-41a8-bbf3-fabeacf2abc1-1-1") — they're noise.
+    // Heuristic: contains a UUID-shaped chunk (8-4-4-4-12 hex) anywhere.
+    let is_noise = name.as_deref().map(looks_like_uuid_slug).unwrap_or(false);
+    if let Some(n) = name.filter(|_| !is_noise) {
+        return n;
+    }
+
+    // Fall back to a friendly placeholder. Frontend can still let the user
+    // override it.
+    format!("Untitled match · {}", &id[..8])
+}
+
+fn looks_like_uuid_slug(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i + 36 <= bytes.len() {
+        let window = &bytes[i..i + 36];
+        let dash_ok = window[8] == b'-'
+            && window[13] == b'-'
+            && window[18] == b'-'
+            && window[23] == b'-';
+        let hex_ok = window
+            .iter()
+            .enumerate()
+            .all(|(j, &b)| matches!(j, 8 | 13 | 18 | 23) || b.is_ascii_hexdigit());
+        if dash_ok && hex_ok {
+            return true;
+        }
+        i += 1;
+    }
+    false
 }
 
 fn read_match_info(app: &AppHandle, id: &str) -> StoredMatchInfo {
@@ -550,6 +582,11 @@ async fn run_parser_sidecar(
                         "{name} exited with status {code}:\n{}",
                         stderr.trim()
                     ));
+                }
+                // Always echo the sidecar's final OK line so we can tell
+                // primary vs fallback from the Tauri logs.
+                if !stderr.trim().is_empty() {
+                    eprintln!("[{name}] {}", stderr.trim());
                 }
                 return Ok(());
             }

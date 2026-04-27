@@ -7,6 +7,11 @@ require (
 	github.com/markus-wa/demoinfocs-golang/v4 v4.5.1
 )
 
+// We vendor demoinfocs and patch sendtables2/entity.go so a missing entity
+// during PVS update (`unable to find existing entity N`) is treated as a
+// soft skip instead of panicking the goroutine. Plenty of CS2 demos hit
+// this and there's no released upstream fix yet. See vendor/.../entity.go.
+
 require (
 	github.com/golang/geo v0.0.0-20230421003525-6adc56603217 // indirect
 	github.com/golang/snappy v0.0.4 // indirect

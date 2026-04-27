@@ -97,13 +97,35 @@ parallel, uploads installers to a new GitHub release, and writes the
 
 ### Developing the desktop app
 
+Prerequisites: Rust (`rustup`), Go 1.23+, Node 20+, pnpm 10+, and `protoc` 23.x
+on your `PATH` (the parser-fallback Rust crate generates code from `.proto`
+files at build time).
+
 ```bash
 cd web
 pnpm install
-# Build the Go sidecar once for your host triple.
+
+# Build the Go sidecar once for your host triple. Re-run after editing
+# anything under parser/ — Tauri picks up the new binary on its next launch.
 ./src-tauri/binaries/build-sidecar.sh
+
+# Hot-reload dev loop: opens the native window, watches the Next.js frontend
+# and the Rust backend (web/src-tauri/src). Frontend edits hot-reload; Rust
+# edits trigger an app restart.
 pnpm tauri dev
 ```
+
+If you only need to iterate on the frontend (no native shell), `pnpm dev` from
+`web/` runs the Next.js app at `http://localhost:3000` — but the Tauri-only
+commands (`parse_demo`, `list_matches`, …) won't work there.
+
+To produce a release build locally:
+
+```bash
+pnpm tauri build
+```
+
+The resulting installers land in `web/src-tauri/target/release/bundle/`.
 
 ## Notes
 

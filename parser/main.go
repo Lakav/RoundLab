@@ -212,7 +212,14 @@ func main() {
 		reader = dec
 	}
 
-	p := dem.NewParser(reader)
+	// IgnorePacketEntitiesPanic swallows the "unable to find existing
+	// entity N" panics that some CS2 (especially POV) demos trigger inside
+	// sendtables2.OnPacketEntities. Without it, a single bad message kills
+	// the whole goroutine and we lose every event past that point —
+	// weapon fires, smoke starts, kills, the lot.
+	cfg := dem.DefaultParserConfig
+	cfg.IgnorePacketEntitiesPanic = true
+	p := dem.NewParserWithConfig(reader, cfg)
 	defer p.Close()
 
 	header, err := p.ParseHeader()
@@ -688,13 +695,20 @@ func main() {
 				flashLeft = 0
 			}
 			flashTotal := float32(pl.FlashDuration)
+			// IsAlive() consults the underlying entity flags; Health() can lag
+			// for one tick after death and report the pre-kill value, which
+			// makes dead players look full-HP in the HUD.
+			hp := pl.Health()
+			if !pl.IsAlive() {
+				hp = 0
+			}
 			frame.Players = append(frame.Players, PlayerPos{
 				ID:         pl.SteamID64,
 				X:          float32(pos.X),
 				Y:          float32(pos.Y),
 				Z:          float32(pos.Z),
 				Yaw:        float32(pl.ViewDirectionX()),
-				HP:         pl.Health(),
+				HP:         hp,
 				Armor:      pl.Armor(),
 				Money:      pl.Money(),
 				Helmet:     pl.HasHelmet(),
@@ -710,10 +724,26 @@ func main() {
 		currentRound.Frames = append(currentRound.Frames, frame)
 	})
 
-	if err := p.ParseToEnd(); err != nil {
-		msg := strings.SplitN(err.Error(), "\n", 2)[0]
-		fmt.Fprintln(os.Stderr, "parse error:", msg)
-		os.Exit(1)
+	// demoinfocs's own recover() only catches EOF — every other panic
+	// (notably the "unable to find existing entity N" from sendtables2 on
+	// some CS2 demos) is re-panicked out of ParseToEnd. Wrap the call so
+	// we keep the partial output we already have when that happens.
+	var parseErr error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				parseErr = fmt.Errorf("parser panic: %v", r)
+			}
+		}()
+		parseErr = p.ParseToEnd()
+	}()
+	if parseErr != nil {
+		msg := strings.SplitN(parseErr.Error(), "\n", 2)[0]
+		fmt.Fprintln(os.Stderr, "parse error (will keep partial):", msg)
+		// We still try to write whatever we got. A demo that craps out on
+		// round 18 is still way more useful than nothing — and definitely
+		// better than falling through to the Rust fallback, which doesn't
+		// emit weapon fires / utility effects / dead-player inventory.
 	}
 
 	// Flush a trailing round the demo never officially ended.
@@ -794,6 +824,18 @@ func main() {
 		output.Rounds[i].ScoreB = output.Rounds[i].TeamScores[teamBName]
 	}
 
+	// If we got nothing usable, surface the underlying parse error so the
+	// caller can fall back to the Rust parser instead of silently producing
+	// an empty match.
+	if len(output.Rounds) == 0 {
+		if parseErr != nil {
+			fmt.Fprintln(os.Stderr, "no rounds parsed:", parseErr)
+		} else {
+			fmt.Fprintln(os.Stderr, "no rounds parsed")
+		}
+		os.Exit(1)
+	}
+
 	// Write gzipped JSON
 	of, err := os.Create(*out)
 	if err != nil {
@@ -807,6 +849,18 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Fprintf(os.Stderr, "OK map=%s rounds=%d players=%d\n",
-		output.Meta.Map, len(output.Rounds), len(output.Players))
+	suffix := ""
+	if parseErr != nil {
+		suffix = " (partial — parse aborted mid-demo)"
+	}
+	totalFires := 0
+	totalEffects := 0
+	for _, r := range output.Rounds {
+		totalFires += len(r.WeaponFires)
+		totalEffects += len(r.Effects)
+	}
+	fmt.Fprintf(os.Stderr,
+		"OK[primary] map=%s rounds=%d players=%d fires=%d effects=%d%s\n",
+		output.Meta.Map, len(output.Rounds), len(output.Players),
+		totalFires, totalEffects, suffix)
 }
