@@ -35,6 +35,7 @@ export function KillFeed() {
         const opacity = Math.max(0.5, 1 - age / WINDOW_SECONDS);
         const killerSide = side(k.killer);
         const victimSide = side(k.victim);
+        const weaponIcon = iconPathFor(k.weapon);
         return (
           <div
             key={`${k.t}-${i}`}
@@ -53,14 +54,14 @@ export function KillFeed() {
             >
               {displayName(name(k.killer))}
             </span>
-            {k.weapon && (
+            {weaponIcon && (
               <span
                 aria-hidden
                 className="inline-block size-4"
                 style={{
                   backgroundColor: "#c8c8c8",
-                  WebkitMaskImage: `url(${iconPathFor(k.weapon) ?? "/icons/ak47.svg"})`,
-                  maskImage: `url(${iconPathFor(k.weapon) ?? "/icons/ak47.svg"})`,
+                  WebkitMaskImage: `url(${weaponIcon})`,
+                  maskImage: `url(${weaponIcon})`,
                   WebkitMaskRepeat: "no-repeat",
                   maskRepeat: "no-repeat",
                   WebkitMaskPosition: "center",

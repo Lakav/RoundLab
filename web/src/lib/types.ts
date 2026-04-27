@@ -70,9 +70,13 @@ export type MatchEvent = {
   type:
     | "kill"
     | "bomb_planted"
+    | "bomb_defuse_start"
+    | "bomb_defuse_abort"
     | "bomb_defused"
     | "bomb_exploded"
     | "round_end";
+  player?: number;
+  hasKit?: boolean;
   killer?: number;
   victim?: number;
   assist?: number;
@@ -111,6 +115,7 @@ export type Round = {
 export type UtilityEffect = {
   id?: number;
   type: "smoke" | "flash" | "he" | "fire" | "decoy" | "bomb_planted";
+  variant?: "molotov" | "incendiary";
   start: number;
   end: number;
   x: number;

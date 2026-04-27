@@ -20,6 +20,18 @@ function sample(frames: Frame[], t: number): PlayerPos[] {
   return frames[lo].players;
 }
 
+function lastKnownById(frames: Frame[], t: number): Map<number, PlayerPos> {
+  const out = new Map<number, PlayerPos>();
+  for (const frame of frames) {
+    if (frame.t > t) break;
+    for (const pos of frame.players) out.set(pos.id, pos);
+  }
+  if (out.size === 0 && frames[0]) {
+    for (const pos of frames[0].players) out.set(pos.id, pos);
+  }
+  return out;
+}
+
 export function PlayerHUD({ side }: { side: "CT" | "T" }) {
   const match = useReplay((s) => s.match);
   const currentRoundIdx = useReplay((s) => s.currentRoundIdx);
@@ -29,37 +41,18 @@ export function PlayerHUD({ side }: { side: "CT" | "T" }) {
   if (!round) return null;
 
   const positions = sample(round.frames, time);
-  const byId = new Map(positions.map((p) => [p.id, p]));
-  const teamCode = side === "CT" ? 3 : 2;
+  const liveById = new Map(positions.map((p) => [p.id, p]));
+  const byId = lastKnownById(round.frames, time);
+  const baseRound = match.rounds[0] ?? round;
+  const baseTeams = roundTeams(baseRound.frames);
+  const currentTeams = roundTeams(round.frames);
+  const baseTeamCode = side === "CT" ? 3 : 2;
 
-  // Determine each player's team for THIS round by majority vote across
-  // every frame in the round. match.players.team is set at first sighting
-  // (often during warmup) and lies after side-switch / half-time, which
-  // would otherwise put the same player in both HUDs.
-  const teamVotes = new Map<number, { ct: number; t: number }>();
-  for (const frame of round.frames) {
-    for (const pos of frame.players) {
-      let v = teamVotes.get(pos.id);
-      if (!v) {
-        v = { ct: 0, t: 0 };
-        teamVotes.set(pos.id, v);
-      }
-      if (pos.team === 3) v.ct++;
-      else if (pos.team === 2) v.t++;
-    }
-  }
-  const roundTeam = (id: number): number | null => {
-    const v = teamVotes.get(id);
-    if (!v) return null;
-    if (v.ct === 0 && v.t === 0) return null;
-    return v.ct >= v.t ? 3 : 2;
-  };
-
-  // Roster is anchored to the round-wide team assignment, so dead players
-  // keep their slot and the order doesn't reshuffle as the round plays.
+  // Roster is anchored to the first visible round, so players keep their
+  // left/right team slot after half-time. Only the CT/T styling changes.
   const sidePlayers: { steamId: number; name: string }[] = [];
-  for (const id of teamVotes.keys()) {
-    if (roundTeam(id) !== teamCode) continue;
+  for (const [id, team] of baseTeams) {
+    if (team !== baseTeamCode) continue;
     const info = match.players.find((p) => p.steamId === id);
     sidePlayers.push({ steamId: id, name: info?.name ?? "" });
   }
@@ -67,8 +60,11 @@ export function PlayerHUD({ side }: { side: "CT" | "T" }) {
     a.steamId === b.steamId ? 0 : a.steamId < b.steamId ? -1 : 1,
   );
   const players = sidePlayers.slice(0, 5);
-  const teamName = side === "CT" ? match.meta.teamA : match.meta.teamB;
+  const currentSideCode = majoritySide(players.map((p) => p.steamId), currentTeams) ?? baseTeamCode;
+  const currentSide = currentSideCode === 3 ? "CT" : "T";
+  const teamName = displayTeamName(side === "CT" ? match.meta.teamA : match.meta.teamB, side);
   const teamScore = side === "CT" ? round.scoreA ?? 0 : round.scoreB ?? 0;
+  const cols = sideColors(currentSide);
 
   return (
     <aside
@@ -83,8 +79,8 @@ export function PlayerHUD({ side }: { side: "CT" | "T" }) {
         <div
           className="flex size-5 shrink-0 items-center justify-center rounded-full border text-[9px] font-bold"
           style={{
-            background: side === "CT" ? "#8f2930" : "#93862f",
-            borderColor: side === "CT" ? "#ff8a8f" : "#d4c664",
+            background: cols.bgDark,
+            borderColor: cols.soft,
             color: "#fff",
           }}
         >
@@ -108,12 +104,55 @@ export function PlayerHUD({ side }: { side: "CT" | "T" }) {
       </div>
 
       {players.map((p) => {
-        const pos = byId.get(p.steamId);
+        const current = liveById.get(p.steamId);
+        const known = current ?? byId.get(p.steamId);
+        const pos = current ? current : known ? { ...known, hp: 0 } : undefined;
         const name = p.name || `#${String(p.steamId).slice(-4)}`;
-        return <PlayerRow key={p.steamId} name={name} pos={pos} side={side} />;
+        return <PlayerRow key={p.steamId} name={name} pos={pos} side={currentSide} />;
       })}
     </aside>
   );
+}
+
+function roundTeams(frames: Frame[]): Map<number, number> {
+  const votes = new Map<number, { ct: number; t: number }>();
+  for (const frame of frames) {
+    for (const pos of frame.players) {
+      let v = votes.get(pos.id);
+      if (!v) {
+        v = { ct: 0, t: 0 };
+        votes.set(pos.id, v);
+      }
+      if (pos.team === 3) v.ct++;
+      else if (pos.team === 2) v.t++;
+    }
+  }
+  const out = new Map<number, number>();
+  for (const [id, v] of votes) {
+    if (v.ct === 0 && v.t === 0) continue;
+    out.set(id, v.ct >= v.t ? 3 : 2);
+  }
+  return out;
+}
+
+function majoritySide(ids: number[], teams: Map<number, number>): number | null {
+  let ct = 0;
+  let t = 0;
+  for (const id of ids) {
+    const team = teams.get(id);
+    if (team === 3) ct++;
+    else if (team === 2) t++;
+  }
+  if (ct === 0 && t === 0) return null;
+  return ct >= t ? 3 : 2;
+}
+
+function displayTeamName(name: string, slot: "CT" | "T") {
+  const trimmed = name.trim();
+  if (!trimmed || trimmed === "CT" || trimmed === "T" || trimmed === "Counter-Terrorists" || trimmed === "Terrorists") {
+    return slot === "CT" ? "Team 1" : "Team 2";
+  }
+  return trimmed;
 }
 
 function displayName(name: string) {
@@ -203,6 +242,19 @@ function PlayerRow({
         >
           ${money}
         </span>
+      </div>
+
+      <div
+        className="relative -mt-0.5 h-[3px] w-full overflow-hidden rounded-b-[2px] bg-white/10"
+      >
+        <span
+          className="block h-full transition-[width] duration-150 ease-out"
+          style={{
+            width: `${Math.max(0, Math.min(100, armor))}%`,
+            background: armor > 0 ? cols.soft : "transparent",
+            opacity: alive ? 0.95 : 0.45,
+          }}
+        />
       </div>
 
       <div

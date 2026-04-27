@@ -103,14 +103,15 @@ type ProjectilePos struct {
 }
 
 type UtilityEffect struct {
-	ID    int64   `json:"id,omitempty"`
-	Type  string  `json:"type"` // smoke, flash, he, fire, decoy, bomb_planted
-	Start float64 `json:"start"`
-	End   float64 `json:"end"`
-	X     float32 `json:"x"`
-	Y     float32 `json:"y"`
-	Z     float32 `json:"z"`
-	Team  uint8   `json:"team,omitempty"` // 2=T, 3=CT
+	ID      int64   `json:"id,omitempty"`
+	Type    string  `json:"type"`              // smoke, flash, he, fire, decoy, bomb_planted
+	Variant string  `json:"variant,omitempty"` // molotov, incendiary
+	Start   float64 `json:"start"`
+	End     float64 `json:"end"`
+	X       float32 `json:"x"`
+	Y       float32 `json:"y"`
+	Z       float32 `json:"z"`
+	Team    uint8   `json:"team,omitempty"` // 2=T, 3=CT
 }
 
 type WeaponFireEvent struct {
@@ -126,7 +127,9 @@ type WeaponFireEvent struct {
 
 type Event struct {
 	T      float64 `json:"t"`
-	Type   string  `json:"type"` // kill, bomb_planted, bomb_defused, bomb_exploded, round_end
+	Type   string  `json:"type"` // kill, bomb_planted, bomb_defuse_start, bomb_defuse_abort, bomb_defused, bomb_exploded, round_end
+	Player uint64  `json:"player,omitempty"`
+	HasKit bool    `json:"hasKit,omitempty"`
 	Killer uint64  `json:"killer,omitempty"`
 	Victim uint64  `json:"victim,omitempty"`
 	Assist uint64  `json:"assist,omitempty"`
@@ -167,6 +170,16 @@ func teamStr(t common.Team) string {
 		return "CT"
 	}
 	return "SPEC"
+}
+
+func infernoVariant(thrower *common.Player) string {
+	// demoinfocs explicitly says Source 2 doesn't network whether FireGrenadeStart
+	// is molotov or incendiary. This is only a fallback; the frontend can refine
+	// the variant from the actual projectile class when it is available.
+	if thrower != nil && thrower.Team == common.TeamCounterTerrorists {
+		return "incendiary"
+	}
+	return "molotov"
 }
 
 func main() {
@@ -361,6 +374,9 @@ func main() {
 		if currentRound == nil {
 			return
 		}
+		if t, ok := roundTime(); ok {
+			currentRound.Events = append(currentRound.Events, Event{T: t, Type: "round_end", Winner: teamStr(e.Winner)})
+		}
 		if !currentRound.LiveStarted {
 			beginLiveRound(roundStartTick)
 		}
@@ -451,6 +467,28 @@ func main() {
 			})
 		}
 		currentRound.Events = append(currentRound.Events, Event{T: t, Type: "bomb_planted"})
+	})
+	p.RegisterEventHandler(func(e events.BombDefuseStart) {
+		t, ok := roundTime()
+		if !ok {
+			return
+		}
+		ev := Event{T: t, Type: "bomb_defuse_start", HasKit: e.HasKit}
+		if e.Player != nil {
+			ev.Player = e.Player.SteamID64
+		}
+		currentRound.Events = append(currentRound.Events, ev)
+	})
+	p.RegisterEventHandler(func(e events.BombDefuseAborted) {
+		t, ok := roundTime()
+		if !ok {
+			return
+		}
+		ev := Event{T: t, Type: "bomb_defuse_abort"}
+		if e.Player != nil {
+			ev.Player = e.Player.SteamID64
+		}
+		currentRound.Events = append(currentRound.Events, ev)
 	})
 	p.RegisterEventHandler(func(e events.BombDefused) {
 		t, ok := roundTime()
@@ -581,14 +619,15 @@ func main() {
 		idx := len(currentRound.Effects)
 		infernoEffects[e.Inferno.UniqueID()] = idx
 		currentRound.Effects = append(currentRound.Effects, UtilityEffect{
-			ID:    e.Inferno.UniqueID(),
-			Type:  "fire",
-			Start: t,
-			End:   t + 7,
-			X:     float32(x / n),
-			Y:     float32(y / n),
-			Z:     float32(z / n),
-			Team:  teamOf(e.Inferno.Thrower()),
+			ID:      e.Inferno.UniqueID(),
+			Type:    "fire",
+			Variant: infernoVariant(e.Inferno.Thrower()),
+			Start:   t,
+			End:     t + 7,
+			X:       float32(x / n),
+			Y:       float32(y / n),
+			Z:       float32(z / n),
+			Team:    teamOf(e.Inferno.Thrower()),
 		})
 	})
 	p.RegisterEventHandler(func(e events.GrenadeProjectileDestroy) {

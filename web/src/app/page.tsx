@@ -367,7 +367,7 @@ export default function Home() {
             }}
             className="w-full rounded-md border bg-black/40 px-3 py-2 text-[13px] text-neutral-100 outline-none focus:border-emerald-300/40"
             style={{ borderColor: "var(--rl-border)" }}
-            placeholder="e.g. Anubis vs FaZe — quarterfinals"
+            placeholder={postParse.name}
           />
           <div className="mt-4 flex justify-end gap-2">
             <Button

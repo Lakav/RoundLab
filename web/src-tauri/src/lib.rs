@@ -188,15 +188,32 @@ fn default_match_name(path: &Path, id: &str) -> String {
     format!("Untitled match · {}", &id[..8])
 }
 
+fn match_score_name(m: &MatchFile) -> String {
+    let team_a = clean_match_part(&m.meta.team_a, "Team");
+    let team_b = clean_match_part(&m.meta.team_b, "Team");
+    let map = clean_match_part(&m.meta.map, "map");
+    format!(
+        "{}-{} - {} vs {} - {}",
+        m.meta.score_a, m.meta.score_b, team_a, team_b, map
+    )
+}
+
+fn clean_match_part(raw: &str, fallback: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || matches!(trimmed, "CT" | "T" | "Counter-Terrorists" | "Terrorists") {
+        fallback.to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 fn looks_like_uuid_slug(s: &str) -> bool {
     let bytes = s.as_bytes();
     let mut i = 0;
     while i + 36 <= bytes.len() {
         let window = &bytes[i..i + 36];
-        let dash_ok = window[8] == b'-'
-            && window[13] == b'-'
-            && window[18] == b'-'
-            && window[23] == b'-';
+        let dash_ok =
+            window[8] == b'-' && window[13] == b'-' && window[18] == b'-' && window[23] == b'-';
         let hex_ok = window
             .iter()
             .enumerate()
@@ -538,8 +555,11 @@ async fn parse_demo(
     if !out_path.exists() {
         return Err("parser finished but produced no output".into());
     }
+    let parsed_name = read_match_file(&out_path)
+        .map(|m| match_score_name(&m))
+        .unwrap_or_else(|_| default_match_name(&src, &id));
     let info = StoredMatchInfo {
-        name: default_match_name(&src, &id),
+        name: parsed_name,
         source_path: src_path,
     };
     write_match_info(&app, &id, &info)?;
@@ -563,9 +583,7 @@ async fn run_parser_sidecar(
         .map_err(|e| format!("{name} sidecar init: {e}"))?
         .args(argv);
 
-    let (mut rx, _child) = sidecar
-        .spawn()
-        .map_err(|e| format!("spawn {name}: {e}"))?;
+    let (mut rx, _child) = sidecar.spawn().map_err(|e| format!("spawn {name}: {e}"))?;
     let mut stderr = String::new();
     while let Some(event) = rx.recv().await {
         match event {

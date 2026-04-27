@@ -54,9 +54,11 @@ struct Player {
 struct Frame {
     t: f64,
     players: Vec<PlayerPos>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    projectiles: Vec<ProjectilePos>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PlayerPos {
     id: u64,
@@ -66,6 +68,8 @@ struct PlayerPos {
     yaw: f64,
     hp: i64,
     armor: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    money: Option<i64>,
     #[serde(skip_serializing_if = "is_false")]
     helmet: bool,
     #[serde(skip_serializing_if = "is_false")]
@@ -75,6 +79,31 @@ struct PlayerPos {
     active: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     weapons: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    flash_left: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    flash_total: Option<f64>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectilePos {
+    id: i64,
+    #[serde(rename = "type")]
+    kind: String,
+    x: f64,
+    y: f64,
+    z: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thrower: Option<u64>,
+}
+
+#[derive(Clone, Debug)]
+struct BlindSpan {
+    player: u64,
+    start: f64,
+    end: f64,
+    total: f64,
 }
 
 #[derive(Serialize)]
@@ -82,6 +111,10 @@ struct Event {
     t: f64,
     #[serde(rename = "type")]
     kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    player: Option<u64>,
+    #[serde(rename = "hasKit", skip_serializing_if = "is_false")]
+    has_kit: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     killer: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -109,6 +142,41 @@ struct Round {
     score_b: i32,
     frames: Vec<Frame>,
     events: Vec<Event>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    effects: Vec<UtilityEffect>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    weapon_fires: Vec<WeaponFireEvent>,
+}
+
+#[derive(Serialize)]
+struct UtilityEffect {
+    #[serde(rename = "type")]
+    kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    variant: Option<String>,
+    start: f64,
+    end: f64,
+    x: f64,
+    y: f64,
+    z: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    team: Option<i64>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WeaponFireEvent {
+    t: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shooter: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    weapon: Option<String>,
+    x: f64,
+    y: f64,
+    z: f64,
+    yaw: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    team: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -122,6 +190,7 @@ struct Output {
 struct RoundSpan {
     start: i32,
     end: i32,
+    round_end: i32,
     winner: String,
 }
 
@@ -145,16 +214,21 @@ fn run() -> Result<()> {
     let map = header.get("map_name").cloned().unwrap_or_default();
     let players = parse_players(&bytes, &huf)?;
     let events = parse_events(&bytes, &huf)?;
-    let spans = round_spans(&events);
+    let spans = round_spans(&events)
+        .into_iter()
+        .map(|span| playable_span(&events, &span))
+        .collect::<Vec<_>>();
     if spans.is_empty() {
         bail!("fallback parser found no playable rounds");
     }
 
     let sample_step = sample_step(&args.quality);
     let sample_rate = (TICK_RATE as i32 / sample_step).max(1);
-    let wanted_ticks = sample_ticks(&spans, sample_step);
+    let wanted_ticks = sample_ticks(&spans, sample_step, &events);
     let tick_rows = parse_ticks(&bytes, &huf, wanted_ticks)?;
     let rows_by_tick = group_tick_rows(tick_rows);
+    let projectile_rows = parse_projectiles(&bytes, &huf)?;
+    let projectiles_by_tick = group_projectile_rows(projectile_rows);
 
     let mut score_ct = 0;
     let mut score_t = 0;
@@ -167,25 +241,36 @@ fn run() -> Result<()> {
         }
 
         let mut frames = Vec::new();
+        let blind_spans = round_blinds(&events, &span);
         for tick in (span.start..=span.end).step_by(sample_step as usize) {
             let Some(rows) = rows_by_tick.get(&tick) else {
                 continue;
             };
+            let t = seconds_since(span.start, tick);
             let players = rows
                 .iter()
-                .filter_map(player_pos_from_row)
+                .filter_map(|row| player_pos_from_row(row, &blind_spans, t))
                 .collect::<Vec<_>>();
             if players.is_empty() {
                 continue;
             }
             frames.push(Frame {
-                t: seconds_since(span.start, tick),
+                t,
                 players,
+                projectiles: projectiles_by_tick.get(&tick).cloned().unwrap_or_default(),
             });
         }
 
         if frames.is_empty() {
             continue;
+        }
+        if frames[0].t > 0.05 {
+            let first = Frame {
+                t: 0.0,
+                players: frames[0].players.clone(),
+                projectiles: Vec::new(),
+            };
+            frames.insert(0, first);
         }
 
         rounds.push(Round {
@@ -197,7 +282,9 @@ fn run() -> Result<()> {
             winner: span.winner.clone(),
             score_a: score_ct,
             score_b: score_t,
-            events: round_events(&events, span),
+            events: round_events(&events, &span),
+            effects: round_effects(&events, &span),
+            weapon_fires: round_weapon_fires(&events, &span, &rows_by_tick),
             frames,
         });
 
@@ -208,6 +295,23 @@ fn run() -> Result<()> {
 
     if rounds.is_empty() {
         bail!("fallback parser produced no frames");
+    }
+    if looks_like_knife_round(rounds.first()) {
+        rounds.remove(0);
+        let mut ct = 0;
+        let mut t = 0;
+        for (idx, round) in rounds.iter_mut().enumerate() {
+            if round.winner == "CT" {
+                ct += 1;
+            } else if round.winner == "T" {
+                t += 1;
+            }
+            round.number = idx;
+            round.score_a = ct;
+            round.score_b = t;
+        }
+        score_ct = ct;
+        score_t = t;
     }
 
     let duration_sec = spans
@@ -237,6 +341,80 @@ fn run() -> Result<()> {
         output.players.len()
     );
     Ok(())
+}
+
+fn playable_span(events: &[Value], span: &RoundSpan) -> RoundSpan {
+    let duration = seconds_since(span.start, span.end);
+    if duration < 170.0 {
+        return span.clone();
+    }
+    let first_action = events
+        .iter()
+        .filter_map(|event| {
+            let tick = get_i64(event, "tick")? as i32;
+            if tick <= span.start || tick >= span.end {
+                return None;
+            }
+            let name = get_str(event, "event_name").unwrap_or("");
+            let weapon = get_str(event, "weapon").unwrap_or("");
+            let real_weapon = !weapon.is_empty() && weapon != "world" && !is_knife_or_bomb(weapon);
+            let is_action = (name == "weapon_fire" && real_weapon)
+                || name == "bomb_planted"
+                || (name == "player_death" && real_weapon);
+            if is_action {
+                Some(tick)
+            } else {
+                None
+            }
+        })
+        .min();
+    let Some(tick) = first_action else {
+        return span.clone();
+    };
+    if seconds_since(span.start, tick) < 90.0 {
+        return span.clone();
+    }
+    RoundSpan {
+        start: (tick - 15 * TICK_RATE as i32).max(span.start),
+        end: span.end,
+        round_end: span.round_end,
+        winner: span.winner.clone(),
+    }
+}
+
+fn looks_like_knife_round(round: Option<&Round>) -> bool {
+    let Some(round) = round else {
+        return false;
+    };
+    if round.duration > 75.0 {
+        return false;
+    }
+    let weapons = round
+        .events
+        .iter()
+        .filter_map(|event| event.weapon.as_deref())
+        .chain(
+            round
+                .frames
+                .iter()
+                .flat_map(|frame| &frame.players)
+                .flat_map(|player| {
+                    std::iter::once(player.active.as_str())
+                        .chain(player.weapons.iter().map(String::as_str))
+                }),
+        );
+    weapons
+        .filter(|weapon| !weapon.is_empty())
+        .all(|weapon| is_knife_or_bomb(weapon))
+}
+
+fn is_knife_or_bomb(weapon: &str) -> bool {
+    let lower = weapon.to_ascii_lowercase();
+    lower.contains("knife")
+        || lower.contains("bayonet")
+        || lower.contains("karambit")
+        || lower == "c4"
+        || lower == "bomb"
 }
 
 fn parse_args() -> Result<Args> {
@@ -351,10 +529,23 @@ fn parse_events(bytes: &[u8], huf: &Vec<(u8, u8)>) -> Result<Vec<Value>> {
             "round_start".into(),
             "round_freeze_end".into(),
             "round_end".into(),
+            "round_officially_ended".into(),
             "player_death".into(),
             "bomb_planted".into(),
+            "bomb_begindefuse".into(),
+            "bomb_abortdefuse".into(),
             "bomb_defused".into(),
             "bomb_exploded".into(),
+            "player_blind".into(),
+            "weapon_fire".into(),
+            "flashbang_detonate".into(),
+            "hegrenade_detonate".into(),
+            "smokegrenade_detonate".into(),
+            "smokegrenade_expired".into(),
+            "inferno_startburn".into(),
+            "inferno_expire".into(),
+            "molotov_detonate".into(),
+            "decoy_detonate".into(),
         ],
         vec!["X".into(), "Y".into(), "team_num".into()],
         vec!["total_rounds_played".into()],
@@ -382,12 +573,14 @@ fn parse_ticks(bytes: &[u8], huf: &Vec<(u8, u8)>, ticks: Vec<i32>) -> Result<Vec
             "yaw".into(),
             "health".into(),
             "armor_value".into(),
+            "balance".into(),
             "has_helmet".into(),
             "has_defuser".into(),
             "is_alive".into(),
             "team_num".into(),
             "active_weapon_name".into(),
             "inventory".into(),
+            "flash_duration".into(),
         ],
         vec![],
         ticks,
@@ -405,13 +598,50 @@ fn parse_ticks(bytes: &[u8], huf: &Vec<(u8, u8)>, ticks: Vec<i32>) -> Result<Vec
         .collect())
 }
 
+fn parse_projectiles(bytes: &[u8], huf: &Vec<(u8, u8)>) -> Result<Vec<Value>> {
+    let mut settings = settings(huf, vec![], vec![], vec![], vec![], true)?;
+    settings.parse_projectiles = true;
+    settings.parse_grenades = true;
+    let mut parser = Parser::new(settings, ParsingMode::Normal);
+    let output = parser.parse_demo(bytes).map_err(|e| anyhow!("{e}"))?;
+    let helper = OutputSerdeHelperStruct {
+        prop_infos: output.prop_controller.prop_infos.clone(),
+        inner: output.df.clone().into(),
+    };
+    Ok(soa_to_aos(helper)
+        .into_iter()
+        .map(|row| serde_json::to_value(row).unwrap_or(Value::Null))
+        .collect())
+}
+
 fn round_spans(events: &[Value]) -> Vec<RoundSpan> {
     let starts = events
         .iter()
-        .filter(|e| get_str(e, "event_name") == Some("round_freeze_end"))
-        .filter_map(|e| get_i64(e, "tick").map(|t| t as i32))
-        .filter(|t| *t > 0)
+        .filter_map(|e| {
+            let name = get_str(e, "event_name")?;
+            if name != "round_freeze_end" && name != "round_start" {
+                return None;
+            }
+            let tick = get_i64(e, "tick")? as i32;
+            Some((tick, name == "round_freeze_end"))
+        })
+        .filter(|(t, _)| *t > 0)
         .collect::<Vec<_>>();
+    let mut starts = starts;
+    starts.sort_unstable_by_key(|(tick, freeze_end)| (*tick, !*freeze_end));
+    let starts = starts
+        .into_iter()
+        .fold(Vec::<(i32, bool)>::new(), |mut acc, item| {
+            if acc.last().is_some_and(|last| last.0 == item.0) {
+                if item.1 {
+                    acc.pop();
+                    acc.push(item);
+                }
+            } else {
+                acc.push(item);
+            }
+            acc
+        });
     let ends = events
         .iter()
         .filter(|e| get_str(e, "event_name") == Some("round_end"))
@@ -423,25 +653,42 @@ fn round_spans(events: &[Value]) -> Vec<RoundSpan> {
             Some((tick, get_str(e, "winner").unwrap_or("").to_string()))
         })
         .collect::<Vec<_>>();
+    let officials = events
+        .iter()
+        .filter(|e| get_str(e, "event_name") == Some("round_officially_ended"))
+        .filter_map(|e| get_i64(e, "tick").map(|t| t as i32))
+        .filter(|t| *t > 0)
+        .collect::<Vec<_>>();
 
     let mut spans = Vec::new();
-    let mut end_idx = 0;
-    for start in starts {
-        while end_idx < ends.len() && ends[end_idx].0 <= start {
-            end_idx += 1;
-        }
-        if end_idx >= ends.len() {
-            break;
-        }
-        let (end, winner) = &ends[end_idx];
-        if *end > start {
-            spans.push(RoundSpan {
-                start,
-                end: *end,
-                winner: winner.clone(),
+    let mut prev_end = 0;
+    for (end, winner) in ends {
+        let selected = starts
+            .iter()
+            .rev()
+            .find(|(tick, freeze_end)| *freeze_end && *tick > prev_end && *tick < end)
+            .or_else(|| {
+                starts
+                    .iter()
+                    .rev()
+                    .find(|(tick, _)| *tick > prev_end && *tick < end)
             });
-        }
-        end_idx += 1;
+        let Some((start, _)) = selected else {
+            prev_end = end;
+            continue;
+        };
+        let official_end = officials
+            .iter()
+            .find(|tick| **tick >= end && **tick <= end + (TICK_RATE as i32 * 10))
+            .copied()
+            .unwrap_or(end);
+        spans.push(RoundSpan {
+            start: *start,
+            end: official_end,
+            round_end: end,
+            winner,
+        });
+        prev_end = official_end;
     }
     spans
 }
@@ -455,7 +702,7 @@ fn sample_step(quality: &str) -> i32 {
     }
 }
 
-fn sample_ticks(spans: &[RoundSpan], step: i32) -> Vec<i32> {
+fn sample_ticks(spans: &[RoundSpan], step: i32, events: &[Value]) -> Vec<i32> {
     let mut ticks = Vec::new();
     for span in spans {
         let mut tick = span.start;
@@ -464,6 +711,21 @@ fn sample_ticks(spans: &[RoundSpan], step: i32) -> Vec<i32> {
             tick += step;
         }
         ticks.push(span.end);
+    }
+    for event in events {
+        if matches!(
+            get_str(event, "event_name").unwrap_or(""),
+            "weapon_fire"
+                | "bomb_planted"
+                | "bomb_begindefuse"
+                | "bomb_abortdefuse"
+                | "bomb_defused"
+                | "bomb_exploded"
+        ) {
+            if let Some(tick) = get_i64(event, "tick") {
+                ticks.push(tick as i32);
+            }
+        }
     }
     ticks.sort_unstable();
     ticks.dedup();
@@ -480,11 +742,44 @@ fn group_tick_rows(rows: Vec<Value>) -> BTreeMap<i32, Vec<Value>> {
     out
 }
 
-fn player_pos_from_row(row: &Value) -> Option<PlayerPos> {
+fn group_projectile_rows(rows: Vec<Value>) -> BTreeMap<i32, Vec<ProjectilePos>> {
+    let mut out: BTreeMap<i32, Vec<ProjectilePos>> = BTreeMap::new();
+    for row in rows {
+        let Some(tick) = get_i64(&row, "tick") else {
+            continue;
+        };
+        let Some(x) = get_f64(&row, "x") else {
+            continue;
+        };
+        let Some(y) = get_f64(&row, "y") else {
+            continue;
+        };
+        let Some(z) = get_f64(&row, "z") else {
+            continue;
+        };
+        let id = get_i64(&row, "entity_id").unwrap_or(tick);
+        out.entry(tick as i32).or_default().push(ProjectilePos {
+            id,
+            kind: get_str(&row, "grenade_type")
+                .unwrap_or("grenade")
+                .to_string(),
+            x,
+            y,
+            z,
+            thrower: get_u64(&row, "steamid"),
+        });
+    }
+    out
+}
+
+fn player_pos_from_row(row: &Value, blind_spans: &[BlindSpan], t: f64) -> Option<PlayerPos> {
     if !get_bool(row, "is_alive").unwrap_or(false) {
         return None;
     }
     let id = get_u64(row, "steamid")?;
+    let blind = blind_spans
+        .iter()
+        .find(|b| b.player == id && t >= b.start && t <= b.end);
     Some(PlayerPos {
         id,
         x: get_f64(row, "X").unwrap_or_default(),
@@ -493,11 +788,14 @@ fn player_pos_from_row(row: &Value) -> Option<PlayerPos> {
         yaw: get_f64(row, "yaw").unwrap_or_default(),
         hp: get_i64(row, "health").unwrap_or_default(),
         armor: get_i64(row, "armor_value").unwrap_or_default(),
+        money: get_i64(row, "balance"),
         helmet: get_bool(row, "has_helmet").unwrap_or(false),
         kit: get_bool(row, "has_defuser").unwrap_or(false),
         team: get_i64(row, "team_num").unwrap_or_default(),
         active: get_str(row, "active_weapon_name").unwrap_or("").to_string(),
         weapons: get_string_array(row, "inventory"),
+        flash_left: blind.map(|b| (b.end - t).max(0.0)),
+        flash_total: blind.map(|b| b.total),
     })
 }
 
@@ -513,6 +811,8 @@ fn round_events(events: &[Value], span: &RoundSpan) -> Vec<Event> {
             "player_death" => out.push(Event {
                 t,
                 kind: "kill".into(),
+                player: None,
+                has_kit: false,
                 killer: get_u64(event, "attacker_steamid"),
                 victim: get_u64(event, "user_steamid"),
                 assist: get_u64(event, "assister_steamid"),
@@ -521,11 +821,37 @@ fn round_events(events: &[Value], span: &RoundSpan) -> Vec<Event> {
                 winner: None,
             }),
             "bomb_planted" => out.push(simple_event(t, "bomb_planted")),
+            "bomb_begindefuse" => out.push(Event {
+                t,
+                kind: "bomb_defuse_start".into(),
+                player: get_u64(event, "user_steamid"),
+                has_kit: get_bool(event, "haskit").unwrap_or(false),
+                killer: None,
+                victim: None,
+                assist: None,
+                weapon: None,
+                hs: false,
+                winner: None,
+            }),
+            "bomb_abortdefuse" => out.push(Event {
+                t,
+                kind: "bomb_defuse_abort".into(),
+                player: get_u64(event, "user_steamid"),
+                has_kit: false,
+                killer: None,
+                victim: None,
+                assist: None,
+                weapon: None,
+                hs: false,
+                winner: None,
+            }),
             "bomb_defused" => out.push(simple_event(t, "bomb_defused")),
             "bomb_exploded" => out.push(simple_event(t, "bomb_exploded")),
             "round_end" => out.push(Event {
                 t,
                 kind: "round_end".into(),
+                player: None,
+                has_kit: false,
                 killer: None,
                 victim: None,
                 assist: None,
@@ -543,6 +869,8 @@ fn simple_event(t: f64, kind: &str) -> Event {
     Event {
         t,
         kind: kind.into(),
+        player: None,
+        has_kit: false,
         killer: None,
         victim: None,
         assist: None,
@@ -550,6 +878,144 @@ fn simple_event(t: f64, kind: &str) -> Event {
         hs: false,
         winner: None,
     }
+}
+
+fn round_blinds(events: &[Value], span: &RoundSpan) -> Vec<BlindSpan> {
+    let mut out = Vec::new();
+    for event in events {
+        if get_str(event, "event_name") != Some("player_blind") {
+            continue;
+        }
+        let tick = get_i64(event, "tick").unwrap_or_default() as i32;
+        if tick < span.start || tick > span.end {
+            continue;
+        }
+        let Some(player) = get_u64(event, "user_steamid") else {
+            continue;
+        };
+        let total = get_f64(event, "blind_duration").unwrap_or(0.0);
+        if total <= 0.0 {
+            continue;
+        }
+        let start = seconds_since(span.start, tick);
+        out.push(BlindSpan {
+            player,
+            start,
+            end: start + total,
+            total,
+        });
+    }
+    out
+}
+
+fn round_effects(events: &[Value], span: &RoundSpan) -> Vec<UtilityEffect> {
+    let mut out = Vec::new();
+    for event in events {
+        let tick = get_i64(event, "tick").unwrap_or_default() as i32;
+        if tick < span.start || tick > span.end {
+            continue;
+        }
+        let Some(kind) = effect_kind(get_str(event, "event_name").unwrap_or("")) else {
+            continue;
+        };
+        let x = get_f64(event, "x")
+            .or_else(|| get_f64(event, "X"))
+            .unwrap_or_default();
+        let y = get_f64(event, "y")
+            .or_else(|| get_f64(event, "Y"))
+            .unwrap_or_default();
+        let z = get_f64(event, "z")
+            .or_else(|| get_f64(event, "Z"))
+            .unwrap_or_default();
+        if x == 0.0 && y == 0.0 && z == 0.0 {
+            continue;
+        }
+        let start = seconds_since(span.start, tick);
+        let duration = match kind {
+            "smoke" => 18.0,
+            "flash" => 0.8,
+            "he" => 0.9,
+            "fire" => 7.0,
+            "decoy" => 15.0,
+            _ => 1.0,
+        };
+        out.push(UtilityEffect {
+            kind: kind.into(),
+            variant: effect_variant(get_str(event, "event_name").unwrap_or("")).map(str::to_string),
+            start,
+            end: start + duration,
+            x,
+            y,
+            z,
+            team: get_i64(event, "user_team_num").or_else(|| get_i64(event, "team_num")),
+        });
+    }
+    out
+}
+
+fn effect_kind(event_name: &str) -> Option<&'static str> {
+    match event_name {
+        "smokegrenade_detonate" => Some("smoke"),
+        "flashbang_detonate" => Some("flash"),
+        "hegrenade_detonate" => Some("he"),
+        "inferno_startburn" | "molotov_detonate" => Some("fire"),
+        "decoy_detonate" => Some("decoy"),
+        _ => None,
+    }
+}
+
+fn effect_variant(event_name: &str) -> Option<&'static str> {
+    match event_name {
+        "molotov_detonate" => Some("molotov"),
+        _ => None,
+    }
+}
+
+fn round_weapon_fires(
+    events: &[Value],
+    span: &RoundSpan,
+    rows_by_tick: &BTreeMap<i32, Vec<Value>>,
+) -> Vec<WeaponFireEvent> {
+    let mut out = Vec::new();
+    for event in events {
+        let tick = get_i64(event, "tick").unwrap_or_default() as i32;
+        if tick < span.start || tick > span.end {
+            continue;
+        }
+        if get_str(event, "event_name") != Some("weapon_fire") {
+            continue;
+        }
+        let shooter = get_u64(event, "user_steamid")
+            .or_else(|| get_u64(event, "attacker_steamid"))
+            .or_else(|| get_u64(event, "steamid"));
+        let row = shooter.and_then(|id| player_row_at_tick(rows_by_tick, tick, id));
+        out.push(WeaponFireEvent {
+            t: seconds_since(span.start, tick),
+            shooter,
+            weapon: get_str(event, "weapon").map(str::to_string),
+            x: row.and_then(|r| get_f64(r, "X")).unwrap_or_default(),
+            y: row.and_then(|r| get_f64(r, "Y")).unwrap_or_default(),
+            z: row.and_then(|r| get_f64(r, "Z")).unwrap_or_default(),
+            yaw: row.and_then(|r| get_f64(r, "yaw")).unwrap_or_default(),
+            team: row.and_then(|r| get_i64(r, "team_num")),
+        });
+    }
+    out
+}
+
+fn player_row_at_tick<'a>(
+    rows_by_tick: &'a BTreeMap<i32, Vec<Value>>,
+    tick: i32,
+    steam_id: u64,
+) -> Option<&'a Value> {
+    let rows = rows_by_tick.get(&tick).or_else(|| {
+        rows_by_tick
+            .range(..=tick)
+            .next_back()
+            .map(|(_, rows)| rows)
+    })?;
+    rows.iter()
+        .find(|row| get_u64(row, "steamid") == Some(steam_id))
 }
 
 fn seconds_since(start: i32, tick: i32) -> f64 {

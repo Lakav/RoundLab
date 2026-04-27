@@ -1,6 +1,35 @@
 "use client";
 
 import { useReplay } from "@/lib/replay-store";
+import type { Round } from "@/lib/types";
+
+const DEFAULT_ROUND_SECONDS = 115;
+const DEFAULT_BOMB_SECONDS = 45;
+
+function firstEventTime(round: Round, type: string): number | null {
+  const event = round.events.find((e) => e.type === type);
+  return event ? event.t : null;
+}
+
+function clockRemaining(round: Round, time: number): number {
+  const plantedAt = firstEventTime(round, "bomb_planted");
+  const defusedAt = firstEventTime(round, "bomb_defused");
+  const explodedAt = firstEventTime(round, "bomb_exploded");
+  const roundEndAt = firstEventTime(round, "round_end");
+  const bombResolvedAt = defusedAt ?? explodedAt ?? roundEndAt;
+
+  if (roundEndAt !== null && time >= roundEndAt) {
+    return Math.max(0, round.duration - time);
+  }
+  if (bombResolvedAt !== null && time >= bombResolvedAt) {
+    return Math.max(0, round.duration - time);
+  }
+  if (plantedAt !== null && time >= plantedAt) {
+    return Math.max(0, plantedAt + DEFAULT_BOMB_SECONDS - time);
+  }
+
+  return Math.max(0, DEFAULT_ROUND_SECONDS - time);
+}
 
 export function RoundClock() {
   const match = useReplay((s) => s.match);
@@ -10,7 +39,7 @@ export function RoundClock() {
   const round = match.rounds[currentRoundIdx];
   if (!round) return null;
 
-  const remain = Math.max(0, round.duration - time);
+  const remain = clockRemaining(round, time);
   const mm = Math.floor(remain / 60)
     .toString()
     .padStart(2, "0");

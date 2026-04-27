@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
 import { useReplay } from "@/lib/replay-store";
 import { MAP_CALIBRATION, RADAR_SIZE, worldToRadar } from "@/lib/maps";
-import type { Frame, PlayerPos, ProjectilePos, UtilityEffect, WeaponFireEvent } from "@/lib/types";
+import type { Frame, MatchEvent, PlayerPos, ProjectilePos, UtilityEffect, WeaponFireEvent } from "@/lib/types";
 import { iconPathFor } from "@/lib/icons";
 
 const iconTextureCache = new Map<string, Promise<Texture>>();
@@ -115,6 +115,32 @@ function sampleProjectiles(frames: Frame[], t: number): ProjectilePos[] {
   });
 }
 
+function fireVariantFromProjectiles(effect: UtilityEffect, frames: Frame[]): UtilityEffect {
+  if (effect.type !== "fire" || effect.variant) return effect;
+  const candidates = [
+    ...sampleProjectiles(frames, effect.start),
+    ...sampleProjectiles(frames, Math.max(0, effect.start - 0.12)),
+  ];
+  let best: ProjectilePos | null = null;
+  let bestDist = Infinity;
+  for (const p of candidates) {
+    const kind = p.type.toLowerCase();
+    if (!kind.includes("molotov") && !kind.includes("incendiary")) continue;
+    const dx = p.x - effect.x;
+    const dy = p.y - effect.y;
+    const d = dx * dx + dy * dy;
+    if (d < bestDist) {
+      bestDist = d;
+      best = p;
+    }
+  }
+  if (!best || bestDist > 500 * 500) return effect;
+  return {
+    ...effect,
+    variant: best.type.toLowerCase().includes("incendiary") ? "incendiary" : "molotov",
+  };
+}
+
 function fitSprite(sprite: Sprite, max: number) {
   const tex = sprite.texture;
   if (!tex || !tex.width || !tex.height) {
@@ -197,6 +223,24 @@ function teamDarkColor(team?: number) {
   if (team === 3) return 0x195066;
   if (team === 2) return 0x795322;
   return 0x303030;
+}
+
+function activeDefuse(events: MatchEvent[], time: number): { start: number; duration: number } | null {
+  let active: { start: number; duration: number } | null = null;
+  for (const event of events) {
+    if (event.t > time) break;
+    if (event.type === "bomb_defuse_start") {
+      active = { start: event.t, duration: event.hasKit ? 5 : 10 };
+    } else if (
+      event.type === "bomb_defuse_abort" ||
+      event.type === "bomb_defused" ||
+      event.type === "bomb_exploded" ||
+      event.type === "round_end"
+    ) {
+      active = null;
+    }
+  }
+  return active;
 }
 
 function displayName(name?: string) {
@@ -356,7 +400,8 @@ function drawEffect(
   }
 
   if (effect.type === "fire") {
-    const radius = 120 * unitsToPx;
+    const isIncendiary = effect.variant === "incendiary" || (!effect.variant && effect.team === 3);
+    const radius = (isIncendiary ? 132 : 150) * unitsToPx;
     const alpha = Math.min(1, age / 0.25) * (life > 0.92 ? 1 - (life - 0.92) / 0.08 : 1);
     g.circle(p.x, p.y, radius).fill({ color: teamDarkColor(effect.team), alpha: 0.32 * alpha });
     g.circle(p.x, p.y, radius).stroke({ color: 0x1d1f1f, width: 3.5, alpha: 0.65 * alpha });
@@ -615,7 +660,7 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
         (e) => time >= e.start && time <= e.end
       );
       for (const effect of activeEffects) {
-        drawEffect(utilityLayer, effect, time, toRadar, unitsToPx);
+        drawEffect(utilityLayer, fireVariantFromProjectiles(effect, round.frames), time, toRadar, unitsToPx);
       }
 
       const visibleFires: WeaponFireEvent[] = (round.weaponFires ?? []).filter(
@@ -637,6 +682,17 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
             .circle(p.x, p.y, 15 + pulse * 4)
             .stroke({ color: 0xef4444, width: 2, alpha: 0.45 + pulse * 0.35 });
           utilityLayer.addChild(ring);
+          const defuse = activeDefuse(round.events, time);
+          if (defuse && time >= defuse.start) {
+            const progress = Math.max(0, Math.min(1, (time - defuse.start) / defuse.duration));
+            const arc = new Graphics();
+            arc.circle(p.x, p.y, 23).stroke({ color: 0x0b1220, width: 4, alpha: 0.7 });
+            arc.moveTo(p.x, p.y - 23);
+            arc.arc(p.x, p.y, 23, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+            arc.stroke({ color: 0x60a5fa, width: 4, alpha: 0.95 });
+            drawCountdownLabel(arc, String(Math.max(0, Math.ceil(defuse.duration - (time - defuse.start)))), p.x, p.y - 32, 0x93c5fd);
+            utilityLayer.addChild(arc);
+          }
         }
         const bombSprite = new Sprite();
         bombSprite.anchor.set(0.5);
@@ -692,6 +748,16 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
 
       for (const projectile of projectiles) {
         if (detonatedIds.has(projectile.id)) continue;
+        const pType = projectileTypeToEffect(projectile.type);
+        const hiddenByNearbyEffect = pType
+          ? startedEffects.some((e) => {
+              if (e.type !== pType || time < e.start) return false;
+              const dx = projectile.x - e.x;
+              const dy = projectile.y - e.y;
+              return dx * dx + dy * dy <= 350 * 350;
+            })
+          : false;
+        if (hiddenByNearbyEffect) continue;
         drawProjectile(utilityLayer, projectile, round.frames, time, throwerTeams, toRadar);
       }
 

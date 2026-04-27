@@ -27,10 +27,16 @@ const MAX_ZOOM = 4;
 function hideKnifeRound(data: MatchData): MatchData {
   if (data.rounds.length < 2) return data;
   const r0 = data.rounds[0];
-  const r1 = data.rounds[1];
   const r0Total = (r0.scoreA ?? 0) + (r0.scoreB ?? 0);
-  const r1Total = (r1.scoreA ?? 0) + (r1.scoreB ?? 0);
-  if (r0Total !== 0 || r1Total !== 1) return data;
+  const weaponNames = [
+    ...r0.events.map((e) => e.weapon ?? ""),
+    ...r0.frames.flatMap((f) =>
+      f.players.flatMap((p) => [p.active ?? "", ...(p.weapons ?? [])]),
+    ),
+  ].filter(Boolean);
+  const hasGun = weaponNames.some((w) => !/knife|bayonet|karambit|c4/i.test(w));
+  const looksLikeKnifeRound = r0Total === 0 && r0.duration <= 75 && !hasGun;
+  if (!looksLikeKnifeRound) return data;
   return { ...data, rounds: data.rounds.slice(1) };
 }
 
@@ -60,6 +66,15 @@ export default function MatchViewer({ id }: { id: string }) {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [panning, setPanning] = useState(false);
   const panState = useRef({ dragging: false, lastX: 0, lastY: 0 });
+
+  useEffect(() => {
+    document.documentElement.classList.add("overflow-hidden");
+    document.body.classList.add("overflow-hidden");
+    return () => {
+      document.documentElement.classList.remove("overflow-hidden");
+      document.body.classList.remove("overflow-hidden");
+    };
+  }, []);
 
   useEffect(() => {
     if (loading) return;
@@ -92,13 +107,17 @@ export default function MatchViewer({ id }: { id: string }) {
   useEffect(() => {
     const el = zoomBoxRef.current;
     if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      if (e.ctrlKey || e.metaKey || e.shiftKey) return;
-      e.preventDefault();
+    let raf = 0;
+    let pending: { clientX: number; clientY: number; deltaY: number } | null = null;
+    const applyWheel = () => {
+      raf = 0;
+      if (!pending) return;
+      const wheel = pending;
+      pending = null;
       const rect = el.getBoundingClientRect();
-      const cx = e.clientX - rect.left - rect.width / 2;
-      const cy = e.clientY - rect.top - rect.height / 2;
-      const delta = -e.deltaY * 0.0015;
+      const cx = wheel.clientX - rect.left - rect.width / 2;
+      const cy = wheel.clientY - rect.top - rect.height / 2;
+      const delta = -wheel.deltaY * 0.001;
       setZoom((prevZoom) => {
         const nz = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prevZoom + delta * prevZoom));
         if (nz === prevZoom) return prevZoom;
@@ -115,8 +134,17 @@ export default function MatchViewer({ id }: { id: string }) {
         return nz;
       });
     };
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+      e.preventDefault();
+      pending = { clientX: e.clientX, clientY: e.clientY, deltaY: e.deltaY };
+      if (!raf) raf = requestAnimationFrame(applyWheel);
+    };
     el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      cancelAnimationFrame(raf);
+    };
   }, [mapSize]);
 
   const [strokesByRound, setStrokesByRound] = useState<Record<number, Stroke[]>>({});
@@ -298,6 +326,7 @@ export default function MatchViewer({ id }: { id: string }) {
               }}
               style={{
                 cursor: zoom > 1 && tool === "none" ? (panning ? "grabbing" : "grab") : undefined,
+                touchAction: "none",
               }}
             >
               <div
@@ -307,7 +336,9 @@ export default function MatchViewer({ id }: { id: string }) {
                   overflow: "hidden",
                   transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
                   transformOrigin: "center center",
-                  transition: panning ? "none" : "transform 80ms linear",
+                  transition: "none",
+                  willChange: "transform",
+                  contain: "strict",
                 }}
               >
                 <div
