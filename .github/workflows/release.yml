@@ -61,6 +61,9 @@ jobs:
             web/src-tauri -> target
             parser-fallback -> target
 
+      - name: Authenticate with GitHub
+        run: gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
+
       - name: Install protoc
         uses: arduino/setup-protoc@v3
 
