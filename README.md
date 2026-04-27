@@ -46,7 +46,7 @@ and persists parsed matches locally under the OS app-data directory.
 ### Install
 
 Grab the installer for your platform from the
-[latest release](https://github.com/julescavanier/gotvanalyser/releases/latest):
+[latest release](https://github.com/Lakav/RoundLab/releases/latest):
 
 - **macOS (Apple Silicon)** — `RoundLab_<version>_aarch64.dmg`
 - **Windows (x64)** — `RoundLab_<version>_x64-setup.exe`
@@ -56,16 +56,22 @@ Grab the installer for your platform from the
 Because builds are **not code-signed** (no Apple Developer / Microsoft
 certificate), you'll see a warning on first launch:
 
-- **macOS** — the Gatekeeper dialog will say _"can't be opened because Apple
-  cannot check it for malicious software"_. Right-click the app → **Open**
-  (or go to **System Settings → Privacy & Security → Open Anyway**).
+- **macOS** — Gatekeeper blocks unsigned apps. Two cases:
+  - _"can't be opened because Apple cannot check it for malicious software"_ →
+    right-click the app in Applications → **Open** → **Open** again in the
+    confirmation dialog. Only needed once.
+  - _"RoundLab is damaged and can't be opened"_ → the quarantine attribute got
+    applied more aggressively. Strip it from Terminal, then launch normally:
+    ```bash
+    xattr -cr /Applications/RoundLab.app
+    ```
 - **Windows** — SmartScreen shows _"Windows protected your PC"_. Click
   **More info → Run anyway**.
 
 ### Auto-update
 
 The app polls
-[`releases/latest/download/latest.json`](https://github.com/julescavanier/gotvanalyser/releases/latest/download/latest.json)
+[`releases/latest/download/latest.json`](https://github.com/Lakav/RoundLab/releases/latest/download/latest.json)
 on launch. When a new version is published it appears as an **Install** banner
 on the home screen; clicking it downloads and verifies the signed update, then
 prompts to restart.
@@ -83,7 +89,7 @@ embedded in `web/src-tauri/tauri.conf.json`; the private key is stored as the
    git tag v0.2.0 && git push --tags
    ```
 
-The `release.yml` workflow builds for macOS (arm64 + x64) and Windows (x64) in
+The `release.yml` workflow builds for macOS (arm64) and Windows (x64) in
 parallel, uploads installers to a new GitHub release, and writes the
 `latest.json` the in-app updater expects.
 

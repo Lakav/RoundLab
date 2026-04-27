@@ -2,8 +2,13 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "GOTV Analyser",
+  title: "RoundLab",
   description: "CS2 demo replay & analysis",
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/app-icon.png",
+  },
 };
 
 export default function RootLayout({

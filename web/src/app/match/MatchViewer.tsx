@@ -12,10 +12,10 @@ import { RoundList } from "@/components/replay/RoundList";
 import { PlayerHUD } from "@/components/replay/PlayerHUD";
 import { RoundClock } from "@/components/replay/RoundClock";
 import { KillFeed } from "@/components/replay/KillFeed";
-import { Loader2 } from "lucide-react";
+import { Home, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { MatchData, Round } from "@/lib/types";
-import { cropFor, RADAR_SIZE } from "@/lib/maps";
+import { cropFor, MAP_CALIBRATION, RADAR_SIZE } from "@/lib/maps";
 import { getMatchMetadata, getRound } from "@/lib/api";
 
 const DRAW_WIDTH = 3;
@@ -32,6 +32,13 @@ function hideKnifeRound(data: MatchData): MatchData {
   const r1Total = (r1.scoreA ?? 0) + (r1.scoreB ?? 0);
   if (r0Total !== 0 || r1Total !== 1) return data;
   return { ...data, rounds: data.rounds.slice(1) };
+}
+
+function assertRenderableRound(round: Round): Round {
+  if (round.frames.length === 0) {
+    throw new Error(`Round ${round.number} has no frame data.`);
+  }
+  return round;
 }
 
 export default function MatchViewer({ id }: { id: string }) {
@@ -89,7 +96,14 @@ export default function MatchViewer({ id }: { id: string }) {
       try {
         const data = await getMatchMetadata(id);
         if (cancel) return;
-        setMatch(hideKnifeRound(data));
+        const visibleData = hideKnifeRound(data);
+        if (visibleData.rounds.length === 0) {
+          throw new Error("This demo parsed successfully, but no playable rounds were found.");
+        }
+        if (!MAP_CALIBRATION[visibleData.meta.map]) {
+          throw new Error(`Unsupported map "${visibleData.meta.map || "unknown"}".`);
+        }
+        setMatch(visibleData);
         setLoading(false);
       } catch (e: unknown) {
         setErr(e instanceof Error ? e.message : String(e));
@@ -109,7 +123,7 @@ export default function MatchViewer({ id }: { id: string }) {
     let cancel = false;
     (async () => {
       try {
-        const data: Round = await getRound(id, round.number);
+        const data = assertRenderableRound(await getRound(id, round.number));
         if (!cancel) setRoundData(round.number, data);
       } catch (e) {
         if (!cancel) setErr(e instanceof Error ? e.message : String(e));
@@ -135,7 +149,7 @@ export default function MatchViewer({ id }: { id: string }) {
         const r = match.rounds[idx];
         if (!r || r.frames.length > 0) continue;
         try {
-          const data: Round = await getRound(id, r.number);
+          const data = assertRenderableRound(await getRound(id, r.number));
           if (cancel) return;
           setRoundData(r.number, data);
         } catch {
@@ -182,7 +196,9 @@ export default function MatchViewer({ id }: { id: string }) {
   if (err || !match) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-neutral-950 text-neutral-100">
-        <p className="text-red-400">Match not found.</p>
+        <p className="max-w-md text-center text-sm text-red-400">
+          {err ?? "Match not found."}
+        </p>
         <Link href="/">
           <Button variant="outline">Back home</Button>
         </Link>
@@ -198,6 +214,16 @@ export default function MatchViewer({ id }: { id: string }) {
 
   return (
     <div className="h-screen flex flex-col text-neutral-100" style={{ background: "#1d1f1f" }}>
+      <Link href="/" className="fixed left-4 top-4 z-50">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 gap-1.5 border border-white/10 bg-black/40 px-2.5 text-[11px] font-semibold text-neutral-300 hover:bg-black/60 hover:text-neutral-100"
+        >
+          <Home className="size-3.5" />
+          Home
+        </Button>
+      </Link>
       <main className="relative flex min-h-0 flex-1 flex-col overflow-visible">
         <PlayerHUD side="CT" />
         <PlayerHUD side="T" />

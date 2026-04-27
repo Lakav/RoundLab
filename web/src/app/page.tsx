@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import type { DragDropEvent } from "@tauri-apps/api/webview";
 import { Button } from "@/components/ui/button";
 import {
   Upload,
@@ -10,35 +12,103 @@ import {
   Crosshair,
   Clock,
   FileArchive,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import {
+  deleteMatch,
   listMatches,
   parseDemo,
   pickDemoFile,
+  renameMatch,
   type MatchSummary,
 } from "@/lib/api";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { UpdateChecker } from "@/components/UpdateChecker";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export default function Home() {
   const router = useRouter();
   const [uploading, setUploading] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [matches, setMatches] = useState<MatchSummary[]>([]);
 
-  useEffect(() => {
-    let cancelled = false;
+  const refreshMatches = useCallback(async (cancelled?: () => boolean) => {
     listMatches()
       .then((items) => {
-        if (!cancelled) setMatches(items);
+        if (!cancelled?.()) setMatches(items);
       })
       .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        if (!cancelled?.()) setError(e instanceof Error ? e.message : String(e));
       });
+  }, []);
+
+  const parsePath = useCallback(
+    async (path: string) => {
+      if (uploading) return;
+      setError(null);
+      try {
+        setUploading(true);
+        const id = await parseDemo(path);
+        router.push(`/match/?id=${id}`);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setUploading(false);
+      }
+    },
+    [router, uploading],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    refreshMatches(() => cancelled);
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshMatches]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    getCurrentWebview()
+      .onDragDropEvent((event: { payload: DragDropEvent }) => {
+        const payload = event.payload;
+        if (payload.type === "enter" || payload.type === "over") {
+          setDragging(true);
+          return;
+        }
+        if (payload.type === "leave") {
+          setDragging(false);
+          return;
+        }
+        setDragging(false);
+        const path = payload.paths.find(isDemoPath);
+        if (!path) {
+          setError("Drop a .dem or .dem.zst file.");
+          return;
+        }
+        void parsePath(path);
+      })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      })
+      .catch(() => {
+        // In a plain browser dev session there is no Tauri webview.
+      });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [parsePath]);
 
   const onPickAndParse = async () => {
     if (uploading) return;
@@ -46,13 +116,31 @@ export default function Home() {
     try {
       const path = await pickDemoFile();
       if (!path) return;
-      setUploading(true);
-      const id = await parseDemo(path);
-      router.push(`/match/?id=${id}`);
+      await parsePath(path);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setUploading(false);
+    }
+  };
+
+  const onRename = async (match: MatchSummary) => {
+    const next = window.prompt("New match name", match.name);
+    if (next === null || next.trim() === match.name) return;
+    try {
+      const updated = await renameMatch(match.id, next);
+      setMatches((items) => items.map((m) => (m.id === match.id ? updated : m)));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const onDelete = async (match: MatchSummary) => {
+    const ok = window.confirm(`Delete "${match.name}" from history?`);
+    if (!ok) return;
+    try {
+      await deleteMatch(match.id);
+      setMatches((items) => items.filter((m) => m.id !== match.id));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -106,7 +194,9 @@ export default function Home() {
             "relative flex cursor-pointer flex-col items-center justify-center gap-3 overflow-hidden rounded-xl border px-8 py-14 text-center transition-colors",
             uploading
               ? "cursor-wait"
-              : "hover:border-emerald-300/25 hover:bg-white/[0.02]",
+              : dragging
+                ? "border-emerald-300/40 bg-emerald-300/[0.04]"
+                : "hover:border-emerald-300/25 hover:bg-white/[0.02]",
           ].join(" ")}
           style={{
             background: "var(--rl-panel)",
@@ -125,6 +215,20 @@ export default function Home() {
                 </div>
                 <div className="mt-1 text-[11px] text-neutral-500">
                   Running the sidecar locally — no upload.
+                </div>
+              </div>
+            </>
+          ) : dragging ? (
+            <>
+              <div className="flex size-11 items-center justify-center rounded-lg border border-emerald-300/20 bg-emerald-300/[0.08]">
+                <Upload className="size-4 text-emerald-300" />
+              </div>
+              <div>
+                <div className="text-[13px] font-semibold text-neutral-100">
+                  Drop to parse this demo
+                </div>
+                <div className="mt-1 text-[11px] text-neutral-500">
+                  .dem and .dem.zst are supported
                 </div>
               </div>
             </>
@@ -171,6 +275,8 @@ export default function Home() {
                   match={m}
                   first={i === 0}
                   onOpen={() => router.push(`/match/?id=${m.id}`)}
+                  onRename={() => onRename(m)}
+                  onDelete={() => onDelete(m)}
                 />
               ))}
             </div>
@@ -202,10 +308,14 @@ function MatchRow({
   match: m,
   first,
   onOpen,
+  onRename,
+  onDelete,
 }: {
   match: MatchSummary;
   first: boolean;
   onOpen: () => void;
+  onRename: () => void;
+  onDelete: () => void;
 }) {
   return (
     <div
@@ -224,25 +334,66 @@ function MatchRow({
           <FileArchive className="size-3.5 text-neutral-400 group-hover:text-emerald-300" />
         </div>
         <div className="min-w-0">
-          <div className="font-mono text-[12.5px] text-neutral-200">
-            {m.id.slice(0, 8)}
-            <span className="text-neutral-600">…{m.id.slice(-4)}</span>
+          <div className="truncate text-[12.5px] font-semibold text-neutral-200">
+            {m.name}
           </div>
           <div className="mt-0.5 flex items-center gap-2 text-[10.5px] text-neutral-500">
             <Clock className="size-3" />
             {new Date(m.createdAt).toLocaleString()}
             <span className="text-neutral-700">·</span>
             {(m.size / 1024 / 1024).toFixed(1)} MB
+            <span className="text-neutral-700">·</span>
+            <span className="font-mono">{m.id.slice(0, 8)}</span>
           </div>
         </div>
       </div>
-      <Button
-        size="sm"
-        className="h-7 gap-1.5 rounded-md bg-emerald-300 px-3 text-[11px] font-semibold text-[#06100b] hover:bg-emerald-200"
-      >
-        <Play className="size-3 fill-current" />
-        Open
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          className="h-7 gap-1.5 rounded-md bg-emerald-300 px-3 text-[11px] font-semibold text-[#06100b] hover:bg-emerald-200"
+        >
+          <Play className="size-3 fill-current" />
+          Open
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            onClick={(e) => e.stopPropagation()}
+            render={
+              <Button
+                aria-label="Match actions"
+                variant="ghost"
+                size="icon-sm"
+                className="text-neutral-500 hover:bg-white/[0.04] hover:text-neutral-100"
+              />
+            }
+          >
+            <MoreHorizontal className="size-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            className="w-36 border border-white/10 bg-[#171a1a] text-neutral-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <DropdownMenuItem onClick={onRename} className="text-xs">
+              <Pencil className="size-3.5" />
+              Rename
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={onDelete}
+              variant="destructive"
+              className="text-xs"
+            >
+              <Trash2 className="size-3.5" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </div>
   );
+}
+
+function isDemoPath(path: string): boolean {
+  const lower = path.toLowerCase();
+  return lower.endsWith(".dem") || lower.endsWith(".dem.zst") || lower.endsWith(".zst");
 }

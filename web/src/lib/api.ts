@@ -10,6 +10,7 @@ import type { MatchData, Round } from "@/lib/types";
 
 export type MatchSummary = {
   id: string;
+  name: string;
   createdAt: number;
   size: number;
 };
@@ -65,6 +66,13 @@ export async function getRound(id: string, number: number): Promise<Round> {
 
 export async function deleteMatch(id: string): Promise<void> {
   await invoke("delete_match", { id });
+}
+
+export async function renameMatch(
+  id: string,
+  name: string,
+): Promise<MatchSummary> {
+  return invoke<MatchSummary>("rename_match", { id, name });
 }
 
 /** Parse a local .dem or .dem.zst file. Returns the new match id. */

@@ -59,7 +59,11 @@ struct RawRound {
     number: i64,
     #[serde(default, rename = "startTick")]
     start_tick: i64,
-    #[serde(default, rename = "freezeEndTick", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        rename = "freezeEndTick",
+        skip_serializing_if = "Option::is_none"
+    )]
     freeze_end_tick: Option<i64>,
     #[serde(default, rename = "endTick")]
     end_tick: i64,
@@ -83,7 +87,11 @@ struct RawRound {
     events: serde_json::Value,
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     effects: serde_json::Value,
-    #[serde(default, rename = "weaponFires", skip_serializing_if = "serde_json::Value::is_null")]
+    #[serde(
+        default,
+        rename = "weaponFires",
+        skip_serializing_if = "serde_json::Value::is_null"
+    )]
     weapon_fires: serde_json::Value,
 }
 
@@ -98,9 +106,19 @@ struct MatchFile {
 #[derive(Serialize)]
 struct MatchSummary {
     id: String,
+    name: String,
     #[serde(rename = "createdAt")]
     created_at: u128,
     size: u64,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct StoredMatchInfo {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    source_path: String,
 }
 
 // -------------------------- Paths --------------------------
@@ -128,16 +146,59 @@ fn parsed_path(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
     Ok(parsed_dir(app)?.join(format!("{id}.json.gz")))
 }
 
+fn metadata_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let root = data_root(app)?;
+    let dir = root.join("metadata");
+    fs::create_dir_all(&dir).map_err(|e| format!("mkdir metadata: {e}"))?;
+    Ok(dir)
+}
+
+fn metadata_path(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
+    if !is_valid_id(id) {
+        return Err("invalid match id".into());
+    }
+    Ok(metadata_dir(app)?.join(format!("{id}.json")))
+}
+
+fn default_match_name(path: &Path, id: &str) -> String {
+    let name = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(|s| {
+            s.strip_suffix(".dem.zst")
+                .or_else(|| s.strip_suffix(".dem"))
+                .or_else(|| s.strip_suffix(".zst"))
+                .unwrap_or(s)
+                .trim()
+                .to_string()
+        })
+        .filter(|s| !s.is_empty());
+    name.unwrap_or_else(|| id[..8].to_string())
+}
+
+fn read_match_info(app: &AppHandle, id: &str) -> StoredMatchInfo {
+    let Ok(path) = metadata_path(app, id) else {
+        return StoredMatchInfo::default();
+    };
+    let Ok(raw) = fs::read_to_string(path) else {
+        return StoredMatchInfo::default();
+    };
+    serde_json::from_str(&raw).unwrap_or_default()
+}
+
+fn write_match_info(app: &AppHandle, id: &str, info: &StoredMatchInfo) -> Result<(), String> {
+    let path = metadata_path(app, id)?;
+    let raw = serde_json::to_vec_pretty(info).map_err(|e| format!("serialize metadata: {e}"))?;
+    fs::write(path, raw).map_err(|e| format!("write metadata: {e}"))
+}
+
 fn is_valid_id(id: &str) -> bool {
     // UUID v4 (8-4-4-4-12 hex, 36 chars total incl. dashes)
     id.len() == 36
-        && id
-            .chars()
-            .enumerate()
-            .all(|(i, c)| match i {
-                8 | 13 | 18 | 23 => c == '-',
-                _ => c.is_ascii_hexdigit(),
-            })
+        && id.chars().enumerate().all(|(i, c)| match i {
+            8 | 13 | 18 | 23 => c == '-',
+            _ => c.is_ascii_hexdigit(),
+        })
 }
 
 // -------------------------- Parsing a match file --------------------------
@@ -151,8 +212,7 @@ fn read_match_file(path: &Path) -> Result<MatchFile, String> {
     let mut buf = Vec::with_capacity(4 * 1024 * 1024);
     gz.read_to_end(&mut buf)
         .map_err(|e| format!("gunzip: {e}"))?;
-    let m: MatchFile =
-        serde_json::from_slice(&buf).map_err(|e| format!("parse json: {e}"))?;
+    let m: MatchFile = serde_json::from_slice(&buf).map_err(|e| format!("parse json: {e}"))?;
     Ok(m)
 }
 
@@ -260,8 +320,15 @@ fn list_matches(app: AppHandle) -> Result<Vec<MatchSummary>, String> {
             .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
             .map(|d| d.as_millis())
             .unwrap_or(0);
+        let info = read_match_info(&app, &stem);
+        let name = if info.name.trim().is_empty() {
+            stem[..8].to_string()
+        } else {
+            info.name
+        };
         out.push(MatchSummary {
             id: stem,
+            name,
             created_at: created,
             size: md.len(),
         });
@@ -305,11 +372,7 @@ fn get_match_metadata(app: AppHandle, id: String) -> Result<serde_json::Value, S
 
 /// Full round payload (frames + events + effects + weaponFires).
 #[tauri::command]
-fn get_round(
-    app: AppHandle,
-    id: String,
-    number: i64,
-) -> Result<serde_json::Value, String> {
+fn get_round(app: AppHandle, id: String, number: i64) -> Result<serde_json::Value, String> {
     let m = load_match_cached(&app, &id)?;
     let r = m
         .rounds
@@ -326,8 +389,45 @@ fn delete_match(app: AppHandle, id: String) -> Result<(), String> {
     if path.exists() {
         fs::remove_file(&path).map_err(|e| format!("remove: {e}"))?;
     }
+    if let Ok(meta_path) = metadata_path(&app, &id) {
+        let _ = fs::remove_file(meta_path);
+    }
     invalidate_cache(&id);
     Ok(())
+}
+
+#[tauri::command]
+fn rename_match(app: AppHandle, id: String, name: String) -> Result<MatchSummary, String> {
+    let parsed = parsed_path(&app, &id)?;
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("match name cannot be empty".into());
+    }
+    if trimmed.chars().count() > 120 {
+        return Err("match name is too long".into());
+    }
+    if !parsed.exists() {
+        return Err("match not found".into());
+    }
+
+    let mut info = read_match_info(&app, &id);
+    info.name = trimmed.to_string();
+    write_match_info(&app, &id, &info)?;
+
+    let md = fs::metadata(&parsed).map_err(|e| format!("metadata: {e}"))?;
+    let created = md
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+
+    Ok(MatchSummary {
+        id,
+        name: trimmed.to_string(),
+        created_at: created,
+        size: md.len(),
+    })
 }
 
 /// Options controlling how the sidecar parses a demo. These come from the
@@ -429,6 +529,11 @@ async fn parse_demo(
     if !out_path.exists() {
         return Err("parser finished but produced no output".into());
     }
+    let info = StoredMatchInfo {
+        name: default_match_name(&src, &id),
+        source_path: src_path,
+    };
+    write_match_info(&app, &id, &info)?;
     // Invalidate any cached entry for this id (in case of a rare UUID collision
     // or a replace-in-place workflow down the road).
     invalidate_cache(&id);
@@ -449,6 +554,7 @@ pub fn run() {
             get_match_metadata,
             get_round,
             delete_match,
+            rename_match,
             parse_demo,
         ])
         .run(tauri::generate_context!())
@@ -493,11 +599,7 @@ mod tests {
             m.meta.map,
             m.rounds.len(),
             m.players.len(),
-            round0
-                .frames
-                .as_array()
-                .map(|a| a.len())
-                .unwrap_or(0)
+            round0.frames.as_array().map(|a| a.len()).unwrap_or(0)
         );
     }
 }
