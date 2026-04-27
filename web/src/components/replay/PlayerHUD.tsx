@@ -30,14 +30,26 @@ export function PlayerHUD({ side }: { side: "CT" | "T" }) {
 
   const positions = sample(round.frames, time);
   const byId = new Map(positions.map((p) => [p.id, p]));
+  const teamCode = side === "CT" ? 3 : 2;
 
-  const players = match.players
-    .filter((p) => {
-      const pos = byId.get(p.steamId);
-      if (pos) return pos.team === (side === "CT" ? 3 : 2);
-      return p.team === side;
-    })
-    .slice(0, 5);
+  // Build the side roster from positions (ground truth: every player
+  // currently in the round, alive or dead) and fall back to match.players
+  // for the static label when a steamId hasn't been seen in any frame yet.
+  const seen = new Set<number>();
+  const sidePlayers: { steamId: number; name: string }[] = [];
+  for (const pos of positions) {
+    if (pos.team !== teamCode || seen.has(pos.id)) continue;
+    seen.add(pos.id);
+    const info = match.players.find((p) => p.steamId === pos.id);
+    sidePlayers.push({ steamId: pos.id, name: info?.name ?? "" });
+  }
+  for (const p of match.players) {
+    if (seen.has(p.steamId)) continue;
+    if (p.team !== side) continue;
+    seen.add(p.steamId);
+    sidePlayers.push({ steamId: p.steamId, name: p.name });
+  }
+  const players = sidePlayers.slice(0, 5);
   const teamName = side === "CT" ? match.meta.teamA : match.meta.teamB;
   const teamScore = side === "CT" ? round.scoreA ?? 0 : round.scoreB ?? 0;
 
@@ -78,9 +90,11 @@ export function PlayerHUD({ side }: { side: "CT" | "T" }) {
         </span>
       </div>
 
-      {players.map((p) => (
-        <PlayerRow key={p.steamId} name={p.name} pos={byId.get(p.steamId)} side={side} />
-      ))}
+      {players.map((p) => {
+        const pos = byId.get(p.steamId);
+        const name = p.name || `#${String(p.steamId).slice(-4)}`;
+        return <PlayerRow key={p.steamId} name={name} pos={pos} side={side} />;
+      })}
     </aside>
   );
 }

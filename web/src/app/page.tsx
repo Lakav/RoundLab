@@ -39,6 +39,11 @@ export default function Home() {
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [matches, setMatches] = useState<MatchSummary[]>([]);
+  // window.prompt / window.confirm are blocked in Tauri's WKWebView, so we
+  // render lightweight modals ourselves and stash the pending action here.
+  const [renameTarget, setRenameTarget] = useState<MatchSummary | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<MatchSummary | null>(null);
 
   const refreshMatches = useCallback(async (cancelled?: () => boolean) => {
     listMatches()
@@ -122,23 +127,36 @@ export default function Home() {
     }
   };
 
-  const onRename = async (match: MatchSummary) => {
-    const next = window.prompt("New match name", match.name);
-    if (next === null || next.trim() === match.name) return;
+  const onRename = (match: MatchSummary) => {
+    setRenameValue(match.name);
+    setRenameTarget(match);
+  };
+
+  const confirmRename = async () => {
+    const target = renameTarget;
+    if (!target) return;
+    const next = renameValue.trim();
+    setRenameTarget(null);
+    if (!next || next === target.name) return;
     try {
-      const updated = await renameMatch(match.id, next);
-      setMatches((items) => items.map((m) => (m.id === match.id ? updated : m)));
+      const updated = await renameMatch(target.id, next);
+      setMatches((items) => items.map((m) => (m.id === target.id ? updated : m)));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
 
-  const onDelete = async (match: MatchSummary) => {
-    const ok = window.confirm(`Delete "${match.name}" from history?`);
-    if (!ok) return;
+  const onDelete = (match: MatchSummary) => {
+    setDeleteTarget(match);
+  };
+
+  const confirmDelete = async () => {
+    const target = deleteTarget;
+    if (!target) return;
+    setDeleteTarget(null);
     try {
-      await deleteMatch(match.id);
-      setMatches((items) => items.filter((m) => m.id !== match.id));
+      await deleteMatch(target.id);
+      setMatches((items) => items.filter((m) => m.id !== target.id));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -282,6 +300,78 @@ export default function Home() {
             </div>
           </div>
         )}
+      </div>
+
+      {renameTarget && (
+        <Modal onClose={() => setRenameTarget(null)} title="Rename match">
+          <input
+            autoFocus
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void confirmRename();
+              if (e.key === "Escape") setRenameTarget(null);
+            }}
+            className="w-full rounded-md border bg-black/40 px-3 py-2 text-[13px] text-neutral-100 outline-none focus:border-emerald-300/40"
+            style={{ borderColor: "var(--rl-border)" }}
+            placeholder="Match name"
+          />
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setRenameTarget(null)}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={() => void confirmRename()}>
+              Save
+            </Button>
+          </div>
+        </Modal>
+      )}
+
+      {deleteTarget && (
+        <Modal onClose={() => setDeleteTarget(null)} title="Delete match?">
+          <p className="text-[12px] text-neutral-400">
+            &ldquo;{deleteTarget.name}&rdquo; will be removed from your history.
+            This cannot be undone.
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void confirmDelete()}
+              className="bg-red-500/20 text-red-200 hover:bg-red-500/30"
+            >
+              Delete
+            </Button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function Modal({
+  title,
+  children,
+  onClose,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-xl border p-5"
+        style={{ background: "var(--rl-panel)", borderColor: "var(--rl-border)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="mb-3 text-[13px] font-semibold text-neutral-100">{title}</h3>
+        {children}
       </div>
     </div>
   );

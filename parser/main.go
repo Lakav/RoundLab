@@ -74,6 +74,7 @@ type PlayerPos struct {
 	Yaw        float32  `json:"yaw"`
 	HP         int      `json:"hp"`
 	Armor      int      `json:"armor"`
+	Money      int      `json:"money"`
 	Helmet     bool     `json:"helmet,omitempty"`
 	Kit        bool     `json:"kit,omitempty"`
 	HasBomb    bool     `json:"hasBomb,omitempty"`
@@ -268,15 +269,30 @@ func main() {
 	}
 
 	roundTime := func() (float64, bool) {
-		if currentRound == nil || !currentRound.LiveStarted {
+		if currentRound == nil {
 			return 0, false
 		}
+		// Some CS2 demos don't fire RoundFreezetimeEnd reliably, so the
+		// first WeaponFire / SmokeStart / etc. may arrive before
+		// LiveStarted flips. Begin the live round lazily so we don't drop
+		// these events on the floor.
 		tick := p.GameState().IngameTick()
+		if !currentRound.LiveStarted {
+			if p.GameState().IsFreezetimePeriod() {
+				return 0, false
+			}
+			beginLiveRound(tick)
+		}
 		if tick < currentRound.StartTick {
 			return 0, false
 		}
 		return float64(tick-currentRound.StartTick) / tickRate, true
 	}
+
+	// teamSide tracks which side ("CT"/"T") a clan name belongs to so we can
+	// assign teamA/teamB deterministically (CT first) even when only one team
+	// has a usable clan name.
+	teamSide := map[string]string{}
 
 	rememberTeam := func(ts *common.TeamState, score int) {
 		if ts == nil {
@@ -284,9 +300,19 @@ func main() {
 		}
 		name := ts.ClanName()
 		if name == "" {
-			name = fmt.Sprintf("team_%d", ts.ID())
+			// Fall back to the side label so the UI always shows something
+			// meaningful instead of "team_3".
+			switch ts.Team() {
+			case common.TeamCounterTerrorists:
+				name = "Counter-Terrorists"
+			case common.TeamTerrorists:
+				name = "Terrorists"
+			default:
+				name = fmt.Sprintf("team_%d", ts.ID())
+			}
 		}
 		teamScores[name] = score
+		teamSide[name] = teamStr(ts.Team())
 	}
 
 	addPlayer := func(pl *common.Player) {
@@ -640,7 +666,7 @@ func main() {
 			}
 		}
 		for _, pl := range p.GameState().Participants().Playing() {
-			if pl == nil || !pl.IsAlive() {
+			if pl == nil {
 				continue
 			}
 			addPlayer(pl)
@@ -670,6 +696,7 @@ func main() {
 				Yaw:        float32(pl.ViewDirectionX()),
 				HP:         pl.Health(),
 				Armor:      pl.Armor(),
+				Money:      pl.Money(),
 				Helmet:     pl.HasHelmet(),
 				Kit:        pl.HasDefuseKit(),
 				HasBomb:    pl.SteamID64 == bombCarrier,
@@ -724,24 +751,47 @@ func main() {
 		rememberTeam(tt, tt.Score())
 	}
 
-	teamNames := []string{}
-	for name := range teamScores {
-		teamNames = append(teamNames, name)
-	}
-	sort.Slice(teamNames, func(i, j int) bool {
-		return teamScores[teamNames[i]] > teamScores[teamNames[j]]
-	})
-	if len(teamNames) >= 2 {
-		teamAName := teamNames[0]
-		teamBName := teamNames[1]
-		output.Meta.TeamA = teamAName
-		output.Meta.TeamB = teamBName
-		output.Meta.ScoreA = teamScores[teamAName]
-		output.Meta.ScoreB = teamScores[teamBName]
-		for i := range output.Rounds {
-			output.Rounds[i].ScoreA = output.Rounds[i].TeamScores[teamAName]
-			output.Rounds[i].ScoreB = output.Rounds[i].TeamScores[teamBName]
+	// Assign teamA = CT, teamB = T so the HUD is deterministic. If a side is
+	// missing (rare), fall back to score-sorted order.
+	var teamAName, teamBName string
+	for name, side := range teamSide {
+		if side == "CT" && teamAName == "" {
+			teamAName = name
+		} else if side == "T" && teamBName == "" {
+			teamBName = name
 		}
+	}
+	if teamAName == "" || teamBName == "" {
+		teamNames := []string{}
+		for name := range teamScores {
+			teamNames = append(teamNames, name)
+		}
+		sort.Slice(teamNames, func(i, j int) bool {
+			return teamScores[teamNames[i]] > teamScores[teamNames[j]]
+		})
+		if teamAName == "" && len(teamNames) > 0 {
+			teamAName = teamNames[0]
+		}
+		if teamBName == "" {
+			for _, n := range teamNames {
+				if n != teamAName {
+					teamBName = n
+					break
+				}
+			}
+		}
+	}
+	if teamAName != "" {
+		output.Meta.TeamA = teamAName
+		output.Meta.ScoreA = teamScores[teamAName]
+	}
+	if teamBName != "" {
+		output.Meta.TeamB = teamBName
+		output.Meta.ScoreB = teamScores[teamBName]
+	}
+	for i := range output.Rounds {
+		output.Rounds[i].ScoreA = output.Rounds[i].TeamScores[teamAName]
+		output.Rounds[i].ScoreB = output.Rounds[i].TeamScores[teamBName]
 	}
 
 	// Write gzipped JSON

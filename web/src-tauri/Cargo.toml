@@ -1,6 +1,6 @@
 [package]
 name = "roundlab"
-version = "0.1.2"
+version = "0.1.4"
 description = "RoundLab — CS2 demo replay workspace (desktop)"
 authors = ["RoundLab"]
 edition = "2021"
