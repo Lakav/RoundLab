@@ -44,6 +44,7 @@ test.json.gz
 # compiled binaries
 parser/parser
 parser/*.exe
+parser-fallback/target/
 
 # temp / caches
 coverage/

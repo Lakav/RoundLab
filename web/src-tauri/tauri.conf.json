@@ -36,7 +36,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": ["binaries/parser"],
+    "externalBin": ["binaries/parser", "binaries/parser-fallback"],
     "category": "Utility",
     "shortDescription": "CS2 demo replay workspace",
     "longDescription": "Parse and review CS2 demos locally — no upload, no server."

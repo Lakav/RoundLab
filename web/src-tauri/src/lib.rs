@@ -2,7 +2,8 @@
 //!
 //! Invariants:
 //! - All parsed demos live under `<app_data_dir>/parsed/<uuid>.json.gz`.
-//! - The parser Go binary is shipped as a Tauri sidecar (`binaries/parser-<triple>`).
+//! - Parser binaries are shipped as Tauri sidecars (`binaries/parser-*` and
+//!   `binaries/parser-fallback-*`).
 //! - Each match is parsed once, then cached. Subsequent reads stream the
 //!   gzipped JSON on demand — we don't keep the full match in memory.
 
@@ -489,40 +490,16 @@ async fn parse_demo(
         argv.push("-skipWeaponFires".into());
     }
 
-    // Sidecar named `parser` in tauri.conf.json → expanded to
-    // `binaries/parser-<target-triple>` at build/package time.
-    let sidecar = app
-        .shell()
-        .sidecar("parser")
-        .map_err(|e| format!("sidecar init: {e}"))?
-        .args(argv);
-
-    let (mut rx, _child) = sidecar.spawn().map_err(|e| format!("spawn parser: {e}"))?;
-    let mut stderr = String::new();
-    while let Some(event) = rx.recv().await {
-        match event {
-            CommandEvent::Stderr(line) => {
-                stderr.push_str(&String::from_utf8_lossy(&line));
-                stderr.push('\n');
-            }
-            CommandEvent::Stdout(_) => {}
-            CommandEvent::Terminated(payload) => {
-                let code = payload.code.unwrap_or(-1);
-                if code != 0 {
-                    // The parser failed — drop the half-written output.
-                    let _ = fs::remove_file(&out_path);
-                    return Err(format!(
-                        "parser exited with status {code}:\n{}",
-                        stderr.trim()
-                    ));
-                }
-                break;
-            }
-            CommandEvent::Error(e) => {
-                let _ = fs::remove_file(&out_path);
-                return Err(format!("parser error: {e}"));
-            }
-            _ => {}
+    if let Err(primary_error) = run_parser_sidecar(&app, "parser", argv.clone(), &out_path).await {
+        let _ = fs::remove_file(&out_path);
+        eprintln!("primary parser failed, trying fallback parser:\n{primary_error}");
+        if let Err(fallback_error) =
+            run_parser_sidecar(&app, "parser-fallback", argv, &out_path).await
+        {
+            let _ = fs::remove_file(&out_path);
+            return Err(format!(
+                "Both parsers failed.\n\nPrimary parser:\n{primary_error}\n\nFallback parser:\n{fallback_error}"
+            ));
         }
     }
 
@@ -538,6 +515,53 @@ async fn parse_demo(
     // or a replace-in-place workflow down the road).
     invalidate_cache(&id);
     Ok(id)
+}
+
+async fn run_parser_sidecar(
+    app: &AppHandle,
+    name: &str,
+    argv: Vec<String>,
+    out_path: &Path,
+) -> Result<(), String> {
+    // Sidecar names in tauri.conf.json expand to `binaries/<name>-<target-triple>`
+    // at build/package time.
+    let sidecar = app
+        .shell()
+        .sidecar(name)
+        .map_err(|e| format!("{name} sidecar init: {e}"))?
+        .args(argv);
+
+    let (mut rx, _child) = sidecar
+        .spawn()
+        .map_err(|e| format!("spawn {name}: {e}"))?;
+    let mut stderr = String::new();
+    while let Some(event) = rx.recv().await {
+        match event {
+            CommandEvent::Stderr(line) => {
+                stderr.push_str(&String::from_utf8_lossy(&line));
+                stderr.push('\n');
+            }
+            CommandEvent::Stdout(_) => {}
+            CommandEvent::Terminated(payload) => {
+                let code = payload.code.unwrap_or(-1);
+                if code != 0 {
+                    let _ = fs::remove_file(out_path);
+                    return Err(format!(
+                        "{name} exited with status {code}:\n{}",
+                        stderr.trim()
+                    ));
+                }
+                return Ok(());
+            }
+            CommandEvent::Error(e) => {
+                let _ = fs::remove_file(out_path);
+                return Err(format!("{name} error: {e}"));
+            }
+            _ => {}
+        }
+    }
+
+    Err(format!("{name} stopped without an exit status"))
 }
 
 // -------------------------- App entry --------------------------

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Build the Go parser and copy it into binaries/ using the Rust target-triple
-# suffix that Tauri's `externalBin` expects.
+# Build the parser sidecars and copy them into binaries/ using the Rust
+# target-triple suffix that Tauri's `externalBin` expects.
 #
 # Usage:
 #   ./build-sidecar.sh              # builds for the host triple
@@ -12,6 +12,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 PARSER_DIR="$REPO_ROOT/parser"
+FALLBACK_DIR="$REPO_ROOT/parser-fallback"
 
 if [[ -z "${TARGET:-}" ]]; then
     if ! command -v rustc >/dev/null 2>&1; then
@@ -35,6 +36,7 @@ case "$TARGET" in
 esac
 
 OUT="$SCRIPT_DIR/parser-${TARGET}${SUFFIX}"
+FALLBACK_OUT="$SCRIPT_DIR/parser-fallback-${TARGET}${SUFFIX}"
 
 echo "→ building parser for GOOS=$GOOS GOARCH=$GOARCH → $OUT"
 
@@ -45,3 +47,10 @@ env GOTOOLCHAIN=local GOOS="$GOOS" GOARCH="$GOARCH" CGO_ENABLED=0 \
 
 chmod +x "$OUT"
 echo "✓ built $(basename "$OUT") ($(du -h "$OUT" | cut -f1))"
+
+echo "→ building fallback parser for TARGET=$TARGET → $FALLBACK_OUT"
+cd "$FALLBACK_DIR"
+CARGO_NET_GIT_FETCH_WITH_CLI=true cargo build --release --target "$TARGET"
+cp "$FALLBACK_DIR/target/$TARGET/release/roundlab-parser-fallback${SUFFIX}" "$FALLBACK_OUT"
+chmod +x "$FALLBACK_OUT"
+echo "✓ built $(basename "$FALLBACK_OUT") ($(du -h "$FALLBACK_OUT" | cut -f1))"

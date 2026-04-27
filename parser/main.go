@@ -684,7 +684,9 @@ func main() {
 	})
 
 	if err := p.ParseToEnd(); err != nil {
-		fmt.Fprintln(os.Stderr, "parse error:", err)
+		msg := strings.SplitN(err.Error(), "\n", 2)[0]
+		fmt.Fprintln(os.Stderr, "parse error:", msg)
+		os.Exit(1)
 	}
 
 	// Flush a trailing round the demo never officially ended.

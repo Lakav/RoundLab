@@ -186,8 +186,6 @@ function isPistolWeapon(name?: string) {
 
 const SHOOT_ROTATION_OFFSET = 0;
 const PLAYER_ARROW_TIP_OFFSET = 9;
-const SHOOT_FORWARD_OFFSET = 8;
-const SHOOT_SIDE_OFFSET = -4;
 
 function teamColor(team?: number) {
   if (team === 3) return 0x5ab0ff;

@@ -61,10 +61,12 @@ certificate), you'll see a warning on first launch:
     right-click the app in Applications → **Open** → **Open** again in the
     confirmation dialog. Only needed once.
   - _"RoundLab is damaged and can't be opened"_ → the quarantine attribute got
-    applied more aggressively. Strip it from Terminal, then launch normally:
+    applied more aggressively. Strip it from Terminal, then launch the app:
     ```bash
-    xattr -cr /Applications/RoundLab.app
+    xattr -dr com.apple.quarantine /Applications/RoundLab.app
+    open /Applications/RoundLab.app
     ```
+    If macOS says permission is denied, rerun the first command with `sudo`.
 - **Windows** — SmartScreen shows _"Windows protected your PC"_. Click
   **More info → Run anyway**.
 
