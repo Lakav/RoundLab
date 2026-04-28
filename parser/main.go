@@ -545,7 +545,7 @@ func main() {
 			ID:    int64(e.GrenadeEntityID),
 			Type:  "smoke",
 			Start: t,
-			End:   t + 18,
+			End:   t + 22,
 			X:     float32(e.Position.X),
 			Y:     float32(e.Position.Y),
 			Z:     float32(e.Position.Z),

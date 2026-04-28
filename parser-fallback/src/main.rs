@@ -1129,7 +1129,7 @@ fn round_effects(
             start = (start - 1.0_f64).max(0.0_f64);
         }
         let duration = match kind {
-            "smoke" => 18.0,
+            "smoke" => 22.0,
             "flash" => 0.8,
             "he" => 0.9,
             "fire" => 7.0,

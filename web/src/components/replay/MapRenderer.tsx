@@ -280,7 +280,7 @@ function circleOverlapArea(r1: number, r2: number, distance: number): number {
 
 function fireRadiusWorld(effect: UtilityEffect): number {
   const isIncendiary = effect.variant === "incendiary" || (!effect.variant && effect.team === 3);
-  return isIncendiary ? 132 : 150;
+  return isIncendiary ? 96 : 106;
 }
 
 function fireIsSmoked(fire: UtilityEffect, activeEffects: UtilityEffect[]): boolean {
@@ -582,8 +582,8 @@ function drawEffect(
     const radius = 144 * unitsToPx;
     const teamCol = teamColor(effect.team);
     g.circle(p.x, p.y, radius).fill({ color: 0x9ca3af, alpha: 0.42 * alpha });
-    g.circle(p.x, p.y, radius).stroke({ color: 0x1d1f1f, width: 3.5, alpha: 0.7 * alpha });
-    drawTimerArc(g, p.x, p.y, radius, remaining, teamCol, 2.2);
+    g.circle(p.x, p.y, radius).stroke({ color: 0x1d1f1f, width: 2.6, alpha: 0.7 * alpha });
+    drawTimerArc(g, p.x, p.y, radius, remaining, teamCol, 1.7);
     const secsLeft = Math.max(0, Math.ceil(effect.end - time));
     drawCountdownLabel(g, String(secsLeft), p.x, p.y, 0xb8b8b8);
     layer.addChild(g);
@@ -637,12 +637,14 @@ function drawEffect(
     const radius = fireRadiusWorld(effect) * unitsToPx;
     const alpha = Math.min(1, age / 0.25) * (life > 0.92 ? 1 - (life - 0.92) / 0.08 : 1);
     g.circle(p.x, p.y, radius).fill({ color: teamDarkColor(effect.team), alpha: 0.32 * alpha });
-    g.circle(p.x, p.y, radius).stroke({ color: 0x1d1f1f, width: 3.5, alpha: 0.65 * alpha });
-    drawTimerArc(g, p.x, p.y, radius, remaining, teamColor(effect.team), 2.2);
-    const secsLeft = Math.max(0, Math.ceil(effect.end - time));
-    drawCountdownLabel(g, String(secsLeft), p.x, p.y, 0xb8b8b8);
+    g.circle(p.x, p.y, radius).stroke({ color: 0x1d1f1f, width: 2.6, alpha: 0.65 * alpha });
+    drawTimerArc(g, p.x, p.y, radius, remaining, teamColor(effect.team), 1.7);
     layer.addChild(g);
-    drawUtilityIcon(layer, "inferno", p.x, p.y, 0xff8a1f, 18);
+    drawUtilityIcon(layer, "burningFlammes", p.x, p.y, 0xffffff, 20);
+    const labelLayer = new Graphics();
+    const secsLeft = Math.max(0, Math.ceil(effect.end - time));
+    drawCountdownLabel(labelLayer, String(secsLeft), p.x, p.y + 2, 0x3a3a3a);
+    layer.addChild(labelLayer);
     return;
   }
 

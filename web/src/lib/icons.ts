@@ -106,6 +106,7 @@ const WEAPON_ICON_MAP: Record<string, string | null> = {
   "cincendiarygrenadeprojectile": "incgrenade",
   "decoy grenade": "decoy",
   "decoy": "decoy",
+  "burningflammes": "burningFlammes",
 };
 
 export function iconPathFor(name?: string): string | null {
