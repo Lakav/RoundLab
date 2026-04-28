@@ -1124,10 +1124,6 @@ fn round_effects(
         if x == 0.0 && y == 0.0 && z == 0.0 {
             continue;
         }
-        let mut start = seconds_since(span.start, tick);
-        if kind == "decoy" {
-            start = (start - 1.0_f64).max(0.0_f64);
-        }
         let duration = match kind {
             "smoke" => 22.0,
             "flash" => 0.8,
@@ -1137,6 +1133,14 @@ fn round_effects(
             "bomb_planted" => 45.0,
             _ => 1.0,
         };
+        let mut start = seconds_since(span.start, tick);
+        if kind == "decoy" {
+            // demoparser2 exposes decoy_detonate when the decoy finishes its
+            // active sound/lure phase on some CS2 demos, not when it lands.
+            // Use the event as the end marker so the visible wobble starts
+            // when the decoy becomes active instead of ~15s late.
+            start = (start - duration).max(0.0_f64);
+        }
         out.push(UtilityEffect {
             kind: kind.into(),
             variant: effect_variant(get_str(event, "event_name").unwrap_or("")).map(str::to_string),

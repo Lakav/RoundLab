@@ -480,91 +480,73 @@ function effectHandoffProjectile(frames: ProjectileSample[], effect: UtilityEffe
   };
 }
 
-function nearbyProjectilesForEffect(frames: ProjectileSample[], effect: UtilityEffect, time: number) {
-  return sampleProjectiles(frames, time)
-    .filter((projectile) => projectileTypeToEffect(projectile.type) === effect.type)
-    .map((projectile) => {
-      const dx = projectile.x - effect.x;
-      const dy = projectile.y - effect.y;
-      const dz = projectile.z - effect.z;
-      return {
-        id: projectile.id,
-        type: projectile.type,
-        thrower: projectile.thrower ?? null,
-        x: Math.round(projectile.x),
-        y: Math.round(projectile.y),
-        z: Math.round(projectile.z),
-        distance: Math.round(Math.hypot(dx, dy, dz)),
-      };
-    })
-    .sort((a, b) => a.distance - b.distance)
-    .slice(0, 6);
+function decoyProjectileTracks(frames: ProjectileSample[]) {
+  const tracks = new Map<number, { projectile: ProjectilePos; first: number; last: number; samples: number; landedAt: number | null }>();
+
+  for (const frame of frames) {
+    for (const projectile of frame.projectiles ?? []) {
+      if (projectileTypeToEffect(projectile.type) !== "decoy") continue;
+      const track = tracks.get(projectile.id);
+      if (!track) {
+        tracks.set(projectile.id, { projectile, first: frame.t, last: frame.t, samples: 1, landedAt: null });
+        continue;
+      }
+      const dt = Math.max(0.001, frame.t - track.last);
+      const speed = Math.hypot(projectile.x - track.projectile.x, projectile.y - track.projectile.y, projectile.z - track.projectile.z) / dt;
+      if (track.landedAt === null && speed < 40 && frame.t - track.first > 0.15) track.landedAt = frame.t;
+      track.projectile = projectile;
+      track.last = frame.t;
+      track.samples += 1;
+    }
+  }
+
+  return [...tracks.entries()].map(([id, track]) => ({
+    id,
+    type: track.projectile.type,
+    thrower: track.projectile.thrower ?? null,
+    first: Number(track.first.toFixed(3)),
+    last: Number(track.last.toFixed(3)),
+    landedAt: track.landedAt === null ? null : Number(track.landedAt.toFixed(3)),
+    samples: track.samples,
+    x: Math.round(track.projectile.x),
+    y: Math.round(track.projectile.y),
+    z: Math.round(track.projectile.z),
+  }));
 }
 
-function logHeDebug(
-  round: Round,
-  effect: UtilityEffect,
-  time: number,
-  frames: ProjectileSample[],
-  visible: ProjectilePos[],
-  detonatedIds: Set<number>,
-) {
-  const last = lastProjectileBeforeEffect(frames, effect);
-  const handoff = effectHandoffProjectile(frames, effect, Math.min(time, projectileHideStart(effect) - 0.001));
-  console.warn("[he-debug]", {
-    round: round.number + 1,
-    now: Number(time.toFixed(3)),
-    effect: {
-      start: Number(effect.start.toFixed(3)),
-      hideStart: Number(projectileHideStart(effect).toFixed(3)),
-      end: Number(effect.end.toFixed(3)),
-      x: Math.round(effect.x),
-      y: Math.round(effect.y),
-      z: Math.round(effect.z),
-      team: effect.team ?? null,
-    },
-    lastBeforeExplosion: last
-      ? {
-          t: Number(last.time.toFixed(3)),
-          dt: Number((effect.start - last.time).toFixed(3)),
-          id: last.projectile.id,
-          type: last.projectile.type,
-          thrower: last.projectile.thrower ?? null,
-          x: Math.round(last.projectile.x),
-          y: Math.round(last.projectile.y),
-          z: Math.round(last.projectile.z),
-          distance: Math.round(
-            Math.hypot(last.projectile.x - effect.x, last.projectile.y - effect.y, last.projectile.z - effect.z),
-          ),
-        }
-      : null,
-    sampledNearExplosion: nearbyProjectilesForEffect(frames, effect, effect.start),
-    sampledNow: nearbyProjectilesForEffect(frames, effect, time),
-    visibleNow: visible
-      .filter((projectile) => projectileTypeToEffect(projectile.type) === "he")
-      .map((projectile) => ({
-        id: projectile.id,
-        type: projectile.type,
-        thrower: projectile.thrower ?? null,
-        x: Math.round(projectile.x),
-        y: Math.round(projectile.y),
-        z: Math.round(projectile.z),
-        distance: Math.round(Math.hypot(projectile.x - effect.x, projectile.y - effect.y, projectile.z - effect.z)),
-      })),
-    handoffAtHideEdge: handoff
-      ? {
-          id: handoff.id,
-          type: handoff.type,
-          thrower: handoff.thrower ?? null,
-          x: Math.round(handoff.x),
-          y: Math.round(handoff.y),
-          z: Math.round(handoff.z),
-          distance: Math.round(Math.hypot(handoff.x - effect.x, handoff.y - effect.y, handoff.z - effect.z)),
-        }
-      : null,
-    detonatedIds: [...detonatedIds],
-    projectileFrameCount: frames.length,
-  });
+function decoyLandingStart(effect: UtilityEffect, frames: ProjectileSample[]): number | null {
+  if (effect.type !== "decoy") return null;
+  const tracks = decoyProjectileTracks(frames);
+  let best: (typeof tracks)[number] | null = null;
+  let bestDist = Infinity;
+
+  for (const track of tracks) {
+    if (track.landedAt === null) continue;
+    const dx = track.x - effect.x;
+    const dy = track.y - effect.y;
+    const dz = track.z - effect.z;
+    const d = Math.hypot(dx, dy, dz);
+    if (d > 120 || d >= bestDist) continue;
+    best = track;
+    bestDist = d;
+  }
+
+  return best?.landedAt ?? null;
+}
+
+function resolveDecoyEffect(effect: UtilityEffect, frames: ProjectileSample[]): UtilityEffect {
+  if (effect.type !== "decoy") return effect;
+  const landedAt = decoyLandingStart(effect, frames);
+  if (landedAt === null || landedAt >= effect.start) return effect;
+  return {
+    ...effect,
+    start: landedAt,
+    end: landedAt + 15,
+  };
+}
+
+function resolveEffects(effects: UtilityEffect[], frames: ProjectileSample[]): UtilityEffect[] {
+  return effects.map((effect) => resolveDecoyEffect(effect, frames));
 }
 
 function isSameVisualProjectile(a: ProjectilePos, b: ProjectilePos): boolean {
@@ -885,10 +867,6 @@ function drawEffect(
     const wobbleX = Math.sin(time * 17) * 2.2;
     const wobbleY = Math.cos(time * 13) * 1.6;
     const rot = Math.sin(time * 20) * 0.22;
-    g.moveTo(p.x - 9 + wobbleX, p.y + wobbleY)
-      .lineTo(p.x + 9 + wobbleX, p.y + wobbleY)
-      .stroke({ color: 0xa78bfa, width: 1.4, alpha: 0.35 });
-    layer.addChild(g);
     drawUtilityIcon(layer, "decoy", p.x + wobbleX + Math.cos(rot) * 1.5, p.y + wobbleY + Math.sin(rot) * 1.5, 0xa78bfa);
     return;
   }
@@ -1003,7 +981,6 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
   const playerLayerRef = useRef<Container | null>(null);
   const spritesRef = useRef<Map<number, PlayerSprite>>(new Map());
   const loadedMapRef = useRef<string | null>(null);
-  const heDebugLoggedRef = useRef<Set<string>>(new Set());
 
   // init pixi once
   useEffect(() => {
@@ -1127,10 +1104,9 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       };
 
       const projectileFrames = projectileSamples(round);
+      const roundEffects = resolveEffects(round.effects ?? [], projectileFrames);
       const unitsToPx = scale / calib.scale;
-      const activeEffects = (round.effects ?? []).filter(
-        (e) => time >= e.start && time <= e.end
-      );
+      const activeEffects = roundEffects.filter((e) => time >= e.start && time <= e.end);
       for (const effect of activeEffects) {
         const resolved = fireVariantFromProjectiles(effect, projectileFrames);
         if (resolved.type === "bomb_planted" && smoothBomb) continue;
@@ -1190,7 +1166,7 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       // second flash/HE in the same spot from being swallowed by the first
       // detonation's suppression.
       const detonatedIds = new Set<number>();
-      const projectileEffects = (round.effects ?? [])
+      const projectileEffects = roundEffects
         .filter((e) => time >= e.start - (e.type === "he" ? 1.25 : 0.12))
         .slice()
         .sort((a, b) => a.start - b.start);
@@ -1226,13 +1202,6 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       }
 
       const projectiles = visibleProjectiles(projectileFrames, time, projectileEffects, detonatedIds);
-      for (const effect of projectileEffects) {
-        if (effect.type !== "he" || time < effect.start || time > effect.start + 0.25) continue;
-        const key = `${currentRoundIdx}:${effect.start.toFixed(3)}:${Math.round(effect.x)}:${Math.round(effect.y)}`;
-        if (heDebugLoggedRef.current.has(key)) continue;
-        heDebugLoggedRef.current.add(key);
-        logHeDebug(round, effect, time, projectileFrames, projectiles, detonatedIds);
-      }
       for (const projectile of projectiles) {
         drawProjectile(utilityLayer, projectile, projectileFrames, time, throwerTeams, toRadar);
       }
