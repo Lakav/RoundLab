@@ -1,5 +1,6 @@
 "use client";
 
+import type { PointerEvent } from "react";
 import { useReplay } from "@/lib/replay-store";
 import { Slider } from "@/components/ui/slider";
 
@@ -16,21 +17,32 @@ export function Timeline() {
   const currentRoundIdx = useReplay((s) => s.currentRoundIdx);
   const round = match?.rounds[currentRoundIdx];
   const duration = round?.duration ?? 0;
+  const seekFromPointer = (e: PointerEvent<HTMLDivElement>) => {
+    if (!duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    setTime(ratio * duration);
+  };
 
   return (
-    <div className="flex items-center gap-3 w-full">
-      <span className="text-[11px] tabular-nums text-neutral-500 w-10 text-right font-medium">
+    <div className="flex w-full items-center gap-3.5">
+      <span className="w-11 text-right text-xs font-medium tabular-nums text-neutral-500">
         {fmt(time)}
       </span>
-      <Slider
-        value={[time]}
-        min={0}
-        max={duration || 1}
-        step={0.05}
-        onValueChange={(v) => setTime(Array.isArray(v) ? v[0] : v)}
-        className="flex-1"
-      />
-      <span className="text-[11px] tabular-nums text-neutral-500 w-10 font-medium">
+      <div
+        className="flex h-8 flex-1 items-center"
+        onPointerDown={seekFromPointer}
+      >
+        <Slider
+          value={[time]}
+          min={0}
+          max={duration || 1}
+          step={0.05}
+          onValueChange={(v) => setTime(Array.isArray(v) ? v[0] : v)}
+          className="flex-1 [&_[data-slot=slider-thumb]]:size-4 [&_[data-slot=slider-track]]:h-1.5"
+        />
+      </div>
+      <span className="w-11 text-xs font-medium tabular-nums text-neutral-500">
         {fmt(duration)}
       </span>
     </div>

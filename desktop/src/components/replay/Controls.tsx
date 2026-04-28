@@ -24,41 +24,41 @@ export function Controls() {
   };
 
   return (
-    <div className="flex shrink-0 items-center gap-1 text-neutral-500">
+    <div className="flex shrink-0 items-center gap-1.5 text-neutral-500">
       <Button
         variant="ghost"
         size="icon"
         onClick={() => skip(-5)}
         title="-5s (J)"
-        className="size-6 rounded-[2px] text-neutral-500 hover:bg-white/[0.05] hover:text-neutral-200"
+        className="size-7 rounded-[3px] text-neutral-500 hover:bg-white/[0.05] hover:text-neutral-200"
       >
-        <SkipBack className="size-3.5" />
+        <SkipBack className="size-4" />
       </Button>
       <Button
         size="icon"
         onClick={togglePlay}
         title="Play/Pause (Space)"
-        className="size-7 rounded-[2px] bg-transparent text-[#6fea76] shadow-none hover:bg-white/[0.05] hover:text-[#8dff91]"
+        className="size-8 rounded-[3px] bg-transparent text-[#6fea76] shadow-none hover:bg-white/[0.05] hover:text-[#8dff91]"
       >
-        {playing ? <Pause className="size-4 fill-current" /> : <Play className="size-4 fill-current" />}
+        {playing ? <Pause className="size-[18px] fill-current" /> : <Play className="size-[18px] fill-current" />}
       </Button>
       <Button
         variant="ghost"
         size="icon"
         onClick={() => skip(5)}
         title="+5s (L)"
-        className="size-6 rounded-[2px] text-neutral-500 hover:bg-white/[0.05] hover:text-neutral-200"
+        className="size-7 rounded-[3px] text-neutral-500 hover:bg-white/[0.05] hover:text-neutral-200"
       >
-        <SkipForward className="size-3.5" />
+        <SkipForward className="size-4" />
       </Button>
 
-      <div className="ml-2 flex items-center gap-0.5">
+      <div className="ml-2 flex items-center gap-1">
         {SPEEDS.map((s) => (
           <button
             key={s}
             onClick={() => setSpeed(s)}
             className={cn(
-              "h-5 min-w-7 rounded-[2px] px-1 text-[10px] tabular-nums transition-colors",
+              "h-6 min-w-8 rounded-[3px] px-1.5 text-[11px] tabular-nums transition-colors",
               speed === s
                 ? "bg-white text-neutral-950"
                 : "text-neutral-500 hover:bg-white/[0.05] hover:text-neutral-200"

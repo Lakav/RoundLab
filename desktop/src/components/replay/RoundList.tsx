@@ -11,7 +11,7 @@ export function RoundList() {
   if (!match) return null;
 
   return (
-    <div className="flex w-full items-center justify-center gap-5 py-2 font-mono text-[12px] tabular-nums">
+    <div className="flex w-full items-center justify-center gap-2 py-2 font-mono text-[12px] tabular-nums">
       {match.rounds.map((r, i) => {
         const active = currentRoundIdx === i;
         const winner = r.winner;
@@ -22,7 +22,7 @@ export function RoundList() {
             key={r.number}
             onClick={() => setRound(i)}
             className={cn(
-              "relative transition-opacity",
+              "relative flex h-5 min-w-9 items-center justify-center rounded-[3px] px-2 transition-opacity hover:bg-white/[0.04]",
               active ? "opacity-100" : "opacity-55 hover:opacity-100"
             )}
             style={{ color }}

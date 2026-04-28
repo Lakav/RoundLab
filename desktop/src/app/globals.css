@@ -150,11 +150,19 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    -webkit-user-select: none;
+    user-select: none;
   }
   body {
     @apply bg-background text-foreground;
+    -webkit-user-drag: none;
   }
   html {
     @apply font-sans;
+  }
+  img,
+  svg,
+  canvas {
+    -webkit-user-drag: none;
   }
 }
