@@ -144,19 +144,26 @@ function projectileHistory(
   toRadar: (x: number, y: number, z?: number) => { x: number; y: number }
 ): { x: number; y: number }[] {
   const points: { x: number; y: number }[] = [];
-  const start = Math.max(0, time - 2.4);
-  for (let t = start; t <= time; t += 0.03) {
-    const p = sampleProjectiles(frames, t).find((candidate) => candidate.id === projectile.id);
+  let lastSampleTime: number | null = null;
+
+  for (const frame of frames) {
+    if (frame.t > time) break;
+    const p = frame.projectiles?.find((candidate) => candidate.id === projectile.id);
     if (!p) continue;
     const pt = toRadar(p.x, p.y, p.z);
     const last = points[points.length - 1];
-    if (last && Math.hypot(last.x - pt.x, last.y - pt.y) > 65) {
+    const staleGap = lastSampleTime !== null && frame.t - lastSampleTime > 0.55;
+    const visualJump = last && Math.hypot(last.x - pt.x, last.y - pt.y) > 65;
+    if (staleGap || visualJump) {
       points.length = 0;
       points.push(pt);
+      lastSampleTime = frame.t;
       continue;
     }
     if (!last || Math.hypot(last.x - pt.x, last.y - pt.y) > 0.5) points.push(pt);
+    lastSampleTime = frame.t;
   }
+
   const current = toRadar(projectile.x, projectile.y, projectile.z);
   const last = points[points.length - 1];
   if (last && Math.hypot(last.x - current.x, last.y - current.y) > 65) return [current];
