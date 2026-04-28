@@ -65,6 +65,11 @@ export type Frame = {
   projectiles?: ProjectilePos[];
 };
 
+export type ProjectileFrame = {
+  t: number;
+  projectiles: ProjectilePos[];
+};
+
 export type MatchEvent = {
   t: number;
   type:
@@ -110,6 +115,7 @@ export type Round = {
   events: MatchEvent[];
   effects?: UtilityEffect[];
   weaponFires?: WeaponFireEvent[];
+  projectileFrames?: ProjectileFrame[];
 };
 
 export type UtilityEffect = {

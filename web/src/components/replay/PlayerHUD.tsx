@@ -163,6 +163,14 @@ function isUtility(name: string) {
   return /grenade|flashbang|molotov|incendiary|decoy/i.test(name);
 }
 
+function isKnife(name: string) {
+  return /knife|bayonet|karambit|butterfly|stiletto|ursus|talon|skeleton|kukri|bowie|flip|gut/i.test(name);
+}
+
+function isPistol(name: string) {
+  return /deagle|revolver|usp|glock|p2000|hkp2000|p250|five|fiveseven|cz|tec|elite|dual/i.test(name);
+}
+
 const UTILITY_ORDER = ["flash", "smoke", "he", "molotov", "incendiary", "decoy"];
 function utilityRank(name: string) {
   const n = name.toLowerCase();
@@ -185,14 +193,18 @@ function inventory(pos?: PlayerPos) {
   const weapons = pos?.weapons ?? [];
   const active = pos?.active ?? "";
   const utility = weapons.filter(isUtility).slice().sort((a, b) => utilityRank(a) - utilityRank(b));
-  const guns = weapons
-    .filter((w) => !isUtility(w) && w !== "Knife" && w !== "C4")
+  const guns = weapons.filter((w) => !isUtility(w) && !isKnife(w) && w !== "C4" && !/bomb/i.test(w));
+  const primary = guns
+    .filter((w) => !isPistol(w))
     .slice()
-    .sort((a, b) => gunRank(a) - gunRank(b));
-  const hasKnife = weapons.some((w) => w === "Knife" || /knife|bayonet|karambit/i.test(w));
+    .sort((a, b) => gunRank(a) - gunRank(b))[0];
+  const secondary = guns
+    .filter(isPistol)
+    .slice()
+    .sort((a, b) => gunRank(a) - gunRank(b))[0];
+  const knife = weapons.find(isKnife);
   const hasC4 = weapons.some((w) => w === "C4" || /bomb/i.test(w));
-  const primary = guns[0];
-  return { active, guns, utility, hasKnife, hasC4, primary };
+  return { active, utility, hasC4, primary, secondary, knife };
 }
 
 function PlayerRow({
@@ -274,6 +286,14 @@ function PlayerRow({
             size="weapon"
           />
         )}
+        {inv.secondary && (
+          <Icon
+            src={iconPathFor(inv.secondary)}
+            active={alive}
+            color={inv.secondary === inv.active ? "#91e268" : "#d6dddd"}
+            size="sidearm"
+          />
+        )}
         {inv.hasC4 && <Icon src="/icons/c4.svg" active color="#fde047" size="gear" />}
         {pos?.kit && <Icon src="/icons/defuser.svg" active color={cols.soft} size="gear" />}
         <div className="flex-1" />
@@ -286,11 +306,11 @@ function PlayerRow({
             size="utility"
           />
         ))}
-        {inv.hasKnife && (
+        {inv.knife && (
           <Icon
-            src="/icons/knife.svg"
+            src={iconPathFor(inv.knife)}
             active={alive}
-            color={inv.active === "Knife" ? "#91e268" : "#8f9696"}
+            color={inv.knife === inv.active ? "#91e268" : "#8f9696"}
             size="utility"
           />
         )}
@@ -308,7 +328,7 @@ function Icon({
   src: string | null;
   active: boolean;
   color: string;
-  size?: "gear" | "weapon" | "utility";
+  size?: "gear" | "weapon" | "sidearm" | "utility";
 }) {
   if (!src) return null;
   return (
@@ -317,6 +337,7 @@ function Icon({
       className={cn(
         "inline-block shrink-0",
         size === "weapon" && "h-[15px] w-[34px]",
+        size === "sidearm" && "h-[13px] w-[25px]",
         size === "gear" && "size-[14px]",
         size === "utility" && "size-[11px]"
       )}

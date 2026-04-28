@@ -64,6 +64,30 @@ const WEAPON_ICON_MAP: Record<string, string | null> = {
   "zeus x27": "taser",
   "taser": "taser",
   "knife": "knife",
+  "knife_bayonet": "bayonet",
+  "bayonet": "bayonet",
+  "knife_butterfly": "knife_butterfly",
+  "knife_canis": "knife_canis",
+  "knife_cord": "knife_cord",
+  "knife_css": "knife_css",
+  "knife_flip": "knife_flip",
+  "knife_gut": "knife_gut",
+  "knife_gypsy_jackknife": "knife_gypsy_jackknife",
+  "knife_karambit": "knife_karambit",
+  "karambit": "knife_karambit",
+  "knife_kukri": "knife_kukri",
+  "knife_m9_bayonet": "knife_m9_bayonet",
+  "m9 bayonet": "knife_m9_bayonet",
+  "knife_outdoor": "knife_outdoor",
+  "knife_push": "knife_push",
+  "knife_skeleton": "knife_skeleton",
+  "knife_stiletto": "knife_stiletto",
+  "knife_survival_bowie": "knife_survival_bowie",
+  "knife_t": "knife_t",
+  "knife_tactical": "knife_tactical",
+  "knife_twinblade": "knife_twinblade",
+  "knife_ursus": "knife_ursus",
+  "knife_widowmaker": "knife_widowmaker",
   "c4": "c4",
   "bomb": "c4",
   "smoke grenade": "smokegrenade",
@@ -73,8 +97,13 @@ const WEAPON_ICON_MAP: Record<string, string | null> = {
   "hegrenade": "hegrenade",
   "high explosive grenade": "hegrenade",
   "molotov": "molotov",
+  "weapon_molotov": "molotov",
   "incendiary grenade": "incgrenade",
   "incgrenade": "incgrenade",
+  "weapon_incgrenade": "incgrenade",
+  "incendiarygrenade": "incgrenade",
+  "incgrenade_projectile": "incgrenade",
+  "cincendiarygrenadeprojectile": "incgrenade",
   "decoy grenade": "decoy",
   "decoy": "decoy",
 };
@@ -88,10 +117,21 @@ export function iconPathFor(name?: string): string | null {
   if (key.includes("smoke")) return "/icons/smokegrenade.svg";
   if (key.includes("flash")) return "/icons/flashbang.svg";
   if (key.includes("hegrenade") || key.includes("high explosive")) return "/icons/hegrenade.svg";
-  if (key.includes("molotov")) return "/icons/molotov.svg";
   if (key.includes("incgrenade") || key.includes("incendiary")) return "/icons/incgrenade.svg";
+  if (key.includes("molotov")) return "/icons/molotov.svg";
   if (key.includes("decoy")) return "/icons/decoy.svg";
-  if (key.includes("knife") || key.includes("bayonet") || key.includes("karambit")) {
+  if (key.includes("karambit")) return "/icons/knife_karambit.svg";
+  if (key.includes("butterfly")) return "/icons/knife_butterfly.svg";
+  if (key.includes("m9") && key.includes("bayonet")) return "/icons/knife_m9_bayonet.svg";
+  if (key.includes("bayonet")) return "/icons/bayonet.svg";
+  if (key.includes("flip")) return "/icons/knife_flip.svg";
+  if (key.includes("gut")) return "/icons/knife_gut.svg";
+  if (key.includes("bowie")) return "/icons/knife_bowie.svg";
+  if (key.includes("skeleton")) return "/icons/knife_skeleton.svg";
+  if (key.includes("stiletto")) return "/icons/knife_stiletto.svg";
+  if (key.includes("ursus")) return "/icons/knife_ursus.svg";
+  if (key.includes("talon") || key.includes("widowmaker")) return "/icons/knife_widowmaker.svg";
+  if (key.includes("knife")) {
     return "/icons/knife.svg";
   }
   if (/^[a-z0-9_]+$/.test(key)) return `/icons/${key}.svg`;

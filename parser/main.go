@@ -102,6 +102,11 @@ type ProjectilePos struct {
 	Thrower uint64  `json:"thrower,omitempty"`
 }
 
+type ProjectileFrame struct {
+	T           float64         `json:"t"`
+	Projectiles []ProjectilePos `json:"projectiles"`
+}
+
 type UtilityEffect struct {
 	ID      int64   `json:"id,omitempty"`
 	Type    string  `json:"type"`              // smoke, flash, he, fire, decoy, bomb_planted
@@ -139,21 +144,22 @@ type Event struct {
 }
 
 type Round struct {
-	Number        int               `json:"number"`
-	StartTick     int               `json:"startTick"`     // live round start, after freezetime
-	FreezeEndTick int               `json:"freezeEndTick"` // same as StartTick once known
-	EndTick       int               `json:"endTick"`
-	Duration      float64           `json:"duration"`
-	Winner        string            `json:"winner"`
-	WinnerName    string            `json:"winnerName,omitempty"`
-	ScoreA        int               `json:"scoreA"`
-	ScoreB        int               `json:"scoreB"`
-	Frames        []Frame           `json:"frames"`
-	Events        []Event           `json:"events"`
-	Effects       []UtilityEffect   `json:"effects,omitempty"`
-	WeaponFires   []WeaponFireEvent `json:"weaponFires,omitempty"`
-	LiveStarted   bool              `json:"-"`
-	TeamScores    map[string]int    `json:"-"`
+	Number           int               `json:"number"`
+	StartTick        int               `json:"startTick"`     // live round start, after freezetime
+	FreezeEndTick    int               `json:"freezeEndTick"` // same as StartTick once known
+	EndTick          int               `json:"endTick"`
+	Duration         float64           `json:"duration"`
+	Winner           string            `json:"winner"`
+	WinnerName       string            `json:"winnerName,omitempty"`
+	ScoreA           int               `json:"scoreA"`
+	ScoreB           int               `json:"scoreB"`
+	Frames           []Frame           `json:"frames"`
+	Events           []Event           `json:"events"`
+	Effects          []UtilityEffect   `json:"effects,omitempty"`
+	WeaponFires      []WeaponFireEvent `json:"weaponFires,omitempty"`
+	ProjectileFrames []ProjectileFrame `json:"projectileFrames,omitempty"`
+	LiveStarted      bool              `json:"-"`
+	TeamScores       map[string]int    `json:"-"`
 }
 
 type Output struct {
@@ -254,6 +260,10 @@ func main() {
 	sampleHz := 8 / step
 	if sampleHz < 1 {
 		sampleHz = 1
+	}
+	projectileEveryTicks := int(tickRate / 32)
+	if projectileEveryTicks < 1 {
+		projectileEveryTicks = 1
 	}
 
 	output := Output{
@@ -368,6 +378,16 @@ func main() {
 
 	p.RegisterEventHandler(func(e events.RoundFreezetimeEnd) {
 		beginLiveRound(p.GameState().IngameTick())
+	})
+
+	p.RegisterEventHandler(func(e events.TeamClanNameUpdated) {
+		if e.TeamState == nil || strings.TrimSpace(e.NewName) == "" {
+			return
+		}
+		rememberTeam(e.TeamState, e.TeamState.Score())
+		if currentRound != nil {
+			currentRound.TeamScores[e.NewName] = e.TeamState.Score()
+		}
 	})
 
 	p.RegisterEventHandler(func(e events.RoundEnd) {
@@ -645,6 +665,35 @@ func main() {
 		}
 	})
 
+	collectProjectiles := func() []ProjectilePos {
+		if *skipProjectiles {
+			return nil
+		}
+		projectiles := []ProjectilePos{}
+		for _, proj := range p.GameState().GrenadeProjectiles() {
+			if proj == nil || proj.WeaponInstance == nil {
+				continue
+			}
+			if detonatedProjectiles[proj.UniqueID()] {
+				continue
+			}
+			pos := proj.Position()
+			var thrower uint64
+			if proj.Thrower != nil {
+				thrower = proj.Thrower.SteamID64
+			}
+			projectiles = append(projectiles, ProjectilePos{
+				ID:      proj.UniqueID(),
+				Type:    proj.WeaponInstance.String(),
+				X:       float32(pos.X),
+				Y:       float32(pos.Y),
+				Z:       float32(pos.Z),
+				Thrower: thrower,
+			})
+		}
+		return projectiles
+	}
+
 	// Sample positions per frame
 	p.RegisterEventHandler(func(e events.FrameDone) {
 		if currentRound == nil {
@@ -657,10 +706,19 @@ func main() {
 			}
 			beginLiveRound(tick)
 		}
+		t := float64(tick-currentRound.StartTick) / tickRate
+		if (tick-currentRound.StartTick)%projectileEveryTicks == 0 {
+			projectiles := collectProjectiles()
+			if len(projectiles) > 0 {
+				currentRound.ProjectileFrames = append(currentRound.ProjectileFrames, ProjectileFrame{
+					T:           t,
+					Projectiles: projectiles,
+				})
+			}
+		}
 		if (tick-currentRound.StartTick)%sampleEveryTicks != 0 {
 			return
 		}
-		t := float64(tick-currentRound.StartTick) / tickRate
 		frame := Frame{T: t, Players: []PlayerPos{}}
 		var bombCarrier uint64
 		if bomb := p.GameState().Bomb(); bomb != nil && bomb.Carrier != nil {
@@ -688,29 +746,7 @@ func main() {
 				}
 			}
 		}
-		if !*skipProjectiles {
-			for _, proj := range p.GameState().GrenadeProjectiles() {
-				if proj == nil || proj.WeaponInstance == nil {
-					continue
-				}
-				if detonatedProjectiles[proj.UniqueID()] {
-					continue
-				}
-				pos := proj.Position()
-				var thrower uint64
-				if proj.Thrower != nil {
-					thrower = proj.Thrower.SteamID64
-				}
-				frame.Projectiles = append(frame.Projectiles, ProjectilePos{
-					ID:      proj.UniqueID(),
-					Type:    proj.WeaponInstance.String(),
-					X:       float32(pos.X),
-					Y:       float32(pos.Y),
-					Z:       float32(pos.Z),
-					Thrower: thrower,
-				})
-			}
-		}
+		frame.Projectiles = collectProjectiles()
 		for _, pl := range p.GameState().Participants().Playing() {
 			if pl == nil {
 				continue

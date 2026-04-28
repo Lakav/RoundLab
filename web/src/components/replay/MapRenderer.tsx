@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
 import { useReplay } from "@/lib/replay-store";
 import { MAP_CALIBRATION, RADAR_SIZE, worldToRadar } from "@/lib/maps";
-import type { Frame, MatchEvent, PlayerPos, ProjectilePos, UtilityEffect, WeaponFireEvent } from "@/lib/types";
+import type { Frame, MatchEvent, PlayerPos, ProjectileFrame, ProjectilePos, Round, UtilityEffect, WeaponFireEvent } from "@/lib/types";
 import { iconPathFor } from "@/lib/icons";
 
 const iconTextureCache = new Map<string, Promise<Texture>>();
@@ -79,7 +79,7 @@ function nearestFrame(frames: Frame[], t: number): Frame | null {
   return Math.abs(frames[lo].t - t) <= Math.abs(frames[hi].t - t) ? frames[lo] : frames[hi];
 }
 
-function framePair(frames: Frame[], t: number): { a: Frame; b: Frame; alpha: number } | null {
+function framePair<T extends { t: number }>(frames: T[], t: number): { a: T; b: T; alpha: number } | null {
   if (!frames || frames.length === 0) return null;
   if (t <= frames[0].t) return { a: frames[0], b: frames[0], alpha: 0 };
   if (t >= frames[frames.length - 1].t) {
@@ -98,24 +98,138 @@ function framePair(frames: Frame[], t: number): { a: Frame; b: Frame; alpha: num
   return { a, b, alpha: (t - a.t) / (b.t - a.t || 1) };
 }
 
-function sampleProjectiles(frames: Frame[], t: number): ProjectilePos[] {
+type ProjectileSample = Frame | ProjectileFrame;
+
+function projectileSamples(round: Round): ProjectileSample[] {
+  return round.projectileFrames?.length ? round.projectileFrames : round.frames;
+}
+
+function sampleProjectiles(frames: ProjectileSample[], t: number): ProjectilePos[] {
   const pair = framePair(frames, t);
   if (!pair) return [];
   const { a, b, alpha } = pair;
   const from = new Map((a.projectiles ?? []).map((p) => [p.id, p]));
-  return (b.projectiles ?? []).map((pb) => {
+  const out = new Map<number, ProjectilePos>();
+  for (const pb of b.projectiles ?? []) {
     const pa = from.get(pb.id);
-    if (!pa) return pb;
-    return {
+    if (!pa) {
+      out.set(pb.id, pb);
+      continue;
+    }
+    const dx = pb.x - pa.x;
+    const dy = pb.y - pa.y;
+    const dz = pb.z - pa.z;
+    const sameProjectile =
+      projectileTypeToEffect(pa.type) === projectileTypeToEffect(pb.type) &&
+      (pa.thrower ?? 0) === (pb.thrower ?? 0) &&
+      dx * dx + dy * dy + dz * dz <= 850 * 850;
+    if (!sameProjectile) {
+      out.set(pb.id, pb);
+      continue;
+    }
+    out.set(pb.id, {
       ...pb,
       x: pa.x + (pb.x - pa.x) * alpha,
       y: pa.y + (pb.y - pa.y) * alpha,
       z: pa.z + (pb.z - pa.z) * alpha,
-    };
-  });
+    });
+  }
+  return [...out.values()];
 }
 
-function fireVariantFromProjectiles(effect: UtilityEffect, frames: Frame[]): UtilityEffect {
+function projectileHistory(
+  frames: ProjectileSample[],
+  projectile: ProjectilePos,
+  time: number,
+  toRadar: (x: number, y: number, z?: number) => { x: number; y: number }
+): { x: number; y: number }[] {
+  const points: { x: number; y: number }[] = [];
+  const start = Math.max(0, time - 2.4);
+  for (let t = start; t <= time; t += 0.03) {
+    const p = sampleProjectiles(frames, t).find((candidate) => candidate.id === projectile.id);
+    if (!p) continue;
+    const pt = toRadar(p.x, p.y, p.z);
+    const last = points[points.length - 1];
+    if (last && Math.hypot(last.x - pt.x, last.y - pt.y) > 65) {
+      points.length = 0;
+      points.push(pt);
+      continue;
+    }
+    if (!last || Math.hypot(last.x - pt.x, last.y - pt.y) > 0.5) points.push(pt);
+  }
+  const current = toRadar(projectile.x, projectile.y, projectile.z);
+  const last = points[points.length - 1];
+  if (last && Math.hypot(last.x - current.x, last.y - current.y) > 65) return [current];
+  if (!last || Math.hypot(last.x - current.x, last.y - current.y) > 0.5) points.push(current);
+  return points;
+}
+
+function drawSmoothTrail(g: Graphics, points: { x: number; y: number }[], color: number) {
+  if (points.length < 2) return;
+  const smooth: { x: number; y: number }[] = [points[0]];
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[Math.max(0, i - 1)];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[Math.min(points.length - 1, i + 2)];
+    for (let step = 1; step <= 8; step++) {
+      const t = step / 8;
+      const tt = t * t;
+      const ttt = tt * t;
+      const x =
+        0.5 *
+        ((2 * p1.x) +
+          (-p0.x + p2.x) * t +
+          (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * tt +
+          (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * ttt);
+      const y =
+        0.5 *
+        ((2 * p1.y) +
+          (-p0.y + p2.y) * t +
+          (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * tt +
+          (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * ttt);
+      smooth.push({ x, y });
+    }
+  }
+
+  let dashRemaining = 3.5;
+  let gapRemaining = 4.5;
+  let drawing = true;
+  for (let i = 1; i < smooth.length; i++) {
+    let from = smooth[i - 1];
+    const to = smooth[i];
+    let distance = Math.hypot(to.x - from.x, to.y - from.y);
+    if (distance <= 0.01) continue;
+    const ux = (to.x - from.x) / distance;
+    const uy = (to.y - from.y) / distance;
+
+    while (distance > 0.01) {
+      const step = Math.min(distance, drawing ? dashRemaining : gapRemaining);
+      const next = { x: from.x + ux * step, y: from.y + uy * step };
+      if (drawing) {
+        const progress = i / Math.max(1, smooth.length - 1);
+        g.moveTo(from.x, from.y);
+        g.lineTo(next.x, next.y);
+        g.stroke({ color, width: 1.35, alpha: 0.2 + progress * 0.35 });
+        dashRemaining -= step;
+        if (dashRemaining <= 0.01) {
+          drawing = false;
+          dashRemaining = 3.5;
+        }
+      } else {
+        gapRemaining -= step;
+        if (gapRemaining <= 0.01) {
+          drawing = true;
+          gapRemaining = 4.5;
+        }
+      }
+      from = next;
+      distance -= step;
+    }
+  }
+}
+
+function fireVariantFromProjectiles(effect: UtilityEffect, frames: ProjectileSample[]): UtilityEffect {
   if (effect.type !== "fire" || effect.variant) return effect;
   const candidates = [
     ...sampleProjectiles(frames, effect.start),
@@ -139,6 +253,118 @@ function fireVariantFromProjectiles(effect: UtilityEffect, frames: Frame[]): Uti
     ...effect,
     variant: best.type.toLowerCase().includes("incendiary") ? "incendiary" : "molotov",
   };
+}
+
+function circleOverlapArea(r1: number, r2: number, distance: number): number {
+  if (distance >= r1 + r2) return 0;
+  if (distance <= Math.abs(r1 - r2)) {
+    const r = Math.min(r1, r2);
+    return Math.PI * r * r;
+  }
+  const a =
+    r1 * r1 * Math.acos((distance * distance + r1 * r1 - r2 * r2) / (2 * distance * r1));
+  const b =
+    r2 * r2 * Math.acos((distance * distance + r2 * r2 - r1 * r1) / (2 * distance * r2));
+  const c = 0.5 * Math.sqrt(
+    Math.max(0, (-distance + r1 + r2) * (distance + r1 - r2) * (distance - r1 + r2) * (distance + r1 + r2))
+  );
+  return a + b - c;
+}
+
+function fireRadiusWorld(effect: UtilityEffect): number {
+  const isIncendiary = effect.variant === "incendiary" || (!effect.variant && effect.team === 3);
+  return isIncendiary ? 132 : 150;
+}
+
+function fireIsSmoked(fire: UtilityEffect, activeEffects: UtilityEffect[]): boolean {
+  const fireRadius = fireRadiusWorld(fire);
+  const fireArea = Math.PI * fireRadius * fireRadius;
+  return activeEffects.some((effect) => {
+    if (effect.type !== "smoke") return false;
+    const dx = fire.x - effect.x;
+    const dy = fire.y - effect.y;
+    const overlap = circleOverlapArea(fireRadius, 144, Math.hypot(dx, dy));
+    return overlap / fireArea > 0.25;
+  });
+}
+
+function lastKnownTeams(frames: Frame[], time: number): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const frame of frames) {
+    if (frame.t > time) break;
+    for (const player of frame.players) out.set(player.id, player.team);
+  }
+  return out;
+}
+
+function projectileTypeToEffect(type: string): string | null {
+  const t = type.toLowerCase();
+  if (t.includes("smoke")) return "smoke";
+  if (t.includes("molotov") || t.includes("incendiary") || t.includes("incgrenade") || t.includes("inferno")) return "fire";
+  if (t.includes("decoy")) return "decoy";
+  if (t.includes("flash")) return "flash";
+  if (t.startsWith("he") || t.includes("high explosive")) return "he";
+  return null;
+}
+
+function effectSuppressionRadius(type: string): number {
+  if (type === "fire" || type === "smoke") return 900;
+  if (type === "decoy") return 700;
+  return 520;
+}
+
+function projectileResolvedByEffect(
+  projectile: ProjectilePos,
+  startedEffects: UtilityEffect[],
+  time: number
+): boolean {
+  const type = projectileTypeToEffect(projectile.type);
+  if (!type) return false;
+  return startedEffects.some((effect) => {
+    if (effect.type !== type || time < effect.start) return false;
+    const dx = projectile.x - effect.x;
+    const dy = projectile.y - effect.y;
+    const threshold = effectSuppressionRadius(type);
+    return dx * dx + dy * dy <= threshold * threshold;
+  });
+}
+
+function isSameVisualProjectile(a: ProjectilePos, b: ProjectilePos): boolean {
+  if (a.id === b.id) return true;
+  const type = projectileTypeToEffect(a.type);
+  if (!type || projectileTypeToEffect(b.type) !== type) return false;
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  const dz = a.z - b.z;
+  return dx * dx + dy * dy + dz * dz <= 80 * 80;
+}
+
+function visibleProjectiles(
+  frames: ProjectileSample[],
+  time: number,
+  startedEffects: UtilityEffect[],
+  detonatedIds: Set<number>
+): ProjectilePos[] {
+  const out = new Map<number, ProjectilePos>();
+  for (const projectile of sampleProjectiles(frames, time)) {
+    if (detonatedIds.has(projectile.id)) continue;
+    if (projectileResolvedByEffect(projectile, startedEffects, time)) continue;
+    if ([...out.values()].some((current) => isSameVisualProjectile(current, projectile))) continue;
+    out.set(projectile.id, projectile);
+  }
+
+  const pair = framePair(frames, time);
+  if (!pair || pair.a === pair.b || pair.b.t - time > 0.16) return [...out.values()];
+
+  for (const projectile of pair.a.projectiles ?? []) {
+    if (out.has(projectile.id) || detonatedIds.has(projectile.id)) continue;
+    if (projectileResolvedByEffect(projectile, startedEffects, time)) continue;
+
+    if ([...out.values()].some((current) => isSameVisualProjectile(current, projectile))) continue;
+    out.set(projectile.id, projectile);
+  }
+
+  return [...out.values()];
 }
 
 function fitSprite(sprite: Sprite, max: number) {
@@ -269,7 +495,8 @@ function drawUtilityIcon(
   name: string,
   x: number,
   y: number,
-  color: number
+  color: number,
+  max = 16
 ) {
   const path = iconPathFor(name);
   if (!path) return;
@@ -282,7 +509,7 @@ function drawUtilityIcon(
     .then((tex) => {
       if (sprite.destroyed) return;
       sprite.texture = tex;
-      fitSprite(sprite, 16);
+      fitSprite(sprite, max);
     })
     .catch(() => {});
 }
@@ -400,8 +627,7 @@ function drawEffect(
   }
 
   if (effect.type === "fire") {
-    const isIncendiary = effect.variant === "incendiary" || (!effect.variant && effect.team === 3);
-    const radius = (isIncendiary ? 132 : 150) * unitsToPx;
+    const radius = fireRadiusWorld(effect) * unitsToPx;
     const alpha = Math.min(1, age / 0.25) * (life > 0.92 ? 1 - (life - 0.92) / 0.08 : 1);
     g.circle(p.x, p.y, radius).fill({ color: teamDarkColor(effect.team), alpha: 0.32 * alpha });
     g.circle(p.x, p.y, radius).stroke({ color: 0x1d1f1f, width: 3.5, alpha: 0.65 * alpha });
@@ -409,53 +635,56 @@ function drawEffect(
     const secsLeft = Math.max(0, Math.ceil(effect.end - time));
     drawCountdownLabel(g, String(secsLeft), p.x, p.y, 0xb8b8b8);
     layer.addChild(g);
+    drawUtilityIcon(layer, "inferno", p.x, p.y, 0xff8a1f, 18);
     return;
   }
 
   if (effect.type === "decoy") {
-    g.circle(p.x, p.y, 18)
-      .stroke({ color: 0xa78bfa, width: 1.5, alpha: 0.35 + Math.sin(time * 8) * 0.15 });
+    const wobbleX = Math.sin(time * 17) * 2.2;
+    const wobbleY = Math.cos(time * 13) * 1.6;
+    const rot = Math.sin(time * 20) * 0.22;
+    g.moveTo(p.x - 9 + wobbleX, p.y + wobbleY)
+      .lineTo(p.x + 9 + wobbleX, p.y + wobbleY)
+      .stroke({ color: 0xa78bfa, width: 1.4, alpha: 0.35 });
     layer.addChild(g);
+    drawUtilityIcon(layer, "decoy", p.x + wobbleX + Math.cos(rot) * 1.5, p.y + wobbleY + Math.sin(rot) * 1.5, 0xa78bfa);
+    return;
+  }
+
+  if (effect.type === "bomb_planted") {
+    const pulse = (time * 1.5) % 1;
+    const radius = 19 * pulse;
+    const alpha = 0.75 * (1 - pulse);
+    g.circle(p.x, p.y, radius).stroke({ color: 0xef4444, width: 2, alpha });
+    layer.addChild(g);
+    drawUtilityIcon(layer, "c4", p.x, p.y, 0xef4444, 18);
   }
 }
 
 function drawProjectile(
   layer: Container,
   projectile: ProjectilePos,
-  frames: Frame[],
+  projectileFrames: ProjectileSample[],
   time: number,
   throwerTeams: Map<number, number>,
   toRadar: (x: number, y: number, z?: number) => { x: number; y: number }
 ) {
-  const color = teamColor(projectile.thrower ? throwerTeams.get(projectile.thrower) : undefined);
-  const raw: { x: number; y: number }[] = [];
-  for (const frame of frames) {
-    if (frame.t > time || frame.t < time - 2.2) continue;
-    const fp = frame.projectiles?.find((c) => c.id === projectile.id);
-    if (!fp) continue;
-    raw.push(toRadar(fp.x, fp.y, fp.z));
-  }
-  raw.push(toRadar(projectile.x, projectile.y, projectile.z));
+  const throwerTeam = projectile.thrower ? throwerTeams.get(projectile.thrower) : undefined;
+  const color = teamColor(throwerTeam);
+  const raw = projectileHistory(projectileFrames, projectile, time, toRadar);
 
   const trail = new Graphics();
-  if (raw.length > 1) {
-    trail.moveTo(raw[0].x, raw[0].y);
-    for (let i = 1; i < raw.length - 1; i++) {
-      const cx = raw[i].x;
-      const cy = raw[i].y;
-      const nx = (raw[i].x + raw[i + 1].x) / 2;
-      const ny = (raw[i].y + raw[i + 1].y) / 2;
-      trail.quadraticCurveTo(cx, cy, nx, ny);
-    }
-    trail.lineTo(raw[raw.length - 1].x, raw[raw.length - 1].y);
-    trail.stroke({ color, width: 2, alpha: 0.55 });
-  }
+  drawSmoothTrail(trail, raw, color);
 
   const p = toRadar(projectile.x, projectile.y, projectile.z);
   const shadow = toRadar(projectile.x, projectile.y, 0);
   trail.circle(shadow.x, shadow.y, 4).fill({ color: 0x000000, alpha: 0.25 });
   layer.addChild(trail);
-  drawUtilityIcon(layer, projectile.type, p.x, p.y, color);
+  const iconName =
+    projectileTypeToEffect(projectile.type) === "fire" && throwerTeam === 3
+      ? "incgrenade"
+      : projectile.type;
+  drawUtilityIcon(layer, iconName, p.x, p.y, color);
 }
 
 function drawWeaponFire(
@@ -642,8 +871,7 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
           z: ba.z + (bb.z - ba.z) * bombPair.alpha,
         };
       })();
-      const projectiles = sampleProjectiles(round.frames, time);
-      const throwerTeams = new Map(positions.map((p) => [p.id, p.team]));
+      const throwerTeams = lastKnownTeams(round.frames, time);
       const scale = size / RADAR_SIZE;
       const seen = new Set<number>();
       for (const child of utilityLayer.removeChildren()) {
@@ -655,12 +883,16 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
         return { x: p.x * scale, y: p.y * scale - heightLift(z) };
       };
 
+      const projectileFrames = projectileSamples(round);
       const unitsToPx = scale / calib.scale;
       const activeEffects = (round.effects ?? []).filter(
         (e) => time >= e.start && time <= e.end
       );
       for (const effect of activeEffects) {
-        drawEffect(utilityLayer, fireVariantFromProjectiles(effect, round.frames), time, toRadar, unitsToPx);
+        const resolved = fireVariantFromProjectiles(effect, projectileFrames);
+        if (resolved.type === "bomb_planted" && smoothBomb) continue;
+        if (resolved.type === "fire" && fireIsSmoked(resolved, activeEffects)) continue;
+        drawEffect(utilityLayer, resolved, time, toRadar, unitsToPx);
       }
 
       const visibleFires: WeaponFireEvent[] = (round.weaponFires ?? []).filter(
@@ -677,10 +909,12 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       if (smoothBomb && smoothBomb.status !== "carried") {
         const p = toRadar(smoothBomb.x, smoothBomb.y, smoothBomb.z);
         if (smoothBomb.status === "planted") {
-          const pulse = 0.65 + Math.sin(time * 7) * 0.25;
+          const pulse = (time * 1.5) % 1;
+          const radius = 19 * pulse;
+          const alpha = 0.75 * (1 - pulse);
           const ring = new Graphics()
-            .circle(p.x, p.y, 15 + pulse * 4)
-            .stroke({ color: 0xef4444, width: 2, alpha: 0.45 + pulse * 0.35 });
+            .circle(p.x, p.y, radius)
+            .stroke({ color: 0xef4444, width: 2, alpha });
           utilityLayer.addChild(ring);
           const defuse = activeDefuse(round.events, time);
           if (defuse && time >= defuse.start) {
@@ -707,17 +941,6 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
           })
           .catch(() => {});
       }
-
-      const projectileTypeToEffect = (type: string): string | null => {
-        const t = type.toLowerCase();
-        if (t.includes("smoke")) return "smoke";
-        if (t.includes("molotov") || t.includes("incendiary") || t.includes("inferno")) return "fire";
-        if (t.includes("decoy")) return "decoy";
-        if (t.includes("flash")) return "flash";
-        if (t.startsWith("he") || t.includes("high explosive")) return "he";
-        return null;
-      };
-
       // Match each started effect to ONE projectile (1-to-1). We sort
       // effects by start time and greedily assign the closest unclaimed
       // projectile of the same type at that instant. This prevents a
@@ -729,10 +952,15 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
         .slice()
         .sort((a, b) => a.start - b.start);
       for (const e of startedEffects) {
-        const sampled = sampleProjectiles(round.frames, e.start);
+        const sampled = [
+          ...sampleProjectiles(projectileFrames, e.start),
+          ...sampleProjectiles(projectileFrames, Math.max(0, e.start - 0.08)),
+          ...sampleProjectiles(projectileFrames, Math.max(0, e.start - 0.16)),
+        ];
+        const sampledById = new Map(sampled.map((projectile) => [projectile.id, projectile]));
         let bestId: number | null = null;
         let bestDist = Infinity;
-        for (const sp of sampled) {
+        for (const sp of sampledById.values()) {
           if (projectileTypeToEffect(sp.type) !== e.type) continue;
           if (detonatedIds.has(sp.id)) continue;
           const dx = sp.x - e.x;
@@ -746,19 +974,9 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
         if (bestId !== null) detonatedIds.add(bestId);
       }
 
+      const projectiles = visibleProjectiles(projectileFrames, time, startedEffects, detonatedIds);
       for (const projectile of projectiles) {
-        if (detonatedIds.has(projectile.id)) continue;
-        const pType = projectileTypeToEffect(projectile.type);
-        const hiddenByNearbyEffect = pType
-          ? startedEffects.some((e) => {
-              if (e.type !== pType || time < e.start) return false;
-              const dx = projectile.x - e.x;
-              const dy = projectile.y - e.y;
-              return dx * dx + dy * dy <= 350 * 350;
-            })
-          : false;
-        if (hiddenByNearbyEffect) continue;
-        drawProjectile(utilityLayer, projectile, round.frames, time, throwerTeams, toRadar);
+        drawProjectile(utilityLayer, projectile, projectileFrames, time, throwerTeams, toRadar);
       }
 
       for (const p of positions) {

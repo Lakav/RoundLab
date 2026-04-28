@@ -58,6 +58,12 @@ struct Frame {
     projectiles: Vec<ProjectilePos>,
 }
 
+#[derive(Serialize)]
+struct ProjectileFrame {
+    t: f64,
+    projectiles: Vec<ProjectilePos>,
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PlayerPos {
@@ -146,6 +152,8 @@ struct Round {
     effects: Vec<UtilityEffect>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     weapon_fires: Vec<WeaponFireEvent>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    projectile_frames: Vec<ProjectileFrame>,
 }
 
 #[derive(Serialize)]
@@ -227,6 +235,8 @@ fn run() -> Result<()> {
     let wanted_ticks = sample_ticks(&spans, sample_step, &events);
     let tick_rows = parse_ticks(&bytes, &huf, wanted_ticks)?;
     let rows_by_tick = group_tick_rows(tick_rows);
+    let team_rows = parse_team_rows(&bytes, &huf, team_name_ticks(&spans)).unwrap_or_default();
+    let (team_a, team_b) = team_names_from_rows(&team_rows);
     let projectile_rows = parse_projectiles(&bytes, &huf)?;
     let projectiles_by_tick = group_projectile_rows(projectile_rows);
 
@@ -273,6 +283,19 @@ fn run() -> Result<()> {
             frames.insert(0, first);
         }
 
+        let projectile_frames = projectiles_by_tick
+            .range(span.start..=span.end)
+            .filter_map(|(tick, projectiles)| {
+                if projectiles.is_empty() {
+                    return None;
+                }
+                Some(ProjectileFrame {
+                    t: seconds_since(span.start, *tick),
+                    projectiles: projectiles.clone(),
+                })
+            })
+            .collect::<Vec<_>>();
+
         rounds.push(Round {
             number: rounds.len(),
             start_tick: span.start,
@@ -283,8 +306,9 @@ fn run() -> Result<()> {
             score_a: score_ct,
             score_b: score_t,
             events: round_events(&events, &span),
-            effects: round_effects(&events, &span),
+            effects: round_effects(&events, &span, &rows_by_tick),
             weapon_fires: round_weapon_fires(&events, &span, &rows_by_tick),
+            projectile_frames,
             frames,
         });
 
@@ -324,8 +348,8 @@ fn run() -> Result<()> {
             tick_rate: TICK_RATE,
             sample_rate,
             duration_sec,
-            team_a: "CT".into(),
-            team_b: "T".into(),
+            team_a,
+            team_b,
             score_a: score_ct,
             score_b: score_t,
         },
@@ -598,6 +622,27 @@ fn parse_ticks(bytes: &[u8], huf: &Vec<(u8, u8)>, ticks: Vec<i32>) -> Result<Vec
         .collect())
 }
 
+fn parse_team_rows(bytes: &[u8], huf: &Vec<(u8, u8)>, ticks: Vec<i32>) -> Result<Vec<Value>> {
+    let settings = settings(
+        huf,
+        vec![],
+        vec![],
+        vec!["team_name".into(), "team_clan_name".into()],
+        ticks,
+        true,
+    )?;
+    let mut parser = Parser::new(settings, ParsingMode::Normal);
+    let output = parser.parse_demo(bytes).map_err(|e| anyhow!("{e}"))?;
+    let helper = OutputSerdeHelperStruct {
+        prop_infos: output.prop_controller.prop_infos.clone(),
+        inner: output.df.clone().into(),
+    };
+    Ok(soa_to_aos(helper)
+        .into_iter()
+        .map(|row| serde_json::to_value(row).unwrap_or(Value::Null))
+        .collect())
+}
+
 fn parse_projectiles(bytes: &[u8], huf: &Vec<(u8, u8)>) -> Result<Vec<Value>> {
     let mut settings = settings(huf, vec![], vec![], vec![], vec![], true)?;
     settings.parse_projectiles = true;
@@ -732,6 +777,47 @@ fn sample_ticks(spans: &[RoundSpan], step: i32, events: &[Value]) -> Vec<i32> {
     ticks
 }
 
+fn team_name_ticks(spans: &[RoundSpan]) -> Vec<i32> {
+    let mut ticks = Vec::new();
+    for span in spans.iter().take(4) {
+        ticks.push(span.start);
+        ticks.push(span.start + TICK_RATE as i32);
+        ticks.push(span.end);
+    }
+    if let Some(last) = spans.last() {
+        ticks.push(last.end);
+    }
+    ticks.sort_unstable();
+    ticks.dedup();
+    ticks
+}
+
+fn team_names_from_rows(rows: &[Value]) -> (String, String) {
+    let mut ct = None;
+    let mut t = None;
+    for row in rows {
+        let side = get_str(row, "team_name").unwrap_or("").trim();
+        let clan = get_str(row, "team_clan_name").unwrap_or("").trim();
+        if clan.is_empty()
+            || matches!(
+                clan,
+                "CT" | "T" | "TERRORIST" | "Counter-Terrorists" | "Terrorists"
+            )
+        {
+            continue;
+        }
+        match side {
+            "CT" if ct.is_none() => ct = Some(clan.to_string()),
+            "TERRORIST" | "T" if t.is_none() => t = Some(clan.to_string()),
+            _ => {}
+        }
+    }
+    (
+        ct.unwrap_or_else(|| "CT".into()),
+        t.unwrap_or_else(|| "T".into()),
+    )
+}
+
 fn group_tick_rows(rows: Vec<Value>) -> BTreeMap<i32, Vec<Value>> {
     let mut out: BTreeMap<i32, Vec<Value>> = BTreeMap::new();
     for row in rows {
@@ -743,7 +829,25 @@ fn group_tick_rows(rows: Vec<Value>) -> BTreeMap<i32, Vec<Value>> {
 }
 
 fn group_projectile_rows(rows: Vec<Value>) -> BTreeMap<i32, Vec<ProjectilePos>> {
-    let mut out: BTreeMap<i32, Vec<ProjectilePos>> = BTreeMap::new();
+    #[derive(Clone)]
+    struct Track {
+        id: i64,
+        kind: String,
+        thrower: Option<u64>,
+        x: f64,
+        y: f64,
+        z: f64,
+        last_tick: i32,
+    }
+
+    fn dist2(a: &ProjectilePos, b: &Track) -> f64 {
+        let dx = a.x - b.x;
+        let dy = a.y - b.y;
+        let dz = a.z - b.z;
+        dx * dx + dy * dy + dz * dz
+    }
+
+    let mut by_tick: BTreeMap<i32, Vec<ProjectilePos>> = BTreeMap::new();
     for row in rows {
         let Some(tick) = get_i64(&row, "tick") else {
             continue;
@@ -757,9 +861,8 @@ fn group_projectile_rows(rows: Vec<Value>) -> BTreeMap<i32, Vec<ProjectilePos>> 
         let Some(z) = get_f64(&row, "z") else {
             continue;
         };
-        let id = get_i64(&row, "entity_id").unwrap_or(tick);
-        out.entry(tick as i32).or_default().push(ProjectilePos {
-            id,
+        by_tick.entry(tick as i32).or_default().push(ProjectilePos {
+            id: get_i64(&row, "entity_id").unwrap_or(tick),
             kind: get_str(&row, "grenade_type")
                 .unwrap_or("grenade")
                 .to_string(),
@@ -769,6 +872,85 @@ fn group_projectile_rows(rows: Vec<Value>) -> BTreeMap<i32, Vec<ProjectilePos>> 
             thrower: get_u64(&row, "steamid"),
         });
     }
+
+    let mut out: BTreeMap<i32, Vec<ProjectilePos>> = BTreeMap::new();
+    let mut tracks: Vec<Track> = Vec::new();
+    let mut next_id = 1_000_000_000_i64;
+
+    for (tick, projectiles) in by_tick {
+        let mut used_tracks = HashSet::new();
+        let mut frame_projectiles: Vec<ProjectilePos> = Vec::new();
+
+        for projectile in projectiles {
+            // demoparser2 can emit multiple rows with the same transient
+            // entity id in one tick. The visual identity is type + thrower +
+            // continuity, not entity_id.
+            if frame_projectiles.iter().any(|existing| {
+                existing.kind == projectile.kind && existing.thrower == projectile.thrower && {
+                    let dx = existing.x - projectile.x;
+                    let dy = existing.y - projectile.y;
+                    let dz = existing.z - projectile.z;
+                    dx * dx + dy * dy + dz * dz < 6.0 * 6.0
+                }
+            }) {
+                continue;
+            }
+
+            let mut best_idx = None;
+            let mut best_dist = f64::INFINITY;
+            for (idx, track) in tracks.iter().enumerate() {
+                if used_tracks.contains(&idx) {
+                    continue;
+                }
+                if track.kind != projectile.kind || track.thrower != projectile.thrower {
+                    continue;
+                }
+                let tick_gap = tick - track.last_tick;
+                if tick_gap <= 0 || tick_gap > 24 {
+                    continue;
+                }
+                let max_dist = (f64::from(tick_gap) / TICK_RATE * 2400.0).max(90.0);
+                let d = dist2(&projectile, track);
+                if d <= max_dist * max_dist && d < best_dist {
+                    best_dist = d;
+                    best_idx = Some(idx);
+                }
+            }
+
+            let stable_id = if let Some(idx) = best_idx {
+                used_tracks.insert(idx);
+                tracks[idx].x = projectile.x;
+                tracks[idx].y = projectile.y;
+                tracks[idx].z = projectile.z;
+                tracks[idx].last_tick = tick;
+                tracks[idx].id
+            } else {
+                let id = next_id;
+                next_id += 1;
+                tracks.push(Track {
+                    id,
+                    kind: projectile.kind.clone(),
+                    thrower: projectile.thrower,
+                    x: projectile.x,
+                    y: projectile.y,
+                    z: projectile.z,
+                    last_tick: tick,
+                });
+                id
+            };
+
+            frame_projectiles.push(ProjectilePos {
+                id: stable_id,
+                ..projectile
+            });
+        }
+
+        tracks.retain(|track| tick - track.last_tick <= 24);
+        if !frame_projectiles.is_empty() {
+            out.insert(tick, frame_projectiles);
+        }
+    }
+
     out
 }
 
@@ -908,7 +1090,11 @@ fn round_blinds(events: &[Value], span: &RoundSpan) -> Vec<BlindSpan> {
     out
 }
 
-fn round_effects(events: &[Value], span: &RoundSpan) -> Vec<UtilityEffect> {
+fn round_effects(
+    events: &[Value],
+    span: &RoundSpan,
+    rows_by_tick: &BTreeMap<i32, Vec<Value>>,
+) -> Vec<UtilityEffect> {
     let mut out = Vec::new();
     for event in events {
         let tick = get_i64(event, "tick").unwrap_or_default() as i32;
@@ -918,25 +1104,37 @@ fn round_effects(events: &[Value], span: &RoundSpan) -> Vec<UtilityEffect> {
         let Some(kind) = effect_kind(get_str(event, "event_name").unwrap_or("")) else {
             continue;
         };
+        let planter_row = if kind == "bomb_planted" {
+            get_u64(event, "user_steamid").and_then(|id| player_row_at_tick(rows_by_tick, tick, id))
+        } else {
+            None
+        };
         let x = get_f64(event, "x")
             .or_else(|| get_f64(event, "X"))
+            .or_else(|| planter_row.and_then(|row| get_f64(row, "X")))
             .unwrap_or_default();
         let y = get_f64(event, "y")
             .or_else(|| get_f64(event, "Y"))
+            .or_else(|| planter_row.and_then(|row| get_f64(row, "Y")))
             .unwrap_or_default();
         let z = get_f64(event, "z")
             .or_else(|| get_f64(event, "Z"))
+            .or_else(|| planter_row.and_then(|row| get_f64(row, "Z")))
             .unwrap_or_default();
         if x == 0.0 && y == 0.0 && z == 0.0 {
             continue;
         }
-        let start = seconds_since(span.start, tick);
+        let mut start = seconds_since(span.start, tick);
+        if kind == "decoy" {
+            start = (start - 1.0_f64).max(0.0_f64);
+        }
         let duration = match kind {
             "smoke" => 18.0,
             "flash" => 0.8,
             "he" => 0.9,
             "fire" => 7.0,
             "decoy" => 15.0,
+            "bomb_planted" => 45.0,
             _ => 1.0,
         };
         out.push(UtilityEffect {
@@ -960,6 +1158,7 @@ fn effect_kind(event_name: &str) -> Option<&'static str> {
         "hegrenade_detonate" => Some("he"),
         "inferno_startburn" | "molotov_detonate" => Some("fire"),
         "decoy_detonate" => Some("decoy"),
+        "bomb_planted" => Some("bomb_planted"),
         _ => None,
     }
 }
