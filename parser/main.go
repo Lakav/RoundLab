@@ -21,25 +21,24 @@ import (
 // zstdMagic is the first 4 bytes of any Zstandard frame (RFC 8478).
 var zstdMagic = []byte{0x28, 0xB5, 0x2F, 0xFD}
 
-// qualityStep maps a human quality label to the frame step. step=1 keeps
-// every sampled frame (~8Hz at 64-tick), step=2 keeps one in two (~4Hz),
-// step=4 keeps one in four (~2Hz), step=8 keeps one in eight (~1Hz).
-// Default is `full` — on desktop we have the RAM.
+// qualityStep maps a human quality label directly to a tick step.
+// `full` keeps every parser tick. Lower qualities are kept for CLI/debug use,
+// but the desktop app always requests full fidelity.
 func qualityStep(label string) int {
 	switch strings.ToLower(label) {
 	case "low":
-		return 8
+		return 64
 	case "medium", "med":
-		return 4
+		return 32
 	case "high":
-		return 2
+		return 16
 	case "full", "":
 		return 1
 	}
 	return 1
 }
 
-// Output schema (compact). Positions sampled at ~8 Hz (every 8 ticks @ 64 tick).
+// Output schema (compact). At full quality positions are captured every tick.
 // Coordinates are game-world coords; frontend transforms to radar pixels.
 
 type Meta struct {
@@ -191,7 +190,7 @@ func infernoVariant(thrower *common.Player) string {
 func main() {
 	in := flag.String("in", "", "input .dem or .dem.zst file (use '-' for stdin — zstd auto-detected)")
 	out := flag.String("out", "", "output .json.gz file")
-	quality := flag.String("quality", "full", "sampling quality: full (~8Hz), high (~4Hz), medium (~2Hz), low (~1Hz)")
+	quality := flag.String("quality", "full", "sampling quality: full (every tick), high (~4Hz), medium (~2Hz), low (~1Hz)")
 	skipProjectiles := flag.Bool("skipProjectiles", false, "omit per-frame projectile positions")
 	skipWeaponFires := flag.Bool("skipWeaponFires", false, "omit weapon fire events")
 	flag.Parse()
@@ -250,21 +249,12 @@ func main() {
 	if tickRate <= 0 {
 		tickRate = 64
 	}
-	// baseStep = ticks per 8Hz sample. step multiplies it to get the
-	// effective sampling period.
-	baseStep := int(tickRate / 8)
-	if baseStep < 1 {
-		baseStep = 8
-	}
-	sampleEveryTicks := baseStep * step
-	sampleHz := 8 / step
+	sampleEveryTicks := step
+	sampleHz := int(tickRate) / sampleEveryTicks
 	if sampleHz < 1 {
 		sampleHz = 1
 	}
-	projectileEveryTicks := int(tickRate / 32)
-	if projectileEveryTicks < 1 {
-		projectileEveryTicks = 1
-	}
+	projectileEveryTicks := 1
 
 	output := Output{
 		Meta: Meta{

@@ -30,21 +30,14 @@ export const DEFAULT_PARSE_OPTIONS: ParseOptions = {
 const PARSE_OPTIONS_KEY = "roundlab.parseOptions";
 
 export function loadParseOptions(): ParseOptions {
-  if (typeof window === "undefined") return { ...DEFAULT_PARSE_OPTIONS };
-  try {
-    const raw = window.localStorage.getItem(PARSE_OPTIONS_KEY);
-    if (!raw) return { ...DEFAULT_PARSE_OPTIONS };
-    const parsed = JSON.parse(raw) as ParseOptions;
-    return { ...DEFAULT_PARSE_OPTIONS, ...parsed };
-  } catch {
-    return { ...DEFAULT_PARSE_OPTIONS };
-  }
+  return { ...DEFAULT_PARSE_OPTIONS };
 }
 
 export function saveParseOptions(opts: ParseOptions): void {
+  void opts;
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(PARSE_OPTIONS_KEY, JSON.stringify(opts));
+    window.localStorage.setItem(PARSE_OPTIONS_KEY, JSON.stringify(DEFAULT_PARSE_OPTIONS));
   } catch {
     /* ignore quota / private-mode errors */
   }
@@ -78,9 +71,10 @@ export async function parseDemo(
   srcPath: string,
   options?: ParseOptions,
 ): Promise<string> {
+  void options;
   return invoke<string>("parse_demo", {
     srcPath,
-    options: options ?? loadParseOptions(),
+    options: DEFAULT_PARSE_OPTIONS,
   });
 }
 

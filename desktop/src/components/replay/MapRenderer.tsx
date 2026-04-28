@@ -280,7 +280,7 @@ function circleOverlapArea(r1: number, r2: number, distance: number): number {
 
 function fireRadiusWorld(effect: UtilityEffect): number {
   const isIncendiary = effect.variant === "incendiary" || (!effect.variant && effect.team === 3);
-  return isIncendiary ? 96 : 106;
+  return isIncendiary ? 104 : 116;
 }
 
 function fireIsSmoked(fire: UtilityEffect, activeEffects: UtilityEffect[]): boolean {
@@ -310,7 +310,7 @@ function projectileTypeToEffect(type: string): string | null {
   if (t.includes("molotov") || t.includes("incendiary") || t.includes("incgrenade") || t.includes("inferno")) return "fire";
   if (t.includes("decoy")) return "decoy";
   if (t.includes("flash")) return "flash";
-  if (t.startsWith("he") || t.includes("high explosive")) return "he";
+  if (t.startsWith("he") || t.includes("hegrenade") || t.includes("he grenade") || t.includes("high explosive")) return "he";
   return null;
 }
 
@@ -320,19 +320,250 @@ function effectSuppressionRadius(type: string): number {
   return 520;
 }
 
+function projectileHideStart(effect: UtilityEffect): number {
+  // HE explosions need a short visual handoff. Without it, the projectile can
+  // disappear one frame before the blast animation is readable.
+  if (effect.type === "he") return effect.start + 0.08;
+  return effect.start;
+}
+
+function projectileTypeForEffect(effect: UtilityEffect): string {
+  if (effect.type === "he") return "hegrenade";
+  if (effect.type === "flash") return "flashbang";
+  if (effect.type === "smoke") return "smokegrenade";
+  if (effect.type === "decoy") return "decoy";
+  if (effect.type === "fire") return effect.variant === "incendiary" ? "incgrenade" : "molotov";
+  return effect.type;
+}
+
+function projectileTouchesEffect(
+  projectile: ProjectilePos,
+  effect: UtilityEffect,
+  frames: ProjectileSample[],
+  time: number,
+): boolean {
+  const type = projectileTypeToEffect(projectile.type);
+  if (!type || effect.type !== type) return false;
+  const threshold = effectSuppressionRadius(type);
+  const threshold2 = threshold * threshold;
+  let matchedOwnTrack = false;
+
+  for (const frame of frames) {
+    if (frame.t < effect.start - 0.45) continue;
+    if (frame.t > effect.start + 0.18) break;
+    const p = frame.projectiles?.find((candidate) => candidate.id === projectile.id);
+    if (!p) continue;
+    matchedOwnTrack = true;
+    const dx = p.x - effect.x;
+    const dy = p.y - effect.y;
+    if (dx * dx + dy * dy <= threshold2) return true;
+  }
+
+  // HE projectiles can land near an older HE explosion. If the same projectile
+  // was not present around that older effect's timestamp, do not let the older
+  // effect suppress it only because the current X/Y happens to be nearby.
+  if (type === "he" && !matchedOwnTrack && time - effect.start > 0.25) return false;
+
+  const dx = projectile.x - effect.x;
+  const dy = projectile.y - effect.y;
+  return dx * dx + dy * dy <= threshold2;
+}
+
+function projectileSeenNearEffect(
+  projectile: ProjectilePos,
+  effect: UtilityEffect,
+  frames: ProjectileSample[],
+): boolean {
+  const type = projectileTypeToEffect(projectile.type);
+  if (!type || effect.type !== type) return false;
+  const threshold = effectSuppressionRadius(type);
+  const threshold2 = threshold * threshold;
+  const thrower = projectile.thrower ?? 0;
+  const currentDx = projectile.x - effect.x;
+  const currentDy = projectile.y - effect.y;
+  if (currentDx * currentDx + currentDy * currentDy > threshold2) return false;
+
+  for (const frame of frames) {
+    if (frame.t < effect.start - 0.55) continue;
+    if (frame.t > effect.start + 0.2) break;
+    for (const candidate of frame.projectiles ?? []) {
+      if (projectileTypeToEffect(candidate.type) !== type) continue;
+      if ((candidate.thrower ?? 0) !== thrower) continue;
+      const dx = candidate.x - effect.x;
+      const dy = candidate.y - effect.y;
+      if (dx * dx + dy * dy <= threshold2) return true;
+    }
+  }
+
+  return false;
+}
+
 function projectileResolvedByEffect(
   projectile: ProjectilePos,
   startedEffects: UtilityEffect[],
-  time: number
+  time: number,
+  frames: ProjectileSample[],
 ): boolean {
   const type = projectileTypeToEffect(projectile.type);
   if (!type) return false;
   return startedEffects.some((effect) => {
-    if (effect.type !== type || time < effect.start) return false;
+    if (effect.type !== type || time < projectileHideStart(effect)) return false;
+    return projectileTouchesEffect(projectile, effect, frames, time) || projectileSeenNearEffect(projectile, effect, frames);
+  });
+}
+
+function liveProjectileForEffect(frames: ProjectileSample[], effect: UtilityEffect, time: number): ProjectilePos | null {
+  const samples = sampleProjectiles(frames, time);
+  const threshold = effect.type === "he" ? 900 : effectSuppressionRadius(effect.type);
+  const threshold2 = threshold * threshold;
+  let best: ProjectilePos | null = null;
+  let bestDist = Infinity;
+
+  for (const projectile of samples) {
+    if (projectileTypeToEffect(projectile.type) !== effect.type) continue;
     const dx = projectile.x - effect.x;
     const dy = projectile.y - effect.y;
-    const threshold = effectSuppressionRadius(type);
-    return dx * dx + dy * dy <= threshold * threshold;
+    const d = dx * dx + dy * dy;
+    if (d > threshold2 || d >= bestDist) continue;
+    best = projectile;
+    bestDist = d;
+  }
+
+  return best;
+}
+
+function lastProjectileBeforeEffect(
+  frames: ProjectileSample[],
+  effect: UtilityEffect,
+): { projectile: ProjectilePos; time: number } | null {
+  const threshold = effect.type === "he" ? 1400 : effectSuppressionRadius(effect.type);
+  const threshold2 = threshold * threshold;
+  let best: ProjectilePos | null = null;
+  let bestTime = -Infinity;
+  let bestDist = Infinity;
+
+  for (const frame of frames) {
+    if (frame.t > effect.start) break;
+    if (frame.t < effect.start - 1.25) continue;
+    for (const projectile of frame.projectiles ?? []) {
+      if (projectileTypeToEffect(projectile.type) !== effect.type) continue;
+      const dx = projectile.x - effect.x;
+      const dy = projectile.y - effect.y;
+      const d = dx * dx + dy * dy;
+      if (d > threshold2) continue;
+      if (frame.t > bestTime || (frame.t === bestTime && d < bestDist)) {
+        best = projectile;
+        bestTime = frame.t;
+        bestDist = d;
+      }
+    }
+  }
+
+  return best ? { projectile: best, time: bestTime } : null;
+}
+
+function effectHandoffProjectile(frames: ProjectileSample[], effect: UtilityEffect, time: number): ProjectilePos | null {
+  if (effect.type !== "he") return null;
+  if (time >= projectileHideStart(effect)) return null;
+  if (liveProjectileForEffect(frames, effect, time)) return null;
+  const last = lastProjectileBeforeEffect(frames, effect);
+  if (!last || time < last.time || effect.start - last.time > 1.25) return null;
+  const span = Math.max(0.08, effect.start - last.time);
+  const progress = Math.max(0, Math.min(1, (time - last.time) / span));
+  return {
+    id: -10_000_000 - Math.round(effect.start * 1000),
+    type: last.projectile.type ?? projectileTypeForEffect(effect),
+    x: last.projectile.x + (effect.x - last.projectile.x) * progress,
+    y: last.projectile.y + (effect.y - last.projectile.y) * progress,
+    z: last.projectile.z + (effect.z - last.projectile.z) * progress,
+    thrower: last.projectile.thrower,
+  };
+}
+
+function nearbyProjectilesForEffect(frames: ProjectileSample[], effect: UtilityEffect, time: number) {
+  return sampleProjectiles(frames, time)
+    .filter((projectile) => projectileTypeToEffect(projectile.type) === effect.type)
+    .map((projectile) => {
+      const dx = projectile.x - effect.x;
+      const dy = projectile.y - effect.y;
+      const dz = projectile.z - effect.z;
+      return {
+        id: projectile.id,
+        type: projectile.type,
+        thrower: projectile.thrower ?? null,
+        x: Math.round(projectile.x),
+        y: Math.round(projectile.y),
+        z: Math.round(projectile.z),
+        distance: Math.round(Math.hypot(dx, dy, dz)),
+      };
+    })
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, 6);
+}
+
+function logHeDebug(
+  round: Round,
+  effect: UtilityEffect,
+  time: number,
+  frames: ProjectileSample[],
+  visible: ProjectilePos[],
+  detonatedIds: Set<number>,
+) {
+  const last = lastProjectileBeforeEffect(frames, effect);
+  const handoff = effectHandoffProjectile(frames, effect, Math.min(time, projectileHideStart(effect) - 0.001));
+  console.warn("[he-debug]", {
+    round: round.number + 1,
+    now: Number(time.toFixed(3)),
+    effect: {
+      start: Number(effect.start.toFixed(3)),
+      hideStart: Number(projectileHideStart(effect).toFixed(3)),
+      end: Number(effect.end.toFixed(3)),
+      x: Math.round(effect.x),
+      y: Math.round(effect.y),
+      z: Math.round(effect.z),
+      team: effect.team ?? null,
+    },
+    lastBeforeExplosion: last
+      ? {
+          t: Number(last.time.toFixed(3)),
+          dt: Number((effect.start - last.time).toFixed(3)),
+          id: last.projectile.id,
+          type: last.projectile.type,
+          thrower: last.projectile.thrower ?? null,
+          x: Math.round(last.projectile.x),
+          y: Math.round(last.projectile.y),
+          z: Math.round(last.projectile.z),
+          distance: Math.round(
+            Math.hypot(last.projectile.x - effect.x, last.projectile.y - effect.y, last.projectile.z - effect.z),
+          ),
+        }
+      : null,
+    sampledNearExplosion: nearbyProjectilesForEffect(frames, effect, effect.start),
+    sampledNow: nearbyProjectilesForEffect(frames, effect, time),
+    visibleNow: visible
+      .filter((projectile) => projectileTypeToEffect(projectile.type) === "he")
+      .map((projectile) => ({
+        id: projectile.id,
+        type: projectile.type,
+        thrower: projectile.thrower ?? null,
+        x: Math.round(projectile.x),
+        y: Math.round(projectile.y),
+        z: Math.round(projectile.z),
+        distance: Math.round(Math.hypot(projectile.x - effect.x, projectile.y - effect.y, projectile.z - effect.z)),
+      })),
+    handoffAtHideEdge: handoff
+      ? {
+          id: handoff.id,
+          type: handoff.type,
+          thrower: handoff.thrower ?? null,
+          x: Math.round(handoff.x),
+          y: Math.round(handoff.y),
+          z: Math.round(handoff.z),
+          distance: Math.round(Math.hypot(handoff.x - effect.x, handoff.y - effect.y, handoff.z - effect.z)),
+        }
+      : null,
+    detonatedIds: [...detonatedIds],
+    projectileFrameCount: frames.length,
   });
 }
 
@@ -355,20 +586,27 @@ function visibleProjectiles(
   const out = new Map<number, ProjectilePos>();
   for (const projectile of sampleProjectiles(frames, time)) {
     if (detonatedIds.has(projectile.id)) continue;
-    if (projectileResolvedByEffect(projectile, startedEffects, time)) continue;
+    if (projectileResolvedByEffect(projectile, startedEffects, time, frames)) continue;
     if ([...out.values()].some((current) => isSameVisualProjectile(current, projectile))) continue;
     out.set(projectile.id, projectile);
   }
 
   const pair = framePair(frames, time);
-  if (!pair || pair.a === pair.b || pair.b.t - time > 0.16) return [...out.values()];
+  if (pair && pair.a !== pair.b && pair.b.t - time <= 0.16) {
+    for (const projectile of pair.a.projectiles ?? []) {
+      if (out.has(projectile.id) || detonatedIds.has(projectile.id)) continue;
+      if (projectileResolvedByEffect(projectile, startedEffects, time, frames)) continue;
 
-  for (const projectile of pair.a.projectiles ?? []) {
-    if (out.has(projectile.id) || detonatedIds.has(projectile.id)) continue;
-    if (projectileResolvedByEffect(projectile, startedEffects, time)) continue;
+      if ([...out.values()].some((current) => isSameVisualProjectile(current, projectile))) continue;
+      out.set(projectile.id, projectile);
+    }
+  }
 
-    if ([...out.values()].some((current) => isSameVisualProjectile(current, projectile))) continue;
-    out.set(projectile.id, projectile);
+  for (const effect of startedEffects) {
+    const handoff = effectHandoffProjectile(frames, effect, time);
+    if (!handoff) continue;
+    if ([...out.values()].some((current) => isSameVisualProjectile(current, handoff))) continue;
+    out.set(handoff.id, handoff);
   }
 
   return [...out.values()];
@@ -533,8 +771,6 @@ function drawTimerArc(
   if (lifeRemaining <= 0) return;
   const start = -Math.PI / 2;
   const end = start + Math.PI * 2 * Math.min(1, lifeRemaining);
-  // bg ring so we can read remaining at a glance
-  g.circle(cx, cy, radius).stroke({ color: 0x000000, width, alpha: 0.35 });
   // active arc as its own path so it doesn't connect to previous graphics
   const path = new Graphics();
   path.moveTo(cx + Math.cos(start) * radius, cy + Math.sin(start) * radius);
@@ -578,11 +814,9 @@ function drawEffect(
     const fadeIn = Math.min(1, age / 0.6);
     const fadeOut = life > 0.92 ? 1 - (life - 0.92) / 0.08 : 1;
     const alpha = Math.max(0, fadeIn * fadeOut);
-    // CS2 smoke radius ≈ 144 world units
-    const radius = 144 * unitsToPx;
+    const radius = 156 * unitsToPx;
     const teamCol = teamColor(effect.team);
     g.circle(p.x, p.y, radius).fill({ color: 0x9ca3af, alpha: 0.42 * alpha });
-    g.circle(p.x, p.y, radius).stroke({ color: 0x1d1f1f, width: 2.6, alpha: 0.7 * alpha });
     drawTimerArc(g, p.x, p.y, radius, remaining, teamCol, 1.7);
     const secsLeft = Math.max(0, Math.ceil(effect.end - time));
     drawCountdownLabel(g, String(secsLeft), p.x, p.y, 0xb8b8b8);
@@ -637,7 +871,6 @@ function drawEffect(
     const radius = fireRadiusWorld(effect) * unitsToPx;
     const alpha = Math.min(1, age / 0.25) * (life > 0.92 ? 1 - (life - 0.92) / 0.08 : 1);
     g.circle(p.x, p.y, radius).fill({ color: teamDarkColor(effect.team), alpha: 0.32 * alpha });
-    g.circle(p.x, p.y, radius).stroke({ color: 0x1d1f1f, width: 2.6, alpha: 0.65 * alpha });
     drawTimerArc(g, p.x, p.y, radius, remaining, teamColor(effect.team), 1.7);
     layer.addChild(g);
     drawUtilityIcon(layer, "burningFlammes", p.x, p.y, 0xffffff, 20);
@@ -770,6 +1003,7 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
   const playerLayerRef = useRef<Container | null>(null);
   const spritesRef = useRef<Map<number, PlayerSprite>>(new Map());
   const loadedMapRef = useRef<string | null>(null);
+  const heDebugLoggedRef = useRef<Set<string>>(new Set());
 
   // init pixi once
   useEffect(() => {
@@ -956,15 +1190,21 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       // second flash/HE in the same spot from being swallowed by the first
       // detonation's suppression.
       const detonatedIds = new Set<number>();
-      const startedEffects = (round.effects ?? [])
-        .filter((e) => time >= e.start)
+      const projectileEffects = (round.effects ?? [])
+        .filter((e) => time >= e.start - (e.type === "he" ? 1.25 : 0.12))
         .slice()
         .sort((a, b) => a.start - b.start);
+      const startedEffects = projectileEffects
+        .filter((e) => time >= e.start)
+        .slice();
       for (const e of startedEffects) {
+        if (time < projectileHideStart(e)) continue;
         const sampled = [
+          ...sampleProjectiles(projectileFrames, e.start + 0.08),
           ...sampleProjectiles(projectileFrames, e.start),
           ...sampleProjectiles(projectileFrames, Math.max(0, e.start - 0.08)),
           ...sampleProjectiles(projectileFrames, Math.max(0, e.start - 0.16)),
+          ...sampleProjectiles(projectileFrames, Math.max(0, e.start - 0.32)),
         ];
         const sampledById = new Map(sampled.map((projectile) => [projectile.id, projectile]));
         let bestId: number | null = null;
@@ -975,6 +1215,8 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
           const dx = sp.x - e.x;
           const dy = sp.y - e.y;
           const d = dx * dx + dy * dy;
+          const threshold = effectSuppressionRadius(e.type);
+          if (d > threshold * threshold) continue;
           if (d < bestDist) {
             bestDist = d;
             bestId = sp.id;
@@ -983,7 +1225,14 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
         if (bestId !== null) detonatedIds.add(bestId);
       }
 
-      const projectiles = visibleProjectiles(projectileFrames, time, startedEffects, detonatedIds);
+      const projectiles = visibleProjectiles(projectileFrames, time, projectileEffects, detonatedIds);
+      for (const effect of projectileEffects) {
+        if (effect.type !== "he" || time < effect.start || time > effect.start + 0.25) continue;
+        const key = `${currentRoundIdx}:${effect.start.toFixed(3)}:${Math.round(effect.x)}:${Math.round(effect.y)}`;
+        if (heDebugLoggedRef.current.has(key)) continue;
+        heDebugLoggedRef.current.add(key);
+        logHeDebug(round, effect, time, projectileFrames, projectiles, detonatedIds);
+      }
       for (const projectile of projectiles) {
         drawProjectile(utilityLayer, projectile, projectileFrames, time, throwerTeams, toRadar);
       }

@@ -486,18 +486,7 @@ fn rename_match(app: AppHandle, id: String, name: String) -> Result<MatchSummary
 /// RAM to afford it.
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-struct ParseOptions {
-    /// "full" (1:1, ~8Hz), "high" (~4Hz), "medium" (~2Hz), "low" (~1Hz).
-    /// Defaults to "full".
-    #[serde(default)]
-    quality: Option<String>,
-    /// Skip per-frame projectile positions. Defaults to false (projectiles kept).
-    #[serde(default)]
-    skip_projectiles: bool,
-    /// Skip weapon fire events. Defaults to false (weapon fires kept).
-    #[serde(default)]
-    skip_weapon_fires: bool,
-}
+struct ParseOptions {}
 
 /// Parse a local .dem or .dem.zst via the sidecar parser binary.
 ///
@@ -520,11 +509,11 @@ async fn parse_demo(
 
     let id = uuid::Uuid::new_v4().to_string();
     let out_path = parsed_path(&app, &id)?;
-    let opts = options.unwrap_or_default();
-    let quality = opts.quality.as_deref().unwrap_or("full");
+    let _opts = options.unwrap_or_default();
+    let quality = "full";
 
     // Build the argv. The parser auto-detects zstd by peeking 4 bytes.
-    let mut argv: Vec<String> = vec![
+    let argv: Vec<String> = vec![
         "-in".into(),
         src_path.clone(),
         "-out".into(),
@@ -532,12 +521,6 @@ async fn parse_demo(
         "-quality".into(),
         quality.into(),
     ];
-    if opts.skip_projectiles {
-        argv.push("-skipProjectiles".into());
-    }
-    if opts.skip_weapon_fires {
-        argv.push("-skipWeaponFires".into());
-    }
 
     if let Err(primary_error) = run_parser_sidecar(&app, "parser", argv.clone(), &out_path).await {
         let _ = fs::remove_file(&out_path);

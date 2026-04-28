@@ -743,7 +743,7 @@ fn sample_step(quality: &str) -> i32 {
         "low" => 64,
         "medium" | "med" => 32,
         "high" => 16,
-        _ => 8,
+        _ => 1,
     }
 }
 
