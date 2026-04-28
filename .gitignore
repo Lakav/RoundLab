@@ -22,8 +22,8 @@ pnpm-debug.log*
 .env.*
 !.env.example
 
-# Vercel
-.vercel/
+# Desktop frontend caches
+.next/
 
 # OS / editor
 .DS_Store
@@ -37,7 +37,7 @@ pnpm-debug.log*
 *.dem
 *.dem.zst
 *.json.gz
-web/data/
+desktop/data/
 test.json
 test.json.gz
 
@@ -57,7 +57,7 @@ temp/
 .tauri-keys/
 
 # Tauri build artefacts
-web/src-tauri/target/
-web/src-tauri/gen/
-web/src-tauri/binaries/parser-*
-!web/src-tauri/binaries/build-sidecar.sh
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+desktop/src-tauri/binaries/parser-*
+!desktop/src-tauri/binaries/build-sidecar.sh

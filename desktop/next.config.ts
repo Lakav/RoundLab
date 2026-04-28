@@ -1,8 +1,15 @@
 import type { NextConfig } from "next";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const projectRoot = dirname(fileURLToPath(import.meta.url));
 
 // Static export for the Tauri desktop build: Next produces a plain HTML/JS/CSS
-// bundle in `out/` that Tauri serves as the frontend. No server runtime.
+// renderer bundle in `out/`. No server runtime.
 const nextConfig: NextConfig = {
+  turbopack: {
+    root: projectRoot,
+  },
   output: "export",
   images: {
     // `next/image` optimization requires a server — disable for static export.

@@ -130,7 +130,7 @@ export default function Home() {
         else unlisten = fn;
       })
       .catch(() => {
-        // In a plain browser dev session there is no Tauri webview.
+        // During non-native renderer checks there is no Tauri webview.
       });
     return () => {
       cancelled = true;

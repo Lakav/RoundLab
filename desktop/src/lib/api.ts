@@ -1,8 +1,6 @@
 // Desktop build: all backend calls go through Tauri `invoke`.
-//
-// In a pure web dev context (vite/next dev without Tauri), `invoke` is still
-// importable but will throw at call time. Components should use these helpers
-// rather than `invoke` directly so we can swap implementations if needed.
+// Components should use these helpers rather than `invoke` directly so the
+// native command boundary stays centralized.
 
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";

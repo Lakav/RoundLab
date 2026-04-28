@@ -41,7 +41,7 @@ FALLBACK_OUT="$SCRIPT_DIR/parser-fallback-${TARGET}${SUFFIX}"
 echo "→ building parser for GOOS=$GOOS GOARCH=$GOARCH → $OUT"
 
 cd "$PARSER_DIR"
-# Match the Dockerfile flags so output size stays small.
+# Keep stripped static binaries small.
 env GOTOOLCHAIN=local GOOS="$GOOS" GOARCH="$GOARCH" CGO_ENABLED=0 \
     go build -trimpath -ldflags="-s -w" -o "$OUT" .
 

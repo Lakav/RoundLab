@@ -4,9 +4,9 @@
   "version": "0.1.4",
   "identifier": "app.roundlab.desktop",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "pnpm renderer:dev",
     "devUrl": "http://localhost:3000",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "pnpm renderer:build",
     "frontendDist": "../out"
   },
   "app": {

@@ -58,7 +58,7 @@ jobs:
         with:
           key: ${{ matrix.rust-target }}
           workspaces: |
-            web/src-tauri -> target
+            desktop/src-tauri -> target
             parser-fallback -> target
 
       - name: Install protoc
@@ -82,15 +82,15 @@ jobs:
         with:
           node-version: "20"
           cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
+          cache-dependency-path: desktop/pnpm-lock.yaml
 
-      - name: Install frontend dependencies
-        working-directory: web
+      - name: Install desktop UI dependencies
+        working-directory: desktop
         run: pnpm install --frozen-lockfile
 
       - name: Build parser sidecars for ${{ matrix.rust-target }}
         shell: bash
-        working-directory: web/src-tauri/binaries
+        working-directory: desktop/src-tauri/binaries
         env:
           TARGET: ${{ matrix.rust-target }}
           CARGO_NET_GIT_FETCH_WITH_CLI: "true"
@@ -113,6 +113,6 @@ jobs:
             **Windows**: unsigned — click "More info" → "Run anyway" in SmartScreen.
           releaseDraft: false
           prerelease: false
-          projectPath: web
+          projectPath: desktop
           args: ${{ matrix.tauri-args }}
           updaterJsonPreferNsis: true

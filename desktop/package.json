@@ -1,11 +1,10 @@
 {
-  "name": "web",
+  "name": "roundlab-desktop",
   "version": "0.1.2",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "renderer:dev": "next dev",
+    "renderer:build": "next build",
     "lint": "eslint",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
