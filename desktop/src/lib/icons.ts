@@ -121,6 +121,7 @@ export function iconPathFor(name?: string): string | null {
   if (key.includes("incgrenade") || key.includes("incendiary")) return "/icons/incgrenade.svg";
   if (key.includes("molotov")) return "/icons/molotov.svg";
   if (key.includes("decoy")) return "/icons/decoy.svg";
+  if (key.includes("c4") || key.includes("bomb")) return "/icons/c4.svg";
   if (key.includes("karambit")) return "/icons/knife_karambit.svg";
   if (key.includes("butterfly")) return "/icons/knife_butterfly.svg";
   if (key.includes("m9") && key.includes("bayonet")) return "/icons/knife_m9_bayonet.svg";

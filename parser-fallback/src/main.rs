@@ -80,6 +80,8 @@ struct PlayerPos {
     helmet: bool,
     #[serde(skip_serializing_if = "is_false")]
     kit: bool,
+    #[serde(rename = "hasBomb", skip_serializing_if = "is_false")]
+    has_bomb: bool,
     team: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     active: String,
@@ -437,6 +439,15 @@ fn is_knife_or_bomb(weapon: &str) -> bool {
     lower.contains("knife")
         || lower.contains("bayonet")
         || lower.contains("karambit")
+        || weapon_is_bomb(weapon)
+}
+
+fn weapon_is_bomb(weapon: &str) -> bool {
+    let lower = weapon.to_ascii_lowercase();
+    lower.contains("c4")
+        || lower.contains("bomb")
+        || lower.contains("weapon_c4")
+        || lower.contains("planted_c4")
         || lower == "c4"
         || lower == "bomb"
 }
@@ -962,6 +973,9 @@ fn player_pos_from_row(row: &Value, blind_spans: &[BlindSpan], t: f64) -> Option
     let blind = blind_spans
         .iter()
         .find(|b| b.player == id && t >= b.start && t <= b.end);
+    let active = get_str(row, "active_weapon_name").unwrap_or("").to_string();
+    let weapons = get_string_array(row, "inventory");
+    let has_bomb = weapon_is_bomb(&active) || weapons.iter().any(|weapon| weapon_is_bomb(weapon));
     Some(PlayerPos {
         id,
         x: get_f64(row, "X").unwrap_or_default(),
@@ -973,9 +987,10 @@ fn player_pos_from_row(row: &Value, blind_spans: &[BlindSpan], t: f64) -> Option
         money: get_i64(row, "balance"),
         helmet: get_bool(row, "has_helmet").unwrap_or(false),
         kit: get_bool(row, "has_defuser").unwrap_or(false),
+        has_bomb,
         team: get_i64(row, "team_num").unwrap_or_default(),
-        active: get_str(row, "active_weapon_name").unwrap_or("").to_string(),
-        weapons: get_string_array(row, "inventory"),
+        active,
+        weapons,
         flash_left: blind.map(|b| (b.end - t).max(0.0)),
         flash_total: blind.map(|b| b.total),
     })

@@ -6,6 +6,8 @@ import type { Frame, PlayerPos } from "@/lib/types";
 import { iconPathFor } from "@/lib/icons";
 import { THEME, sideColors } from "@/lib/theme";
 
+const BOMB_CARRIER_COLOR = "#ef4444";
+
 function sample(frames: Frame[], t: number): PlayerPos[] {
   if (!frames || frames.length === 0) return [];
   if (t <= frames[0].t) return frames[0].players;
@@ -192,8 +194,11 @@ function gunRank(name: string) {
 function inventory(pos?: PlayerPos) {
   const weapons = pos?.weapons ?? [];
   const active = pos?.active ?? "";
-  const utility = weapons.filter(isUtility).slice().sort((a, b) => utilityRank(a) - utilityRank(b));
-  const guns = weapons.filter((w) => !isUtility(w) && !isKnife(w) && w !== "C4" && !/bomb/i.test(w));
+  const utility = weapons
+    .filter((w) => isUtility(w) && !isBombWeapon(w))
+    .slice()
+    .sort((a, b) => utilityRank(a) - utilityRank(b));
+  const guns = weapons.filter((w) => !isUtility(w) && !isKnife(w) && !isBombWeapon(w));
   const primary = guns
     .filter((w) => !isPistol(w))
     .slice()
@@ -203,8 +208,12 @@ function inventory(pos?: PlayerPos) {
     .slice()
     .sort((a, b) => gunRank(a) - gunRank(b))[0];
   const knife = weapons.find(isKnife);
-  const hasC4 = weapons.some((w) => w === "C4" || /bomb/i.test(w));
+  const hasC4 = Boolean(pos?.hasBomb) || weapons.some((w) => w === "C4" || /bomb|c4/i.test(w));
   return { active, utility, hasC4, primary, secondary, knife };
+}
+
+function isBombWeapon(name?: string) {
+  return /c4|bomb/i.test(name ?? "");
 }
 
 function PlayerRow({
@@ -222,6 +231,7 @@ function PlayerRow({
   const money = pos?.money ?? 0;
   const inv = inventory(pos);
   const cols = sideColors(side);
+  const carriesBomb = alive && inv.hasC4;
 
   const hpPct = Math.max(0, Math.min(100, hp));
 
@@ -235,7 +245,7 @@ function PlayerRow({
           className="pointer-events-none absolute inset-y-0 left-0 transition-[width] duration-150 ease-out"
           style={{
             width: `${hpPct}%`,
-            background: alive ? cols.bg : "transparent",
+            background: alive ? (carriesBomb ? BOMB_CARRIER_COLOR : cols.bg) : "transparent",
           }}
         />
         <span
@@ -257,62 +267,78 @@ function PlayerRow({
       </div>
 
       <div
-        className="relative -mt-0.5 h-[3px] w-full overflow-hidden rounded-b-[2px] bg-white/10"
+        className={cn(
+          "relative -mt-0.5 h-[3px] w-full overflow-hidden rounded-b-[2px]",
+          alive && "bg-white/10",
+        )}
       >
-        <span
-          className="block h-full transition-[width] duration-150 ease-out"
-          style={{
-            width: `${Math.max(0, Math.min(100, armor))}%`,
-            background: armor > 0 ? cols.soft : "transparent",
-            opacity: alive ? 0.95 : 0.45,
-          }}
-        />
+        {alive && (
+          <span
+            className="block h-full transition-[width] duration-150 ease-out"
+            style={{
+              width: `${Math.max(0, Math.min(100, armor))}%`,
+              background: armor > 0 ? cols.soft : "transparent",
+              opacity: 0.95,
+            }}
+          />
+        )}
       </div>
 
       <div
         className="flex h-[18px] w-full items-center gap-1.5 px-0.5"
       >
-        <Icon
-          src={armor > 0 && pos?.helmet ? "/icons/armor_helmet.svg" : "/icons/kevlar.svg"}
-          active={alive && armor > 0}
-          color={armor > 0 ? "#8f9696" : THEME.textDead}
-          size="gear"
-        />
-        {inv.primary && (
+        {alive && (
+          <>
           <Icon
-            src={iconPathFor(inv.primary)}
-            active={alive}
-            color={inv.primary === inv.active ? "#91e268" : "#d6dddd"}
-            size="weapon"
+            src={armor > 0 && pos?.helmet ? "/icons/armor_helmet.svg" : "/icons/kevlar.svg"}
+            active={armor > 0}
+            color={armor > 0 ? "#8f9696" : THEME.textDead}
+            size="gear"
           />
-        )}
-        {inv.secondary && (
-          <Icon
-            src={iconPathFor(inv.secondary)}
-            active={alive}
-            color={inv.secondary === inv.active ? "#91e268" : "#d6dddd"}
-            size="sidearm"
-          />
-        )}
-        {inv.hasC4 && <Icon src="/icons/c4.svg" active color="#fde047" size="gear" />}
-        {pos?.kit && <Icon src="/icons/defuser.svg" active color={cols.soft} size="gear" />}
-        <div className="flex-1" />
-        {inv.utility.map((u, i) => (
-          <Icon
-            key={`u-${i}`}
-            src={iconPathFor(u)}
-            active={alive}
-            color={u === inv.active ? "#91e268" : "#8f9696"}
-            size="utility"
-          />
-        ))}
-        {inv.knife && (
-          <Icon
-            src={iconPathFor(inv.knife)}
-            active={alive}
-            color={inv.knife === inv.active ? "#91e268" : "#8f9696"}
-            size="utility"
-          />
+          {inv.primary && (
+            <Icon
+              src={iconPathFor(inv.primary)}
+              active
+              color={inv.primary === inv.active ? "#91e268" : "#d6dddd"}
+              size="weapon"
+            />
+          )}
+          {inv.secondary && (
+            <Icon
+              src={iconPathFor(inv.secondary)}
+              active
+              color={inv.secondary === inv.active ? "#91e268" : "#d6dddd"}
+              size="sidearm"
+            />
+          )}
+          {inv.hasC4 && (
+            <Icon
+              src="/icons/c4.svg"
+              active
+              color={isBombWeapon(inv.active) ? "#f59e0b" : "#f6b15d"}
+              size="gear"
+            />
+          )}
+          {pos?.kit && <Icon src="/icons/defuser.svg" active color={cols.soft} size="gear" />}
+          <div className="flex-1" />
+          {inv.utility.map((u, i) => (
+            <Icon
+              key={`u-${i}`}
+              src={iconPathFor(u)}
+              active
+              color={u === inv.active ? "#91e268" : "#8f9696"}
+              size="utility"
+            />
+          ))}
+          {inv.knife && (
+            <Icon
+              src={iconPathFor(inv.knife)}
+              active
+              color={inv.knife === inv.active ? "#91e268" : "#8f9696"}
+              size="utility"
+            />
+          )}
+          </>
         )}
       </div>
     </div>

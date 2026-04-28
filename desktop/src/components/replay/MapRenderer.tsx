@@ -8,6 +8,8 @@ import type { Frame, MatchEvent, PlayerPos, ProjectileFrame, ProjectilePos, Roun
 import { iconPathFor } from "@/lib/icons";
 
 const iconTextureCache = new Map<string, Promise<Texture>>();
+const BOMB_CARRIER_COLOR = 0xef4444;
+
 function loadIconTexture(path: string): Promise<Texture> {
   let p = iconTextureCache.get(path);
   if (!p) {
@@ -630,6 +632,9 @@ function fitSpriteBox(sprite: Sprite, maxWidth: number, maxHeight: number) {
 
 function heldWeaponBox(name?: string): { width: number; height: number } {
   const n = name?.toLowerCase() ?? "";
+  if (/c4|bomb/.test(n)) {
+    return { width: 18, height: 18 };
+  }
   if (/grenade|flashbang|molotov|incendiary|decoy|c4|bomb/.test(n)) {
     return { width: 15, height: 15 };
   }
@@ -651,6 +656,10 @@ function heldWeaponBox(name?: string): { width: number; height: number } {
 function isUtilityWeapon(name?: string) {
   const n = name?.toLowerCase() ?? "";
   return /grenade|flashbang|molotov|incendiary|decoy|c4|bomb/.test(n);
+}
+
+function isBombWeapon(name?: string) {
+  return /c4|bomb/i.test(name ?? "");
 }
 
 function isKnifeWeapon(name?: string) {
@@ -1280,7 +1289,12 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
           };
           spritesRef.current.set(p.id, s);
         }
-        const baseColor = p.hasBomb ? 0xef4444 : teamColor(p.team);
+        const carriesBomb =
+          Boolean(p.hasBomb) ||
+          (smoothBomb?.status === "carried" && smoothBomb.carrier === p.id) ||
+          isBombWeapon(p.active) ||
+          Boolean(p.weapons?.some(isBombWeapon));
+        const baseColor = carriesBomb ? BOMB_CARRIER_COLOR : teamColor(p.team);
         const alive = p.hp > 0;
         const hpPct = Math.max(0, Math.min(100, p.hp)) / 100;
         const MARKER_R = 8;
