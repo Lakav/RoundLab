@@ -770,7 +770,7 @@ function drawCountdownLabel(layer: Graphics, text: string, x: number, y: number,
       fontWeight: "700",
       fill: color,
     },
-    resolution: 2,
+    resolution: Math.max(2, window.devicePixelRatio || 1),
   });
   label.anchor.set(0.5);
   label.scale.set(0.5);
@@ -975,6 +975,7 @@ function drawWeaponFire(
 
 export function MapRenderer({ size = 800 }: { size?: number }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const sizeRef = useRef(size);
   const appRef = useRef<Application | null>(null);
   const bgLayerRef = useRef<Container | null>(null);
   const utilityLayerRef = useRef<Container | null>(null);
@@ -989,11 +990,11 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
     const sprites = spritesRef.current;
     if (!host) return;
 
-    const app = new Application();
+      const app = new Application();
     (async () => {
       await app.init({
-        width: size,
-        height: size,
+        width: 1,
+        height: 1,
         antialias: true,
         backgroundAlpha: 0,
         resolution: window.devicePixelRatio || 1,
@@ -1017,6 +1018,7 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       bgLayerRef.current = bgLayer;
       utilityLayerRef.current = utilityLayer;
       playerLayerRef.current = playerLayer;
+      app.renderer.resize(sizeRef.current, sizeRef.current);
     })();
 
     return () => {
@@ -1028,6 +1030,13 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       sprites.clear();
       loadedMapRef.current = null;
     };
+  }, []);
+
+  useEffect(() => {
+    sizeRef.current = size;
+    const app = appRef.current;
+    if (!app) return;
+    app.renderer.resize(size, size);
   }, [size]);
 
   // load radar when map changes
@@ -1235,7 +1244,7 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
               fontWeight: "600",
               fill: 0x121212,
             },
-            resolution: 2,
+            resolution: Math.max(2, window.devicePixelRatio || 1),
           });
           label.anchor.set(0.5, 0.5);
           label.scale.set(0.24);

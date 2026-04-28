@@ -21,8 +21,6 @@ import { getMatchMetadata, getRound } from "@/lib/api";
 const DRAW_WIDTH = 3;
 const MIN_MAP = 360;
 const MAX_MAP = 760;
-const MIN_ZOOM = 1;
-const MAX_ZOOM = 4;
 
 function hideKnifeRound(data: MatchData): MatchData {
   if (data.rounds.length < 2) return data;
@@ -62,10 +60,6 @@ export default function MatchViewer({ id }: { id: string }) {
   const [color, setColor] = useState("#ef4444");
   const mainRef = useRef<HTMLDivElement>(null);
   const [mapSize, setMapSize] = useState(600);
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [panning, setPanning] = useState(false);
-  const panState = useRef({ dragging: false, lastX: 0, lastY: 0 });
 
   useEffect(() => {
     document.documentElement.classList.add("overflow-hidden");
@@ -99,53 +93,6 @@ export default function MatchViewer({ id }: { id: string }) {
       cancelAnimationFrame(raf);
     };
   }, [loading]);
-
-  const zoomBoxRef = useRef<HTMLDivElement>(null);
-  // React's onWheel is registered as a passive listener, so preventDefault
-  // is silently ignored and the page scrolls (or fights the zoom). We
-  // attach a non-passive native listener to the same element instead.
-  useEffect(() => {
-    const el = zoomBoxRef.current;
-    if (!el) return;
-    let raf = 0;
-    let pending: { clientX: number; clientY: number; deltaY: number } | null = null;
-    const applyWheel = () => {
-      raf = 0;
-      if (!pending) return;
-      const wheel = pending;
-      pending = null;
-      const rect = el.getBoundingClientRect();
-      const cx = wheel.clientX - rect.left - rect.width / 2;
-      const cy = wheel.clientY - rect.top - rect.height / 2;
-      const delta = -wheel.deltaY * 0.001;
-      setZoom((prevZoom) => {
-        const nz = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prevZoom + delta * prevZoom));
-        if (nz === prevZoom) return prevZoom;
-        const ratio = nz / prevZoom;
-        setPan((p) => {
-          const nx = cx - (cx - p.x) * ratio;
-          const ny = cy - (cy - p.y) * ratio;
-          const max = (mapSize * (nz - 1)) / 2;
-          return {
-            x: Math.max(-max, Math.min(max, nx)),
-            y: Math.max(-max, Math.min(max, ny)),
-          };
-        });
-        return nz;
-      });
-    };
-    const onWheel = (e: WheelEvent) => {
-      if (e.ctrlKey || e.metaKey || e.shiftKey) return;
-      e.preventDefault();
-      pending = { clientX: e.clientX, clientY: e.clientY, deltaY: e.deltaY };
-      if (!raf) raf = requestAnimationFrame(applyWheel);
-    };
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => {
-      el.removeEventListener("wheel", onWheel);
-      cancelAnimationFrame(raf);
-    };
-  }, [mapSize]);
 
   const [strokesByRound, setStrokesByRound] = useState<Record<number, Stroke[]>>({});
   const strokes = strokesByRound[currentRoundIdx] ?? [];
@@ -295,38 +242,10 @@ export default function MatchViewer({ id }: { id: string }) {
           <KillFeed />
           <div ref={mainRef} className="flex min-h-0 flex-1 items-center justify-center px-[290px] pb-4 pt-6">
             <div
-              ref={zoomBoxRef}
               className="relative overflow-hidden opacity-90"
-              onPointerDown={(e) => {
-                if (tool !== "none") return;
-                if (zoom <= 1) return;
-                panState.current = { dragging: true, lastX: e.clientX, lastY: e.clientY };
-                setPanning(true);
-                (e.target as Element).setPointerCapture?.(e.pointerId);
-              }}
-              onPointerMove={(e) => {
-                if (!panState.current.dragging) return;
-                const dx = e.clientX - panState.current.lastX;
-                const dy = e.clientY - panState.current.lastY;
-                panState.current.lastX = e.clientX;
-                panState.current.lastY = e.clientY;
-                const max = (mapSize * (zoom - 1)) / 2;
-                setPan((p) => ({
-                  x: Math.max(-max, Math.min(max, p.x + dx)),
-                  y: Math.max(-max, Math.min(max, p.y + dy)),
-                }));
-              }}
-              onPointerUp={() => {
-                panState.current.dragging = false;
-                setPanning(false);
-              }}
-              onPointerCancel={() => {
-                panState.current.dragging = false;
-                setPanning(false);
-              }}
               style={{
-                cursor: zoom > 1 && tool === "none" ? (panning ? "grabbing" : "grab") : undefined,
-                touchAction: "none",
+                width: mapSize,
+                height: mapSize,
               }}
             >
               <div
@@ -334,10 +253,6 @@ export default function MatchViewer({ id }: { id: string }) {
                   width: mapSize,
                   height: mapSize,
                   overflow: "hidden",
-                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                  transformOrigin: "center center",
-                  transition: "none",
-                  willChange: "transform",
                   contain: "strict",
                 }}
               >
@@ -360,17 +275,6 @@ export default function MatchViewer({ id }: { id: string }) {
                   />
                 </div>
               </div>
-              {zoom > 1 && (
-                <button
-                  onClick={() => {
-                    setZoom(1);
-                    setPan({ x: 0, y: 0 });
-                  }}
-                  className="absolute right-3 top-3 rounded-md border border-white/10 bg-black/60 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-300 hover:bg-black/80"
-                >
-                  Reset · {zoom.toFixed(1)}x
-                </button>
-              )}
             </div>
           </div>
         </div>

@@ -35,10 +35,14 @@ export function DrawingLayer({
   const redraw = () => {
     const c = canvasRef.current;
     if (!c) return;
-    c.width = size;
-    c.height = size;
+    const dpr = window.devicePixelRatio || 1;
+    c.width = Math.round(size * dpr);
+    c.height = Math.round(size * dpr);
+    c.style.width = `${size}px`;
+    c.style.height = `${size}px`;
     const ctx = c.getContext("2d");
     if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, size, size);
     const all = drawing ? [...strokes, drawing] : strokes;
     for (const s of all) drawStroke(ctx, s, size);
@@ -93,8 +97,6 @@ export function DrawingLayer({
   return (
     <canvas
       ref={canvasRef}
-      width={size}
-      height={size}
       onPointerDown={onDown}
       onPointerMove={onMove}
       onPointerUp={onUp}
