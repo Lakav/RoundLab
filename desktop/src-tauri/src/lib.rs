@@ -480,6 +480,15 @@ fn rename_match(app: AppHandle, id: String, name: String) -> Result<MatchSummary
     })
 }
 
+#[tauri::command]
+fn enter_match_fullscreen(app: AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window not found".to_string())?;
+    window.set_fullscreen(true).map_err(|e| e.to_string())?;
+    window.set_focus().map_err(|e| e.to_string())
+}
+
 /// Options controlling how the sidecar parses a demo. These come from the
 /// user's settings panel on the frontend. Defaults target maximum fidelity
 /// on desktop — the whole point of the native build is that we have the
@@ -617,6 +626,7 @@ pub fn run() {
             get_round,
             delete_match,
             rename_match,
+            enter_match_fullscreen,
             parse_demo,
         ])
         .run(tauri::generate_context!())

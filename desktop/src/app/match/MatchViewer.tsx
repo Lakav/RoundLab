@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import type { MatchData, Round } from "@/lib/types";
 import { cropFor, MAP_CALIBRATION, RADAR_SIZE } from "@/lib/maps";
 import { getMatchMetadata, getRound } from "@/lib/api";
+import { invoke } from "@tauri-apps/api/core";
 
 const DRAW_WIDTH = 3;
 const MIN_MAP = 360;
@@ -69,6 +70,22 @@ export default function MatchViewer({ id }: { id: string }) {
       document.body.classList.remove("overflow-hidden");
     };
   }, []);
+
+  useEffect(() => {
+    if (loading || !match) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        if (cancelled) return;
+        await invoke("enter_match_fullscreen");
+      } catch (error) {
+        console.warn("Could not enter fullscreen", error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, match]);
 
   useEffect(() => {
     if (loading) return;
