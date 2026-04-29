@@ -17,6 +17,13 @@ export type Player = {
   team: Team;
 };
 
+export type ActiveAction = {
+  type: "plant" | "utility";
+  item: string;
+  elapsed: number;
+  duration?: number;
+};
+
 export type PlayerPos = {
   id: number;
   x: number;
@@ -34,6 +41,8 @@ export type PlayerPos = {
   weapons?: string[];
   flashLeft?: number;
   flashTotal?: number;
+  use?: boolean;
+  activeAction?: ActiveAction;
 };
 
 /** A player's last known position in a round, even after death. The HUD

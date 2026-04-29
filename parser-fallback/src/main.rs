@@ -103,6 +103,21 @@ struct PlayerPos {
     flash_left: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     flash_total: Option<f64>,
+    #[serde(rename = "use", skip_serializing_if = "is_false")]
+    use_key: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    active_action: Option<ActiveAction>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ActiveAction {
+    #[serde(rename = "type")]
+    kind: String,
+    item: String,
+    elapsed: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    duration: Option<f64>,
 }
 
 #[derive(Clone, Serialize)]
@@ -290,6 +305,8 @@ fn run() -> Result<()> {
         let mut event_idx = 0;
         let mut bomb_planted = false;
         let mut last_bomb: Option<BombState> = None;
+        let mut plant_starts: HashMap<u64, i32> = HashMap::new();
+        let mut utility_starts: HashMap<u64, (String, i32)> = HashMap::new();
         for tick in (span.start..=span.end).step_by(sample_step as usize) {
             while event_idx < span_events.len() {
                 let event = span_events[event_idx];
@@ -298,8 +315,28 @@ fn run() -> Result<()> {
                     break;
                 }
                 match get_str(event, "event_name").unwrap_or("") {
+                    "bomb_beginplant" => {
+                        if let Some(player) = get_u64(event, "user_steamid")
+                            .or_else(|| get_u64(event, "player_steamid"))
+                        {
+                            plant_starts.insert(player, event_tick);
+                        }
+                    }
+                    "player_death" => {
+                        if let Some(player) = get_u64(event, "user_steamid") {
+                            plant_starts.remove(&player);
+                            utility_starts.remove(&player);
+                        }
+                    }
                     "bomb_planted" => {
                         bomb_planted = true;
+                        if let Some(player) = get_u64(event, "user_steamid")
+                            .or_else(|| get_u64(event, "player_steamid"))
+                        {
+                            plant_starts.remove(&player);
+                        } else {
+                            plant_starts.clear();
+                        }
                         let planter_row = get_u64(event, "user_steamid")
                             .and_then(|id| player_row_at_tick(&rows_by_tick, event_tick, id));
                         let x = get_f64(event, "x")
@@ -327,6 +364,12 @@ fn run() -> Result<()> {
                     "bomb_defused" | "bomb_exploded" => {
                         bomb_planted = false;
                         last_bomb = None;
+                        plant_starts.clear();
+                        utility_starts.clear();
+                    }
+                    "round_end" | "round_officially_ended" => {
+                        plant_starts.clear();
+                        utility_starts.clear();
                     }
                     _ => {}
                 }
@@ -336,10 +379,60 @@ fn run() -> Result<()> {
                 continue;
             };
             let t = seconds_since(span.start, tick);
-            let players = rows
-                .iter()
-                .filter_map(|row| player_pos_from_row(row, &blind_spans, t))
-                .collect::<Vec<_>>();
+            let mut stale_plants = Vec::new();
+            let mut seen_players = HashSet::new();
+            let mut players = Vec::new();
+            for row in rows {
+                let Some(player_id) = get_u64(row, "steamid") else {
+                    continue;
+                };
+                seen_players.insert(player_id);
+                let active = get_str(row, "active_weapon_name").unwrap_or("");
+                let alive = get_bool(row, "is_alive").unwrap_or(false);
+                let pressed = action_pressed(row);
+                let active_action = if let Some(start_tick) = plant_starts.get(&player_id).copied()
+                {
+                    let elapsed = seconds_since(start_tick, tick);
+                    if alive && elapsed <= 3.2 {
+                        Some(ActiveAction {
+                            kind: "plant".into(),
+                            item: "C4".into(),
+                            elapsed,
+                            duration: Some(3.2),
+                        })
+                    } else {
+                        stale_plants.push(player_id);
+                        None
+                    }
+                } else if alive && pressed && is_utility_action_weapon(active) {
+                    let start_tick = match utility_starts.get(&player_id) {
+                        Some((item, start_tick)) if item == active => *start_tick,
+                        _ => {
+                            utility_starts.insert(player_id, (active.to_string(), tick));
+                            tick
+                        }
+                    };
+                    Some(ActiveAction {
+                        kind: "utility".into(),
+                        item: active.to_string(),
+                        elapsed: seconds_since(start_tick, tick),
+                        duration: None,
+                    })
+                } else {
+                    utility_starts.remove(&player_id);
+                    None
+                };
+                if let Some(player) = player_pos_from_row(row, &blind_spans, t, active_action) {
+                    players.push(player);
+                } else {
+                    plant_starts.remove(&player_id);
+                    utility_starts.remove(&player_id);
+                }
+            }
+            for player in stale_plants {
+                plant_starts.remove(&player);
+            }
+            utility_starts.retain(|player, _| seen_players.contains(player));
             if players.is_empty() {
                 continue;
             }
@@ -572,6 +665,27 @@ fn weapon_is_bomb(weapon: &str) -> bool {
         || lower == "bomb"
 }
 
+fn is_utility_action_weapon(weapon: &str) -> bool {
+    let lower = weapon.to_ascii_lowercase();
+    if lower.is_empty()
+        || weapon_is_bomb(weapon)
+        || lower.contains("knife")
+        || lower.contains("bayonet")
+        || lower.contains("karambit")
+    {
+        return false;
+    }
+    lower.contains("grenade")
+        || lower.contains("flashbang")
+        || lower.contains("molotov")
+        || lower.contains("incendiary")
+        || lower.contains("decoy")
+}
+
+fn action_pressed(row: &Value) -> bool {
+    get_bool(row, "FIRE").unwrap_or(false) || get_bool(row, "RIGHTCLICK").unwrap_or(false)
+}
+
 fn parse_args() -> Result<Args> {
     let mut out = Args {
         quality: "full".into(),
@@ -686,6 +800,7 @@ fn parse_events(bytes: &[u8], huf: &Vec<(u8, u8)>) -> Result<Vec<Value>> {
             "round_end".into(),
             "round_officially_ended".into(),
             "player_death".into(),
+            "bomb_beginplant".into(),
             "bomb_planted".into(),
             "bomb_dropped".into(),
             "bomb_pickup".into(),
@@ -738,6 +853,9 @@ fn parse_ticks(bytes: &[u8], huf: &Vec<(u8, u8)>, ticks: Vec<i32>) -> Result<Tic
             "active_weapon_name".into(),
             "inventory".into(),
             "flash_duration".into(),
+            "FIRE".into(),
+            "RIGHTCLICK".into(),
+            "USE".into(),
         ],
         vec![],
         ticks,
@@ -907,6 +1025,7 @@ fn sample_ticks(spans: &[RoundSpan], step: i32, events: &[Value]) -> Vec<i32> {
         if matches!(
             get_str(event, "event_name").unwrap_or(""),
             "weapon_fire"
+                | "bomb_beginplant"
                 | "bomb_planted"
                 | "bomb_dropped"
                 | "bomb_pickup"
@@ -1110,7 +1229,12 @@ fn group_projectile_rows(rows: Vec<Value>) -> BTreeMap<i32, Vec<ProjectilePos>> 
     out
 }
 
-fn player_pos_from_row(row: &Value, blind_spans: &[BlindSpan], t: f64) -> Option<PlayerPos> {
+fn player_pos_from_row(
+    row: &Value,
+    blind_spans: &[BlindSpan],
+    t: f64,
+    active_action: Option<ActiveAction>,
+) -> Option<PlayerPos> {
     if !get_bool(row, "is_alive").unwrap_or(false) {
         return None;
     }
@@ -1138,6 +1262,8 @@ fn player_pos_from_row(row: &Value, blind_spans: &[BlindSpan], t: f64) -> Option
         weapons,
         flash_left: blind.map(|b| (b.end - t).max(0.0)),
         flash_total: blind.map(|b| b.total),
+        use_key: get_bool(row, "USE").unwrap_or(false),
+        active_action,
     })
 }
 
@@ -1290,7 +1416,7 @@ fn round_effects(
             "he" => 0.9,
             "fire" => 7.0,
             "decoy" => 15.0,
-            "bomb_planted" => 45.0,
+            "bomb_planted" => 40.0,
             _ => 1.0,
         };
         let mut start = seconds_since(span.start, tick);

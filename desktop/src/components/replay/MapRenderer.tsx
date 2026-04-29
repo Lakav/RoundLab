@@ -57,12 +57,21 @@ function sampleFrame(frames: Frame[], t: number): PlayerPos[] {
       : flashA > 0
       ? Math.max(0, flashA - (b.t - a.t) * alpha)
       : flashB;
+    const actionA = pa.activeAction;
+    const actionB = pb.activeAction;
+    const activeAction = actionA && actionB && actionA.type === actionB.type && actionA.item === actionB.item
+      ? {
+          ...actionB,
+          elapsed: actionA.elapsed + (actionB.elapsed - actionA.elapsed) * alpha,
+        }
+      : actionB;
     out.push({
       ...pb,
       x: pa.x + (pb.x - pa.x) * alpha,
       y: pa.y + (pb.y - pa.y) * alpha,
       yaw: pa.yaw + dyaw * alpha,
       flashLeft,
+      activeAction,
     });
   }
   return out;
@@ -760,12 +769,41 @@ function teamDarkColor(team?: number) {
   return 0x303030;
 }
 
-function activeDefuse(events: MatchEvent[], time: number): { start: number; duration: number } | null {
-  let active: { start: number; duration: number } | null = null;
+function clamp01(value: number) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function easeOutCubic(value: number) {
+  const t = clamp01(value);
+  return 1 - Math.pow(1 - t, 3);
+}
+
+function mixColor(from: number, to: number, amount: number) {
+  const t = clamp01(amount);
+  const fr = (from >> 16) & 0xff;
+  const fg = (from >> 8) & 0xff;
+  const fb = from & 0xff;
+  const tr = (to >> 16) & 0xff;
+  const tg = (to >> 8) & 0xff;
+  const tb = to & 0xff;
+  return (
+    (Math.round(fr + (tr - fr) * t) << 16) |
+    (Math.round(fg + (tg - fg) * t) << 8) |
+    Math.round(fb + (tb - fb) * t)
+  );
+}
+
+function activeDefuse(
+  events: MatchEvent[],
+  positions: PlayerPos[],
+  bomb: BombState,
+  time: number
+): { start: number; duration: number; player?: number } | null {
+  let active: { start: number; duration: number; player?: number } | null = null;
   for (const event of events) {
     if (event.t > time) break;
     if (event.type === "bomb_defuse_start") {
-      active = { start: event.t, duration: event.hasKit ? 5 : 10 };
+      active = { start: event.t, duration: event.hasKit ? 5 : 10, player: event.player };
     } else if (
       event.type === "bomb_defuse_abort" ||
       event.type === "bomb_defused" ||
@@ -775,7 +813,46 @@ function activeDefuse(events: MatchEvent[], time: number): { start: number; dura
       active = null;
     }
   }
+  if (!active) return null;
+  const isDefusingFrame = (players: PlayerPos[]) => {
+    if (active.player) {
+      const defuser = players.find((player) => player.id === active!.player);
+      return Boolean(defuser && defuser.hp > 0 && defuser.use === true);
+    }
+    return players.some((player) => {
+      if (player.hp <= 0 || player.team !== 3 || player.use !== true) return false;
+      const dx = player.x - bomb.x;
+      const dy = player.y - bomb.y;
+      const dz = player.z - bomb.z;
+      return dx * dx + dy * dy + dz * dz <= 140 * 140;
+    });
+  };
+  if (active?.player) {
+    const defuser = positions.find((player) => player.id === active!.player);
+    if (!defuser || defuser.hp <= 0 || defuser.use !== true) return null;
+  } else if (!isDefusingFrame(positions)) {
+    return null;
+  }
   return active;
+}
+
+function recentlyDefusedBomb(round: Round, frames: Frame[], time: number): BombState | null {
+  let defusedAt: number | null = null;
+  for (const event of round.events) {
+    if (event.t > time) break;
+    if (event.type === "bomb_defused") {
+      defusedAt = event.t;
+    } else if (event.type === "bomb_planted" || event.type === "bomb_exploded") {
+      defusedAt = null;
+    }
+  }
+  if (defusedAt === null) return null;
+  for (let i = frames.length - 1; i >= 0; i--) {
+    const frame = frames[i];
+    if (frame.t > defusedAt) continue;
+    if (frame.bomb?.status === "planted") return frame.bomb;
+  }
+  return null;
 }
 
 function displayName(name?: string) {
@@ -792,6 +869,11 @@ type PlayerSprite = {
   label: Text;
   held: Sprite;
   heldPath: string | null;
+  actionGroup: Container;
+  action: Sprite;
+  actionFill: Sprite;
+  actionFillMask: Graphics;
+  actionPath: string | null;
   flashArc: Graphics;
 };
 
@@ -1072,6 +1154,7 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
   const spritesRef = useRef<Map<number, PlayerSprite>>(new Map());
   const bombSpriteRef = useRef<BombSprite | null>(null);
   const loadedMapRef = useRef<string | null>(null);
+  const defuseVisualRef = useRef<{ key: string; start: number; lastTime: number } | null>(null);
 
   // init pixi once
   useEffect(() => {
@@ -1196,6 +1279,8 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
           z: ba.z + (bb.z - ba.z) * bombPair.alpha,
         };
       })();
+      const defusedBomb = recentlyDefusedBomb(round, bombFrames, time);
+      const displayBomb = defusedBomb ?? smoothBomb;
       const throwerTeams = lastKnownTeams(round.frames, time);
       const scale = size / RADAR_SIZE;
       const seen = new Set<number>();
@@ -1214,7 +1299,7 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       const activeEffects = roundEffects.filter((e) => time >= e.start && time <= e.end);
       for (const effect of activeEffects) {
         const resolved = fireVariantFromProjectiles(effect, projectileFrames);
-        if (resolved.type === "bomb_planted" && smoothBomb) continue;
+        if (resolved.type === "bomb_planted" && displayBomb) continue;
         if (resolved.type === "fire" && fireIsSmoked(resolved, activeEffects)) continue;
         drawEffect(utilityLayer, resolved, time, toRadar, unitsToPx);
       }
@@ -1230,9 +1315,10 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
         if (fire.shooter) recentFireByShooter.set(fire.shooter, fire);
       }
 
-      if (smoothBomb && smoothBomb.status !== "carried") {
-        const p = toRadar(smoothBomb.x, smoothBomb.y, smoothBomb.z);
-        if (smoothBomb.status === "planted") {
+      if (displayBomb && displayBomb.status !== "carried") {
+        const p = toRadar(displayBomb.x, displayBomb.y, displayBomb.z);
+        const bombIsDefused = Boolean(defusedBomb);
+        if (displayBomb.status === "planted" && !bombIsDefused) {
           const pulse = (time * 1.5) % 1;
           const radius = 19 * pulse;
           const alpha = 0.75 * (1 - pulse);
@@ -1240,15 +1326,33 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
             .circle(p.x, p.y, radius)
             .stroke({ color: 0xef4444, width: 2, alpha });
           utilityLayer.addChild(ring);
-          const defuse = activeDefuse(round.events, time);
-          if (defuse && time >= defuse.start) {
-            const progress = Math.max(0, Math.min(1, (time - defuse.start) / defuse.duration));
+          const defuse = activeDefuse(round.events, positions, displayBomb, time);
+          if (!defuse) {
+            defuseVisualRef.current = null;
+          }
+          if (defuse) {
+            const key = `${currentRoundIdx}:${defuse.start}:${defuse.duration}:${defuse.player ?? "near"}`;
+            const previous = defuseVisualRef.current;
+            if (!previous || previous.key !== key || time < previous.lastTime || time - previous.lastTime > 0.35) {
+              defuseVisualRef.current = { key, start: time, lastTime: time };
+            } else {
+              previous.lastTime = time;
+            }
+            const visualState = defuseVisualRef.current;
+            if (!visualState) return;
+            const visualStart = visualState.start;
+            const progress = clamp01((time - visualStart) / defuse.duration);
+            const startAngle = -Math.PI / 2;
+            const endAngle = startAngle + Math.PI * 2 * progress;
+            const radius = 25;
             const arc = new Graphics();
-            arc.circle(p.x, p.y, 23).stroke({ color: 0x0b1220, width: 4, alpha: 0.7 });
-            arc.moveTo(p.x, p.y - 23);
-            arc.arc(p.x, p.y, 23, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
-            arc.stroke({ color: 0x60a5fa, width: 4, alpha: 0.95 });
-            drawCountdownLabel(arc, String(Math.max(0, Math.ceil(defuse.duration - (time - defuse.start)))), p.x, p.y - 32, 0x93c5fd);
+            arc.circle(p.x, p.y, radius).stroke({ color: 0x93c5fd, width: 1.2, alpha: 0.22 });
+            arc.moveTo(p.x + Math.cos(startAngle) * radius, p.y + Math.sin(startAngle) * radius);
+            arc.arc(p.x, p.y, radius, startAngle, endAngle);
+            arc.stroke({ color: 0x60a5fa, width: 2.6, alpha: 0.9 });
+            arc.circle(p.x + Math.cos(endAngle) * radius, p.y + Math.sin(endAngle) * radius, 2.4)
+              .fill({ color: 0xbfdbfe, alpha: 0.95 });
+            drawCountdownLabel(arc, String(Math.max(0, Math.ceil(defuse.duration - (time - visualStart)))), p.x, p.y + 31, 0xbfdbfe);
             utilityLayer.addChild(arc);
           }
         }
@@ -1273,7 +1377,7 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
               if (bombSprite && !bombSprite.container.destroyed) bombSprite.icon.visible = false;
             });
         }
-        const bombColor = smoothBomb.status === "planted" ? 0xef4444 : 0xf59e0b;
+        const bombColor = bombIsDefused ? 0x22c55e : displayBomb.status === "planted" ? 0xef4444 : 0xf59e0b;
         bombSprite.container.visible = true;
         bombSprite.container.position.set(p.x, p.y);
         bombSprite.marker.clear();
@@ -1370,6 +1474,21 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
           const arrowRotator = new Container();
           const arrow = new Graphics();
           arrowRotator.addChild(arrow);
+          const actionGroup = new Container();
+          const action = new Sprite();
+          action.anchor.set(0.5);
+          action.visible = false;
+          const actionFill = new Sprite();
+          actionFill.anchor.set(0.5);
+          actionFill.tint = 0xef4444;
+          actionFill.visible = false;
+          const actionFillMask = new Graphics();
+          actionFill.mask = actionFillMask;
+          actionGroup.visible = false;
+          actionGroup.addChild(action);
+          actionGroup.addChild(actionFillMask);
+          actionGroup.addChild(actionFill);
+          arrowRotator.addChild(actionGroup);
           const flashArc = new Graphics();
 
           container.addChild(held);
@@ -1389,6 +1508,11 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
             label,
             held,
             heldPath: null,
+            actionGroup,
+            action,
+            actionFill,
+            actionFillMask,
+            actionPath: null,
             flashArc,
           };
           spritesRef.current.set(p.id, s);
@@ -1477,8 +1601,83 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
         }
         s.held.tint = 0xffffff;
         s.held.alpha = alive ? 0.46 : 0.16;
+        const arrowRotation = (-p.yaw * Math.PI) / 180;
+        const activeAction = alive ? p.activeAction : undefined;
+        const actionPath = activeAction ? iconPathFor(activeAction.type === "plant" ? "c4" : activeAction.item) : null;
+        const hideHeldForAction = Boolean(activeAction && actionPath && heldPath === actionPath);
+        if (actionPath !== s.actionPath) {
+          s.actionPath = actionPath;
+          if (!actionPath) {
+            s.actionGroup.visible = false;
+          } else {
+            const sprite = s.action;
+            const fillSprite = s.actionFill;
+            loadIconTexture(actionPath)
+              .then((tex) => {
+                if (sprite.destroyed || s!.actionPath !== actionPath) return;
+                sprite.texture = tex;
+                fillSprite.texture = tex;
+                fitSprite(sprite, activeAction?.type === "plant" ? 14 : 13);
+                fillSprite.scale.copyFrom(sprite.scale);
+                sprite.visible = true;
+                fillSprite.visible = activeAction?.type === "plant";
+              })
+              .catch(() => {});
+          }
+        } else if (actionPath) {
+          fitSprite(s.action, activeAction?.type === "plant" ? 14 : 13);
+          s.actionFill.scale.copyFrom(s.action.scale);
+        }
+        if (activeAction && actionPath) {
+          const heldCenterX = s.held.position.x;
+          const heldCenterY = s.held.position.y - heldBox.height / 2;
+          const invCos = Math.cos(-arrowRotation);
+          const invSin = Math.sin(-arrowRotation);
+          const startX = heldCenterX * invCos - heldCenterY * invSin;
+          const startY = heldCenterX * invSin + heldCenterY * invCos;
+          if (activeAction.type === "utility") {
+            const slide = easeOutCubic(activeAction.elapsed / 0.22);
+            const targetX = 4;
+            const targetY = 10;
+            const wobble = Math.sin(time * 18) * 2.2 * slide;
+            s.actionGroup.position.set(
+              startX + (targetX - startX) * slide,
+              startY + (targetY - startY) * slide + wobble
+            );
+            s.actionGroup.rotation = Math.PI / 2 + Math.sin(time * 20) * 0.16 * slide;
+            s.action.alpha = 0.78 + slide * 0.18;
+            s.action.tint = mixColor(0xd8dde5, teamColor(p.team), slide * 0.7);
+            s.actionFill.visible = false;
+            s.actionFillMask.clear();
+          } else {
+            const progress = clamp01(activeAction.elapsed / (activeAction.duration ?? 3.2));
+            const slide = easeOutCubic(activeAction.elapsed / 0.22);
+            const targetX = 4;
+            const targetY = 10;
+            s.actionGroup.position.set(startX + (targetX - startX) * slide, startY + (targetY - startY) * slide);
+            s.actionGroup.rotation = Math.PI / 2;
+            s.action.alpha = 0.9;
+            s.action.tint = 0xd8dde5;
+            s.actionFill.alpha = 0.9;
+            s.actionFill.tint = 0xef4444;
+            s.actionFill.visible = true;
+            const fillHeight = 14 * progress;
+            s.actionFillMask.clear();
+            s.actionFillMask.rect(-7, 7 - fillHeight, 14, fillHeight).fill({ color: 0xffffff, alpha: 1 });
+          }
+          s.actionGroup.visible = true;
+          s.action.visible = true;
+        } else {
+          s.actionGroup.visible = false;
+          s.actionGroup.rotation = 0;
+          s.actionFill.visible = false;
+          s.actionFillMask.clear();
+        }
+        if (heldPath) {
+          s.held.visible = alive && !hideHeldForAction;
+        }
         s.container.position.set(px, py);
-        s.arrowRotator.rotation = (-p.yaw * Math.PI) / 180;
+        s.arrowRotator.rotation = arrowRotation;
         s.container.alpha = alive ? 1 : 0.4;
       }
 

@@ -4,7 +4,7 @@ import { useReplay } from "@/lib/replay-store";
 import type { Round } from "@/lib/types";
 
 const DEFAULT_ROUND_SECONDS = 115;
-const DEFAULT_BOMB_SECONDS = 45;
+const DEFAULT_BOMB_SECONDS = 40;
 
 function firstEventTime(round: Round, type: string): number | null {
   const event = round.events.find((e) => e.type === type);

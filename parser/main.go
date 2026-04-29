@@ -66,22 +66,31 @@ type Frame struct {
 }
 
 type PlayerPos struct {
-	ID         uint64   `json:"id"`
-	X          float32  `json:"x"`
-	Y          float32  `json:"y"`
-	Z          float32  `json:"z"`
-	Yaw        float32  `json:"yaw"`
-	HP         int      `json:"hp"`
-	Armor      int      `json:"armor"`
-	Money      int      `json:"money"`
-	Helmet     bool     `json:"helmet,omitempty"`
-	Kit        bool     `json:"kit,omitempty"`
-	HasBomb    bool     `json:"hasBomb,omitempty"`
-	Team       uint8    `json:"team"`             // 2=T, 3=CT
-	Active     string   `json:"active,omitempty"` // active weapon name
-	Weapons    []string `json:"weapons,omitempty"`
-	FlashLeft  float32  `json:"flashLeft,omitempty"`  // seconds remaining of full flash
-	FlashTotal float32  `json:"flashTotal,omitempty"` // seconds total flash duration
+	ID           uint64        `json:"id"`
+	X            float32       `json:"x"`
+	Y            float32       `json:"y"`
+	Z            float32       `json:"z"`
+	Yaw          float32       `json:"yaw"`
+	HP           int           `json:"hp"`
+	Armor        int           `json:"armor"`
+	Money        int           `json:"money"`
+	Helmet       bool          `json:"helmet,omitempty"`
+	Kit          bool          `json:"kit,omitempty"`
+	HasBomb      bool          `json:"hasBomb,omitempty"`
+	Team         uint8         `json:"team"`             // 2=T, 3=CT
+	Active       string        `json:"active,omitempty"` // active weapon name
+	Weapons      []string      `json:"weapons,omitempty"`
+	FlashLeft    float32       `json:"flashLeft,omitempty"`  // seconds remaining of full flash
+	FlashTotal   float32       `json:"flashTotal,omitempty"` // seconds total flash duration
+	Use          bool          `json:"use,omitempty"`
+	ActiveAction *ActiveAction `json:"activeAction,omitempty"`
+}
+
+type ActiveAction struct {
+	Type     string  `json:"type"` // plant, utility
+	Item     string  `json:"item"`
+	Elapsed  float64 `json:"elapsed"`
+	Duration float64 `json:"duration,omitempty"`
 }
 
 type BombState struct {
@@ -187,6 +196,23 @@ func infernoVariant(thrower *common.Player) string {
 	return "molotov"
 }
 
+func isBombName(name string) bool {
+	n := strings.ToLower(name)
+	return strings.Contains(n, "c4") || strings.Contains(n, "bomb")
+}
+
+func isUtilityActionName(name string) bool {
+	n := strings.ToLower(name)
+	if n == "" || isBombName(n) || strings.Contains(n, "knife") || strings.Contains(n, "bayonet") || strings.Contains(n, "karambit") {
+		return false
+	}
+	return strings.Contains(n, "grenade") ||
+		strings.Contains(n, "flashbang") ||
+		strings.Contains(n, "molotov") ||
+		strings.Contains(n, "incendiary") ||
+		strings.Contains(n, "decoy")
+}
+
 func main() {
 	in := flag.String("in", "", "input .dem or .dem.zst file (use '-' for stdin — zstd auto-detected)")
 	out := flag.String("out", "", "output .json.gz file")
@@ -276,6 +302,12 @@ func main() {
 	decoyEffects := map[int]int{}
 	infernoEffects := map[int64]int{}
 	detonatedProjectiles := map[int64]bool{}
+	plantStarts := map[uint64]int{}
+	type utilityActionStart struct {
+		item string
+		tick int
+	}
+	utilityStarts := map[uint64]utilityActionStart{}
 
 	beginLiveRound := func(tick int) {
 		if currentRound == nil || currentRound.LiveStarted {
@@ -355,6 +387,8 @@ func main() {
 		decoyEffects = map[int]int{}
 		infernoEffects = map[int64]int{}
 		detonatedProjectiles = map[int64]bool{}
+		plantStarts = map[uint64]int{}
+		utilityStarts = map[uint64]utilityActionStart{}
 		currentRound = &Round{
 			Number:        roundNumber,
 			StartTick:     roundStartTick,
@@ -384,6 +418,8 @@ func main() {
 		if currentRound == nil {
 			return
 		}
+		plantStarts = map[uint64]int{}
+		utilityStarts = map[uint64]utilityActionStart{}
 		if t, ok := roundTime(); ok {
 			currentRound.Events = append(currentRound.Events, Event{T: t, Type: "round_end", Winner: teamStr(e.Winner)})
 		}
@@ -425,6 +461,8 @@ func main() {
 		}
 		if e.Victim != nil {
 			ev.Victim = e.Victim.SteamID64
+			delete(plantStarts, e.Victim.SteamID64)
+			delete(utilityStarts, e.Victim.SteamID64)
 		}
 		if e.Assister != nil {
 			ev.Assist = e.Assister.SteamID64
@@ -459,18 +497,35 @@ func main() {
 		currentRound.WeaponFires = append(currentRound.WeaponFires, ev)
 	})
 
+	p.RegisterEventHandler(func(e events.BombPlantBegin) {
+		_, ok := roundTime()
+		if !ok || e.Player == nil {
+			return
+		}
+		plantStarts[e.Player.SteamID64] = p.GameState().IngameTick()
+	})
+	p.RegisterEventHandler(func(e events.BombPlantAborted) {
+		if e.Player != nil {
+			delete(plantStarts, e.Player.SteamID64)
+		}
+	})
 	p.RegisterEventHandler(func(e events.BombPlanted) {
 		t, ok := roundTime()
 		if !ok {
 			return
 		}
 		bombPlanted = true
+		if e.Player != nil {
+			delete(plantStarts, e.Player.SteamID64)
+		} else {
+			plantStarts = map[uint64]int{}
+		}
 		if bomb := p.GameState().Bomb(); bomb != nil {
 			pos := bomb.Position()
 			currentRound.Effects = append(currentRound.Effects, UtilityEffect{
 				Type:  "bomb_planted",
 				Start: t,
-				End:   t + 45,
+				End:   t + 40,
 				X:     float32(pos.X),
 				Y:     float32(pos.Y),
 				Z:     float32(pos.Z),
@@ -506,6 +561,8 @@ func main() {
 			return
 		}
 		bombPlanted = false
+		plantStarts = map[uint64]int{}
+		utilityStarts = map[uint64]utilityActionStart{}
 		currentRound.Events = append(currentRound.Events, Event{T: t, Type: "bomb_defused"})
 	})
 	p.RegisterEventHandler(func(e events.BombExplode) {
@@ -514,6 +571,8 @@ func main() {
 			return
 		}
 		bombPlanted = false
+		plantStarts = map[uint64]int{}
+		utilityStarts = map[uint64]utilityActionStart{}
 		currentRound.Events = append(currentRound.Events, Event{T: t, Type: "bomb_exploded"})
 	})
 
@@ -755,6 +814,33 @@ func main() {
 			if aw := pl.ActiveWeapon(); aw != nil {
 				active = aw.String()
 			}
+			var activeAction *ActiveAction
+			if startTick, ok := plantStarts[pl.SteamID64]; ok && pl.IsAlive() {
+				delete(utilityStarts, pl.SteamID64)
+				elapsed := float64(tick-startTick) / tickRate
+				if elapsed >= 0 && elapsed <= 3.2 {
+					activeAction = &ActiveAction{
+						Type:     "plant",
+						Item:     "C4",
+						Elapsed:  elapsed,
+						Duration: 3.2,
+					}
+				}
+			} else if active != "" && isUtilityActionName(active) && pl.IsAlive() &&
+				(pl.IsPressingButton(common.ButtonAttack) || pl.IsPressingButton(common.ButtonAttack2)) {
+				start, ok := utilityStarts[pl.SteamID64]
+				if !ok || start.item != active {
+					start = utilityActionStart{item: active, tick: tick}
+					utilityStarts[pl.SteamID64] = start
+				}
+				activeAction = &ActiveAction{
+					Type:    "utility",
+					Item:    active,
+					Elapsed: float64(tick-start.tick) / tickRate,
+				}
+			} else {
+				delete(utilityStarts, pl.SteamID64)
+			}
 			flashLeft := float32(pl.FlashDurationTimeRemaining().Seconds())
 			if flashLeft < 0 {
 				flashLeft = 0
@@ -768,22 +854,24 @@ func main() {
 				hp = 0
 			}
 			frame.Players = append(frame.Players, PlayerPos{
-				ID:         pl.SteamID64,
-				X:          float32(pos.X),
-				Y:          float32(pos.Y),
-				Z:          float32(pos.Z),
-				Yaw:        float32(pl.ViewDirectionX()),
-				HP:         hp,
-				Armor:      pl.Armor(),
-				Money:      pl.Money(),
-				Helmet:     pl.HasHelmet(),
-				Kit:        pl.HasDefuseKit(),
-				HasBomb:    pl.SteamID64 == bombCarrier,
-				Team:       uint8(pl.Team),
-				Active:     active,
-				Weapons:    weapons,
-				FlashLeft:  flashLeft,
-				FlashTotal: flashTotal,
+				ID:           pl.SteamID64,
+				X:            float32(pos.X),
+				Y:            float32(pos.Y),
+				Z:            float32(pos.Z),
+				Yaw:          float32(pl.ViewDirectionX()),
+				HP:           hp,
+				Armor:        pl.Armor(),
+				Money:        pl.Money(),
+				Helmet:       pl.HasHelmet(),
+				Kit:          pl.HasDefuseKit(),
+				HasBomb:      pl.SteamID64 == bombCarrier,
+				Team:         uint8(pl.Team),
+				Active:       active,
+				Weapons:      weapons,
+				FlashLeft:    flashLeft,
+				FlashTotal:   flashTotal,
+				Use:          pl.IsPressingButton(common.ButtonUse),
+				ActiveAction: activeAction,
 			})
 		}
 		currentRound.Frames = append(currentRound.Frames, frame)
