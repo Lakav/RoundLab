@@ -1277,12 +1277,6 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
         bombSprite.container.visible = true;
         bombSprite.container.position.set(p.x, p.y);
         bombSprite.marker.clear();
-        if (smoothBomb.status === "dropped") {
-          bombSprite.marker
-            .circle(0, 0, 10)
-            .fill({ color: bombColor, alpha: 0.24 })
-            .stroke({ color: bombColor, width: 2, alpha: 0.95 });
-        }
         bombSprite.icon.tint = bombColor;
         bombSprite.icon.visible = true;
       } else if (bombSpriteRef.current) {
