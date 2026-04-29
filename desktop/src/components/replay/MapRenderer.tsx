@@ -9,6 +9,7 @@ import { iconPathFor } from "@/lib/icons";
 
 const iconTextureCache = new Map<string, Promise<Texture>>();
 const BOMB_CARRIER_COLOR = 0xef4444;
+const BOMB_SECONDS = 40;
 const bombFrameFallbackCache = new WeakMap<Round, Frame[]>();
 
 function loadIconTexture(path: string): Promise<Texture> {
@@ -855,6 +856,47 @@ function recentlyDefusedBomb(round: Round, frames: Frame[], time: number): BombS
   return null;
 }
 
+function activeBombPlantTime(round: Round, time: number): number | null {
+  let plantedAt: number | null = null;
+  for (const event of round.events) {
+    if (event.t > time) break;
+    if (event.type === "bomb_planted") {
+      plantedAt = event.t;
+    } else if (event.type === "bomb_defused" || event.type === "bomb_exploded") {
+      plantedAt = null;
+    }
+  }
+  return plantedAt;
+}
+
+function plantedBombAt(frames: Frame[], time: number): BombState | null {
+  for (let i = frames.length - 1; i >= 0; i--) {
+    const frame = frames[i];
+    if (frame.t > time) continue;
+    if (frame.bomb?.status === "planted") return frame.bomb;
+  }
+  return null;
+}
+
+function recentBombExplosion(round: Round, frames: Frame[], time: number): { bomb: BombState; age: number } | null {
+  let explodedAt: number | null = null;
+  for (const event of round.events) {
+    if (event.t > time) break;
+    if (event.type === "bomb_exploded") explodedAt = event.t;
+  }
+  if (explodedAt === null || time - explodedAt > 1.15) return null;
+  const bomb = plantedBombAt(frames, explodedAt);
+  return bomb ? { bomb, age: time - explodedAt } : null;
+}
+
+function bombPulseProgress(plantedAt: number, time: number) {
+  const elapsed = clamp01((time - plantedAt) / BOMB_SECONDS) * BOMB_SECONDS;
+  const startHz = 1;
+  const endHz = 5;
+  const cycles = startHz * elapsed + ((endHz - startHz) * elapsed * elapsed) / (2 * BOMB_SECONDS);
+  return cycles % 1;
+}
+
 function displayName(name?: string) {
   return name === "L999" ? "grosNoob" : name ?? "";
 }
@@ -1281,6 +1323,8 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       })();
       const defusedBomb = recentlyDefusedBomb(round, bombFrames, time);
       const displayBomb = defusedBomb ?? smoothBomb;
+      const plantedAt = activeBombPlantTime(round, time);
+      const bombExplosion = recentBombExplosion(round, bombFrames, time);
       const throwerTeams = lastKnownTeams(round.frames, time);
       const scale = size / RADAR_SIZE;
       const seen = new Set<number>();
@@ -1315,11 +1359,33 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
         if (fire.shooter) recentFireByShooter.set(fire.shooter, fire);
       }
 
+      if (bombExplosion) {
+        const p = toRadar(bombExplosion.bomb.x, bombExplosion.bomb.y, bombExplosion.bomb.z);
+        const life = clamp01(bombExplosion.age / 1.15);
+        const flash = 1 - life;
+        const explosion = new Graphics();
+        explosion.circle(p.x, p.y, 12 + life * 46)
+          .fill({ color: 0xff6b35, alpha: 0.18 * flash });
+        explosion.circle(p.x, p.y, 8 + life * 24)
+          .stroke({ color: 0xffd166, width: 3.4, alpha: 0.9 * flash });
+        explosion.circle(p.x, p.y, 18 + life * 42)
+          .stroke({ color: 0xef4444, width: 2.2, alpha: 0.65 * flash });
+        for (let i = 0; i < 7; i++) {
+          const a = i * ((Math.PI * 2) / 7) + life * 0.45;
+          const inner = 10 + life * 16;
+          const outer = 18 + life * 48;
+          explosion.moveTo(p.x + Math.cos(a) * inner, p.y + Math.sin(a) * inner);
+          explosion.lineTo(p.x + Math.cos(a) * outer, p.y + Math.sin(a) * outer);
+        }
+        explosion.stroke({ color: 0xffb703, width: 1.4, alpha: 0.75 * flash });
+        utilityLayer.addChild(explosion);
+      }
+
       if (displayBomb && displayBomb.status !== "carried") {
         const p = toRadar(displayBomb.x, displayBomb.y, displayBomb.z);
         const bombIsDefused = Boolean(defusedBomb);
         if (displayBomb.status === "planted" && !bombIsDefused) {
-          const pulse = (time * 1.5) % 1;
+          const pulse = plantedAt === null ? (time % 1) : bombPulseProgress(plantedAt, time);
           const radius = 19 * pulse;
           const alpha = 0.75 * (1 - pulse);
           const ring = new Graphics()
