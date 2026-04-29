@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { DragDropEvent } from "@tauri-apps/api/webview";
@@ -454,8 +454,16 @@ export default function Home() {
             value={renameValue}
             onChange={(e) => setRenameValue(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") void confirmRename();
-              if (e.key === "Escape") setRenameTarget(null);
+              if (e.key === "Enter") {
+                e.preventDefault();
+                e.stopPropagation();
+                void confirmRename();
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                setRenameTarget(null);
+              }
             }}
             className="w-full rounded-md border bg-black/40 px-3 py-2 text-[13px] text-neutral-100 outline-none focus:border-emerald-300/40"
             style={{ borderColor: "var(--rl-border)" }}
@@ -504,8 +512,16 @@ export default function Home() {
             value={postParseName}
             onChange={(e) => setPostParseName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") void confirmPostParse(true);
-              if (e.key === "Escape") setPostParse(null);
+              if (e.key === "Enter") {
+                e.preventDefault();
+                e.stopPropagation();
+                void confirmPostParse(true);
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                setPostParse(null);
+              }
             }}
             className="w-full rounded-md border bg-black/40 px-3 py-2 text-[13px] text-neutral-100 outline-none focus:border-emerald-300/40"
             style={{ borderColor: "var(--rl-border)" }}
@@ -538,12 +554,27 @@ function Modal({
   children: React.ReactNode;
   onClose: () => void;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    panelRef.current?.focus();
+  }, []);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
       onClick={onClose}
+      onKeyDownCapture={(e) => {
+        e.stopPropagation();
+        if (e.key === "Escape") {
+          e.preventDefault();
+          onClose();
+        }
+      }}
     >
       <div
+        ref={panelRef}
+        tabIndex={-1}
         className="w-full max-w-sm rounded-xl border p-5"
         style={{ background: "var(--rl-panel)", borderColor: "var(--rl-border)" }}
         onClick={(e) => e.stopPropagation()}
