@@ -1197,6 +1197,7 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
   const bombSpriteRef = useRef<BombSprite | null>(null);
   const loadedMapRef = useRef<string | null>(null);
   const defuseVisualRef = useRef<{ key: string; start: number; lastTime: number } | null>(null);
+  const deferredDestroyRef = useRef<Array<Container | Graphics | Sprite | Text>>([]);
 
   // init pixi once
   useEffect(() => {
@@ -1248,6 +1249,7 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       sprites.clear();
       bombSpriteRef.current = null;
       loadedMapRef.current = null;
+      deferredDestroyRef.current = [];
     };
   }, []);
 
@@ -1328,8 +1330,10 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       const throwerTeams = lastKnownTeams(round.frames, time);
       const scale = size / RADAR_SIZE;
       const seen = new Set<number>();
-      for (const child of utilityLayer.removeChildren()) {
-        child.destroy({ children: true });
+      deferredDestroyRef.current.push(...(utilityLayer.removeChildren() as Array<Container | Graphics | Sprite | Text>));
+      for (let i = 0; i < 40 && deferredDestroyRef.current.length > 0; i++) {
+        const child = deferredDestroyRef.current.shift();
+        if (child && !child.destroyed) child.destroy({ children: true });
       }
 
       const toRadar = (x: number, y: number, z = 0) => {

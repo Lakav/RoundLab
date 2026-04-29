@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useReplay } from "@/lib/replay-store";
 import { MapRenderer } from "@/components/replay/MapRenderer";
@@ -60,6 +60,7 @@ export default function MatchViewer({ id }: { id: string }) {
   const [tool, setTool] = useState<DrawTool>("none");
   const [color, setColor] = useState("#ef4444");
   const mainRef = useRef<HTMLDivElement>(null);
+  const loadingRoundsRef = useRef<Set<number>>(new Set());
   const [mapSize, setMapSize] = useState(600);
 
   useEffect(() => {
@@ -116,6 +117,22 @@ export default function MatchViewer({ id }: { id: string }) {
   const setStrokes = (s: Stroke[]) =>
     setStrokesByRound((m) => ({ ...m, [currentRoundIdx]: s }));
 
+  const loadRoundData = useCallback(
+    async (roundNumber: number) => {
+      if (loadingRoundsRef.current.has(roundNumber)) return;
+      loadingRoundsRef.current.add(roundNumber);
+      try {
+        const data = assertRenderableRound(await getRound(id, roundNumber));
+        startTransition(() => setRoundData(roundNumber, data));
+      } catch (e) {
+        throw e;
+      } finally {
+        loadingRoundsRef.current.delete(roundNumber);
+      }
+    },
+    [id, setRoundData],
+  );
+
   useEffect(() => {
     let cancel = false;
     (async () => {
@@ -129,7 +146,7 @@ export default function MatchViewer({ id }: { id: string }) {
         if (!MAP_CALIBRATION[visibleData.meta.map]) {
           throw new Error(`Unsupported map "${visibleData.meta.map || "unknown"}".`);
         }
-        setMatch(visibleData);
+        startTransition(() => setMatch(visibleData));
         setLoading(false);
       } catch (e: unknown) {
         setErr(e instanceof Error ? e.message : String(e));
@@ -149,8 +166,7 @@ export default function MatchViewer({ id }: { id: string }) {
     let cancel = false;
     (async () => {
       try {
-        const data = assertRenderableRound(await getRound(id, round.number));
-        if (!cancel) setRoundData(round.number, data);
+        await loadRoundData(round.number);
       } catch (e) {
         if (!cancel) setErr(e instanceof Error ? e.message : String(e));
       }
@@ -159,7 +175,7 @@ export default function MatchViewer({ id }: { id: string }) {
     return () => {
       cancel = true;
     };
-  }, [currentRoundIdx, id, match, setRoundData]);
+  }, [currentRoundIdx, loadRoundData, match]);
 
   // Prefetch the two neighbouring rounds in the background so switching
   // rounds feels instantaneous. The Rust side caches the decoded match
@@ -175,9 +191,7 @@ export default function MatchViewer({ id }: { id: string }) {
         const r = match.rounds[idx];
         if (!r || r.frames.length > 0) continue;
         try {
-          const data = assertRenderableRound(await getRound(id, r.number));
-          if (cancel) return;
-          setRoundData(r.number, data);
+          await loadRoundData(r.number);
         } catch {
           // Silent: prefetch is best-effort. The main effect will retry
           // if the user actually navigates there.
@@ -187,7 +201,34 @@ export default function MatchViewer({ id }: { id: string }) {
     return () => {
       cancel = true;
     };
-  }, [currentRoundIdx, id, match, setRoundData]);
+  }, [currentRoundIdx, loadRoundData, match]);
+
+  useEffect(() => {
+    if (!match) return;
+    let cancel = false;
+    const order = match.rounds
+      .map((round, idx) => ({ round, distance: Math.abs(idx - currentRoundIdx) }))
+      .sort((a, b) => a.distance - b.distance)
+      .map(({ round }) => round);
+
+    const run = async () => {
+      for (const round of order) {
+        if (cancel) return;
+        if (round.frames.length > 0) continue;
+        await new Promise((resolve) => window.setTimeout(resolve, 140));
+        if (cancel) return;
+        try {
+          await loadRoundData(round.number);
+        } catch {
+          /* best-effort background warmup */
+        }
+      }
+    };
+    void run();
+    return () => {
+      cancel = true;
+    };
+  }, [currentRoundIdx, loadRoundData, match]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
