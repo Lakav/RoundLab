@@ -7,8 +7,8 @@
     "renderer:build": "next build",
     "lint": "eslint",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
+    "tauri:dev": "pnpm sidecar:build && tauri dev",
+    "tauri:build": "pnpm sidecar:build && tauri build",
     "sidecar:build": "bash src-tauri/binaries/build-sidecar.sh"
   },
   "dependencies": {

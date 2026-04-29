@@ -4,11 +4,12 @@ import { useEffect, useRef } from "react";
 import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
 import { useReplay } from "@/lib/replay-store";
 import { MAP_CALIBRATION, RADAR_SIZE, worldToRadar } from "@/lib/maps";
-import type { Frame, MatchEvent, PlayerPos, ProjectileFrame, ProjectilePos, Round, UtilityEffect, WeaponFireEvent } from "@/lib/types";
+import type { BombState, Frame, MatchEvent, PlayerPos, ProjectileFrame, ProjectilePos, Round, UtilityEffect, WeaponFireEvent } from "@/lib/types";
 import { iconPathFor } from "@/lib/icons";
 
 const iconTextureCache = new Map<string, Promise<Texture>>();
 const BOMB_CARRIER_COLOR = 0xef4444;
+const bombFrameFallbackCache = new WeakMap<Round, Frame[]>();
 
 function loadIconTexture(path: string): Promise<Texture> {
   let p = iconTextureCache.get(path);
@@ -662,6 +663,78 @@ function isBombWeapon(name?: string) {
   return /c4|bomb/i.test(name ?? "");
 }
 
+function playerCarriesBomb(player: PlayerPos) {
+  return (
+    Boolean(player.hasBomb) ||
+    isBombWeapon(player.active) ||
+    Boolean(player.weapons?.some(isBombWeapon))
+  );
+}
+
+function roundFramesWithBombFallback(round: Round): Frame[] {
+  if (round.frames.some((frame) => frame.bomb)) return round.frames;
+  const cached = bombFrameFallbackCache.get(round);
+  if (cached) return cached;
+
+  const bombEvents = (round.events ?? [])
+    .filter((event) => event.type.startsWith("bomb_"))
+    .slice()
+    .sort((a, b) => a.t - b.t);
+  let eventIdx = 0;
+  let lastBomb: BombState | null = null;
+  let planted = false;
+
+  const frames = round.frames.map((frame) => {
+    while (eventIdx < bombEvents.length && bombEvents[eventIdx].t <= frame.t) {
+      const event = bombEvents[eventIdx];
+      if (event.type === "bomb_planted") {
+        planted = true;
+        const carrier = frame.players.find(playerCarriesBomb);
+        const x = lastBomb?.x ?? carrier?.x ?? 0;
+        const y = lastBomb?.y ?? carrier?.y ?? 0;
+        const z = lastBomb?.z ?? carrier?.z ?? 0;
+        if (x !== 0 || y !== 0 || z !== 0) {
+          lastBomb = { x, y, z, status: "planted" };
+        }
+      } else if (event.type === "bomb_defused" || event.type === "bomb_exploded") {
+        planted = false;
+        lastBomb = null;
+      }
+      eventIdx++;
+    }
+
+    let bomb: BombState | undefined;
+    if (planted && lastBomb?.status === "planted") {
+      bomb = lastBomb;
+    } else {
+      const carrier = frame.players.find(playerCarriesBomb);
+      if (carrier) {
+        bomb = {
+          x: carrier.x,
+          y: carrier.y,
+          z: carrier.z,
+          status: "carried",
+          carrier: carrier.id,
+        };
+        lastBomb = bomb;
+      } else if (lastBomb?.status === "dropped") {
+        bomb = {
+          x: lastBomb.x,
+          y: lastBomb.y,
+          z: lastBomb.z,
+          status: "dropped",
+        };
+        lastBomb = bomb;
+      }
+    }
+
+    return bomb ? { ...frame, bomb } : frame;
+  });
+
+  bombFrameFallbackCache.set(round, frames);
+  return frames;
+}
+
 function isKnifeWeapon(name?: string) {
   const n = name?.toLowerCase() ?? "";
   return /knife|bayonet|karambit/.test(n);
@@ -720,6 +793,12 @@ type PlayerSprite = {
   held: Sprite;
   heldPath: string | null;
   flashArc: Graphics;
+};
+
+type BombSprite = {
+  container: Container;
+  marker: Graphics;
+  icon: Sprite;
 };
 
 function heightLift(z: number) {
@@ -988,8 +1067,10 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
   const appRef = useRef<Application | null>(null);
   const bgLayerRef = useRef<Container | null>(null);
   const utilityLayerRef = useRef<Container | null>(null);
+  const bombLayerRef = useRef<Container | null>(null);
   const playerLayerRef = useRef<Container | null>(null);
   const spritesRef = useRef<Map<number, PlayerSprite>>(new Map());
+  const bombSpriteRef = useRef<BombSprite | null>(null);
   const loadedMapRef = useRef<string | null>(null);
 
   // init pixi once
@@ -1015,9 +1096,11 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       }
       const bgLayer = new Container();
       const utilityLayer = new Container();
+      const bombLayer = new Container();
       const playerLayer = new Container();
       app.stage.addChild(bgLayer);
       app.stage.addChild(utilityLayer);
+      app.stage.addChild(bombLayer);
       app.stage.addChild(playerLayer);
       app.canvas.style.position = "absolute";
       app.canvas.style.inset = "0";
@@ -1026,6 +1109,7 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       appRef.current = app;
       bgLayerRef.current = bgLayer;
       utilityLayerRef.current = utilityLayer;
+      bombLayerRef.current = bombLayer;
       playerLayerRef.current = playerLayer;
       app.renderer.resize(sizeRef.current, sizeRef.current);
     })();
@@ -1037,6 +1121,7 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
         appRef.current = null;
       }
       sprites.clear();
+      bombSpriteRef.current = null;
       loadedMapRef.current = null;
     };
   }, []);
@@ -1087,15 +1172,17 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       const { match, currentRoundIdx, time } = useReplay.getState();
       const layer = playerLayerRef.current;
       const utilityLayer = utilityLayerRef.current;
-      if (!match || !layer || !utilityLayer) return;
+      const bombLayer = bombLayerRef.current;
+      if (!match || !layer || !utilityLayer || !bombLayer) return;
       const round = match.rounds[currentRoundIdx];
       if (!round) return;
       const calib = MAP_CALIBRATION[match.meta.map];
       if (!calib) return;
 
+      const bombFrames = roundFramesWithBombFallback(round);
       const positions = sampleFrame(round.frames, time);
-      const frame = nearestFrame(round.frames, time);
-      const bombPair = framePair(round.frames, time);
+      const frame = nearestFrame(bombFrames, time);
+      const bombPair = framePair(bombFrames, time);
       const smoothBomb = (() => {
         if (!bombPair) return frame?.bomb;
         const ba = bombPair.a.bomb;
@@ -1165,18 +1252,41 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
             utilityLayer.addChild(arc);
           }
         }
-        const bombSprite = new Sprite();
-        bombSprite.anchor.set(0.5);
-        bombSprite.position.set(p.x, p.y);
-        bombSprite.tint = smoothBomb.status === "planted" ? 0xef4444 : 0xfbbf24;
-        utilityLayer.addChild(bombSprite);
-        loadIconTexture("/icons/c4.svg")
-          .then((tex) => {
-            if (bombSprite.destroyed) return;
-            bombSprite.texture = tex;
-            fitSprite(bombSprite, 18);
-          })
-          .catch(() => {});
+        let bombSprite = bombSpriteRef.current;
+        if (!bombSprite || bombSprite.container.destroyed) {
+          const container = new Container();
+          const marker = new Graphics();
+          const icon = new Sprite();
+          icon.anchor.set(0.5);
+          container.addChild(marker);
+          container.addChild(icon);
+          bombLayer.addChild(container);
+          bombSprite = { container, marker, icon };
+          bombSpriteRef.current = bombSprite;
+          loadIconTexture("/icons/c4.svg")
+            .then((tex) => {
+              if (!bombSprite || bombSprite.container.destroyed) return;
+              bombSprite.icon.texture = tex;
+              fitSprite(bombSprite.icon, 18);
+            })
+            .catch(() => {
+              if (bombSprite && !bombSprite.container.destroyed) bombSprite.icon.visible = false;
+            });
+        }
+        const bombColor = smoothBomb.status === "planted" ? 0xef4444 : 0xf59e0b;
+        bombSprite.container.visible = true;
+        bombSprite.container.position.set(p.x, p.y);
+        bombSprite.marker.clear();
+        if (smoothBomb.status === "dropped") {
+          bombSprite.marker
+            .circle(0, 0, 10)
+            .fill({ color: bombColor, alpha: 0.24 })
+            .stroke({ color: bombColor, width: 2, alpha: 0.95 });
+        }
+        bombSprite.icon.tint = bombColor;
+        bombSprite.icon.visible = true;
+      } else if (bombSpriteRef.current) {
+        bombSpriteRef.current.container.visible = false;
       }
       // Match each started effect to ONE projectile (1-to-1). We sort
       // effects by start time and greedily assign the closest unclaimed
