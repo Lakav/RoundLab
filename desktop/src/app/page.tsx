@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { DragDropEvent } from "@tauri-apps/api/webview";
+import { listen } from "@tauri-apps/api/event";
 import { Button } from "@/components/ui/button";
 import {
   Upload,
@@ -14,8 +15,10 @@ import {
   MoreHorizontal,
   Pencil,
   Trash2,
+  X,
 } from "lucide-react";
 import {
+  cancelParse,
   deleteMatch,
   getMatchMetadata,
   listMatches,
@@ -33,12 +36,34 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+type ParseProgress = {
+  phase: string;
+  progress: number;
+  message: string;
+};
+
+const PARSE_DURATION_KEY = "roundlab.parseDurationMs";
+
+function formatDuration(ms: number) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const min = Math.floor(total / 60);
+  const sec = total % 60;
+  return min > 0 ? `${min}m ${sec.toString().padStart(2, "0")}s` : `${sec}s`;
+}
+
 export default function Home() {
   const router = useRouter();
   const [uploading, setUploading] = useState(false);
   const [opening, setOpening] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [parseProgress, setParseProgress] = useState<ParseProgress>({
+    phase: "idle",
+    progress: 0,
+    message: "",
+  });
+  const [parseStartedAt, setParseStartedAt] = useState<number | null>(null);
+  const [parseNow, setParseNow] = useState(() => Date.now());
   const [matches, setMatches] = useState<MatchSummary[]>([]);
   // window.prompt / window.confirm are blocked in Tauri's WKWebView, so we
   // render lightweight modals ourselves and stash the pending action here.
@@ -50,6 +75,21 @@ export default function Home() {
   // before it lands in the recent list.
   const [postParse, setPostParse] = useState<MatchSummary | null>(null);
   const [postParseName, setPostParseName] = useState("");
+  const elapsedMs = parseStartedAt ? Math.max(0, parseNow - parseStartedAt) : 0;
+  const storedEstimateMs = (() => {
+    if (typeof window === "undefined") return 90_000;
+    const raw = Number(window.localStorage.getItem(PARSE_DURATION_KEY));
+    return Number.isFinite(raw) && raw > 0 ? raw : 90_000;
+  })();
+  const backendPct = Math.max(0, Math.min(1, parseProgress.progress || 0));
+  const timePct = parseStartedAt ? Math.min(0.95, elapsedMs / storedEstimateMs) : 0;
+  const shownProgress = uploading
+    ? Math.max(0.03, Math.min(0.99, Math.max(backendPct, timePct)))
+    : 0;
+  const remainingMs =
+    uploading && shownProgress > 0.04
+      ? Math.max(0, (elapsedMs / shownProgress) * (1 - shownProgress))
+      : storedEstimateMs;
 
   const refreshMatches = useCallback(async (cancelled?: () => boolean) => {
     listMatches()
@@ -65,9 +105,21 @@ export default function Home() {
     async (path: string) => {
       if (uploading) return;
       setError(null);
+      const started = Date.now();
       try {
         setUploading(true);
+        setParseStartedAt(started);
+        setParseNow(started);
+        setParseProgress({ phase: "starting", progress: 0.02, message: "Preparing parser…" });
         const id = await parseDemo(path);
+        const duration = Date.now() - started;
+        try {
+          const prev = Number(window.localStorage.getItem(PARSE_DURATION_KEY));
+          const next = Number.isFinite(prev) && prev > 0 ? prev * 0.65 + duration * 0.35 : duration;
+          window.localStorage.setItem(PARSE_DURATION_KEY, String(Math.round(next)));
+        } catch {
+          /* ignore */
+        }
         // Pull the freshly parsed match summary from the store so we can
         // pre-fill the name prompt and refresh the recent list at the same
         // time. Falls back to a synthetic summary if listing fails.
@@ -87,13 +139,41 @@ export default function Home() {
         setPostParseName("");
         setPostParse(summary);
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : String(e));
+        const message = e instanceof Error ? e.message : String(e);
+        if (!/cancel/i.test(message)) setError(message);
       } finally {
         setUploading(false);
+        setParseStartedAt(null);
+        setParseProgress({ phase: "idle", progress: 0, message: "" });
       }
     },
     [uploading],
   );
+
+  useEffect(() => {
+    if (!uploading) return;
+    const timer = window.setInterval(() => setParseNow(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, [uploading]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    listen<ParseProgress>("parse-progress", (event) => {
+      if (!cancelled) setParseProgress(event.payload);
+    })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      })
+      .catch(() => {
+        /* no Tauri event bus in non-native checks */
+      });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,6 +198,7 @@ export default function Home() {
           return;
         }
         setDragging(false);
+        if (uploading) return;
         const path = payload.paths.find(isDemoPath);
         if (!path) {
           setError("Drop a .dem or .dem.zst file.");
@@ -136,7 +217,7 @@ export default function Home() {
       cancelled = true;
       unlisten?.();
     };
-  }, [parsePath]);
+  }, [parsePath, uploading]);
 
   const onPickAndParse = async () => {
     if (uploading) return;
@@ -151,6 +232,7 @@ export default function Home() {
   };
 
   const openMatch = async (id: string) => {
+    if (uploading) return;
     setOpening(true);
     // Warm the Rust-side match cache before navigating so MatchViewer's
     // initial getMatchMetadata() call is instant. Failures here aren't
@@ -161,6 +243,14 @@ export default function Home() {
       /* ignore — let MatchViewer surface the real error */
     }
     router.push(`/match/?id=${id}`);
+  };
+
+  const onCancelParse = async () => {
+    try {
+      await cancelParse();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   };
 
   const confirmPostParse = async (open: boolean) => {
@@ -231,6 +321,47 @@ export default function Home() {
         </div>
       )}
 
+      {uploading && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/75 p-6 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#171a1a] p-5 shadow-2xl">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <div className="text-[13px] font-semibold text-neutral-100">Parsing demo</div>
+                <div className="mt-1 text-[11px] text-neutral-500">
+                  Interactions are locked until parsing finishes or is cancelled.
+                </div>
+              </div>
+              <Loader2 className="mt-0.5 size-4 animate-spin text-emerald-300" />
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-black/50">
+              <div
+                className="h-full rounded-full bg-emerald-300 transition-[width] duration-300"
+                style={{ width: `${Math.round(shownProgress * 100)}%` }}
+              />
+            </div>
+            <div className="mt-3 flex items-center justify-between text-[11px] text-neutral-400">
+              <span>{parseProgress.message || "Parsing…"}</span>
+              <span>{Math.round(shownProgress * 100)}%</span>
+            </div>
+            <div className="mt-1 flex items-center justify-between text-[11px] text-neutral-500">
+              <span>Elapsed {formatDuration(elapsedMs)}</span>
+              <span>About {formatDuration(remainingMs)} left</span>
+            </div>
+            <div className="mt-5 flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void onCancelParse()}
+                className="gap-1.5 border-red-400/30 bg-red-500/10 text-red-200 hover:bg-red-500/20"
+              >
+                <X className="size-3.5" />
+                Cancel parsing
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="flex items-center justify-between border-b border-white/[0.06] px-6 py-3">
         <div className="flex items-center gap-2.5">
           <div className="flex size-7 items-center justify-center rounded-md bg-emerald-300/10">
@@ -259,7 +390,18 @@ export default function Home() {
           {uploading ? (
             <>
               <Loader2 className="size-6 animate-spin text-emerald-300" />
-              <div className="text-[13px] text-neutral-200">Parsing demo…</div>
+              <div className="w-full max-w-xs">
+                <div className="text-[13px] text-neutral-200">Parsing demo…</div>
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/40">
+                  <div
+                    className="h-full rounded-full bg-emerald-300 transition-[width] duration-300"
+                    style={{ width: `${Math.round(shownProgress * 100)}%` }}
+                  />
+                </div>
+                <div className="mt-2 text-[11px] text-neutral-500">
+                  {formatDuration(elapsedMs)} elapsed · about {formatDuration(remainingMs)} left
+                </div>
+              </div>
             </>
           ) : (
             <>

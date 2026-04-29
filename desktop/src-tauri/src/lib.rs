@@ -16,8 +16,8 @@ use std::time::SystemTime;
 
 use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
-use tauri_plugin_shell::process::CommandEvent;
+use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
 // -------------------------- Types mirroring parser output --------------------------
@@ -497,6 +497,61 @@ fn enter_match_fullscreen(app: AppHandle) -> Result<(), String> {
 #[serde(rename_all = "camelCase")]
 struct ParseOptions {}
 
+#[derive(Default)]
+struct ParseJob {
+    running: bool,
+    cancel_requested: bool,
+    child: Option<CommandChild>,
+}
+
+fn parse_job() -> &'static Mutex<ParseJob> {
+    static JOB: OnceLock<Mutex<ParseJob>> = OnceLock::new();
+    JOB.get_or_init(|| Mutex::new(ParseJob::default()))
+}
+
+struct ParseJobGuard;
+
+impl Drop for ParseJobGuard {
+    fn drop(&mut self) {
+        let mut job = parse_job().lock().expect("parse job mutex poisoned");
+        job.running = false;
+        job.cancel_requested = false;
+        job.child = None;
+    }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ParseProgress {
+    phase: String,
+    progress: f64,
+    message: String,
+}
+
+fn emit_parse_progress(app: &AppHandle, phase: &str, progress: f64, message: &str) {
+    let _ = app.emit(
+        "parse-progress",
+        ParseProgress {
+            phase: phase.into(),
+            progress,
+            message: message.into(),
+        },
+    );
+}
+
+#[tauri::command]
+fn cancel_parse() -> Result<(), String> {
+    let mut job = parse_job().lock().map_err(|e| e.to_string())?;
+    if !job.running {
+        return Ok(());
+    }
+    job.cancel_requested = true;
+    if let Some(child) = job.child.take() {
+        child.kill().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// Parse a local .dem or .dem.zst via the sidecar parser binary.
 ///
 /// The sidecar now sniffs the first 4 bytes of the input to detect a zstd
@@ -507,6 +562,17 @@ async fn parse_demo(
     src_path: String,
     options: Option<ParseOptions>,
 ) -> Result<String, String> {
+    {
+        let mut job = parse_job().lock().map_err(|e| e.to_string())?;
+        if job.running {
+            return Err("A demo is already being parsed.".into());
+        }
+        job.running = true;
+        job.cancel_requested = false;
+        job.child = None;
+    }
+    let _guard = ParseJobGuard;
+
     let src = PathBuf::from(&src_path);
     if !src.exists() {
         return Err(format!("file not found: {src_path}"));
@@ -531,12 +597,39 @@ async fn parse_demo(
         quality.into(),
     ];
 
-    if let Err(primary_error) = run_parser_sidecar(&app, "parser", argv.clone(), &out_path).await {
+    emit_parse_progress(&app, "starting", 0.04, "Preparing parser…");
+    if let Err(primary_error) =
+        run_parser_sidecar(&app, "parser", argv.clone(), &out_path, 0.08).await
+    {
+        if parse_job()
+            .lock()
+            .map_err(|e| e.to_string())?
+            .cancel_requested
+        {
+            let _ = fs::remove_file(&out_path);
+            emit_parse_progress(&app, "cancelled", 0.0, "Parsing cancelled.");
+            return Err("Parsing cancelled.".into());
+        }
         let _ = fs::remove_file(&out_path);
         eprintln!("primary parser failed, trying fallback parser:\n{primary_error}");
+        emit_parse_progress(
+            &app,
+            "fallback",
+            0.35,
+            "Primary parser failed, trying fallback…",
+        );
         if let Err(fallback_error) =
-            run_parser_sidecar(&app, "parser-fallback", argv, &out_path).await
+            run_parser_sidecar(&app, "parser-fallback", argv, &out_path, 0.38).await
         {
+            if parse_job()
+                .lock()
+                .map_err(|e| e.to_string())?
+                .cancel_requested
+            {
+                let _ = fs::remove_file(&out_path);
+                emit_parse_progress(&app, "cancelled", 0.0, "Parsing cancelled.");
+                return Err("Parsing cancelled.".into());
+            }
             let _ = fs::remove_file(&out_path);
             return Err(format!(
                 "Both parsers failed.\n\nPrimary parser:\n{primary_error}\n\nFallback parser:\n{fallback_error}"
@@ -547,6 +640,7 @@ async fn parse_demo(
     if !out_path.exists() {
         return Err("parser finished but produced no output".into());
     }
+    emit_parse_progress(&app, "finalizing", 0.92, "Finalizing match…");
     let parsed_name = read_match_file(&out_path)
         .map(|m| match_score_name(&m))
         .unwrap_or_else(|_| default_match_name(&src, &id));
@@ -558,6 +652,7 @@ async fn parse_demo(
     // Invalidate any cached entry for this id (in case of a rare UUID collision
     // or a replace-in-place workflow down the road).
     invalidate_cache(&id);
+    emit_parse_progress(&app, "done", 1.0, "Parsing complete.");
     Ok(id)
 }
 
@@ -566,6 +661,7 @@ async fn run_parser_sidecar(
     name: &str,
     argv: Vec<String>,
     out_path: &Path,
+    base_progress: f64,
 ) -> Result<(), String> {
     // Sidecar names in tauri.conf.json expand to `binaries/<name>-<target-triple>`
     // at build/package time.
@@ -575,7 +671,16 @@ async fn run_parser_sidecar(
         .map_err(|e| format!("{name} sidecar init: {e}"))?
         .args(argv);
 
-    let (mut rx, _child) = sidecar.spawn().map_err(|e| format!("spawn {name}: {e}"))?;
+    let (mut rx, child) = sidecar.spawn().map_err(|e| format!("spawn {name}: {e}"))?;
+    {
+        let mut job = parse_job().lock().map_err(|e| e.to_string())?;
+        if job.cancel_requested {
+            let _ = child.kill();
+            return Err("Parsing cancelled.".into());
+        }
+        job.child = Some(child);
+    }
+    emit_parse_progress(app, name, base_progress, "Parsing demo…");
     let mut stderr = String::new();
     while let Some(event) = rx.recv().await {
         match event {
@@ -585,6 +690,13 @@ async fn run_parser_sidecar(
             }
             CommandEvent::Stdout(_) => {}
             CommandEvent::Terminated(payload) => {
+                if let Ok(mut job) = parse_job().lock() {
+                    job.child = None;
+                    if job.cancel_requested {
+                        let _ = fs::remove_file(out_path);
+                        return Err("Parsing cancelled.".into());
+                    }
+                }
                 let code = payload.code.unwrap_or(-1);
                 if code != 0 {
                     let _ = fs::remove_file(out_path);
@@ -601,6 +713,9 @@ async fn run_parser_sidecar(
                 return Ok(());
             }
             CommandEvent::Error(e) => {
+                if let Ok(mut job) = parse_job().lock() {
+                    job.child = None;
+                }
                 let _ = fs::remove_file(out_path);
                 return Err(format!("{name} error: {e}"));
             }
@@ -627,6 +742,7 @@ pub fn run() {
             delete_match,
             rename_match,
             enter_match_fullscreen,
+            cancel_parse,
             parse_demo,
         ])
         .run(tauri::generate_context!())

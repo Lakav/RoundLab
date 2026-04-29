@@ -78,6 +78,10 @@ export async function parseDemo(
   });
 }
 
+export async function cancelParse(): Promise<void> {
+  await invoke("cancel_parse");
+}
+
 /** Prompt the user for a demo file. Returns null if cancelled. */
 export async function pickDemoFile(): Promise<string | null> {
   const res = await openDialog({
