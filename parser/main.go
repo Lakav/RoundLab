@@ -9,7 +9,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/klauspost/compress/zstd"
@@ -176,6 +179,78 @@ type Output struct {
 	Rounds  []Round  `json:"rounds"`
 }
 
+type storedRound struct {
+	Path    string
+	Fires   int
+	Effects int
+}
+
+type RoundSpool struct {
+	Dir    string
+	Rounds []storedRound
+}
+
+func newRoundSpool() (*RoundSpool, error) {
+	dir, err := os.MkdirTemp("", "roundlab-parser-*")
+	if err != nil {
+		return nil, err
+	}
+	return &RoundSpool{Dir: dir}, nil
+}
+
+func (s *RoundSpool) Close() {
+	if s != nil && s.Dir != "" {
+		_ = os.RemoveAll(s.Dir)
+	}
+}
+
+func (s *RoundSpool) Add(round Round) error {
+	if len(round.Frames) == 0 {
+		return nil
+	}
+	round.Number = len(s.Rounds)
+	path := filepath.Join(s.Dir, fmt.Sprintf("round-%03d.json", len(s.Rounds)))
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	enc := json.NewEncoder(file)
+	err = enc.Encode(round)
+	closeErr := file.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	s.Rounds = append(s.Rounds, storedRound{
+		Path:    path,
+		Fires:   len(round.WeaponFires),
+		Effects: len(round.Effects),
+	})
+	return nil
+}
+
+func (s *RoundSpool) Count() int {
+	if s == nil {
+		return 0
+	}
+	return len(s.Rounds)
+}
+
+func readStoredRound(path string) (Round, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return Round{}, err
+	}
+	defer file.Close()
+	var round Round
+	if err := json.NewDecoder(file).Decode(&round); err != nil {
+		return Round{}, err
+	}
+	return round, nil
+}
+
 func teamStr(t common.Team) string {
 	switch t {
 	case common.TeamTerrorists:
@@ -214,6 +289,8 @@ func isUtilityActionName(name string) bool {
 }
 
 func main() {
+	configureMemoryBudget()
+
 	in := flag.String("in", "", "input .dem or .dem.zst file (use '-' for stdin — zstd auto-detected)")
 	out := flag.String("out", "", "output .json.gz file")
 	quality := flag.String("quality", "full", "sampling quality: full (every tick), high (~4Hz), medium (~2Hz), low (~1Hz)")
@@ -290,6 +367,21 @@ func main() {
 		},
 		Players: []Player{},
 		Rounds:  []Round{},
+	}
+	roundSpool, err := newRoundSpool()
+	if err != nil {
+		panic(err)
+	}
+	defer roundSpool.Close()
+	var storeErr error
+	storeRound := func(round Round) {
+		if storeErr != nil {
+			return
+		}
+		storeErr = roundSpool.Add(round)
+		if storeErr == nil {
+			debug.FreeOSMemory()
+		}
 	}
 
 	knownPlayers := map[uint64]bool{}
@@ -446,7 +538,7 @@ func main() {
 		endTick := p.GameState().IngameTick()
 		currentRound.EndTick = endTick
 		currentRound.Duration = float64(endTick-currentRound.StartTick) / tickRate
-		output.Rounds = append(output.Rounds, *currentRound)
+		storeRound(*currentRound)
 		currentRound = nil
 	})
 
@@ -906,20 +998,12 @@ func main() {
 		if currentRound.LiveStarted && endTick > currentRound.StartTick {
 			currentRound.Duration = float64(endTick-currentRound.StartTick) / tickRate
 		}
-		output.Rounds = append(output.Rounds, *currentRound)
+		storeRound(*currentRound)
 		currentRound = nil
 	}
-
-	// Drop rounds with no frames (warmup, aborted) and renumber starting from 0.
-	kept := output.Rounds[:0]
-	for _, r := range output.Rounds {
-		if len(r.Frames) == 0 {
-			continue
-		}
-		r.Number = len(kept)
-		kept = append(kept, r)
+	if storeErr != nil {
+		panic(storeErr)
 	}
-	output.Rounds = kept
 
 	// Final metadata (map name is populated during parse for CS2 demos)
 	if h := p.Header(); h.MapName != "" {
@@ -972,15 +1056,10 @@ func main() {
 		output.Meta.TeamB = teamBName
 		output.Meta.ScoreB = teamScores[teamBName]
 	}
-	for i := range output.Rounds {
-		output.Rounds[i].ScoreA = output.Rounds[i].TeamScores[teamAName]
-		output.Rounds[i].ScoreB = output.Rounds[i].TeamScores[teamBName]
-	}
-
 	// If we got nothing usable, surface the underlying parse error so the
 	// caller can fall back to the Rust parser instead of silently producing
 	// an empty match.
-	if len(output.Rounds) == 0 {
+	if roundSpool.Count() == 0 {
 		if parseErr != nil {
 			fmt.Fprintln(os.Stderr, "no rounds parsed:", parseErr)
 		} else {
@@ -989,16 +1068,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Write gzipped JSON
-	of, err := os.Create(*out)
-	if err != nil {
-		panic(err)
-	}
-	defer of.Close()
-	gz := gzip.NewWriter(of)
-	defer gz.Close()
-	enc := json.NewEncoder(gz)
-	if err := enc.Encode(output); err != nil {
+	if err := writeOutput(*out, output, roundSpool, teamAName, teamBName); err != nil {
 		panic(err)
 	}
 
@@ -1006,14 +1076,81 @@ func main() {
 	if parseErr != nil {
 		suffix = " (partial — parse aborted mid-demo)"
 	}
-	totalFires := 0
-	totalEffects := 0
-	for _, r := range output.Rounds {
-		totalFires += len(r.WeaponFires)
-		totalEffects += len(r.Effects)
+	totalFires, totalEffects := 0, 0
+	for _, round := range roundSpool.Rounds {
+		totalFires += round.Fires
+		totalEffects += round.Effects
 	}
 	fmt.Fprintf(os.Stderr,
 		"OK[primary] map=%s rounds=%d players=%d fires=%d effects=%d%s\n",
-		output.Meta.Map, len(output.Rounds), len(output.Players),
+		output.Meta.Map, roundSpool.Count(), len(output.Players),
 		totalFires, totalEffects, suffix)
+}
+
+func writeOutput(path string, output Output, spool *RoundSpool, teamAName, teamBName string) error {
+	of, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer of.Close()
+
+	gz := gzip.NewWriter(of)
+	defer gz.Close()
+
+	if _, err := gz.Write([]byte(`{"meta":`)); err != nil {
+		return err
+	}
+	if err := writeJSON(gz, output.Meta); err != nil {
+		return err
+	}
+	if _, err := gz.Write([]byte(`,"players":`)); err != nil {
+		return err
+	}
+	if err := writeJSON(gz, output.Players); err != nil {
+		return err
+	}
+	if _, err := gz.Write([]byte(`,"rounds":[`)); err != nil {
+		return err
+	}
+
+	for idx, stored := range spool.Rounds {
+		round, err := readStoredRound(stored.Path)
+		if err != nil {
+			return err
+		}
+		round.Number = idx
+		round.ScoreA = round.TeamScores[teamAName]
+		round.ScoreB = round.TeamScores[teamBName]
+		if idx > 0 {
+			if _, err := gz.Write([]byte(",")); err != nil {
+				return err
+			}
+		}
+		if err := writeJSON(gz, round); err != nil {
+			return err
+		}
+	}
+
+	_, err = gz.Write([]byte(`]}`))
+	return err
+}
+
+func writeJSON(w io.Writer, value any) error {
+	bytes, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(bytes)
+	return err
+}
+
+func configureMemoryBudget() {
+	debug.SetGCPercent(50)
+	limitMb := int64(6144)
+	if raw := os.Getenv("ROUNDLAB_PARSER_MEMORY_LIMIT_MB"); raw != "" {
+		if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil && parsed > 0 {
+			limitMb = parsed
+		}
+	}
+	debug.SetMemoryLimit(limitMb * 1024 * 1024)
 }

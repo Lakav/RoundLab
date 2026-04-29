@@ -12,6 +12,7 @@ export const MAP_CALIBRATION: Record<string, MapCalibration> = {
   de_overpass: { posX: -4831, posY: 1781, scale: 5.2 },
   de_ancient: { posX: -2953, posY: 2164, scale: 5 },
   de_anubis: { posX: -2796, posY: 3328, scale: 5.22 },
+  de_cache: { posX: -2000, posY: 3250, scale: 5.5 },
   de_train: { posX: -2308, posY: 2078, scale: 4.082077 },
   de_vertigo: { posX: -3168, posY: 1762, scale: 4.0 },
 };
@@ -32,6 +33,7 @@ export const MAP_CROP: Record<string, MapCrop> = {
   de_overpass: { x: 38, y: 38, size: 948 },
   de_ancient: { x: 38, y: 38, size: 948 },
   de_anubis: { x: 38, y: 38, size: 948 },
+  de_cache: { x: 38, y: 38, size: 948 },
   de_train: { x: 38, y: 38, size: 948 },
   de_vertigo: { x: 38, y: 38, size: 948 },
 };

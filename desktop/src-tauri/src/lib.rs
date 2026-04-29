@@ -103,6 +103,11 @@ struct MatchFile {
     rounds: Vec<RawRound>,
 }
 
+#[derive(Deserialize)]
+struct MatchHeader {
+    meta: Meta,
+}
+
 /// Short summary used for the home screen.
 #[derive(Serialize)]
 struct MatchSummary {
@@ -188,13 +193,13 @@ fn default_match_name(path: &Path, id: &str) -> String {
     format!("Untitled match · {}", &id[..8])
 }
 
-fn match_score_name(m: &MatchFile) -> String {
-    let team_a = clean_match_part(&m.meta.team_a, "Team");
-    let team_b = clean_match_part(&m.meta.team_b, "Team");
-    let map = clean_match_part(&m.meta.map, "map");
+fn match_score_name_from_meta(meta: &Meta) -> String {
+    let team_a = clean_match_part(&meta.team_a, "Team");
+    let team_b = clean_match_part(&meta.team_b, "Team");
+    let map = clean_match_part(&meta.map, "map");
     format!(
         "{}-{} - {} vs {} - {}",
-        m.meta.score_a, m.meta.score_b, team_a, team_b, map
+        meta.score_a, meta.score_b, team_a, team_b, map
     )
 }
 
@@ -253,8 +258,8 @@ fn is_valid_id(id: &str) -> bool {
 
 // -------------------------- Parsing a match file --------------------------
 
-/// Read and gunzip the entire match file into memory. Matches are ~1–15 MB
-/// uncompressed, so this is fine — no streaming needed yet.
+/// Read and gunzip the entire match file into memory. Used by replay loading,
+/// not by parse finalization.
 fn read_match_file(path: &Path) -> Result<MatchFile, String> {
     let f = fs::File::open(path).map_err(|e| format!("open: {e}"))?;
     let br = BufReader::new(f);
@@ -264,6 +269,15 @@ fn read_match_file(path: &Path) -> Result<MatchFile, String> {
         .map_err(|e| format!("gunzip: {e}"))?;
     let m: MatchFile = serde_json::from_slice(&buf).map_err(|e| format!("parse json: {e}"))?;
     Ok(m)
+}
+
+fn read_match_name(path: &Path) -> Result<String, String> {
+    let f = fs::File::open(path).map_err(|e| format!("open: {e}"))?;
+    let br = BufReader::new(f);
+    let gz = GzDecoder::new(br);
+    let header: MatchHeader =
+        serde_json::from_reader(gz).map_err(|e| format!("parse json header: {e}"))?;
+    Ok(match_score_name_from_meta(&header.meta))
 }
 
 // -------------------------- Match cache --------------------------
@@ -641,9 +655,7 @@ async fn parse_demo(
         return Err("parser finished but produced no output".into());
     }
     emit_parse_progress(&app, "finalizing", 0.92, "Finalizing match…");
-    let parsed_name = read_match_file(&out_path)
-        .map(|m| match_score_name(&m))
-        .unwrap_or_else(|_| default_match_name(&src, &id));
+    let parsed_name = read_match_name(&out_path).unwrap_or_else(|_| default_match_name(&src, &id));
     let info = StoredMatchInfo {
         name: parsed_name,
         source_path: src_path,
