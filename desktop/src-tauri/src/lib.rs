@@ -117,11 +117,6 @@ struct MatchFile {
     rounds: Vec<RawRound>,
 }
 
-#[derive(Deserialize)]
-struct MatchHeader {
-    meta: Meta,
-}
-
 /// Short summary used for the home screen.
 #[derive(Serialize)]
 struct MatchSummary {
@@ -288,10 +283,78 @@ fn read_match_file(path: &Path) -> Result<MatchFile, String> {
 fn read_match_name(path: &Path) -> Result<String, String> {
     let f = fs::File::open(path).map_err(|e| format!("open: {e}"))?;
     let br = BufReader::new(f);
-    let gz = GzDecoder::new(br);
-    let header: MatchHeader =
-        serde_json::from_reader(gz).map_err(|e| format!("parse json header: {e}"))?;
-    Ok(match_score_name_from_meta(&header.meta))
+    let mut gz = GzDecoder::new(br);
+    let mut buf = Vec::with_capacity(8192);
+    let mut chunk = [0u8; 4096];
+
+    loop {
+        let n = gz
+            .read(&mut chunk)
+            .map_err(|e| format!("gunzip meta: {e}"))?;
+        if n == 0 {
+            return Err("meta field not found".into());
+        }
+        buf.extend_from_slice(&chunk[..n]);
+        if let Some(meta_json) = find_json_field_value(&buf, b"\"meta\"") {
+            let meta: Meta =
+                serde_json::from_slice(meta_json).map_err(|e| format!("parse json meta: {e}"))?;
+            return Ok(match_score_name_from_meta(&meta));
+        }
+        if buf.len() > 1024 * 1024 {
+            return Err("meta field was not found in the first 1MB".into());
+        }
+    }
+}
+
+fn find_json_field_value<'a>(bytes: &'a [u8], field: &[u8]) -> Option<&'a [u8]> {
+    let field_pos = bytes
+        .windows(field.len())
+        .position(|window| window == field)?;
+    let mut i = field_pos + field.len();
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    if i >= bytes.len() || bytes[i] != b':' {
+        return None;
+    }
+    i += 1;
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    if i >= bytes.len() {
+        return None;
+    }
+
+    let start = i;
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for (offset, &byte) in bytes[start..].iter().enumerate() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if byte == b'\\' {
+                escaped = true;
+            } else if byte == b'"' {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match byte {
+            b'"' => in_string = true,
+            b'{' | b'[' => depth += 1,
+            b'}' | b']' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(&bytes[start..=start + offset]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 // -------------------------- Match cache --------------------------
@@ -571,6 +634,13 @@ fn emit_parse_progress(app: &AppHandle, phase: &str, progress: f64, message: &st
     );
 }
 
+fn parse_sidecar_progress(line: &str) -> Option<(f64, String)> {
+    let payload = line.trim().strip_prefix("ROUNDLAB_PROGRESS ")?;
+    let (raw_progress, message) = payload.split_once(' ')?;
+    let progress = raw_progress.parse::<f64>().ok()?.clamp(0.0, 0.99);
+    Some((progress, message.trim().to_string()))
+}
+
 fn kill_active_parser() {
     if let Ok(mut job) = parse_job().lock() {
         job.cancel_requested = true;
@@ -847,8 +917,15 @@ async fn run_parser_sidecar(
     while let Some(event) = rx.recv().await {
         match event {
             CommandEvent::Stderr(line) => {
-                stderr.push_str(&String::from_utf8_lossy(&line));
-                stderr.push('\n');
+                let text = String::from_utf8_lossy(&line);
+                for raw_line in text.lines() {
+                    if let Some((progress, message)) = parse_sidecar_progress(raw_line) {
+                        emit_parse_progress(app, name, progress, &message);
+                    } else {
+                        stderr.push_str(raw_line);
+                        stderr.push('\n');
+                    }
+                }
             }
             CommandEvent::Stdout(_) => {}
             CommandEvent::Terminated(payload) => {
@@ -921,6 +998,9 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use flate2::write::GzEncoder;
+    use flate2::Compression;
+    use std::io::Write;
 
     /// Smoke test: when the env var `ROUNDLAB_TEST_MATCH` points to a parsed
     /// `.json.gz` on disk, verify the full read pipeline — gunzip, JSON parse,
@@ -958,5 +1038,29 @@ mod tests {
             m.players.len(),
             round0.frames.as_array().map(|a| a.len()).unwrap_or(0)
         );
+    }
+
+    #[test]
+    fn read_match_name_reads_meta_from_gzip() {
+        let path = std::env::temp_dir().join(format!(
+            "roundlab-meta-test-{}.json.gz",
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .expect("system clock before unix epoch")
+                .as_nanos()
+        ));
+        {
+            let file = fs::File::create(&path).expect("create test gzip");
+            let mut gz = GzEncoder::new(file, Compression::fast());
+            gz.write_all(
+                br#"{"meta":{"map":"de_mirage","tickRate":64,"sampleRate":64,"teamA":"NAVI","teamB":"Vitality","scoreA":13,"scoreB":11},"players":[],"rounds":[{"frames":[{"players":[]}]}]}"#,
+            )
+            .expect("write test match");
+            gz.finish().expect("finish gzip");
+        }
+
+        let name = read_match_name(&path).expect("read match name");
+        let _ = fs::remove_file(&path);
+        assert_eq!(name, "13-11 - NAVI vs Vitality - de_mirage");
     }
 }

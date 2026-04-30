@@ -238,6 +238,10 @@ func (s *RoundSpool) Count() int {
 	return len(s.Rounds)
 }
 
+func emitProgress(progress float64, message string) {
+	fmt.Fprintf(os.Stderr, "ROUNDLAB_PROGRESS %.4f %s\n", progress, message)
+}
+
 func readStoredRound(path string) (Round, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -340,6 +344,7 @@ func main() {
 	// weapon fires, smoke starts, kills, the lot.
 	cfg := dem.DefaultParserConfig
 	cfg.IgnorePacketEntitiesPanic = true
+	cfg.MsgQueueBufferSize = 0
 	p := dem.NewParserWithConfig(reader, cfg)
 	defer p.Close()
 
@@ -1068,6 +1073,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	emitProgress(0.90, "Writing output...")
 	if err := writeOutput(*out, output, roundSpool, teamAName, teamBName); err != nil {
 		panic(err)
 	}
@@ -1094,7 +1100,10 @@ func writeOutput(path string, output Output, spool *RoundSpool, teamAName, teamB
 	}
 	defer of.Close()
 
-	gz := gzip.NewWriter(of)
+	gz, err := gzip.NewWriterLevel(of, gzip.BestSpeed)
+	if err != nil {
+		return err
+	}
 	defer gz.Close()
 
 	if _, err := gz.Write([]byte(`{"meta":`)); err != nil {
@@ -1114,6 +1123,8 @@ func writeOutput(path string, output Output, spool *RoundSpool, teamAName, teamB
 	}
 
 	for idx, stored := range spool.Rounds {
+		writeProgress := 0.90 + 0.09*(float64(idx)/float64(len(spool.Rounds)))
+		emitProgress(writeProgress, fmt.Sprintf("Writing round %d/%d...", idx+1, len(spool.Rounds)))
 		round, err := readStoredRound(stored.Path)
 		if err != nil {
 			return err
@@ -1136,12 +1147,9 @@ func writeOutput(path string, output Output, spool *RoundSpool, teamAName, teamB
 }
 
 func writeJSON(w io.Writer, value any) error {
-	bytes, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
-	_, err = w.Write(bytes)
-	return err
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false)
+	return enc.Encode(value)
 }
 
 func configureMemoryBudget() {
