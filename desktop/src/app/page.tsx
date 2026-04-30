@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { DragDropEvent } from "@tauri-apps/api/webview";
 import { listen } from "@tauri-apps/api/event";
+import { getVersion } from "@tauri-apps/api/app";
 import { Button } from "@/components/ui/button";
 import {
   Upload,
@@ -75,6 +76,7 @@ export default function Home() {
   // before it lands in the recent list.
   const [postParse, setPostParse] = useState<MatchSummary | null>(null);
   const [postParseName, setPostParseName] = useState("");
+  const [appVersion, setAppVersion] = useState("");
   const elapsedMs = parseStartedAt ? Math.max(0, parseNow - parseStartedAt) : 0;
   const storedEstimateMs = (() => {
     if (typeof window === "undefined") return 90_000;
@@ -82,7 +84,7 @@ export default function Home() {
     return Number.isFinite(raw) && raw > 0 ? raw : 90_000;
   })();
   const backendPct = Math.max(0, Math.min(1, parseProgress.progress || 0));
-  const timePct = parseStartedAt ? Math.min(0.95, elapsedMs / storedEstimateMs) : 0;
+  const timePct = parseStartedAt ? Math.min(0.99, elapsedMs / storedEstimateMs) : 0;
   const shownProgress = uploading
     ? Math.max(0.03, Math.min(0.99, Math.max(backendPct, timePct)))
     : 0;
@@ -155,6 +157,20 @@ export default function Home() {
     const timer = window.setInterval(() => setParseNow(Date.now()), 250);
     return () => window.clearInterval(timer);
   }, [uploading]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getVersion()
+      .then((v) => {
+        if (!cancelled) setAppVersion(v);
+      })
+      .catch(() => {
+        /* not running inside Tauri (e.g. next dev in browser) */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -368,7 +384,9 @@ export default function Home() {
             <Crosshair className="size-3.5 text-emerald-300" strokeWidth={2.5} />
           </div>
           <span className="text-sm font-semibold">RoundLab</span>
-          <span className="text-[11px] text-neutral-500">v0.1.4</span>
+          {appVersion && (
+            <span className="text-[11px] text-neutral-500">v{appVersion}</span>
+          )}
         </div>
         <SettingsPanel />
       </header>

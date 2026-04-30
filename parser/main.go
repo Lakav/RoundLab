@@ -1098,13 +1098,26 @@ func writeOutput(path string, output Output, spool *RoundSpool, teamAName, teamB
 	if err != nil {
 		return err
 	}
-	defer of.Close()
+	// Track whether the file/gzip have been closed cleanly so the deferred
+	// safety net only fires on early-return error paths. Without this the
+	// Windows pipe can swallow the final progress events while gzip.Close
+	// flushes — leaving the UI stuck at 95%.
+	closed := false
+	defer func() {
+		if !closed {
+			of.Close()
+		}
+	}()
 
 	gz, err := gzip.NewWriterLevel(of, gzip.BestSpeed)
 	if err != nil {
 		return err
 	}
-	defer gz.Close()
+	defer func() {
+		if !closed {
+			gz.Close()
+		}
+	}()
 
 	if _, err := gz.Write([]byte(`{"meta":`)); err != nil {
 		return err
@@ -1123,7 +1136,7 @@ func writeOutput(path string, output Output, spool *RoundSpool, teamAName, teamB
 	}
 
 	for idx, stored := range spool.Rounds {
-		writeProgress := 0.90 + 0.09*(float64(idx)/float64(len(spool.Rounds)))
+		writeProgress := 0.90 + 0.08*(float64(idx)/float64(len(spool.Rounds)))
 		emitProgress(writeProgress, fmt.Sprintf("Writing round %d/%d...", idx+1, len(spool.Rounds)))
 		round, err := readStoredRound(stored.Path)
 		if err != nil {
@@ -1142,8 +1155,20 @@ func writeOutput(path string, output Output, spool *RoundSpool, teamAName, teamB
 		}
 	}
 
-	_, err = gz.Write([]byte(`]}`))
-	return err
+	if _, err := gz.Write([]byte(`]}`)); err != nil {
+		return err
+	}
+
+	emitProgress(0.985, "Compressing output...")
+	if err := gz.Close(); err != nil {
+		return err
+	}
+	emitProgress(0.995, "Flushing to disk...")
+	if err := of.Close(); err != nil {
+		return err
+	}
+	closed = true
+	return nil
 }
 
 func writeJSON(w io.Writer, value any) error {
