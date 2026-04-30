@@ -588,6 +588,11 @@ struct ParserMemoryGuard {
 }
 
 #[cfg(windows)]
+// Safety: the raw job handle is only moved into the global parse state so it can
+// be closed on cancel/shutdown; all handle operations still happen under the mutex.
+unsafe impl Send for ParserMemoryGuard {}
+
+#[cfg(windows)]
 impl Drop for ParserMemoryGuard {
     fn drop(&mut self) {
         unsafe {
