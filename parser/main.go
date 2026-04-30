@@ -1153,6 +1153,14 @@ func writeOutput(path string, output Output, spool *RoundSpool, teamAName, teamB
 		if err := writeJSON(gz, round); err != nil {
 			return err
 		}
+		// Periodic flush keeps the deflate window from accumulating into a
+		// single multi-second hit during gz.Close(). Critical on Windows
+		// where the final flush + fsync was leaving the UI stuck at 99%.
+		if idx%8 == 7 {
+			if err := gz.Flush(); err != nil {
+				return err
+			}
+		}
 	}
 
 	if _, err := gz.Write([]byte(`]}`)); err != nil {
@@ -1164,6 +1172,9 @@ func writeOutput(path string, output Output, spool *RoundSpool, teamAName, teamB
 		return err
 	}
 	emitProgress(0.995, "Flushing to disk...")
+	if err := of.Sync(); err != nil {
+		return err
+	}
 	if err := of.Close(); err != nil {
 		return err
 	}

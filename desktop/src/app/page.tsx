@@ -84,10 +84,14 @@ export default function Home() {
     return Number.isFinite(raw) && raw > 0 ? raw : 90_000;
   })();
   const backendPct = Math.max(0, Math.min(1, parseProgress.progress || 0));
-  const timePct = parseStartedAt ? Math.min(0.99, elapsedMs / storedEstimateMs) : 0;
-  const shownProgress = uploading
-    ? Math.max(0.03, Math.min(0.99, Math.max(backendPct, timePct)))
-    : 0;
+  const timePct = parseStartedAt ? Math.min(0.95, elapsedMs / storedEstimateMs) : 0;
+  // Once the backend is past 95%, stop blending with the time-based estimate —
+  // the time estimate's job is to keep the bar moving while we wait for the
+  // first real progress event, not to compete with late-stage real progress.
+  // Without this, a slow gzip flush on Windows pins the bar at the cap and
+  // looks frozen even though the parser is making progress.
+  const blended = backendPct > 0.95 ? backendPct : Math.max(backendPct, timePct);
+  const shownProgress = uploading ? Math.max(0.03, Math.min(0.99, blended)) : 0;
   const remainingMs =
     uploading && shownProgress > 0.04
       ? Math.max(0, (elapsedMs / shownProgress) * (1 - shownProgress))

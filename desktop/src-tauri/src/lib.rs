@@ -844,8 +844,13 @@ async fn parse_demo(
     if !out_path.exists() {
         return Err("parser finished but produced no output".into());
     }
-    emit_parse_progress(&app, "finalizing", 0.92, "Finalizing match…");
-    let parsed_name = read_match_name(&out_path).unwrap_or_else(|_| default_match_name(&src, &id));
+    emit_parse_progress(&app, "finalizing", 0.99, "Finalizing match…");
+    eprintln!("parse_demo: parser exited cleanly, reading match name from {out_path:?}");
+    let parsed_name = read_match_name(&out_path).unwrap_or_else(|err| {
+        eprintln!("parse_demo: read_match_name failed ({err}), falling back to filename");
+        default_match_name(&src, &id)
+    });
+    eprintln!("parse_demo: writing match metadata for id={id}");
     let info = StoredMatchInfo {
         name: parsed_name,
         source_path: src_path,
@@ -854,6 +859,7 @@ async fn parse_demo(
     // Invalidate any cached entry for this id (in case of a rare UUID collision
     // or a replace-in-place workflow down the road).
     invalidate_cache(&id);
+    eprintln!("parse_demo: done id={id}");
     emit_parse_progress(&app, "done", 1.0, "Parsing complete.");
     Ok(id)
 }
