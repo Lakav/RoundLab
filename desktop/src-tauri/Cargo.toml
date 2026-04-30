@@ -1,6 +1,6 @@
 [package]
 name = "roundlab"
-version = "0.1.4"
+version = "0.1.17"
 description = "RoundLab — CS2 demo replay workspace (desktop)"
 authors = ["RoundLab"]
 edition = "2021"
@@ -26,6 +26,14 @@ uuid = { version = "1", features = ["v4"] }
 dirs = "5"
 flate2 = "1"
 thiserror = "1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_System_JobObjects",
+  "Win32_System_SystemInformation",
+  "Win32_System_Threading",
+] }
 
 [profile.release]
 panic = "abort"

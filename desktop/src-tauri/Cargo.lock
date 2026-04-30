@@ -2933,7 +2933,7 @@ dependencies = [
 
 [[package]]
 name = "roundlab"
-version = "0.1.4"
+version = "0.1.17"
 dependencies = [
  "anyhow",
  "dirs 5.0.1",
@@ -2948,6 +2948,7 @@ dependencies = [
  "tauri-plugin-updater",
  "thiserror 1.0.69",
  "uuid",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

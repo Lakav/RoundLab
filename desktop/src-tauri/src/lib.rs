@@ -20,6 +20,20 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
+#[cfg(windows)]
+use windows_sys::Win32::{
+    Foundation::{CloseHandle, HANDLE},
+    System::{
+        JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+            SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOB_OBJECT_LIMIT_PROCESS_MEMORY,
+        },
+        SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX},
+        Threading::{OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE},
+    },
+};
+
 // -------------------------- Types mirroring parser output --------------------------
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -516,6 +530,7 @@ struct ParseJob {
     running: bool,
     cancel_requested: bool,
     child: Option<CommandChild>,
+    memory_guard: Option<ParserMemoryGuard>,
 }
 
 fn parse_job() -> &'static Mutex<ParseJob> {
@@ -528,9 +543,12 @@ struct ParseJobGuard;
 impl Drop for ParseJobGuard {
     fn drop(&mut self) {
         let mut job = parse_job().lock().expect("parse job mutex poisoned");
+        if let Some(child) = job.child.take() {
+            let _ = child.kill();
+        }
+        job.memory_guard = None;
         job.running = false;
         job.cancel_requested = false;
-        job.child = None;
     }
 }
 
@@ -553,6 +571,102 @@ fn emit_parse_progress(app: &AppHandle, phase: &str, progress: f64, message: &st
     );
 }
 
+fn kill_active_parser() {
+    if let Ok(mut job) = parse_job().lock() {
+        job.cancel_requested = true;
+        if let Some(child) = job.child.take() {
+            let _ = child.kill();
+        }
+        job.memory_guard = None;
+        job.running = false;
+    }
+}
+
+#[cfg(windows)]
+struct ParserMemoryGuard {
+    job_handle: HANDLE,
+}
+
+#[cfg(windows)]
+impl Drop for ParserMemoryGuard {
+    fn drop(&mut self) {
+        unsafe {
+            CloseHandle(self.job_handle);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+struct ParserMemoryGuard;
+
+#[cfg(windows)]
+fn windows_parser_memory_limit_bytes() -> Option<usize> {
+    const APP_MEMORY_LIMIT_PERCENT: u64 = 70;
+    const APP_RUNTIME_RESERVE_BYTES: u64 = 512 * 1024 * 1024;
+    const MIN_PARSER_LIMIT_BYTES: u64 = 512 * 1024 * 1024;
+
+    let mut status = MEMORYSTATUSEX {
+        dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32,
+        ..Default::default()
+    };
+    let ok = unsafe { GlobalMemoryStatusEx(&mut status) };
+    if ok == 0 || status.ullTotalPhys == 0 {
+        return None;
+    }
+    let app_budget = status.ullTotalPhys.saturating_mul(APP_MEMORY_LIMIT_PERCENT) / 100;
+    let parser_budget = app_budget
+        .saturating_sub(APP_RUNTIME_RESERVE_BYTES)
+        .max(MIN_PARSER_LIMIT_BYTES);
+    Some(parser_budget as usize)
+}
+
+#[cfg(windows)]
+fn windows_go_heap_limit_mb(process_limit_bytes: usize) -> String {
+    let go_heap_bytes = (process_limit_bytes as u64).saturating_mul(85) / 100;
+    ((go_heap_bytes / 1024 / 1024).max(512)).to_string()
+}
+
+#[cfg(windows)]
+fn attach_windows_memory_limit(pid: u32, limit_bytes: usize) -> Result<ParserMemoryGuard, String> {
+    unsafe {
+        let job_handle = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+        if job_handle.is_null() {
+            return Err("CreateJobObjectW failed".into());
+        }
+
+        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        limits.BasicLimitInformation.LimitFlags =
+            JOB_OBJECT_LIMIT_PROCESS_MEMORY | JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        limits.ProcessMemoryLimit = limit_bytes;
+
+        let set_ok = SetInformationJobObject(
+            job_handle,
+            JobObjectExtendedLimitInformation,
+            &limits as *const _ as *const _,
+            std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        );
+        if set_ok == 0 {
+            CloseHandle(job_handle);
+            return Err("SetInformationJobObject failed".into());
+        }
+
+        let process_handle = OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, 0, pid);
+        if process_handle.is_null() {
+            CloseHandle(job_handle);
+            return Err("OpenProcess failed".into());
+        }
+
+        let assign_ok = AssignProcessToJobObject(job_handle, process_handle);
+        CloseHandle(process_handle);
+        if assign_ok == 0 {
+            CloseHandle(job_handle);
+            return Err("AssignProcessToJobObject failed".into());
+        }
+
+        Ok(ParserMemoryGuard { job_handle })
+    }
+}
+
 #[tauri::command]
 fn cancel_parse() -> Result<(), String> {
     let mut job = parse_job().lock().map_err(|e| e.to_string())?;
@@ -563,6 +677,7 @@ fn cancel_parse() -> Result<(), String> {
     if let Some(child) = job.child.take() {
         child.kill().map_err(|e| e.to_string())?;
     }
+    job.memory_guard = None;
     Ok(())
 }
 
@@ -683,13 +798,43 @@ async fn run_parser_sidecar(
         .map_err(|e| format!("{name} sidecar init: {e}"))?
         .args(argv);
 
+    #[cfg(windows)]
+    let memory_limit_bytes = windows_parser_memory_limit_bytes();
+    #[cfg(windows)]
+    let sidecar = {
+        let mut sidecar = sidecar;
+        if let Some(limit_bytes) = memory_limit_bytes {
+            sidecar = sidecar.env(
+                "ROUNDLAB_PARSER_MEMORY_LIMIT_MB",
+                windows_go_heap_limit_mb(limit_bytes),
+            );
+        }
+        sidecar
+    };
+
     let (mut rx, child) = sidecar.spawn().map_err(|e| format!("spawn {name}: {e}"))?;
+    #[cfg(windows)]
+    let memory_guard = if let Some(limit_bytes) = memory_limit_bytes {
+        match attach_windows_memory_limit(child.pid(), limit_bytes) {
+            Ok(guard) => Some(guard),
+            Err(err) => {
+                let _ = child.kill();
+                return Err(format!("{name} memory limit setup: {err}"));
+            }
+        }
+    } else {
+        None
+    };
+    #[cfg(not(windows))]
+    let memory_guard: Option<ParserMemoryGuard> = None;
+
     {
         let mut job = parse_job().lock().map_err(|e| e.to_string())?;
         if job.cancel_requested {
             let _ = child.kill();
             return Err("Parsing cancelled.".into());
         }
+        job.memory_guard = memory_guard;
         job.child = Some(child);
     }
     emit_parse_progress(app, name, base_progress, "Parsing demo…");
@@ -704,6 +849,7 @@ async fn run_parser_sidecar(
             CommandEvent::Terminated(payload) => {
                 if let Ok(mut job) = parse_job().lock() {
                     job.child = None;
+                    job.memory_guard = None;
                     if job.cancel_requested {
                         let _ = fs::remove_file(out_path);
                         return Err("Parsing cancelled.".into());
@@ -727,6 +873,7 @@ async fn run_parser_sidecar(
             CommandEvent::Error(e) => {
                 if let Ok(mut job) = parse_job().lock() {
                     job.child = None;
+                    job.memory_guard = None;
                 }
                 let _ = fs::remove_file(out_path);
                 return Err(format!("{name} error: {e}"));
@@ -747,6 +894,11 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .on_window_event(|_, event| {
+            if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
+                kill_active_parser();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             list_matches,
             get_match_metadata,
