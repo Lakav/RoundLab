@@ -12,10 +12,42 @@ const BOMB_CARRIER_COLOR = 0xef4444;
 const BOMB_SECONDS = 40;
 const bombFrameFallbackCache = new WeakMap<Round, Frame[]>();
 
+// Pixi v8's Assets.load pipeline for SVG goes through a fetch()+parse step that
+// silently fails inside Tauri's https://tauri.localhost custom scheme on
+// Windows release builds — the bundled SVGs return 200 but WebView2 won't
+// hand the body off to the Image element via Pixi's path. Loading the bytes
+// ourselves and feeding a blob URL into a vanilla HTMLImageElement sidesteps
+// the whole loader, so SVGs render the same way they do in `next dev`.
+async function loadSvgTextureDirect(path: string): Promise<Texture> {
+  const res = await fetch(path);
+  if (!res.ok) throw new Error(`fetch ${path}: ${res.status}`);
+  const text = await res.text();
+  const blob = new Blob([text], { type: "image/svg+xml" });
+  const url = URL.createObjectURL(blob);
+  try {
+    const image = new Image();
+    image.decoding = "async";
+    image.src = url;
+    await image.decode();
+    return Texture.from(image);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 function loadIconTexture(path: string): Promise<Texture> {
   let p = iconTextureCache.get(path);
   if (!p) {
-    p = Assets.load(path) as Promise<Texture>;
+    const loader = path.toLowerCase().endsWith(".svg")
+      ? loadSvgTextureDirect(path)
+      : (Assets.load(path) as Promise<Texture>);
+    // Don't poison the cache with a rejected promise — drop it so the next
+    // call gets a fresh attempt instead of replaying the failure forever.
+    p = loader.catch((err) => {
+      iconTextureCache.delete(path);
+      console.error(`[icons] failed to load ${path}`, err);
+      throw err;
+    });
     iconTextureCache.set(path, p);
   }
   return p;
