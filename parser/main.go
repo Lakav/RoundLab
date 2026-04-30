@@ -1091,6 +1091,17 @@ func main() {
 		"OK[primary] map=%s rounds=%d players=%d fires=%d effects=%d%s\n",
 		output.Meta.Map, roundSpool.Count(), len(output.Players),
 		totalFires, totalEffects, suffix)
+
+	// Force immediate process exit on Windows. The output gzip is fully
+	// written and fsynced — anything left in deferred Close() calls is
+	// best-effort cleanup (zstd decoder goroutines, demoinfocs parser
+	// state, scratch round spool). On Windows those defers can wedge a
+	// goroutine inside klauspost/compress/zstd or sendtables2, leaving
+	// the process alive after main() returns. Tauri then never sees the
+	// stderr pipe close and the UI sits at 99% forever. Bypass the lot.
+	os.Stderr.Sync()
+	os.Stdout.Sync()
+	os.Exit(0)
 }
 
 func writeOutput(path string, output Output, spool *RoundSpool, teamAName, teamBName string) error {
