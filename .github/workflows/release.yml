@@ -84,6 +84,34 @@ jobs:
           cache: pnpm
           cache-dependency-path: desktop/pnpm-lock.yaml
 
+      - name: Sync version from git tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Syncing version $VERSION into manifests"
+          node -e "
+            const fs = require('fs');
+            for (const p of ['desktop/package.json', 'desktop/src-tauri/tauri.conf.json']) {
+              const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+              j.version = '$VERSION';
+              fs.writeFileSync(p, JSON.stringify(j, null, 2) + '\n');
+            }
+          "
+          # Cargo.toml: replace the first version = "..." line in [package]
+          python3 -c "
+          import re, pathlib
+          p = pathlib.Path('desktop/src-tauri/Cargo.toml')
+          s = p.read_text()
+          s = re.sub(r'(\[package\][^\[]*?\nversion\s*=\s*)\"[^\"]+\"', r'\g<1>\"$VERSION\"', s, count=1)
+          p.write_text(s)
+          "
+          echo '--- desktop/src-tauri/tauri.conf.json ---'
+          grep '"version"' desktop/src-tauri/tauri.conf.json
+          echo '--- desktop/package.json ---'
+          grep '"version"' desktop/package.json
+          echo '--- desktop/src-tauri/Cargo.toml ---'
+          grep '^version' desktop/src-tauri/Cargo.toml
+
       - name: Install desktop UI dependencies
         working-directory: desktop
         run: pnpm install --frozen-lockfile
