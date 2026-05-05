@@ -82,6 +82,10 @@ export async function cancelParse(): Promise<void> {
   await invoke("cancel_parse");
 }
 
+export async function getDebugInfo(): Promise<Record<string, any>> {
+  return invoke<Record<string, any>>("get_debug_info");
+}
+
 /** Prompt the user for a demo file. Returns null if cancelled. */
 export async function pickDemoFile(): Promise<string | null> {
   const res = await openDialog({

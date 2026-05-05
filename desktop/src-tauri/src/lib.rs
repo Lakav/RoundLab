@@ -595,6 +595,7 @@ struct ParseOptions {}
 struct ParseJob {
     running: bool,
     cancel_requested: bool,
+    timeout_triggered: bool,
     child: Option<CommandChild>,
     memory_guard: Option<ParserMemoryGuard>,
 }
@@ -699,11 +700,17 @@ fn start_post_95_watchdog(app: AppHandle, name: String) -> Arc<Post95Watchdog> {
             continue;
         }
         let message = format!(
-            "Still waiting after {}s in finalization. Suspects: gz.Close, disk fsync/close, stderr flush, or missing CommandEvent::Terminated.",
+            "Parser timeout: still waiting after {}s in finalization phase. Killing process.",
             POST_95_TIMEOUT.as_secs()
         );
         eprintln!("[{name}] post-95 watchdog: {message}");
         emit_parse_progress(&app, &name, 0.99, &message);
+        if let Ok(mut job) = parse_job().lock() {
+            job.timeout_triggered = true;
+            if let Some(child) = job.child.take() {
+                let _ = child.kill();
+            }
+        }
     });
     watchdog
 }
@@ -713,6 +720,20 @@ fn parse_sidecar_progress(line: &str) -> Option<(f64, String)> {
     let (raw_progress, message) = payload.split_once(' ')?;
     let progress = raw_progress.parse::<f64>().ok()?.clamp(0.0, 0.99);
     Some((progress, message.trim().to_string()))
+}
+
+#[tauri::command]
+fn get_debug_info() -> serde_json::Value {
+    match parse_job().lock() {
+        Ok(job) => serde_json::json!({
+            "running": job.running,
+            "cancelRequested": job.cancel_requested,
+            "timeoutTriggered": job.timeout_triggered,
+        }),
+        Err(_) => serde_json::json!({
+            "error": "failed to acquire lock"
+        }),
+    }
 }
 
 fn kill_active_parser() {
@@ -847,6 +868,7 @@ async fn parse_demo(
         }
         job.running = true;
         job.cancel_requested = false;
+        job.timeout_triggered = false;
         job.child = None;
     }
     let _guard = ParseJobGuard;
@@ -1030,13 +1052,22 @@ async fn run_parser_sidecar(
                     "[{name}] CommandEvent::Terminated received: code={:?} signal={:?}",
                     payload.code, payload.signal
                 );
+                let mut timeout_triggered = false;
                 if let Ok(mut job) = parse_job().lock() {
                     job.child = None;
                     job.memory_guard = None;
+                    timeout_triggered = job.timeout_triggered;
                     if job.cancel_requested {
                         let _ = fs::remove_file(out_path);
                         return Err("Parsing cancelled.".into());
                     }
+                }
+                if timeout_triggered {
+                    let _ = fs::remove_file(out_path);
+                    return Err(format!(
+                        "{name} timeout: killed after {}s in finalization phase",
+                        POST_95_TIMEOUT.as_secs()
+                    ));
                 }
                 let code = payload.code.unwrap_or(-1);
                 if code != 0 {
@@ -1094,6 +1125,7 @@ pub fn run() {
             enter_match_fullscreen,
             cancel_parse,
             parse_demo,
+            get_debug_info,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
