@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/klauspost/compress/zstd"
 	dem "github.com/markus-wa/demoinfocs-golang/v4/pkg/demoinfocs"
@@ -240,6 +241,24 @@ func (s *RoundSpool) Count() int {
 
 func emitProgress(progress float64, message string) {
 	fmt.Fprintf(os.Stderr, "ROUNDLAB_PROGRESS %.4f %s\n", progress, message)
+}
+
+func finalStepStart(name string) time.Time {
+	fmt.Fprintf(os.Stderr, "ROUNDLAB_FINAL start step=%s\n", name)
+	return time.Now()
+}
+
+func finalStepDone(name string, started time.Time) {
+	fmt.Fprintf(os.Stderr, "ROUNDLAB_FINAL done step=%s duration_ms=%d\n", name, time.Since(started).Milliseconds())
+}
+
+func finalStepFailed(name string, started time.Time, err error) {
+	fmt.Fprintf(os.Stderr, "ROUNDLAB_FINAL failed step=%s duration_ms=%d error=%q\n", name, time.Since(started).Milliseconds(), err)
+}
+
+func skipFsync() bool {
+	raw := strings.TrimSpace(strings.ToLower(os.Getenv("ROUNDLAB_PARSER_SKIP_FSYNC")))
+	return raw == "1" || raw == "true" || raw == "yes" || raw == "on"
 }
 
 func readStoredRound(path string) (Round, error) {
@@ -1087,10 +1106,17 @@ func main() {
 		totalFires += round.Fires
 		totalEffects += round.Effects
 	}
-	fmt.Fprintf(os.Stderr,
+	emitProgress(0.9990, "Emitting parser OK on stderr...")
+	okStarted := finalStepStart("emit-ok")
+	if _, err := fmt.Fprintf(os.Stderr,
 		"OK[primary] map=%s rounds=%d players=%d fires=%d effects=%d%s\n",
 		output.Meta.Map, roundSpool.Count(), len(output.Players),
-		totalFires, totalEffects, suffix)
+		totalFires, totalEffects, suffix); err != nil {
+		finalStepFailed("emit-ok", okStarted, err)
+		panic(err)
+	}
+	finalStepDone("emit-ok", okStarted)
+	emitProgress(0.9995, "Parser OK emitted; exiting process...")
 
 	// Force immediate process exit on Windows. The output gzip is fully
 	// written and fsynced — anything left in deferred Close() calls is
@@ -1099,16 +1125,36 @@ func main() {
 	// goroutine inside klauspost/compress/zstd or sendtables2, leaving
 	// the process alive after main() returns. Tauri then never sees the
 	// stderr pipe close and the UI sits at 99% forever. Bypass the lot.
-	os.Stderr.Sync()
-	os.Stdout.Sync()
+	syncStarted := finalStepStart("stdio-sync")
+	if err := os.Stderr.Sync(); err != nil {
+		finalStepFailed("stdio-sync-stderr", syncStarted, err)
+	}
+	if err := os.Stdout.Sync(); err != nil {
+		finalStepFailed("stdio-sync-stdout", syncStarted, err)
+	}
+	finalStepDone("stdio-sync", syncStarted)
+	_ = os.Stderr.Sync()
+	_ = os.Stdout.Sync()
 	os.Exit(0)
 }
 
-func writeOutput(path string, output Output, spool *RoundSpool, teamAName, teamBName string) error {
+func writeOutput(path string, output Output, spool *RoundSpool, teamAName, teamBName string) (err error) {
+	writeOutputStarted := finalStepStart("writeOutput")
+	defer func() {
+		if err != nil {
+			finalStepFailed("writeOutput", writeOutputStarted, err)
+		} else {
+			finalStepDone("writeOutput", writeOutputStarted)
+		}
+	}()
+
+	createStarted := finalStepStart("os.Create")
 	of, err := os.Create(path)
 	if err != nil {
+		finalStepFailed("os.Create", createStarted, err)
 		return err
 	}
+	finalStepDone("os.Create", createStarted)
 	// Track whether the file/gzip have been closed cleanly so the deferred
 	// safety net only fires on early-return error paths. Without this the
 	// Windows pipe can swallow the final progress events while gzip.Close
@@ -1178,17 +1224,33 @@ func writeOutput(path string, output Output, spool *RoundSpool, teamAName, teamB
 		return err
 	}
 
-	emitProgress(0.985, "Compressing output...")
+	emitProgress(0.985, "Finalizing gzip stream (gz.Close)...")
+	gzipStarted := finalStepStart("gz.Close")
 	if err := gz.Close(); err != nil {
+		finalStepFailed("gz.Close", gzipStarted, err)
 		return err
 	}
-	emitProgress(0.995, "Flushing to disk...")
-	if err := of.Sync(); err != nil {
-		return err
+	finalStepDone("gz.Close", gzipStarted)
+	if skipFsync() {
+		emitProgress(0.995, "Skipping disk fsync (ROUNDLAB_PARSER_SKIP_FSYNC).")
+		skipStarted := finalStepStart("of.Sync.skip")
+		finalStepDone("of.Sync.skip", skipStarted)
+	} else {
+		emitProgress(0.995, "Flushing output to disk (of.Sync)...")
+		syncStarted := finalStepStart("of.Sync")
+		if err := of.Sync(); err != nil {
+			finalStepFailed("of.Sync", syncStarted, err)
+			return err
+		}
+		finalStepDone("of.Sync", syncStarted)
 	}
+	emitProgress(0.997, "Closing output file (of.Close)...")
+	closeStarted := finalStepStart("of.Close")
 	if err := of.Close(); err != nil {
+		finalStepFailed("of.Close", closeStarted, err)
 		return err
 	}
+	finalStepDone("of.Close", closeStarted)
 	closed = true
 	return nil
 }

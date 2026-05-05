@@ -3,6 +3,7 @@ use std::{
     fs,
     io::Write,
     path::Path,
+    time::Instant,
 };
 
 use ahash::AHashMap;
@@ -246,6 +247,33 @@ struct RoundSpan {
 
 fn is_false(value: &bool) -> bool {
     !*value
+}
+
+fn emit_progress(progress: f64, message: &str) {
+    eprintln!("ROUNDLAB_PROGRESS {progress:.4} {message}");
+}
+
+fn final_step_start(name: &str) -> Instant {
+    eprintln!("ROUNDLAB_FINAL start step={name}");
+    Instant::now()
+}
+
+fn final_step_done(name: &str, started: Instant) {
+    eprintln!(
+        "ROUNDLAB_FINAL done step={name} duration_ms={}",
+        started.elapsed().as_millis()
+    );
+}
+
+fn skip_fsync() -> bool {
+    matches!(
+        std::env::var("ROUNDLAB_PARSER_SKIP_FSYNC")
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase()
+            .as_str(),
+        "1" | "true" | "yes" | "on"
+    )
 }
 
 fn main() {
@@ -572,13 +600,17 @@ fn run() -> Result<()> {
         rounds,
     };
 
+    emit_progress(0.90, "Writing fallback output...");
     write_json_gz(&args.output, &output)?;
+    emit_progress(0.9990, "Emitting fallback parser OK on stderr...");
+    let ok_started = final_step_start("emit-ok");
     eprintln!(
         "OK fallback map={} rounds={} players={}",
         output.meta.map,
         output.rounds.len(),
         output.players.len()
     );
+    final_step_done("emit-ok", ok_started);
     Ok(())
 }
 
@@ -1590,10 +1622,35 @@ fn get_string_array(v: &Value, key: &str) -> Vec<String> {
 }
 
 fn write_json_gz(path: &str, output: &Output) -> Result<()> {
+    let write_started = final_step_start("write_json_gz");
+    let create_started = final_step_start("File::create");
     let file = fs::File::create(Path::new(path)).with_context(|| format!("create {path}"))?;
+    final_step_done("File::create", create_started);
     let mut gz = GzEncoder::new(file, Compression::default());
+    emit_progress(0.94, "Serializing fallback JSON...");
+    let serialize_started = final_step_start("serde_json::to_writer");
     serde_json::to_writer(&mut gz, output)?;
+    final_step_done("serde_json::to_writer", serialize_started);
+    emit_progress(0.985, "Flushing fallback gzip buffer...");
+    let flush_started = final_step_start("gz.flush");
     gz.flush()?;
-    gz.finish()?;
+    final_step_done("gz.flush", flush_started);
+    emit_progress(0.992, "Finalizing fallback gzip stream...");
+    let finish_started = final_step_start("gz.finish");
+    let file = gz.finish()?;
+    final_step_done("gz.finish", finish_started);
+    if skip_fsync() {
+        emit_progress(
+            0.995,
+            "Skipping fallback disk fsync (ROUNDLAB_PARSER_SKIP_FSYNC).",
+        );
+    } else {
+        emit_progress(0.995, "Flushing fallback output to disk...");
+        let sync_started = final_step_start("File::sync_all");
+        file.sync_all()?;
+        final_step_done("File::sync_all", sync_started);
+    }
+    drop(file);
+    final_step_done("write_json_gz", write_started);
     Ok(())
 }

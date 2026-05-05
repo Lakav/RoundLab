@@ -11,8 +11,11 @@ use std::collections::VecDeque;
 use std::fs;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
-use std::time::SystemTime;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex, OnceLock,
+};
+use std::time::{Duration, Instant, SystemTime};
 
 use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
@@ -634,6 +637,77 @@ fn emit_parse_progress(app: &AppHandle, phase: &str, progress: f64, message: &st
     );
 }
 
+const POST_95_TIMEOUT: Duration = Duration::from_secs(30);
+
+struct Post95Watchdog {
+    active: AtomicBool,
+    final_phase: AtomicBool,
+    warned: AtomicBool,
+    last_event: Mutex<Instant>,
+}
+
+impl Post95Watchdog {
+    fn new() -> Self {
+        Self {
+            active: AtomicBool::new(true),
+            final_phase: AtomicBool::new(false),
+            warned: AtomicBool::new(false),
+            last_event: Mutex::new(Instant::now()),
+        }
+    }
+
+    fn mark_progress(&self, progress: f64) {
+        if progress < 0.95 {
+            return;
+        }
+        self.final_phase.store(true, Ordering::Relaxed);
+        self.warned.store(false, Ordering::Relaxed);
+        if let Ok(mut last_event) = self.last_event.lock() {
+            *last_event = Instant::now();
+        }
+    }
+
+    fn mark_final_event(&self) {
+        self.final_phase.store(true, Ordering::Relaxed);
+        if let Ok(mut last_event) = self.last_event.lock() {
+            *last_event = Instant::now();
+        }
+    }
+
+    fn stop(&self) {
+        self.active.store(false, Ordering::Relaxed);
+    }
+}
+
+fn start_post_95_watchdog(app: AppHandle, name: String) -> Arc<Post95Watchdog> {
+    let watchdog = Arc::new(Post95Watchdog::new());
+    let thread_watchdog = Arc::clone(&watchdog);
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_secs(5));
+        if !thread_watchdog.active.load(Ordering::Relaxed) {
+            return;
+        }
+        if !thread_watchdog.final_phase.load(Ordering::Relaxed) {
+            continue;
+        }
+        let elapsed = thread_watchdog
+            .last_event
+            .lock()
+            .map(|last_event| last_event.elapsed())
+            .unwrap_or_default();
+        if elapsed < POST_95_TIMEOUT || thread_watchdog.warned.swap(true, Ordering::Relaxed) {
+            continue;
+        }
+        let message = format!(
+            "Still waiting after {}s in finalization. Suspects: gz.Close, disk fsync/close, stderr flush, or missing CommandEvent::Terminated.",
+            POST_95_TIMEOUT.as_secs()
+        );
+        eprintln!("[{name}] post-95 watchdog: {message}");
+        emit_parse_progress(&app, &name, 0.99, &message);
+    });
+    watchdog
+}
+
 fn parse_sidecar_progress(line: &str) -> Option<(f64, String)> {
     let payload = line.trim().strip_prefix("ROUNDLAB_PROGRESS ")?;
     let (raw_progress, message) = payload.split_once(' ')?;
@@ -844,7 +918,7 @@ async fn parse_demo(
     if !out_path.exists() {
         return Err("parser finished but produced no output".into());
     }
-    emit_parse_progress(&app, "finalizing", 0.99, "Finalizing match…");
+    emit_parse_progress(&app, "finalizing", 0.997, "Finalizing match metadata…");
     eprintln!("parse_demo: parser exited cleanly, reading match name from {out_path:?}");
     let parsed_name = read_match_name(&out_path).unwrap_or_else(|err| {
         eprintln!("parse_demo: read_match_name failed ({err}), falling back to filename");
@@ -919,6 +993,7 @@ async fn run_parser_sidecar(
         job.child = Some(child);
     }
     emit_parse_progress(app, name, base_progress, "Parsing demo…");
+    let watchdog = start_post_95_watchdog(app.clone(), name.to_string());
     let mut stderr = String::new();
     while let Some(event) = rx.recv().await {
         match event {
@@ -926,7 +1001,22 @@ async fn run_parser_sidecar(
                 let text = String::from_utf8_lossy(&line);
                 for raw_line in text.lines() {
                     if let Some((progress, message)) = parse_sidecar_progress(raw_line) {
+                        watchdog.mark_progress(progress);
                         emit_parse_progress(app, name, progress, &message);
+                    } else if raw_line.starts_with("OK[") || raw_line.starts_with("OK fallback") {
+                        watchdog.mark_final_event();
+                        emit_parse_progress(
+                            app,
+                            name,
+                            0.99,
+                            "Parser emitted OK; waiting for process termination...",
+                        );
+                        stderr.push_str(raw_line);
+                        stderr.push('\n');
+                    } else if raw_line.starts_with("ROUNDLAB_FINAL ") {
+                        eprintln!("[{name}] {raw_line}");
+                        stderr.push_str(raw_line);
+                        stderr.push('\n');
                     } else {
                         stderr.push_str(raw_line);
                         stderr.push('\n');
@@ -935,6 +1025,11 @@ async fn run_parser_sidecar(
             }
             CommandEvent::Stdout(_) => {}
             CommandEvent::Terminated(payload) => {
+                watchdog.stop();
+                eprintln!(
+                    "[{name}] CommandEvent::Terminated received: code={:?} signal={:?}",
+                    payload.code, payload.signal
+                );
                 if let Ok(mut job) = parse_job().lock() {
                     job.child = None;
                     job.memory_guard = None;
@@ -951,6 +1046,7 @@ async fn run_parser_sidecar(
                         stderr.trim()
                     ));
                 }
+                emit_parse_progress(app, name, 0.995, "Sidecar terminated; validating output...");
                 // Always echo the sidecar's final OK line so we can tell
                 // primary vs fallback from the Tauri logs.
                 if !stderr.trim().is_empty() {
@@ -959,6 +1055,7 @@ async fn run_parser_sidecar(
                 return Ok(());
             }
             CommandEvent::Error(e) => {
+                watchdog.stop();
                 if let Ok(mut job) = parse_job().lock() {
                     job.child = None;
                     job.memory_guard = None;
@@ -970,6 +1067,7 @@ async fn run_parser_sidecar(
         }
     }
 
+    watchdog.stop();
     Err(format!("{name} stopped without an exit status"))
 }
 
