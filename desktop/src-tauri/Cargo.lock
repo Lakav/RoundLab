@@ -2933,7 +2933,7 @@ dependencies = [
 
 [[package]]
 name = "roundlab"
-version = "0.1.23"
+version = "0.1.25"
 dependencies = [
  "anyhow",
  "dirs 5.0.1",
