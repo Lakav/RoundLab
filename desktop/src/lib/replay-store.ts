@@ -3,12 +3,13 @@ import type { MatchData, Round } from "./types";
 
 type ReplayState = {
   match: MatchData | null;
+  matchId: string | null;
   currentRoundIdx: number;
   time: number; // seconds within current round
   playing: boolean;
   speed: number; // 0.25, 0.5, 1, 2, 4
-  setMatch: (m: MatchData) => void;
-  setRoundData: (roundNumber: number, round: Round) => void;
+  setMatch: (id: string, m: MatchData) => void;
+  setRoundData: (matchId: string, roundNumber: number, round: Round) => void;
   setRound: (idx: number) => void;
   setTime: (t: number) => void;
   setPlaying: (p: boolean) => void;
@@ -20,14 +21,15 @@ type ReplayState = {
 
 export const useReplay = create<ReplayState>((set, get) => ({
   match: null,
+  matchId: null,
   currentRoundIdx: 0,
   time: 0,
   playing: false,
   speed: 1,
-  setMatch: (m) => set({ match: m, currentRoundIdx: 0, time: 0, playing: false }),
-  setRoundData: (roundNumber, round) =>
+  setMatch: (id, m) => set({ matchId: id, match: m, currentRoundIdx: 0, time: 0, playing: false }),
+  setRoundData: (matchId, roundNumber, round) =>
     set((s) => {
-      if (!s.match) return s;
+      if (!s.match || s.matchId !== matchId) return s;
       return {
         match: {
           ...s.match,

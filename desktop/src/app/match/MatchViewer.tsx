@@ -123,7 +123,7 @@ export default function MatchViewer({ id }: { id: string }) {
       loadingRoundsRef.current.add(roundNumber);
       try {
         const data = assertRenderableRound(await getRound(id, roundNumber));
-        startTransition(() => setRoundData(roundNumber, data));
+        startTransition(() => setRoundData(id, roundNumber, data));
       } catch (e) {
         throw e;
       } finally {
@@ -146,7 +146,7 @@ export default function MatchViewer({ id }: { id: string }) {
         if (!MAP_CALIBRATION[visibleData.meta.map]) {
           throw new Error(`Unsupported map "${visibleData.meta.map || "unknown"}".`);
         }
-        startTransition(() => setMatch(visibleData));
+        startTransition(() => setMatch(id, visibleData));
         setLoading(false);
       } catch (e: unknown) {
         setErr(e instanceof Error ? e.message : String(e));
@@ -198,33 +198,6 @@ export default function MatchViewer({ id }: { id: string }) {
         }
       }
     })();
-    return () => {
-      cancel = true;
-    };
-  }, [currentRoundIdx, loadRoundData, match]);
-
-  useEffect(() => {
-    if (!match) return;
-    let cancel = false;
-    const order = match.rounds
-      .map((round, idx) => ({ round, distance: Math.abs(idx - currentRoundIdx) }))
-      .sort((a, b) => a.distance - b.distance)
-      .map(({ round }) => round);
-
-    const run = async () => {
-      for (const round of order) {
-        if (cancel) return;
-        if (round.frames.length > 0) continue;
-        await new Promise((resolve) => window.setTimeout(resolve, 140));
-        if (cancel) return;
-        try {
-          await loadRoundData(round.number);
-        } catch {
-          /* best-effort background warmup */
-        }
-      }
-    };
-    void run();
     return () => {
       cancel = true;
     };
