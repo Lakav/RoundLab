@@ -742,12 +742,23 @@ fn parse_args() -> Result<Args> {
 }
 
 fn read_demo(path: &str) -> Result<Vec<u8>> {
+    const MAX_DEMO_SIZE: usize = 1024 * 1024 * 1024; // 1 GB limit
+
     let raw = fs::read(path).with_context(|| format!("read {path}"))?;
+    if raw.len() > MAX_DEMO_SIZE {
+        bail!("demo file too large: {} bytes > {} GB limit", raw.len(), MAX_DEMO_SIZE / (1024 * 1024 * 1024));
+    }
+
     let is_zst = raw.starts_with(&ZSTD_MAGIC) || path.to_lowercase().ends_with(".zst");
     if !is_zst {
         return Ok(raw);
     }
-    zstd::decode_all(raw.as_slice()).context("decompress zstd demo")
+
+    let decoded = zstd::decode_all(raw.as_slice()).context("decompress zstd demo")?;
+    if decoded.len() > MAX_DEMO_SIZE {
+        bail!("decompressed demo too large: {} bytes > {} GB limit", decoded.len(), MAX_DEMO_SIZE / (1024 * 1024 * 1024));
+    }
+    Ok(decoded)
 }
 
 fn settings<'a>(
