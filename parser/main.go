@@ -246,17 +246,47 @@ func emitProgress(progress float64, message string) {
 	fmt.Fprintf(os.Stderr, "ROUNDLAB_PROGRESS %.4f %s\n", progress, message)
 }
 
+// finalPhaseStart marks the start of the post-parse "finalization" phase. All
+// finalStep* logs after this report durations relative to this anchor so the
+// Windows-99% triage can pinpoint which step actually wedges. Set once.
+var finalPhaseStart time.Time
+var finalPhaseLast time.Time
+
+func finalPhaseBegin() {
+	now := time.Now()
+	finalPhaseStart = now
+	finalPhaseLast = now
+	fmt.Fprintf(os.Stderr, "ROUNDLAB_FINAL phase_begin t_total_ms=0\n")
+}
+
+// finalStepStart logs the start of a finalization step and returns the step
+// start instant for the matching finalStepDone/finalStepFailed call.
 func finalStepStart(name string) time.Time {
-	fmt.Fprintf(os.Stderr, "ROUNDLAB_FINAL start step=%s\n", name)
-	return time.Now()
+	now := time.Now()
+	totalMs := now.Sub(finalPhaseStart).Milliseconds()
+	sincePrevMs := now.Sub(finalPhaseLast).Milliseconds()
+	finalPhaseLast = now
+	fmt.Fprintf(os.Stderr, "ROUNDLAB_FINAL start step=%s t_total_ms=%d t_since_prev_ms=%d\n",
+		name, totalMs, sincePrevMs)
+	return now
 }
 
 func finalStepDone(name string, started time.Time) {
-	fmt.Fprintf(os.Stderr, "ROUNDLAB_FINAL done step=%s duration_ms=%d\n", name, time.Since(started).Milliseconds())
+	now := time.Now()
+	durMs := now.Sub(started).Milliseconds()
+	totalMs := now.Sub(finalPhaseStart).Milliseconds()
+	finalPhaseLast = now
+	fmt.Fprintf(os.Stderr, "ROUNDLAB_FINAL done step=%s duration_ms=%d t_total_ms=%d\n",
+		name, durMs, totalMs)
 }
 
 func finalStepFailed(name string, started time.Time, err error) {
-	fmt.Fprintf(os.Stderr, "ROUNDLAB_FINAL failed step=%s duration_ms=%d error=%q\n", name, time.Since(started).Milliseconds(), err)
+	now := time.Now()
+	durMs := now.Sub(started).Milliseconds()
+	totalMs := now.Sub(finalPhaseStart).Milliseconds()
+	finalPhaseLast = now
+	fmt.Fprintf(os.Stderr, "ROUNDLAB_FINAL failed step=%s duration_ms=%d t_total_ms=%d error=%q\n",
+		name, durMs, totalMs, err)
 }
 
 func skipFsync() bool {
@@ -1009,6 +1039,12 @@ func main() {
 		}()
 		parseErr = p.ParseToEnd()
 	}()
+
+	// All later steps belong to the post-parse "finalization" phase. The
+	// Windows-99% triage relies on these timestamps to pinpoint which step
+	// wedges (gz.Close, of.Sync, of.Close, stdio sync, exit, …).
+	finalPhaseBegin()
+	parseEndStarted := finalStepStart("parse-end")
 	if parseErr != nil {
 		msg := strings.SplitN(parseErr.Error(), "\n", 2)[0]
 		fmt.Fprintln(os.Stderr, "parse error (will keep partial):", msg)
@@ -1017,8 +1053,10 @@ func main() {
 		// better than falling through to the Rust fallback, which doesn't
 		// emit weapon fires / utility effects / dead-player inventory.
 	}
+	finalStepDone("parse-end", parseEndStarted)
 
 	// Flush a trailing round the demo never officially ended.
+	flushStarted := finalStepStart("flush-trailing-round")
 	if currentRound != nil {
 		endTick := p.GameState().IngameTick()
 		currentRound.EndTick = endTick
@@ -1029,10 +1067,13 @@ func main() {
 		currentRound = nil
 	}
 	if storeErr != nil {
+		finalStepFailed("flush-trailing-round", flushStarted, storeErr)
 		panic(storeErr)
 	}
+	finalStepDone("flush-trailing-round", flushStarted)
 
 	// Final metadata (map name is populated during parse for CS2 demos)
+	metaStarted := finalStepStart("build-metadata")
 	if h := p.Header(); h.MapName != "" {
 		output.Meta.Map = h.MapName
 	}
@@ -1087,6 +1128,8 @@ func main() {
 		output.Meta.TeamB = teamBName
 		output.Meta.ScoreB = teamScores[teamBName]
 	}
+	finalStepDone("build-metadata", metaStarted)
+
 	// If we got nothing usable, surface the underlying parse error so the
 	// caller can fall back to the Rust parser instead of silently producing
 	// an empty match.
@@ -1102,9 +1145,12 @@ func main() {
 	}
 
 	emitProgress(0.90, "Writing output...")
+	writeStarted := finalStepStart("write-output")
 	if err := writeOutput(*out, output, roundSpool, teamAName, teamBName); err != nil {
+		finalStepFailed("write-output", writeStarted, err)
 		panic(err)
 	}
+	finalStepDone("write-output", writeStarted)
 
 	suffix := ""
 	if parseErr != nil {
@@ -1129,9 +1175,11 @@ func main() {
 
 	// Explicitly close the round spool and temp directory before os.Exit.
 	// os.Exit bypasses defer, so we need to clean up manually.
+	spoolStarted := finalStepStart("spool-cleanup")
 	if roundSpool != nil {
 		roundSpool.Close()
 	}
+	finalStepDone("spool-cleanup", spoolStarted)
 
 	// Force immediate process exit on Windows. The output gzip is fully
 	// written and fsynced — anything left in deferred Close() calls is
@@ -1148,20 +1196,20 @@ func main() {
 		finalStepFailed("stdio-sync-stdout", syncStarted, err)
 	}
 	finalStepDone("stdio-sync", syncStarted)
-	_ = os.Stderr.Sync()
-	_ = os.Stdout.Sync()
+
+	preExit := finalStepStart("pre-exit")
+	// Last log line before os.Exit. If Tauri reports the UI stuck at 99%
+	// AFTER seeing this line, the parser exited cleanly and the wedge is
+	// somewhere in the host (sidecar pipe drain, CommandEvent::Terminated,
+	// frontend event handler). If Tauri never sees this line, the wedge is
+	// upstream — the previous step in the log is the real culprit.
+	finalStepDone("pre-exit", preExit)
 	os.Exit(0)
 }
 
 func writeOutput(path string, output Output, spool *RoundSpool, teamAName, teamBName string) (err error) {
-	writeOutputStarted := finalStepStart("writeOutput")
-	defer func() {
-		if err != nil {
-			finalStepFailed("writeOutput", writeOutputStarted, err)
-		} else {
-			finalStepDone("writeOutput", writeOutputStarted)
-		}
-	}()
+	// The outer "write-output" step is opened by the caller in main() so the
+	// timeline reads top-to-bottom. We only emit the inner sub-steps here.
 
 	createStarted := finalStepStart("os.Create")
 	of, err := os.Create(path)
