@@ -204,6 +204,7 @@ func newRoundSpool() (*RoundSpool, error) {
 func (s *RoundSpool) Close() {
 	if s != nil && s.Dir != "" {
 		_ = os.RemoveAll(s.Dir)
+		s.Dir = ""
 	}
 }
 
@@ -1095,6 +1096,8 @@ func main() {
 		} else {
 			fmt.Fprintln(os.Stderr, "no rounds parsed")
 		}
+		// os.Exit bypasses defer, so clean up the temp spool manually.
+		roundSpool.Close()
 		os.Exit(1)
 	}
 
