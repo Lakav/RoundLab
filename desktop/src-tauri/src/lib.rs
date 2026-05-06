@@ -57,6 +57,10 @@ struct Meta {
     score_a: i64,
     #[serde(default, rename = "scoreB")]
     score_b: i64,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    partial: bool,
+    #[serde(default, rename = "parseError", skip_serializing_if = "String::is_empty")]
+    parse_error: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
