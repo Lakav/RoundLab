@@ -649,6 +649,7 @@ struct Post95Watchdog {
     final_phase: AtomicBool,
     warned: AtomicBool,
     last_event: Mutex<Instant>,
+    last_step: Mutex<String>,
 }
 
 impl Post95Watchdog {
@@ -658,6 +659,7 @@ impl Post95Watchdog {
             final_phase: AtomicBool::new(false),
             warned: AtomicBool::new(false),
             last_event: Mutex::new(Instant::now()),
+            last_step: Mutex::new(String::new()),
         }
     }
 
@@ -672,11 +674,26 @@ impl Post95Watchdog {
         }
     }
 
-    fn mark_final_event(&self) {
+    /// Called for each ROUNDLAB_FINAL line. `step_label` is a short
+    /// description ("start step=gz.Close", "done step=of.Sync", …) used in
+    /// the timeout message so we can tell which step actually wedged.
+    fn mark_final_event(&self, step_label: &str) {
         self.final_phase.store(true, Ordering::Relaxed);
         if let Ok(mut last_event) = self.last_event.lock() {
             *last_event = Instant::now();
         }
+        if !step_label.is_empty() {
+            if let Ok(mut last_step) = self.last_step.lock() {
+                *last_step = step_label.to_string();
+            }
+        }
+    }
+
+    fn last_step_snapshot(&self) -> String {
+        self.last_step
+            .lock()
+            .map(|s| s.clone())
+            .unwrap_or_default()
     }
 
     fn stop(&self) {
@@ -703,8 +720,14 @@ fn start_post_95_watchdog(app: AppHandle, name: String) -> Arc<Post95Watchdog> {
         if elapsed < POST_95_TIMEOUT || thread_watchdog.warned.swap(true, Ordering::Relaxed) {
             continue;
         }
+        let last_step = thread_watchdog.last_step_snapshot();
+        let last_step_hint = if last_step.is_empty() {
+            "(no ROUNDLAB_FINAL step seen yet)".to_string()
+        } else {
+            format!("(last seen: {last_step})")
+        };
         let message = format!(
-            "Parser timeout: still waiting after {}s in finalization phase. Killing process.",
+            "Parser timeout: still waiting after {}s in finalization phase {last_step_hint}. Killing process.",
             POST_95_TIMEOUT.as_secs()
         );
         eprintln!("[{name}] post-95 watchdog: {message}");
@@ -1030,7 +1053,7 @@ async fn run_parser_sidecar(
                         watchdog.mark_progress(progress);
                         emit_parse_progress(app, name, progress, &message);
                     } else if raw_line.starts_with("OK[") || raw_line.starts_with("OK fallback") {
-                        watchdog.mark_final_event();
+                        watchdog.mark_final_event("emit-ok");
                         emit_parse_progress(
                             app,
                             name,
@@ -1040,6 +1063,16 @@ async fn run_parser_sidecar(
                         stderr.push_str(raw_line);
                         stderr.push('\n');
                     } else if raw_line.starts_with("ROUNDLAB_FINAL ") {
+                        // Each finalization step from the parser counts as a
+                        // liveness signal: it postpones the post-95 timeout.
+                        // Without this, a slow but still-progressing gz.Close
+                        // / of.Sync / of.Close on Windows would falsely trip
+                        // the watchdog at exactly 30s.
+                        let label = raw_line
+                            .strip_prefix("ROUNDLAB_FINAL ")
+                            .unwrap_or("")
+                            .trim();
+                        watchdog.mark_final_event(label);
                         eprintln!("[{name}] {raw_line}");
                         stderr.push_str(raw_line);
                         stderr.push('\n');
