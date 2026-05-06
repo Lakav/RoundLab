@@ -254,6 +254,12 @@ export default function MatchViewer({ id }: { id: string }) {
 
   return (
     <div className="h-screen flex flex-col text-neutral-100" style={{ background: "#1d1f1f" }}>
+      {match.meta.partial && (
+        <div className="bg-yellow-950/50 border-b border-yellow-700/30 px-4 py-2 text-sm text-yellow-200">
+          ⚠️ Partial parse: This replay was truncated during parsing. Data may be incomplete.
+          {match.meta.parseError && <span className="text-yellow-300 ml-2">({match.meta.parseError})</span>}
+        </div>
+      )}
       <Link href="/" className="fixed left-4 top-4 z-50">
         <Button
           variant="ghost"

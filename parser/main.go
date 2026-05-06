@@ -54,6 +54,8 @@ type Meta struct {
 	TeamB       string  `json:"teamB"`
 	ScoreA      int     `json:"scoreA"`
 	ScoreB      int     `json:"scoreB"`
+	Partial     bool    `json:"partial,omitempty"` // true if parse aborted early
+	ParseError  string  `json:"parseError,omitempty"` // error message if partial
 }
 
 type Player struct {
@@ -1034,6 +1036,10 @@ func main() {
 		output.Meta.Map = h.MapName
 	}
 	output.Meta.DurationSec = float64(p.GameState().IngameTick()) / tickRate
+	if parseErr != nil {
+		output.Meta.Partial = true
+		output.Meta.ParseError = strings.SplitN(parseErr.Error(), "\n", 2)[0]
+	}
 	gs := p.GameState()
 	if ct := gs.TeamCounterTerrorists(); ct != nil {
 		rememberTeam(ct, ct.Score())

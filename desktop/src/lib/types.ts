@@ -9,6 +9,8 @@ export type MatchMeta = {
   teamB: string;
   scoreA: number;
   scoreB: number;
+  partial?: boolean;
+  parseError?: string;
 };
 
 export type Player = {
