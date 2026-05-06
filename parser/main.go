@@ -1118,6 +1118,12 @@ func main() {
 	finalStepDone("emit-ok", okStarted)
 	emitProgress(0.9995, "Parser OK emitted; exiting process...")
 
+	// Explicitly close the round spool and temp directory before os.Exit.
+	// os.Exit bypasses defer, so we need to clean up manually.
+	if roundSpool != nil {
+		roundSpool.Close()
+	}
+
 	// Force immediate process exit on Windows. The output gzip is fully
 	// written and fsynced — anything left in deferred Close() calls is
 	// best-effort cleanup (zstd decoder goroutines, demoinfocs parser
