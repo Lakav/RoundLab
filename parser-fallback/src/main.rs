@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fs,
-    io::Write,
+    io::{BufReader, Read, Write},
     path::Path,
     time::Instant,
 };
@@ -322,7 +322,7 @@ fn run() -> Result<()> {
         }
 
         let mut frames = Vec::new();
-        let blind_spans = round_blinds(&events, &span);
+        let blind_spans = round_blinds(&events, span);
         let span_events = events
             .iter()
             .filter(|event| {
@@ -548,9 +548,9 @@ fn run() -> Result<()> {
             winner: span.winner.clone(),
             score_a: score_ct,
             score_b: score_t,
-            events: round_events(&events, &span),
-            effects: round_effects(&events, &span, &rows_by_tick),
-            weapon_fires: round_weapon_fires(&events, &span, &rows_by_tick),
+            events: round_events(&events, span),
+            effects: round_effects(&events, span, &rows_by_tick),
+            weapon_fires: round_weapon_fires(&events, span, &rows_by_tick),
             projectile_frames,
             frames,
         });
@@ -676,7 +676,7 @@ fn looks_like_knife_round(round: Option<&Round>) -> bool {
         );
     weapons
         .filter(|weapon| !weapon.is_empty())
-        .all(|weapon| is_knife_or_bomb(weapon))
+        .all(is_knife_or_bomb)
 }
 
 fn is_knife_or_bomb(weapon: &str) -> bool {
@@ -741,37 +741,89 @@ fn parse_args() -> Result<Args> {
     Ok(out)
 }
 
-fn read_demo(path: &str) -> Result<Vec<u8>> {
-    const MAX_DEMO_SIZE: u64 = 1024 * 1024 * 1024; // 1 GB limit
+/// Maximum allowed size, both for the raw input file and for the decompressed
+/// payload. 1 GB is well above any legitimate CS2 demo and tight enough to
+/// reject zstd bombs before they exhaust RAM.
+const MAX_DEMO_SIZE: u64 = 1024 * 1024 * 1024;
 
-    // Check file size BEFORE reading to avoid allocating multi-GB buffers.
+fn read_demo(path: &str) -> Result<Vec<u8>> {
+    // Check file size BEFORE reading to avoid allocating multi-GB buffers
+    // for plain .dem files or for the compressed payload of a .dem.zst.
     let metadata = fs::metadata(path).with_context(|| format!("stat {path}"))?;
     if metadata.len() > MAX_DEMO_SIZE {
         bail!(
-            "demo file too large: {} bytes > 1 GB limit",
-            metadata.len()
+            "demo file too large: {} bytes > {} bytes limit",
+            metadata.len(),
+            MAX_DEMO_SIZE
         );
     }
 
-    let raw = fs::read(path).with_context(|| format!("read {path}"))?;
+    let file = fs::File::open(path).with_context(|| format!("open {path}"))?;
+    let mut reader = BufReader::new(file);
 
-    let is_zst = raw.starts_with(&ZSTD_MAGIC) || path.to_lowercase().ends_with(".zst");
+    // Peek the first 4 bytes to detect zstd without committing to a full read.
+    let mut magic = [0u8; 4];
+    let peeked = read_up_to(&mut reader, &mut magic)?;
+    let is_zst = (peeked == 4 && magic == ZSTD_MAGIC) || path.to_lowercase().ends_with(".zst");
+
     if !is_zst {
-        return Ok(raw);
+        // Plain .dem: read into memory, capped at MAX_DEMO_SIZE. metadata.len()
+        // already enforced the cap above, but this keeps the contract local.
+        let mut buf = Vec::with_capacity(metadata.len() as usize + peeked);
+        buf.extend_from_slice(&magic[..peeked]);
+        read_capped(&mut reader, &mut buf, MAX_DEMO_SIZE).context("read demo")?;
+        return Ok(buf);
     }
 
-    // NOTE: zstd::decode_all does not enforce a decompressed-size cap, so a
-    // malicious zstd "bomb" can still allocate many GB before we get a chance
-    // to reject the result. A proper streaming decoder with a hard byte ceiling
-    // would be required for full protection. Tracked in audit issue #6.
-    let decoded = zstd::decode_all(raw.as_slice()).context("decompress zstd demo")?;
-    if decoded.len() as u64 > MAX_DEMO_SIZE {
-        bail!(
-            "decompressed demo too large: {} bytes > 1 GB limit",
-            decoded.len()
-        );
-    }
+    // .dem.zst: decompress streaming, abort the moment we exceed MAX_DEMO_SIZE.
+    // zstd::stream::Decoder wraps a Read source, so we stitch the peeked magic
+    // back in front via `Chain` and feed that to the decoder.
+    let stitched = std::io::Cursor::new(magic[..peeked].to_vec()).chain(reader);
+    let mut decoder = zstd::stream::Decoder::new(stitched).context("zstd init")?;
+    let mut decoded = Vec::new();
+    read_capped(&mut decoder, &mut decoded, MAX_DEMO_SIZE)
+        .context("decompress zstd demo (streaming, capped)")?;
     Ok(decoded)
+}
+
+/// Read up to buf.len() bytes from `r`. Returns the number of bytes actually
+/// read (may be less than buf.len() if EOF was hit). Unlike `Read::read`, it
+/// keeps pulling until either `buf` is full or EOF.
+fn read_up_to<R: Read>(r: &mut R, buf: &mut [u8]) -> Result<usize> {
+    let mut off = 0;
+    while off < buf.len() {
+        match r.read(&mut buf[off..]) {
+            Ok(0) => break,
+            Ok(n) => off += n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Ok(off)
+}
+
+/// Stream-copy from `r` into `out`, refusing to push past `cap` bytes total
+/// (counting whatever `out` already contains). Returns Err the moment a chunk
+/// would push us over the cap, so a zstd bomb cannot allocate beyond the cap
+/// + one chunk size.
+fn read_capped<R: Read>(r: &mut R, out: &mut Vec<u8>, cap: u64) -> Result<()> {
+    let mut chunk = [0u8; 64 * 1024];
+    loop {
+        let n = match r.read(&mut chunk) {
+            Ok(0) => return Ok(()),
+            Ok(n) => n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e.into()),
+        };
+        if (out.len() as u64).saturating_add(n as u64) > cap {
+            bail!(
+                "decompressed demo exceeds {} bytes limit (already produced {} bytes; refusing to allocate more)",
+                cap,
+                out.len()
+            );
+        }
+        out.extend_from_slice(&chunk[..n]);
+    }
 }
 
 fn settings<'a>(
@@ -1548,11 +1600,11 @@ fn round_weapon_fires(
     out
 }
 
-fn player_row_at_tick<'a>(
-    rows_by_tick: &'a BTreeMap<i32, Vec<Value>>,
+fn player_row_at_tick(
+    rows_by_tick: &BTreeMap<i32, Vec<Value>>,
     tick: i32,
     steam_id: u64,
-) -> Option<&'a Value> {
+) -> Option<&Value> {
     let rows = rows_by_tick.get(&tick).or_else(|| {
         rows_by_tick
             .range(..=tick)
@@ -1677,4 +1729,73 @@ fn write_json_gz(path: &str, output: &Output) -> Result<()> {
     drop(file);
     final_step_done("write_json_gz", write_started);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{read_capped, read_demo, MAX_DEMO_SIZE};
+    use std::io::Write;
+
+    /// A small plain (non-zstd) file is read back verbatim.
+    #[test]
+    fn read_demo_plain_passthrough() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tiny.dem");
+        std::fs::write(&path, b"hello world").unwrap();
+        let bytes = read_demo(path.to_str().unwrap()).unwrap();
+        assert_eq!(bytes, b"hello world");
+    }
+
+    /// A zstd payload that decompresses to MORE than MAX_DEMO_SIZE must be
+    /// rejected before the full plaintext is allocated. We craft a high-ratio
+    /// zstd by compressing a buffer of zeros that, once decompressed, exceeds
+    /// the cap. The compressed file itself stays small.
+    #[test]
+    fn read_demo_zstd_bomb_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bomb.dem.zst");
+
+        // Build a compressed stream that decompresses to (cap + 1 MB) zeros.
+        let plaintext_size = (MAX_DEMO_SIZE as usize) + (1024 * 1024);
+        let mut encoder = zstd::stream::Encoder::new(Vec::new(), 3).unwrap();
+        // Stream the plaintext in chunks so we never materialize it whole on
+        // the test side either.
+        let chunk = vec![0u8; 64 * 1024];
+        let mut written = 0usize;
+        while written < plaintext_size {
+            let n = chunk.len().min(plaintext_size - written);
+            encoder.write_all(&chunk[..n]).unwrap();
+            written += n;
+        }
+        let compressed = encoder.finish().unwrap();
+        // Sanity: the bomb-on-disk is small; the cap-rejection must come from
+        // the streaming decoder, not from the metadata.len() check.
+        assert!(
+            (compressed.len() as u64) < MAX_DEMO_SIZE,
+            "compressed bomb unexpectedly large: {} bytes",
+            compressed.len()
+        );
+        std::fs::write(&path, &compressed).unwrap();
+
+        let err = read_demo(path.to_str().unwrap()).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("decompressed") && msg.contains("limit"),
+            "expected decompressed-limit error, got: {msg}"
+        );
+    }
+
+    /// read_capped refuses to allocate past `cap` even if the source still has
+    /// data to give. Catches regressions in the cap arithmetic.
+    #[test]
+    fn read_capped_rejects_overflow() {
+        let src = vec![1u8; 1024];
+        let mut out = Vec::new();
+        let err = read_capped(&mut src.as_slice(), &mut out, 256).unwrap_err();
+        assert!(format!("{err}").contains("limit"));
+        // out grew up to (cap + one chunk) at most. With chunk=64 KiB and
+        // cap=256, the very first chunk already trips the check, so out stays
+        // empty.
+        assert!(out.len() <= 64 * 1024);
+    }
 }
