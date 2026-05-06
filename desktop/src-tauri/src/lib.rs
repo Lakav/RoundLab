@@ -478,7 +478,7 @@ fn list_matches(app: AppHandle) -> Result<Vec<MatchSummary>, String> {
         });
     }
     // Newest first
-    out.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    out.sort_by_key(|a| std::cmp::Reverse(a.created_at));
     Ok(out)
 }
 
@@ -523,7 +523,7 @@ fn get_round(app: AppHandle, id: String, number: i64) -> Result<serde_json::Valu
         .iter()
         .find(|r| r.number == number)
         .ok_or_else(|| format!("round {number} not found"))?;
-    Ok(serde_json::to_value(r).map_err(|e| e.to_string())?)
+    serde_json::to_value(r).map_err(|e| e.to_string())
 }
 
 /// Delete a parsed match.
