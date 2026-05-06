@@ -742,21 +742,34 @@ fn parse_args() -> Result<Args> {
 }
 
 fn read_demo(path: &str) -> Result<Vec<u8>> {
-    const MAX_DEMO_SIZE: usize = 1024 * 1024 * 1024; // 1 GB limit
+    const MAX_DEMO_SIZE: u64 = 1024 * 1024 * 1024; // 1 GB limit
+
+    // Check file size BEFORE reading to avoid allocating multi-GB buffers.
+    let metadata = fs::metadata(path).with_context(|| format!("stat {path}"))?;
+    if metadata.len() > MAX_DEMO_SIZE {
+        bail!(
+            "demo file too large: {} bytes > 1 GB limit",
+            metadata.len()
+        );
+    }
 
     let raw = fs::read(path).with_context(|| format!("read {path}"))?;
-    if raw.len() > MAX_DEMO_SIZE {
-        bail!("demo file too large: {} bytes > {} GB limit", raw.len(), MAX_DEMO_SIZE / (1024 * 1024 * 1024));
-    }
 
     let is_zst = raw.starts_with(&ZSTD_MAGIC) || path.to_lowercase().ends_with(".zst");
     if !is_zst {
         return Ok(raw);
     }
 
+    // NOTE: zstd::decode_all does not enforce a decompressed-size cap, so a
+    // malicious zstd "bomb" can still allocate many GB before we get a chance
+    // to reject the result. A proper streaming decoder with a hard byte ceiling
+    // would be required for full protection. Tracked in audit issue #6.
     let decoded = zstd::decode_all(raw.as_slice()).context("decompress zstd demo")?;
-    if decoded.len() > MAX_DEMO_SIZE {
-        bail!("decompressed demo too large: {} bytes > {} GB limit", decoded.len(), MAX_DEMO_SIZE / (1024 * 1024 * 1024));
+    if decoded.len() as u64 > MAX_DEMO_SIZE {
+        bail!(
+            "decompressed demo too large: {} bytes > 1 GB limit",
+            decoded.len()
+        );
     }
     Ok(decoded)
 }
