@@ -86,6 +86,18 @@ export async function getDebugInfo(): Promise<Record<string, any>> {
   return invoke<Record<string, any>>("get_debug_info");
 }
 
+export async function getLogFilePath(): Promise<string> {
+  return invoke<string>("get_log_file_path");
+}
+
+export async function readLogTail(lines = 200): Promise<string> {
+  return invoke<string>("read_log_tail", { lines });
+}
+
+export async function openLogsFolder(): Promise<void> {
+  await invoke("open_logs_folder");
+}
+
 /** Prompt the user for a demo file. Returns null if cancelled. */
 export async function pickDemoFile(): Promise<string | null> {
   const res = await openDialog({

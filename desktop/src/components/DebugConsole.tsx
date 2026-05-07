@@ -3,12 +3,19 @@
 import { useEffect, useState } from "react";
 import { X, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getDebugInfo } from "@/lib/api";
+import {
+  getDebugInfo,
+  getLogFilePath,
+  openLogsFolder,
+  readLogTail,
+} from "@/lib/api";
 
 export function DebugConsole({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const [expanded, setExpanded] = useState(true);
   const [logs, setLogs] = useState<string[]>([]);
   const [debugInfo, setDebugInfo] = useState<Record<string, any>>({});
+  const [logPath, setLogPath] = useState<string>("");
+  const [actionStatus, setActionStatus] = useState<string>("");
 
   useEffect(() => {
     if (!isOpen) return;
@@ -43,6 +50,9 @@ export function DebugConsole({ isOpen, onClose }: { isOpen: boolean; onClose: ()
       }
     };
 
+    // One-shot fetch of the log file path; never changes within a session.
+    getLogFilePath().then(setLogPath).catch(() => setLogPath(""));
+
     const timer = setInterval(pollDebugInfo, 500);
 
     return () => {
@@ -52,6 +62,44 @@ export function DebugConsole({ isOpen, onClose }: { isOpen: boolean; onClose: ()
       console.warn = originalWarn;
     };
   }, [isOpen]);
+
+  const flashStatus = (msg: string) => {
+    setActionStatus(msg);
+    window.setTimeout(() => setActionStatus(""), 2500);
+  };
+
+  const handleCopyLogPath = async () => {
+    if (!logPath) return;
+    try {
+      await navigator.clipboard.writeText(logPath);
+      flashStatus("Log path copied to clipboard.");
+    } catch (err) {
+      flashStatus(`Copy failed: ${err}`);
+    }
+  };
+
+  const handleOpenLogsFolder = async () => {
+    try {
+      await openLogsFolder();
+      flashStatus("Logs folder opened.");
+    } catch (err) {
+      flashStatus(`Open failed: ${err}`);
+    }
+  };
+
+  const handleCopyTail = async () => {
+    try {
+      const tail = await readLogTail(200);
+      if (!tail) {
+        flashStatus("No logs yet.");
+        return;
+      }
+      await navigator.clipboard.writeText(tail);
+      flashStatus(`Last ${tail.split("\n").length} lines copied to clipboard.`);
+    } catch (err) {
+      flashStatus(`Copy tail failed: ${err}`);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -103,6 +151,43 @@ export function DebugConsole({ isOpen, onClose }: { isOpen: boolean; onClose: ()
                 </span>
               </div>
             </div>
+          </div>
+
+          <div className="border-b border-white/10 bg-black/40 px-3 py-2">
+            <div className="text-[11px] font-semibold text-neutral-300">Persistent log file</div>
+            <div className="mt-1 break-all font-mono text-[9px] text-neutral-500">
+              {logPath || "<resolving…>"}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleOpenLogsFolder}
+                className="h-6 px-2 text-[10px]"
+              >
+                Open logs folder
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleCopyLogPath}
+                className="h-6 px-2 text-[10px]"
+                disabled={!logPath}
+              >
+                Copy log path
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleCopyTail}
+                className="h-6 px-2 text-[10px]"
+              >
+                Copy last 200 lines
+              </Button>
+            </div>
+            {actionStatus && (
+              <div className="mt-1 text-[9px] text-emerald-300">{actionStatus}</div>
+            )}
           </div>
 
           <div className="border-b border-white/10 px-3 py-2">
