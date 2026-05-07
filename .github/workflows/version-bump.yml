@@ -9,11 +9,7 @@
 #   2. Commit and push to main (with `[skip-bump]` so auto-release doesn't
 #      bump again on top).
 #   3. Push the tag.
-#   4. Call `_build.yml` directly to publish a real GitHub Release.
-#
-# Why call `_build.yml` directly instead of letting `release.yml` pick up
-# the tag? Tags pushed by Actions using GITHUB_TOKEN do NOT trigger other
-# workflows (GitHub's loop-prevention rule). Same reason as auto-release.
+#   4. Dispatch `release.yml` to build, validate, and publish the release.
 #
 # Sources of truth (all must agree):
 #   - desktop/package.json                ("version")
@@ -47,6 +43,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   bump:
@@ -223,10 +220,13 @@ jobs:
           NEW: ${{ steps.compute.outputs.new }}
         run: echo "tag=v${NEW}" >> "$GITHUB_OUTPUT"
 
-  release:
+  dispatch-release:
     needs: bump
-    uses: ./.github/workflows/_build.yml
-    with:
-      release: true
-      tag-name: ${{ needs.bump.outputs.tag }}
-    secrets: inherit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch release workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.bump.outputs.tag }}
+        run: gh workflow run release.yml --ref main -f tag-name="$TAG_NAME"

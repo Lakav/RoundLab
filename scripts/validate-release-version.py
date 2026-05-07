@@ -99,10 +99,6 @@ def validate_manifests(root: Path, expected: str) -> int:
     return failed
 
 
-def semvers_in_name(path: Path) -> list[str]:
-    return SEMVER_RE.findall(path.name)
-
-
 def basename_from_url(value: str) -> str:
     parsed = urlparse(value)
     return Path(parsed.path).name
@@ -130,7 +126,12 @@ def validate_latest_json(path: Path, expected: str) -> int:
         print(f"::error file={path}::latest.json expected version {expected}, got {actual_version}")
         failed = 1
 
-    for url in walk_latest_json(data):
+    urls = walk_latest_json(data)
+    if not urls:
+        print(f"::error file={path}::latest.json does not contain any asset URLs")
+        failed = 1
+
+    for url in urls:
         basename = basename_from_url(url)
         found_versions = SEMVER_RE.findall(basename)
         for found in found_versions:
@@ -140,30 +141,36 @@ def validate_latest_json(path: Path, expected: str) -> int:
     return failed
 
 
-def validate_artifacts(root: Path, expected: str) -> int:
-    failed = 0
-    bundle_files = [p for p in root.glob("**/release/bundle/**/*") if p.is_file()]
-    bundle_files += [p for p in root.glob("**/release/bundle/*") if p.is_file()]
-    bundle_files = sorted(set(bundle_files))
+def validate_asset_names(path: Path, expected: str) -> int:
+    try:
+        names = [line.strip() for line in path.read_text().splitlines() if line.strip()]
+    except FileNotFoundError:
+        raise SystemExit(f"missing required file: {path}")
 
-    if not bundle_files:
-        print(f"::error::no bundle artifacts found under {root}")
+    if not names:
+        print(f"::error file={path}::release asset list is empty")
         return 1
 
-    latest_jsons = []
-    for path in bundle_files:
-        if path.name == "latest.json":
-            latest_jsons.append(path)
-        for found in semvers_in_name(path):
+    failed = 0
+    saw_expected_version = False
+    saw_latest_json = False
+    for name in names:
+        if name == "latest.json":
+            saw_latest_json = True
+        found_versions = SEMVER_RE.findall(name)
+        if expected in found_versions:
+            saw_expected_version = True
+        for found in found_versions:
             if found != expected:
-                print(f"::error file={path}::artifact name contains version {found}, expected {expected}")
+                print(f"::error file={path}::release asset {name} contains version {found}, expected {expected}")
                 failed = 1
 
-    if not latest_jsons:
-        print(f"::error::no latest.json found under {root}")
+    if not saw_latest_json:
+        print(f"::error file={path}::release assets do not include latest.json")
         failed = 1
-    for path in latest_jsons:
-        failed |= validate_latest_json(path, expected)
+    if not saw_expected_version:
+        print(f"::error file={path}::release assets do not include any artifact named with {expected}")
+        failed = 1
 
     return failed
 
@@ -172,7 +179,14 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--tag", required=True, help="Release tag, e.g. v0.1.27")
     parser.add_argument("--root", default=".", help="Repository root")
-    parser.add_argument("--artifacts-root", help="Validate built Tauri bundle artifacts under this path")
+    parser.add_argument(
+        "--mode",
+        choices=("pre-build", "post-build"),
+        default="pre-build",
+        help="pre-build validates source version files; post-build validates generated release assets",
+    )
+    parser.add_argument("--assets-list", help="Post-build file containing one GitHub Release asset name per line")
+    parser.add_argument("--latest-json", help="Post-build latest.json downloaded from the GitHub Release")
     args = parser.parse_args()
 
     tag = args.tag.strip()
@@ -185,9 +199,18 @@ def main() -> int:
         return 1
 
     root = Path(args.root).resolve()
-    failed = validate_manifests(root, expected)
-    if args.artifacts_root:
-        failed |= validate_artifacts((root / args.artifacts_root).resolve(), expected)
+    if args.mode == "pre-build":
+        return validate_manifests(root, expected)
+
+    if not args.assets_list:
+        print("::error::--mode post-build requires --assets-list")
+        return 1
+    if not args.latest_json:
+        print("::error::--mode post-build requires --latest-json")
+        return 1
+
+    failed = validate_asset_names(Path(args.assets_list).resolve(), expected)
+    failed |= validate_latest_json(Path(args.latest_json).resolve(), expected)
     return failed
 
 

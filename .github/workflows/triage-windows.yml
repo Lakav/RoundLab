@@ -6,17 +6,15 @@
 # or log collection (e.g. the 95-99% finalization wedge triage), and you
 # want it built off a specific commit/branch without going through `main`.
 #
-# In practice, this is now a thin wrapper around `_build.yml`. Push to main
-# already produces Windows installers as artifacts (via `ci.yml`), so the
-# usual case is solved by just pushing or merging. Use this workflow only
-# when you need to build off a non-main ref.
+# In practice, this is a thin wrapper around `_build.yml`. Use it only when
+# you need a Windows installer without creating a GitHub Release.
 #
 # Outputs:
 #   - artifact `roundlab-windows-x64`  — installer .exe (+ .sig if updater
 #                                        secrets are configured)
 #
 # This workflow does NOT create a GitHub Release. For releases, use
-# `version-bump` to push a tag, which triggers `release.yml`.
+# `auto-release`, `version-bump`, or `release.yml`.
 name: triage-windows
 
 on:

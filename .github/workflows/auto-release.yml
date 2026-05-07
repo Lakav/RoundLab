@@ -5,16 +5,10 @@
 # Flow:
 #   1. Run the check matrix (`_checks.yml`).
 #   2. If checks pass, bump the patch version, commit, push tag.
-#   3. Build and publish a real GitHub Release via `_build.yml`.
+#   3. Dispatch `release.yml` to build, validate, and publish the release.
 #
 # To merge without releasing: include `[skip-release]` anywhere in the
 # commit message of the push that lands on main.
-#
-# Why not just push the tag and let `release.yml` pick it up?
-# Because tags pushed by Actions using GITHUB_TOKEN do NOT trigger other
-# workflows (GitHub's loop-prevention rule). The only way to get the
-# release built without a Personal Access Token is to call `_build.yml`
-# directly here, which is what we do.
 #
 # Anti-loop guards (the bump commit must not trigger another bump):
 #   - skip if the head commit author is `github-actions[bot]`
@@ -37,6 +31,7 @@ concurrency:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   checks:
@@ -142,10 +137,13 @@ jobs:
           echo "new=$NEW" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-  release:
+  dispatch-release:
     needs: bump
-    uses: ./.github/workflows/_build.yml
-    with:
-      release: true
-      tag-name: ${{ needs.bump.outputs.tag-name }}
-    secrets: inherit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch release workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.bump.outputs.tag-name }}
+        run: gh workflow run release.yml --ref main -f tag-name="$TAG_NAME"

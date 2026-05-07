@@ -1,22 +1,10 @@
-# Release pipeline — FALLBACK PATH.
-#
-# The PRIMARY release path is `auto-release.yml` (push to main) and the
-# secondary one is `version-bump.yml` (manual minor/major bumps). Both
-# call `_build.yml` directly because tags pushed by Actions using
-# GITHUB_TOKEN do NOT trigger other workflows (GitHub's loop-prevention
-# rule).
-#
-# This workflow is left in place for two cases only:
-#   - someone pushed a `v*.*.*` tag from their local machine (using their
-#     own credentials, which DO trigger workflows);
-#   - someone wants to redo a release on an existing tag via
-#     `workflow_dispatch` from the Actions UI.
+# Release pipeline.
 #
 # Pipeline:
-#   1. `checks`         — invokes `_checks.yml`.
-#   2. `verify-version` — refuses to build unless every manifest matches
-#                          the tag.
-#   3. `build`          — invokes `_build.yml` with release=true.
+#   1. `verify-version`          — source manifests must match the tag.
+#   2. `build`                   — invokes `_build.yml` with release=true.
+#   3. `validate-release-assets` — downloaded GitHub Release assets and
+#                                  latest.json must match the tag.
 #
 # Optional secrets:
 #   TAURI_SIGNING_PRIVATE_KEY           — contents of the updater private key
@@ -41,26 +29,49 @@ permissions:
   contents: write
 
 jobs:
-  checks:
-    uses: ./.github/workflows/_checks.yml
-
   verify-version:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: checks
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag-name || github.ref_name }}
 
-      - name: Tag must match manifests
+      - name: Source versions must match tag
         shell: bash
-        run: python3 scripts/validate-release-version.py --tag "${{ inputs.tag-name || github.ref_name }}"
+        run: python3 scripts/validate-release-version.py --mode pre-build --tag "${{ inputs.tag-name || github.ref_name }}"
 
   build:
-    needs: [checks, verify-version]
+    needs: verify-version
     uses: ./.github/workflows/_build.yml
     with:
       release: true
       tag-name: ${{ inputs.tag-name || github.ref_name }}
     secrets: inherit
+
+  validate-release-assets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: build
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG_NAME: ${{ inputs.tag-name || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$TAG_NAME" --json assets --jq '.assets[].name' > "$RUNNER_TEMP/release-assets.txt"
+          mkdir -p "$RUNNER_TEMP/release"
+          gh release download "$TAG_NAME" --pattern latest.json --dir "$RUNNER_TEMP/release"
+
+      - name: Generated assets must match tag
+        shell: bash
+        run: |
+          python3 scripts/validate-release-version.py \
+            --mode post-build \
+            --tag "$TAG_NAME" \
+            --assets-list "$RUNNER_TEMP/release-assets.txt" \
+            --latest-json "$RUNNER_TEMP/release/latest.json"

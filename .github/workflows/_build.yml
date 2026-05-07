@@ -1,13 +1,7 @@
 # Reusable build workflow.
 #
 # Builds the Tauri app for macOS arm64 and Windows x64 in a matrix. Used by:
-#   - `ci.yml`        on push to main, with release=false → bundles are
-#                     uploaded as workflow artifacts (no GitHub Release).
-#   - `auto-release.yml` and `version-bump.yml`, after they commit and tag a
-#                     version bump, with release=true → tauri-action publishes
-#                     the bundles to a GitHub Release.
-#   - `release.yml`   on a v*.*.* tag, with release=true → same release build
-#                     path as above.
+#   - `release.yml`   on a v*.*.* tag, with release=true.
 #   - `triage-windows.yml`  on workflow_dispatch, restricted to Windows
 #                     for one-off QA installers.
 #
@@ -124,11 +118,6 @@ jobs:
         if: ${{ !inputs.release }}
         uses: actions/checkout@v4
 
-      - name: Validate release version before build
-        if: ${{ inputs.release }}
-        shell: bash
-        run: python3 scripts/validate-release-version.py --tag "${{ inputs.tag-name }}"
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -214,11 +203,6 @@ jobs:
           releaseDraft: false
           prerelease: false
           updaterJsonPreferNsis: true
-
-      - name: Validate release artifacts
-        if: ${{ inputs.release }}
-        shell: bash
-        run: python3 scripts/validate-release-version.py --tag "${{ inputs.tag-name }}" --artifacts-root desktop/src-tauri/target
 
       # ---------------------------------------------------------------
       # When release=false, the bundles are still on disk; expose them
