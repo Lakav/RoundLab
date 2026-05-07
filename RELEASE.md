@@ -1,145 +1,174 @@
 # Release procedure
 
-This file describes the GitHub Actions workflows in `.github/workflows/` and
-the exact steps to cut a release. Pair it with `SECURITY_RELEASE.md` for the
-key-handling rules.
+How releases work in this repo, and how to operate them. Pair with
+`SECURITY_RELEASE.md` for the key-handling rules.
+
+## TL;DR
+
+- **Push to `main` → automatic patch release.** A real GitHub Release
+  named `RoundLab vX.Y.Z` is published with `.dmg`, `.exe`, `latest.json`,
+  and `.sig` files (when signing secrets are set).
+- **Want to merge without releasing?** Put `[skip-release]` anywhere in
+  the commit message of the push.
+- **Want a `minor` or `major` bump, or a specific version?** Run
+  `version-bump` manually from the Actions tab.
+- **PRs only run checks**, never bump, never release.
 
 ## Workflows at a glance
 
-| File | Trigger | Purpose | Produces |
-|---|---|---|---|
-| `_checks.yml` | `workflow_call` (reusable) | Typecheck, build, tests, clippy strict | Status only |
-| `_build.yml` | `workflow_call` (reusable) | Build the Tauri matrix (macOS arm64 + Windows x64) | Bundles, either as workflow artifacts (release=false) or attached to a GitHub Release (release=true) |
-| `ci.yml` | push to `main`, PR targeting `main` | Run `_checks.yml`. On push to `main` only, also run `_build.yml` (release=false) | PR: status only. Push to main: status + workflow artifacts (`roundlab-macos-arm64`, `roundlab-windows-x64`), 30-day retention |
-| `version-bump.yml` | `workflow_dispatch` | Patch version everywhere, commit, tag, push | A new commit + tag on `main` |
-| `release.yml` | push of `v*.*.*` tag (or `workflow_dispatch`) | Run `_checks.yml`, verify the tag matches the manifests, then `_build.yml` (release=true) | Public **GitHub Release** with `.dmg`, `.exe`, `latest.json`, and `.sig` signatures if configured |
-| `triage-windows.yml` | `workflow_dispatch` | One-off Windows-only build off any branch (thin wrapper around `_build.yml` with `only-windows: true`) | Workflow artifact (`roundlab-windows-x64`), 30-day retention |
-
-## CI artifacts vs GitHub Release — which one do I want?
-
-Both contain the same kind of file (a `.dmg`, an installer `.exe`). The
-difference is **how they get to users** and **whether the in-app updater
-treats them as updates**.
-
-|  | CI artifact (push to `main`) | GitHub Release (tag push) |
+| File | Trigger | Purpose |
 |---|---|---|
-| Created automatically? | Yes, on every push to `main` | Only when a `v*.*.*` tag is pushed |
-| Where to find it | Actions tab → run page → Artifacts section | Releases tab on the repo |
-| Visible to non-collaborators | No (requires repo access) | Yes (public download URL) |
-| Retention | 30 days, then deleted | Forever, unless you delete it |
-| Visible to the in-app Tauri updater | No (no `latest.json`) | Yes — clients call `latest.json` to discover updates |
-| Has signed `latest.json` for the updater | No | Yes (when secrets configured) |
-| Triggers the user's "update available" prompt | No | Yes |
-| Use case | Smoke-test a build of `main` on Windows / macOS without polluting the public release feed | Ship to end users |
+| `_checks.yml` | `workflow_call` (reusable) | Typecheck, build, tests, clippy strict |
+| `_build.yml` | `workflow_call` (reusable) | Tauri matrix build (macOS arm64 + Windows x64). With `release=true`, publishes to a GitHub Release. With `release=false`, uploads workflow artifacts. |
+| `ci.yml` | PR targeting `main` | Run `_checks.yml` only. Blocks the PR if red. |
+| `auto-release.yml` | **push to `main`** | THE MAIN RELEASE PATH. Runs checks, patch-bumps the version, commits + tags, then calls `_build.yml(release=true)`. |
+| `version-bump.yml` | `workflow_dispatch` (manual) | Secondary release path. Use for `minor`/`major` bumps or an explicit version. Same outcome as auto-release: patches files, commits + tags, calls `_build.yml(release=true)`. |
+| `release.yml` | push of `v*.*.*` tag, or manual dispatch | Fallback. Useful only if you tag from a local machine with your own credentials, or want to redo a release on an existing tag. |
+| `triage-windows.yml` | `workflow_dispatch` (manual) | One-off Windows-only build, no release. Useful for QA on a non-`main` branch. |
 
-**Rule of thumb**: if you would be embarrassed for a stranger to install
-this build, it's a CI artifact. If users should see "update available", it's
-a Release.
+## Why are there two release paths and a fallback?
 
-## Secrets required on the repo
+GitHub Actions has a loop-prevention rule: **a tag or branch pushed by
+Actions using `GITHUB_TOKEN` does not trigger any other workflow**.
+That's deliberate — without it, an action that pushes a tag could fire
+itself and cycle forever.
 
-Set these in **Settings → Secrets and variables → Actions**:
+Consequence: if `auto-release.yml` (or `version-bump.yml`) just pushed
+the tag and waited for `release.yml` to pick it up by trigger, **nothing
+would happen**. The workaround is for the bumping workflow to call
+`_build.yml` directly in the same run. That's why both `auto-release.yml`
+and `version-bump.yml` end with a job that uses `_build.yml(release=true)`.
+
+`release.yml` still exists for the case where a tag is pushed from a
+human's machine (where the credentials DO trigger workflows), or for
+re-running a release on an existing tag from the UI.
+
+## Anti-loop guards (why auto-release doesn't bump itself)
+
+`auto-release.yml` runs on every push to `main`, including the bump
+commit it just pushed. Three guards prevent the loop:
+
+1. The `GITHUB_TOKEN`-pushed commit, by design, does not trigger
+   workflows. **This alone breaks the loop.**
+2. The bump commit message contains `[skip-bump]`. The first job in
+   `auto-release.yml` checks for this string and skips everything if
+   present.
+3. The pusher of the bump commit is `github-actions[bot]`. The same
+   first job checks the head commit author and skips if it's the bot.
+
+You only need one of these to hold. They are layered for defence in
+depth.
+
+## How to operate
+
+### "Just merge my PR"
+
+Open a PR → CI runs checks → merge when green. On merge to `main`,
+`auto-release.yml` triggers, bumps `vA.B.C → vA.B.C+1`, and publishes
+a release. Done.
+
+### "Don't release this push"
+
+Include `[skip-release]` anywhere in the PR's merge commit message (or
+in any direct push to main). `auto-release.yml` skips the whole
+pipeline. The version stays the same. Use this for docs-only changes,
+internal refactors that don't ship, or batched fixes.
+
+### "Cut a minor or major release, or pin a specific version"
+
+```bash
+gh workflow run version-bump.yml -f bump=minor
+# or major:
+gh workflow run version-bump.yml -f bump=major
+# or explicit:
+gh workflow run version-bump.yml -f version=0.5.0
+```
+
+The workflow patches manifests, commits with `[skip-bump]`, pushes the
+tag, then publishes the release via `_build.yml`.
+
+### "Re-run a release on an existing tag"
+
+If a release publication failed mid-way (e.g. a flaky tauri-action run)
+and you want to retry without bumping again:
+
+```bash
+gh workflow run release.yml --ref vX.Y.Z
+```
+
+Or push the tag from your own machine:
+
+```bash
+git push origin vX.Y.Z
+```
+
+(Pushing from a developer's credentials does trigger `release.yml`.)
+
+### "I just want a Windows installer to QA, not a release"
+
+```bash
+gh workflow run triage-windows.yml --ref my-branch
+gh run download <run-id> -n roundlab-windows-x64
+```
+
+This produces a workflow artifact, not a release. Retention 30 days.
+Not visible to the in-app updater.
+
+## Sources of truth for the version
+
+The bumping workflows keep all four in sync:
+
+1. `desktop/package.json`
+2. `desktop/src-tauri/tauri.conf.json`
+3. `desktop/src-tauri/Cargo.toml` (`[package]` block)
+4. `desktop/src-tauri/Cargo.lock` (regenerated via `cargo update -p roundlab`)
+
+The frontend reads its displayed version via `getVersion()` (Tauri API),
+so there is no JS constant to patch.
+
+## Secrets
+
+Set in **Settings → Secrets and variables → Actions**:
 
 | Secret | Used by | Required? | Effect if missing |
 |---|---|---|---|
-| `TAURI_SIGNING_PRIVATE_KEY` | `_build.yml` | Strongly recommended for releases; optional for CI/triage | Installers build, but `latest.json` has no `.sig` → in-app updater rejects every "update" |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | same | Required iff the key is password-protected | Build fails if the key has a password and this is missing |
+| `TAURI_SIGNING_PRIVATE_KEY` | `_build.yml` | Strongly recommended | Bundles still build, but `latest.json` has no `.sig`. The in-app updater rejects updates without a signature, so users won't auto-update. |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | same | Required iff the key is password-protected | Build fails if missing and key has a password |
 | `GITHUB_TOKEN` | All | Auto-provided | n/a |
 
-No Apple / Microsoft code-signing secrets are wired up. Installer EXEs and
-DMGs will trigger SmartScreen / Gatekeeper warnings on first launch.
-
-## How to cut a real release
-
-1. **Run `version-bump`** from the Actions tab (or via `gh`):
-   ```bash
-   gh workflow run version-bump.yml -f bump=patch
-   # or, for an explicit version:
-   gh workflow run version-bump.yml -f version=0.2.0
-   ```
-   The workflow:
-   - reads the current version from `tauri.conf.json`,
-   - validates the new one (refuses no-op, refuses downgrade, refuses an
-     existing tag),
-   - patches `desktop/package.json`, `desktop/src-tauri/tauri.conf.json`,
-     `desktop/src-tauri/Cargo.toml`,
-   - regenerates `desktop/src-tauri/Cargo.lock` (via `cargo update -p roundlab`),
-   - commits as `chore: bump version to vX.Y.Z`,
-   - creates and pushes the annotated tag `vX.Y.Z`.
-
-2. **Wait for `release` to run** on the new tag (`gh run watch`). The
-   pipeline:
-   - `checks`           — full matrix (frontend build, go vet/test, cargo
-                          test+clippy strict on both Rust crates);
-   - `verify-version`   — refuses to build if any manifest disagrees with
-                          the tag;
-   - `build`            — calls `_build.yml` with `release=true`. tauri-action
-                          publishes bundles to a Release named `RoundLab vX.Y.Z`.
-
-3. **The release is published on success**. If `checks` or `verify-version`
-   fails, no Release is created. Fix the bug, run `version-bump` with the
-   next version, and try again. (Don't reuse a failed version number.)
-
-### Manual tagging escape hatch
-
-If you absolutely need to tag manually (don't, unless you have to):
-
-```bash
-# 1. patch the four files yourself, EXACTLY like version-bump would
-# 2. commit
-# 3. tag and push
-git tag -a v0.2.0 -m "RoundLab v0.2.0"
-git push origin main
-git push origin v0.2.0
-```
-
-`release.yml`'s `verify-version` will block the build if you forgot any
-manifest.
-
-## How to get a build without releasing
-
-Two paths, pick the one that matches your situation:
-
-- **Just merged something into `main`** → CI already produced the bundles
-  for you. Go to the Actions tab → latest `ci` run on `main` → Artifacts
-  section. Or via CLI:
-  ```bash
-  gh run download <run-id> -n roundlab-windows-x64
-  gh run download <run-id> -n roundlab-macos-arm64
-  ```
-
-- **You need a build off a non-main branch** (e.g. an experimental fix
-  for the 95/99% wedge) → run `triage-windows`:
-  ```bash
-  gh workflow run triage-windows.yml --ref my-branch
-  gh run watch
-  gh run download <run-id> -n roundlab-windows-x64
-  ```
-
-Neither path creates a GitHub Release. Neither path triggers the in-app
-updater.
+No Apple / Microsoft code-signing for the installers themselves;
+SmartScreen / Gatekeeper warnings on first launch are expected.
 
 ## Don't
 
-- Don't push `v*.*.*` tags by hand unless you've patched all manifests.
-  `verify-version` will block the build if not.
-- Don't reuse a tag that already shipped (delete + repush ≠ a clean
-  release; clients caching `latest.json` will see two binaries claiming
-  the same version).
-- Don't enable lint in CI yet: there are 4 preexisting `no-explicit-any`
-  errors in `desktop/src/components/DebugConsole.tsx` and
-  `desktop/src/lib/api.ts`. Fix those first, then re-add `pnpm lint` to
-  `_checks.yml` → `frontend` job.
-- Don't expect the in-app updater to pick up CI artifacts. They are
-  intentionally invisible to it.
+- Don't push `v*.*.*` tags by hand without first patching all four
+  manifests. `release.yml`'s `verify-version` step will block the
+  build, but you'll waste a CI run.
+- Don't remove `[skip-bump]` from the bump commits. It's the
+  belt-and-suspenders against the auto-release loop.
+- Don't expect `triage-windows` artifacts to be picked up by the
+  updater — they aren't.
+- Don't reuse a version that already shipped (delete + repush ≠ a
+  clean release; clients caching `latest.json` will see two binaries
+  claiming the same version).
+- Don't enable lint in CI yet: 4 preexisting `no-explicit-any` errors
+  in `desktop/src/components/DebugConsole.tsx` and
+  `desktop/src/lib/api.ts`. Fix those first, then re-add `pnpm lint`
+  to `_checks.yml`.
 
-## Branch protection (recommended, manual setup)
+## Branch protection (manual, recommended)
 
-In **Settings → Branches → main → Branch protection rules**, require:
-- Required status checks: `checks / frontend`, `checks / go`,
-  `checks / rust-tauri`, `checks / rust-fallback` (the names come from
-  `_checks.yml`'s jobs invoked by `ci.yml`; they appear once a PR has
-  run CI at least once).
-- "Require branches to be up to date before merging".
+In **Settings → Branches → main → Branch protection rules**, require
+the four `_checks.yml` jobs as required status checks:
 
-PRs only run `checks`, not `_build.yml`, so merging stays fast.
+- `checks / frontend`
+- `checks / go`
+- `checks / rust-tauri`
+- `checks / rust-fallback`
+
+Names appear in the list once at least one PR has run CI. PRs only run
+`_checks.yml`, never `_build.yml`, so merge time stays fast.
+
+Optionally also turn on "Restrict who can push to matching branches"
+to block direct pushes to `main` so every change goes through a PR
+(and therefore through CI).
