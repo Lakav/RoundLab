@@ -104,6 +104,24 @@ jobs:
           workspaces: desktop/src-tauri -> target
           key: tauri-checks
 
+      # tauri-build resolves `externalBin` from tauri.conf.json against the
+      # host triple — `binaries/parser-x86_64-unknown-linux-gnu` and the
+      # matching fallback. Those are not checked in (they're produced by
+      # build-sidecar.sh during a real bundle), so for compile-only checks
+      # we drop in empty placeholders. cargo test/clippy never invoke them.
+      - name: Stub sidecar binaries for tauri-build
+        working-directory: desktop/src-tauri/binaries
+        run: |
+          set -euo pipefail
+          for name in parser parser-fallback; do
+            f="${name}-x86_64-unknown-linux-gnu"
+            if [ ! -e "$f" ]; then
+              touch "$f"
+              chmod +x "$f"
+            fi
+          done
+          ls -la
+
       - name: cargo test
         working-directory: desktop/src-tauri
         run: cargo test
