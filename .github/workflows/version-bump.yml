@@ -15,7 +15,7 @@
 #   - desktop/package.json                ("version")
 #   - desktop/src-tauri/tauri.conf.json   ("version")
 #   - desktop/src-tauri/Cargo.toml        ([package] version)
-#   - desktop/src-tauri/Cargo.lock        (regenerated via `cargo update -p roundlab`)
+#   - desktop/src-tauri/Cargo.lock        (local `roundlab` package version)
 #
 # Inputs:
 #   - bump:    patch | minor | major (default: minor — patch is the auto
@@ -67,25 +67,6 @@ jobs:
             echo "::error::version-bump must be dispatched against main, got ${GITHUB_REF}"
             exit 1
           fi
-
-      - name: Install Rust (for cargo update -p roundlab)
-        uses: dtolnay/rust-toolchain@stable
-
-      # Tauri-build needs these system deps to even resolve dependencies on
-      # Linux; without them `cargo update -p roundlab` fails to compute a new
-      # lockfile because tauri-build's build script can't run.
-      - name: Install Tauri system deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libssl-dev \
-            libsoup-3.0-dev \
-            libjavascriptcoregtk-4.1-dev \
-            patchelf
 
       - name: Compute new version
         id: compute
@@ -181,19 +162,19 @@ jobs:
           if n != 1:
               raise SystemExit("could not patch [package] version in Cargo.toml")
           cargo.write_text(s_new)
+
+          lock = pathlib.Path("desktop/src-tauri/Cargo.lock")
+          text = lock.read_text()
+          block_re = re.compile(r'(\[\[package\]\]\nname = "roundlab"\nversion = )"[^"]+"')
+          text_new, n = block_re.subn(lambda m: f'{m.group(1)}"{new}"', text, count=1)
+          if n != 1:
+              raise SystemExit("could not patch roundlab version in Cargo.lock")
+          lock.write_text(text_new)
           PY
           echo "--- after patch ---"
           grep '"version"' desktop/package.json
           grep '"version"' desktop/src-tauri/tauri.conf.json
           grep -E '^version' desktop/src-tauri/Cargo.toml
-
-      - name: Refresh Cargo.lock for roundlab
-        # `roundlab` is a path-only crate (not in the registry), so --precise
-        # would try to resolve against crates.io and fail. Plain `cargo update
-        # -p roundlab` re-reads the local Cargo.toml we just patched and writes
-        # the matching version into Cargo.lock.
-        working-directory: desktop/src-tauri
-        run: cargo update -p roundlab
 
       - name: Commit, tag, push
         env:

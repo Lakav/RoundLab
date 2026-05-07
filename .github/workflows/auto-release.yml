@@ -58,23 +58,6 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Rust (for cargo update -p roundlab)
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Tauri system deps
-        # tauri-build's build script needs these to even compute a new lockfile.
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libssl-dev \
-            libsoup-3.0-dev \
-            libjavascriptcoregtk-4.1-dev \
-            patchelf
-
       - name: Bump patch version + commit + tag + push
         id: bump
         shell: bash
@@ -97,7 +80,7 @@ jobs:
             exit 1
           fi
 
-          # Patch the three manifests.
+          # Patch source manifests and the local root package entry in Cargo.lock.
           python3 - <<PY
           import json, pathlib, re
           new = "$NEW"
@@ -116,10 +99,15 @@ jobs:
           if n != 1:
               raise SystemExit("could not patch [package] version in Cargo.toml")
           cargo.write_text(s_new)
-          PY
 
-          # Refresh Cargo.lock (path-only crate, no --precise).
-          (cd desktop/src-tauri && cargo update -p roundlab)
+          lock = pathlib.Path("desktop/src-tauri/Cargo.lock")
+          text = lock.read_text()
+          block_re = re.compile(r'(\[\[package\]\]\nname = "roundlab"\nversion = )"[^"]+"')
+          text_new, n = block_re.subn(lambda m: f'{m.group(1)}"{new}"', text, count=1)
+          if n != 1:
+              raise SystemExit("could not patch roundlab version in Cargo.lock")
+          lock.write_text(text_new)
+          PY
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
