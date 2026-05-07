@@ -3,8 +3,11 @@
 # Builds the Tauri app for macOS arm64 and Windows x64 in a matrix. Used by:
 #   - `ci.yml`        on push to main, with release=false → bundles are
 #                     uploaded as workflow artifacts (no GitHub Release).
-#   - `release.yml`   on a v*.*.* tag, with release=true → tauri-action
-#                     publishes the bundles to a GitHub Release.
+#   - `auto-release.yml` and `version-bump.yml`, after they commit and tag a
+#                     version bump, with release=true → tauri-action publishes
+#                     the bundles to a GitHub Release.
+#   - `release.yml`   on a v*.*.* tag, with release=true → same release build
+#                     path as above.
 #   - `triage-windows.yml`  on workflow_dispatch, restricted to Windows
 #                     for one-off QA installers.
 #
@@ -110,8 +113,21 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - name: Checkout
+      - name: Checkout release tag
+        if: ${{ inputs.release }}
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag-name }}
+          fetch-depth: 0
+
+      - name: Checkout
+        if: ${{ !inputs.release }}
+        uses: actions/checkout@v4
+
+      - name: Validate release version before build
+        if: ${{ inputs.release }}
+        shell: bash
+        run: python3 scripts/validate-release-version.py --tag "${{ inputs.tag-name }}"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -134,7 +150,7 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version: "1.24"
           cache-dependency-path: parser/go.sum
 
       - name: Install pnpm
@@ -198,6 +214,11 @@ jobs:
           releaseDraft: false
           prerelease: false
           updaterJsonPreferNsis: true
+
+      - name: Validate release artifacts
+        if: ${{ inputs.release }}
+        shell: bash
+        run: python3 scripts/validate-release-version.py --tag "${{ inputs.tag-name }}" --artifacts-root desktop/src-tauri/target
 
       # ---------------------------------------------------------------
       # When release=false, the bundles are still on disk; expose them

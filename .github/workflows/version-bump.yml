@@ -162,7 +162,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 <<PY
+          python3 <<'PY'
           import json, pathlib, re, os
           new = os.environ["NEW"]
 

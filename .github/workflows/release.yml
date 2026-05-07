@@ -28,6 +28,12 @@ on:
     tags:
       - "v*.*.*"
   workflow_dispatch:
+    inputs:
+      tag-name:
+        description: "Existing release tag to rebuild, e.g. v0.1.27. Defaults to the selected ref."
+        type: string
+        required: false
+        default: ""
 
 # `_build.yml` itself declares `contents: write`, but the called workflow
 # is constrained by what the caller permits, so we declare it here too.
@@ -44,43 +50,17 @@ jobs:
     needs: checks
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag-name || github.ref_name }}
 
       - name: Tag must match manifests
         shell: bash
-        run: |
-          set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"
-          VERSION="${TAG#v}"
-
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::tag $TAG does not look like vMAJOR.MINOR.PATCH"
-            exit 1
-          fi
-
-          # Use python (always present on ubuntu runners) instead of node so
-          # we don't need a setup-node step just to read three JSON values.
-          PKG=$(python3 -c "import json; print(json.load(open('desktop/package.json'))['version'])")
-          CONF=$(python3 -c "import json; print(json.load(open('desktop/src-tauri/tauri.conf.json'))['version'])")
-          CARGO=$(grep -E '^version' desktop/src-tauri/Cargo.toml | head -1 | sed -E 's/version *= *"([^"]+)".*/\1/')
-
-          echo "tag:                 $VERSION"
-          echo "package.json:        $PKG"
-          echo "tauri.conf.json:     $CONF"
-          echo "Cargo.toml [package]: $CARGO"
-
-          fail=0
-          for x in "$PKG" "$CONF" "$CARGO"; do
-            if [ "$x" != "$VERSION" ]; then fail=1; fi
-          done
-          if [ "$fail" -ne 0 ]; then
-            echo "::error::version mismatch between tag and manifests. Use the version-bump workflow to keep them aligned."
-            exit 1
-          fi
+        run: python3 scripts/validate-release-version.py --tag "${{ inputs.tag-name || github.ref_name }}"
 
   build:
     needs: [checks, verify-version]
     uses: ./.github/workflows/_build.yml
     with:
       release: true
-      tag-name: ${{ github.ref_name }}
+      tag-name: ${{ inputs.tag-name || github.ref_name }}
     secrets: inherit

@@ -6,7 +6,6 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { DragDropEvent } from "@tauri-apps/api/webview";
 import { listen } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
-import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
 import {
   Upload,

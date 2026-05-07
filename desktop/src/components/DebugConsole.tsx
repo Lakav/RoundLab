@@ -13,7 +13,7 @@ import {
 export function DebugConsole({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const [expanded, setExpanded] = useState(true);
   const [logs, setLogs] = useState<string[]>([]);
-  const [debugInfo, setDebugInfo] = useState<Record<string, any>>({});
+  const [debugInfo, setDebugInfo] = useState<Record<string, unknown>>({});
   const [logPath, setLogPath] = useState<string>("");
   const [actionStatus, setActionStatus] = useState<string>("");
 
@@ -24,7 +24,7 @@ export function DebugConsole({ isOpen, onClose }: { isOpen: boolean; onClose: ()
     const originalError = console.error;
     const originalWarn = console.warn;
 
-    const captureLog = (prefix: string, ...args: any[]) => {
+    const captureLog = (prefix: string, ...args: unknown[]) => {
       const message = args.map((arg) =>
         typeof arg === "string" ? arg : JSON.stringify(arg, null, 2),
       ).join(" ");

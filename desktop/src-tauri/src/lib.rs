@@ -752,6 +752,41 @@ fn parse_sidecar_progress(line: &str) -> Option<(f64, String)> {
     Some((progress, message.trim().to_string()))
 }
 
+fn stderr_tail(stderr: &str, max_lines: usize) -> String {
+    stderr
+        .lines()
+        .rev()
+        .take(max_lines)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn is_parser_oom(error: &str) -> bool {
+    let lower = error.to_lowercase();
+    lower.contains("fatal error: out of memory")
+        || lower.contains("virtualalloc")
+        || lower.contains("cannot allocate memory")
+}
+
+fn parse_failure_message(name: &str, code: i32, stderr: &str) -> String {
+    let tail = stderr_tail(stderr, 40);
+    let reason = if is_parser_oom(stderr) {
+        "Parser ran out of memory while decoding the demo."
+    } else {
+        "Parser failed while decoding the demo."
+    };
+    if tail.trim().is_empty() {
+        format!("{reason}\n\n{name} exited with status {code}.")
+    } else {
+        format!(
+            "{reason}\n\n{name} exited with status {code}.\n\nLast parser log lines:\n{tail}"
+        )
+    }
+}
+
 #[tauri::command]
 fn get_debug_info() -> serde_json::Value {
     match parse_job().lock() {
@@ -959,6 +994,15 @@ async fn parse_demo(
             return Err("Parsing cancelled.".into());
         }
         let _ = fs::remove_file(&out_path);
+        if is_parser_oom(&primary_error) {
+            emit_parse_progress(
+                &app,
+                "failed",
+                0.0,
+                "Parsing failed: parser ran out of memory.",
+            );
+            return Err(primary_error);
+        }
         eprintln!("primary parser failed, trying fallback parser:\n{primary_error}");
         emit_parse_progress(
             &app,
@@ -979,9 +1023,11 @@ async fn parse_demo(
                 return Err("Parsing cancelled.".into());
             }
             let _ = fs::remove_file(&out_path);
-            return Err(format!(
+            let msg = format!(
                 "Both parsers failed.\n\nPrimary parser:\n{primary_error}\n\nFallback parser:\n{fallback_error}"
-            ));
+            );
+            emit_parse_progress(&app, "failed", 0.0, "Parsing failed.");
+            return Err(msg);
         }
     }
 
@@ -1152,17 +1198,16 @@ async fn run_parser_sidecar(
                 let code = payload.code.unwrap_or(-1);
                 if code != 0 {
                     let _ = fs::remove_file(out_path);
+                    let message = parse_failure_message(name, code, &stderr);
                     logger::error(
                         name,
                         &format!("sidecar exited with status {code}; tail of stderr follows"),
                     );
-                    for ln in stderr.lines().rev().take(20).collect::<Vec<_>>().iter().rev() {
+                    for ln in stderr_tail(&stderr, 40).lines() {
                         logger::error(name, ln);
                     }
-                    return Err(format!(
-                        "{name} exited with status {code}:\n{}",
-                        stderr.trim()
-                    ));
+                    emit_parse_progress(app, "failed", 0.0, message.lines().next().unwrap_or("Parsing failed."));
+                    return Err(message);
                 }
                 emit_parse_progress(app, name, 0.995, "Sidecar terminated; validating output...");
                 // Always echo the sidecar's final OK line so we can tell
@@ -1337,5 +1382,37 @@ mod tests {
         let name = read_match_name(&path).expect("read match name");
         let _ = fs::remove_file(&path);
         assert_eq!(name, "13-11 - NAVI vs Vitality - de_mirage");
+    }
+
+    #[test]
+    fn parse_failure_message_classifies_oom_and_keeps_tail() {
+        let stderr = (0..45)
+            .map(|i| format!("line {i}"))
+            .chain([
+                "runtime: VirtualAlloc of 4556898304 bytes failed with errno=1455".to_string(),
+                "fatal error: out of memory".to_string(),
+                "sendtables2.(*Entity).readFields".to_string(),
+            ])
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let message = parse_failure_message("parser", 1, &stderr);
+
+        assert!(message.contains("Parser ran out of memory"));
+        assert!(message.contains("Last parser log lines"));
+        assert!(!message.contains("line 0"));
+        assert!(message.contains("line 8"));
+        assert!(message.contains("VirtualAlloc"));
+        assert!(message.contains("sendtables2.(*Entity).readFields"));
+    }
+
+    #[test]
+    fn parse_failure_message_handles_empty_stderr() {
+        let message = parse_failure_message("parser", 1, "");
+
+        assert_eq!(
+            message,
+            "Parser failed while decoding the demo.\n\nparser exited with status 1."
+        );
     }
 }

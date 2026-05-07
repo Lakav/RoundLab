@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -17,9 +18,10 @@ import (
 	"time"
 
 	"github.com/klauspost/compress/zstd"
-	dem "github.com/markus-wa/demoinfocs-golang/v4/pkg/demoinfocs"
-	common "github.com/markus-wa/demoinfocs-golang/v4/pkg/demoinfocs/common"
-	events "github.com/markus-wa/demoinfocs-golang/v4/pkg/demoinfocs/events"
+	dem "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs"
+	common "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/common"
+	events "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/events"
+	msg "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/msg"
 )
 
 // zstdMagic is the first 4 bytes of any Zstandard frame (RFC 8478).
@@ -246,6 +248,48 @@ func emitProgress(progress float64, message string) {
 	fmt.Fprintf(os.Stderr, "ROUNDLAB_PROGRESS %.4f %s\n", progress, message)
 }
 
+type memoryTracker struct {
+	lastLogTick   int
+	lastAlloc     uint64
+	lastSys       uint64
+	jumpThreshold uint64
+}
+
+func newMemoryTracker() *memoryTracker {
+	return &memoryTracker{
+		lastLogTick:   -1,
+		jumpThreshold: 256 * 1024 * 1024,
+	}
+}
+
+func (m *memoryTracker) log(stage string, tick int, frame int, force bool) {
+	if m == nil {
+		return
+	}
+	var stats runtime.MemStats
+	runtime.ReadMemStats(&stats)
+	allocJump := stats.Alloc > m.lastAlloc+m.jumpThreshold
+	sysJump := stats.Sys > m.lastSys+m.jumpThreshold
+	tickJump := m.lastLogTick < 0 || tick-m.lastLogTick >= 2048
+	if !force && !allocJump && !sysJump && !tickJump {
+		return
+	}
+	fmt.Fprintf(
+		os.Stderr,
+		"ROUNDLAB_MEM stage=%s tick=%d frame=%d alloc_mb=%d heap_sys_mb=%d sys_mb=%d num_gc=%d\n",
+		stage,
+		tick,
+		frame,
+		stats.Alloc/1024/1024,
+		stats.HeapSys/1024/1024,
+		stats.Sys/1024/1024,
+		stats.NumGC,
+	)
+	m.lastLogTick = tick
+	m.lastAlloc = stats.Alloc
+	m.lastSys = stats.Sys
+}
+
 // finalPhaseStart marks the start of the post-parse "finalization" phase. All
 // finalStep* logs after this report durations relative to this anchor so the
 // Windows-99% triage can pinpoint which step actually wedges. Set once.
@@ -400,12 +444,25 @@ func main() {
 	p := dem.NewParserWithConfig(reader, cfg)
 	defer p.Close()
 
-	header, err := p.ParseHeader()
-	if err != nil {
-		panic(err)
-	}
+	mem := newMemoryTracker()
+	mem.log("parser-start", 0, 0, true)
 
-	tickRate := header.FrameRate()
+	headerMapName := ""
+	p.RegisterNetMessageHandler(func(m *msg.CDemoFileHeader) {
+		if m.GetMapName() != "" {
+			headerMapName = m.GetMapName()
+		}
+	})
+	p.RegisterNetMessageHandler(func(m *msg.CSVCMsg_ServerInfo) {
+		if m.GetMapName() != "" {
+			headerMapName = m.GetMapName()
+		}
+	})
+	p.RegisterNetMessageHandler(func(m *msg.CSVCMsg_PacketEntities) {
+		mem.log("packet-entities", p.GameState().IngameTick(), p.CurrentFrame(), false)
+	})
+
+	tickRate := p.TickRate()
 	if tickRate <= 0 {
 		tickRate = 64
 	}
@@ -418,13 +475,19 @@ func main() {
 
 	output := Output{
 		Meta: Meta{
-			Map:        header.MapName,
+			Map:        headerMapName,
 			TickRate:   tickRate,
 			SampleRate: sampleHz,
 		},
 		Players: []Player{},
 		Rounds:  []Round{},
 	}
+	p.RegisterEventHandler(func(e events.TickRateInfoAvailable) {
+		if e.TickRate > 0 {
+			tickRate = e.TickRate
+			output.Meta.TickRate = e.TickRate
+		}
+	})
 	roundSpool, err := newRoundSpool()
 	if err != nil {
 		panic(err)
@@ -944,7 +1007,6 @@ func main() {
 				}
 			}
 		}
-		frame.Projectiles = collectProjectiles()
 		for _, pl := range p.GameState().Participants().Playing() {
 			if pl == nil {
 				continue
@@ -1024,6 +1086,7 @@ func main() {
 			})
 		}
 		currentRound.Frames = append(currentRound.Frames, frame)
+		mem.log("frame-done", tick, p.CurrentFrame(), false)
 	})
 
 	// demoinfocs's own recover() only catches EOF — every other panic
@@ -1074,9 +1137,10 @@ func main() {
 
 	// Final metadata (map name is populated during parse for CS2 demos)
 	metaStarted := finalStepStart("build-metadata")
-	if h := p.Header(); h.MapName != "" {
-		output.Meta.Map = h.MapName
+	if headerMapName != "" {
+		output.Meta.Map = headerMapName
 	}
+	output.Meta.TickRate = tickRate
 	output.Meta.DurationSec = float64(p.GameState().IngameTick()) / tickRate
 	if parseErr != nil {
 		output.Meta.Partial = true
@@ -1333,4 +1397,5 @@ func configureMemoryBudget() {
 		}
 	}
 	debug.SetMemoryLimit(limitMb * 1024 * 1024)
+	fmt.Fprintf(os.Stderr, "ROUNDLAB_MEM_LIMIT gc_percent=50 limit_mb=%d\n", limitMb)
 }

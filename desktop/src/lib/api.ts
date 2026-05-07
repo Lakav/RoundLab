@@ -82,8 +82,8 @@ export async function cancelParse(): Promise<void> {
   await invoke("cancel_parse");
 }
 
-export async function getDebugInfo(): Promise<Record<string, any>> {
-  return invoke<Record<string, any>>("get_debug_info");
+export async function getDebugInfo(): Promise<Record<string, unknown>> {
+  return invoke<Record<string, unknown>>("get_debug_info");
 }
 
 export async function getLogFilePath(): Promise<string> {
