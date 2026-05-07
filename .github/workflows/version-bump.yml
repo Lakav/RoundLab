@@ -1,8 +1,19 @@
-# Manual version bump.
+# Manual version bump (minor/major or explicit version).
 #
-# Bumps the version across all four sources of truth, commits the change,
-# tags the commit `vX.Y.Z`, and pushes both. The pushed tag triggers
-# `release.yml`, which runs the full check matrix before building installers.
+# This is the secondary release path. The PRIMARY path is `auto-release.yml`,
+# which patch-bumps and releases automatically on every push to `main`.
+# Use this workflow when you want a non-patch bump or a specific version.
+#
+# Flow:
+#   1. Patch the four manifests with the requested version.
+#   2. Commit and push to main (with `[skip-bump]` so auto-release doesn't
+#      bump again on top).
+#   3. Push the tag.
+#   4. Call `_build.yml` directly to publish a real GitHub Release.
+#
+# Why call `_build.yml` directly instead of letting `release.yml` pick up
+# the tag? Tags pushed by Actions using GITHUB_TOKEN do NOT trigger other
+# workflows (GitHub's loop-prevention rule). Same reason as auto-release.
 #
 # Sources of truth (all must agree):
 #   - desktop/package.json                ("version")
@@ -10,20 +21,15 @@
 #   - desktop/src-tauri/Cargo.toml        ([package] version)
 #   - desktop/src-tauri/Cargo.lock        (regenerated via `cargo update -p roundlab`)
 #
-# The frontend reads its displayed version via `getVersion()` from the Tauri
-# API, so it does NOT need a separate constant.
-#
 # Inputs:
-#   - bump:    patch | minor | major (default: patch). Computes next version
-#              from the current tauri.conf.json version.
-#   - version: explicit version (e.g. "0.2.0"). If set, takes precedence over
-#              `bump`. Must be a clean semver MAJOR.MINOR.PATCH.
+#   - bump:    patch | minor | major (default: minor — patch is the auto
+#              path's job).
+#   - version: explicit version (e.g. "0.2.0"). Overrides `bump`.
 #
 # Guards:
-#   - refuses to run from a branch other than `main`
-#   - refuses if the new version equals the current version
-#   - refuses if the tag `v<new>` already exists locally or remotely
-#   - refuses if the new version is not strictly greater than the current
+#   - refuses to run off `main`
+#   - refuses no-op or downgrade
+#   - refuses if the tag already exists
 name: version-bump
 
 on:
@@ -32,7 +38,7 @@ on:
       bump:
         description: "Semver bump (ignored if `version` is set)"
         type: choice
-        default: patch
+        default: minor
         options: [patch, minor, major]
       version:
         description: "Explicit version, e.g. 0.2.0 (overrides `bump`)"
@@ -46,6 +52,8 @@ jobs:
   bump:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.out.outputs.tag }}
 
     steps:
       - name: Checkout main
@@ -204,19 +212,21 @@ jobs:
             desktop/src-tauri/Cargo.toml \
             desktop/src-tauri/Cargo.lock
 
-          git commit -m "chore: bump version to v${NEW}"
+          git commit -m "chore: bump version to v${NEW} [skip-bump]"
           git tag -a "v${NEW}" -m "RoundLab v${NEW}"
           git push origin main
           git push origin "v${NEW}"
 
-      - name: Summary
+      - name: Expose tag for the release job
+        id: out
         env:
           NEW: ${{ steps.compute.outputs.new }}
-        run: |
-          {
-            echo "## Version bumped to v${NEW}"
-            echo ""
-            echo "Tag \`v${NEW}\` pushed. The \`release\` workflow should now run on the new tag."
-            echo ""
-            echo "Watch: https://github.com/${{ github.repository }}/actions/workflows/release.yml"
-          } >> "$GITHUB_STEP_SUMMARY"
+        run: echo "tag=v${NEW}" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: bump
+    uses: ./.github/workflows/_build.yml
+    with:
+      release: true
+      tag-name: ${{ needs.bump.outputs.tag }}
+    secrets: inherit

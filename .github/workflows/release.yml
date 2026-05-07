@@ -1,31 +1,26 @@
-# Release pipeline.
+# Release pipeline — FALLBACK PATH.
 #
-# Triggered by pushing a tag of the form `v*.*.*`. The recommended way to
-# create that tag is the `version-bump` workflow, which patches every
-# manifest, regenerates Cargo.lock, commits, and pushes the tag in one go.
+# The PRIMARY release path is `auto-release.yml` (push to main) and the
+# secondary one is `version-bump.yml` (manual minor/major bumps). Both
+# call `_build.yml` directly because tags pushed by Actions using
+# GITHUB_TOKEN do NOT trigger other workflows (GitHub's loop-prevention
+# rule).
+#
+# This workflow is left in place for two cases only:
+#   - someone pushed a `v*.*.*` tag from their local machine (using their
+#     own credentials, which DO trigger workflows);
+#   - someone wants to redo a release on an existing tag via
+#     `workflow_dispatch` from the Actions UI.
 #
 # Pipeline:
-#   1. `checks`          — invokes `_checks.yml` (same matrix as `ci.yml`).
-#                          Release does not proceed if any check fails.
-#   2. `verify-version`  — refuses to build unless the version in
-#                          `tauri.conf.json` (and the matching manifests)
-#                          equals the tag name. Catches manual tags that
-#                          skipped `version-bump`.
-#   3. `build`           — invokes `_build.yml` with release=true.
-#                          tauri-action publishes the bundles to a
-#                          GitHub Release named `RoundLab vX.Y.Z`.
+#   1. `checks`         — invokes `_checks.yml`.
+#   2. `verify-version` — refuses to build unless every manifest matches
+#                          the tag.
+#   3. `build`          — invokes `_build.yml` with release=true.
 #
-# The build logic is shared with `ci.yml` (push to main, release=false)
-# via `_build.yml` so we never duplicate the Tauri matrix.
-#
-# Optional secrets (release succeeds without them, but the in-app updater
-# will reject any update that lacks a valid signature):
+# Optional secrets:
 #   TAURI_SIGNING_PRIVATE_KEY           — contents of the updater private key
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  — empty if the key has no password
-#
-# No Apple / Microsoft code-signing here: macOS asks for right-click → Open
-# on first launch, Windows shows SmartScreen "unknown publisher". Documented
-# in the README and SECURITY_RELEASE.md.
 name: release
 
 on:
