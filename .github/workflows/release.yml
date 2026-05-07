@@ -5,15 +5,18 @@
 # manifest, regenerates Cargo.lock, commits, and pushes the tag in one go.
 #
 # Pipeline:
-#   1. `checks` job: same matrix as `ci.yml` (typecheck, builds, tests,
-#      clippy strict). Reuses `_checks.yml`. Release does NOT proceed if
-#      any check fails.
-#   2. `verify-version` job: refuses to build unless the version in
-#      `tauri.conf.json` (and the matching manifests) equals the tag name.
-#      This catches manual tags that skipped `version-bump`.
-#   3. `build` job: matrix macOS arm64 + Windows x64. Cross-compiles parser
-#      sidecars, runs tauri-action with updater signing, uploads installers
-#      to the GitHub release.
+#   1. `checks`          — invokes `_checks.yml` (same matrix as `ci.yml`).
+#                          Release does not proceed if any check fails.
+#   2. `verify-version`  — refuses to build unless the version in
+#                          `tauri.conf.json` (and the matching manifests)
+#                          equals the tag name. Catches manual tags that
+#                          skipped `version-bump`.
+#   3. `build`           — invokes `_build.yml` with release=true.
+#                          tauri-action publishes the bundles to a
+#                          GitHub Release named `RoundLab vX.Y.Z`.
+#
+# The build logic is shared with `ci.yml` (push to main, release=false)
+# via `_build.yml` so we never duplicate the Tauri matrix.
 #
 # Optional secrets (release succeeds without them, but the in-app updater
 # will reject any update that lacks a valid signature):
@@ -31,9 +34,8 @@ on:
       - "v*.*.*"
   workflow_dispatch:
 
-# tauri-action needs to create a release and upload assets. Declaring the
-# permissions explicitly avoids relying on the repo-level default, which is
-# read-only on GitHub Free unless flipped in Settings → Actions.
+# `_build.yml` itself declares `contents: write`, but the called workflow
+# is constrained by what the caller permits, so we declare it here too.
 permissions:
   contents: write
 
@@ -82,90 +84,10 @@ jobs:
 
   build:
     needs: [checks, verify-version]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: macos-arm64
-            os: macos-14
-            rust-target: aarch64-apple-darwin
-            tauri-args: "--target aarch64-apple-darwin"
-          - name: windows-x64
-            os: windows-latest
-            rust-target: x86_64-pc-windows-msvc
-            tauri-args: "--bundles nsis"
-
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.rust-target }}
-
-      - name: Cache Rust builds
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.rust-target }}
-          workspaces: |
-            desktop/src-tauri -> target
-            parser-fallback -> target
-
-      - name: Install protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.23"
-          cache-dependency-path: parser/go.sum
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - name: Install Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: pnpm
-          cache-dependency-path: desktop/pnpm-lock.yaml
-
-      - name: Install desktop UI dependencies
-        working-directory: desktop
-        run: pnpm install --frozen-lockfile
-
-      - name: Build parser sidecars for ${{ matrix.rust-target }}
-        shell: bash
-        working-directory: desktop/src-tauri/binaries
-        env:
-          TARGET: ${{ matrix.rust-target }}
-          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
-        run: ./build-sidecar.sh
-
-      - name: Build + release (tauri-action)
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "RoundLab ${{ github.ref_name }}"
-          releaseBody: |
-            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for the full notes.
-
-            **macOS**: unsigned — right-click → Open on first launch.
-            **Windows**: unsigned — click "More info" → "Run anyway" in SmartScreen.
-          releaseDraft: false
-          prerelease: false
-          projectPath: desktop
-          args: ${{ matrix.tauri-args }}
-          updaterJsonPreferNsis: true
+    uses: ./.github/workflows/_build.yml
+    with:
+      release: true
+      tag-name: ${{ github.ref_name }}
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}

@@ -2,23 +2,21 @@
 # TRIAGE-ONLY WINDOWS BUILD — NOT a release pipeline.
 # =============================================================================
 #
-# Use this when you need an installable .exe on a Windows machine for QA or
-# log collection (e.g. the 95-99% finalization wedge triage), and you do NOT
-# want to cut a public release. It does not create a GitHub release, does not
-# bump any version, and does not push a tag.
+# Use this when you need an installable .exe on a Windows machine for QA
+# or log collection (e.g. the 95-99% finalization wedge triage), and you
+# want it built off a specific commit/branch without going through `main`.
 #
-# For a real release: run the `version-bump` workflow, which pushes a tag,
-# which triggers `release.yml`. Do not invoke this workflow as part of a
-# release.
+# In practice, this is now a thin wrapper around `_build.yml`. Push to main
+# already produces Windows installers as artifacts (via `ci.yml`), so the
+# usual case is solved by just pushing or merging. Use this workflow only
+# when you need to build off a non-main ref.
 #
 # Outputs:
-#   - artifact `roundlab-windows-x64-nsis`        — installer .exe (+ .sig
-#     if updater secrets are configured)
-#   - artifact `roundlab-windows-debug-symbols`   — matching .pdb so panics
-#     can be symbolicated
+#   - artifact `roundlab-windows-x64`  — installer .exe (+ .sig if updater
+#                                        secrets are configured)
 #
-# Updater signing is OPTIONAL here: tauri-action skips signing silently if
-# the secrets are absent, and the build still produces an installable .exe.
+# This workflow does NOT create a GitHub Release. For releases, use
+# `version-bump` to push a tag, which triggers `release.yml`.
 name: triage-windows
 
 on:
@@ -29,136 +27,10 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
-    timeout-minutes: 60
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain (x86_64-pc-windows-msvc)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-
-      - name: Cache Rust builds
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: x86_64-pc-windows-msvc-triage
-          workspaces: |
-            desktop/src-tauri -> target
-            parser-fallback -> target
-
-      - name: Install protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.23"
-          cache-dependency-path: parser/go.sum
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - name: Install Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: pnpm
-          cache-dependency-path: desktop/pnpm-lock.yaml
-
-      - name: Show build identity
-        # We deliberately do NOT bump the version for triage builds. The
-        # installer carries whatever version is in tauri.conf.json today; the
-        # commit SHA is embedded in the artifact name below so you can tell
-        # two triage builds apart. If you need a non-colliding version for
-        # the in-app updater, cut a real release with the `release` workflow.
-        shell: bash
-        run: |
-          echo "commit:    ${GITHUB_SHA}"
-          echo "ref:       ${GITHUB_REF}"
-          echo "version:   $(grep '"version"' desktop/src-tauri/tauri.conf.json | head -1)"
-
-      - name: Install desktop UI dependencies
-        working-directory: desktop
-        run: pnpm install --frozen-lockfile
-
-      - name: Build parser sidecars (windows-x64)
-        shell: bash
-        working-directory: desktop/src-tauri/binaries
-        env:
-          TARGET: x86_64-pc-windows-msvc
-          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
-        run: ./build-sidecar.sh
-
-      - name: Build NSIS installer (tauri build)
-        uses: tauri-apps/tauri-action@v0
-        env:
-          # Updater signing is optional for triage builds. tauri-action just
-          # skips signing if these are empty.
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          projectPath: desktop
-          # No tag, no release: tauri-action will just build and leave the
-          # artifacts on disk for the upload step below to pick up.
-          args: --bundles nsis
-
-      - name: Locate NSIS bundle output
-        id: locate
-        shell: bash
-        run: |
-          set -euo pipefail
-          NSIS_DIR="desktop/src-tauri/target/release/bundle/nsis"
-          if [ ! -d "$NSIS_DIR" ]; then
-            echo "expected $NSIS_DIR to exist" >&2
-            find desktop/src-tauri/target/release/bundle -maxdepth 3 -type d || true
-            exit 1
-          fi
-          ls -la "$NSIS_DIR"
-          echo "nsis_dir=$NSIS_DIR" >> "$GITHUB_OUTPUT"
-
-      - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: roundlab-windows-x64-nsis
-          path: |
-            ${{ steps.locate.outputs.nsis_dir }}/*.exe
-            ${{ steps.locate.outputs.nsis_dir }}/*.sig
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload debug symbols (.pdb)
-        uses: actions/upload-artifact@v4
-        with:
-          name: roundlab-windows-debug-symbols
-          path: |
-            desktop/src-tauri/target/release/*.pdb
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: Print triage hints
-        shell: bash
-        run: |
-          cat <<'EOF'
-          ---------------------------------------------------------------
-          Build done. To run the 95/99% triage on the produced installer:
-
-            1. Download artifact `roundlab-windows-x64-nsis` from this run.
-            2. Install on a Windows machine.
-            3. To capture sidecar logs (ROUNDLAB_FINAL …) run the installed
-               EXE from PowerShell (per-user install path):
-                 & "$env:LOCALAPPDATA\Programs\RoundLab\RoundLab.exe" `
-                   2>&1 | Tee-Object roundlab-prod.log
-               (For a system-wide install, replace with
-                "C:\Program Files\RoundLab\RoundLab.exe")
-            4. To run the of.Sync A/B test:
-                 $env:ROUNDLAB_PARSER_SKIP_FSYNC = "1"
-                 (run again, capture roundlab-prod-skipfsync.log)
-          ---------------------------------------------------------------
-          EOF
+    uses: ./.github/workflows/_build.yml
+    with:
+      release: false
+      only-windows: true
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
