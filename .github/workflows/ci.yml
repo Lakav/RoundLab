@@ -1,9 +1,19 @@
-# Continuous integration: runs on every push to main and on every PR
-# targeting main. Fails fast if any check breaks; PRs cannot be merged
-# while CI is red (configure branch protection in repo settings).
+# Continuous integration.
 #
-# All actual checks live in `_checks.yml` so the release pipeline runs the
-# exact same matrix before producing installers.
+# - On every PR targeting `main`: run the check matrix only (fast,
+#   cheap, blocks merge if red).
+# - On every push to `main`: run the check matrix AND build macOS+Windows
+#   bundles. The bundles are published as workflow artifacts on the run
+#   page (NOT as a GitHub Release). This gives anyone a downloadable
+#   build of `main` after every push without polluting the release
+#   channel.
+#
+# A real GitHub Release is only created by `release.yml` (triggered by
+# pushing a `v*.*.*` tag, normally via the `version-bump` workflow).
+#
+# All actual logic lives in reusable workflows:
+#   - `_checks.yml`  — typecheck, build, tests, clippy strict
+#   - `_build.yml`   — Tauri bundle matrix (macOS arm64 + Windows x64)
 name: ci
 
 on:
@@ -22,3 +32,14 @@ permissions:
 jobs:
   checks:
     uses: ./.github/workflows/_checks.yml
+
+  build:
+    # Only build on push to `main`. PRs stop at `checks`.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: checks
+    uses: ./.github/workflows/_build.yml
+    with:
+      release: false
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
