@@ -23,6 +23,8 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
+mod logger;
+
 #[cfg(windows)]
 use windows_sys::Win32::{
     Foundation::{CloseHandle, HANDLE},
@@ -731,6 +733,7 @@ fn start_post_95_watchdog(app: AppHandle, name: String) -> Arc<Post95Watchdog> {
             POST_95_TIMEOUT.as_secs()
         );
         eprintln!("[{name}] post-95 watchdog: {message}");
+        logger::warn(&name, &format!("post-95 watchdog: {message}"));
         emit_parse_progress(&app, &name, 0.99, &message);
         if let Ok(mut job) = parse_job().lock() {
             job.timeout_triggered = true;
@@ -888,6 +891,9 @@ async fn parse_demo(
     src_path: String,
     options: Option<ParseOptions>,
 ) -> Result<String, String> {
+    // Init the file logger early. Cheap on subsequent calls.
+    logger::init_logger(&app);
+
     {
         let mut job = parse_job().lock().map_err(|e| e.to_string())?;
         if job.running {
@@ -908,6 +914,21 @@ async fn parse_demo(
     if !(lower.ends_with(".dem") || lower.ends_with(".dem.zst") || lower.ends_with(".zst")) {
         return Err("expected a .dem or .dem.zst file".into());
     }
+
+    // Log demo metadata WITHOUT logging anything sensitive: just the file
+    // basename and size in bytes. Full path could leak the user's home
+    // directory layout in a triage log copy-paste.
+    let basename = src
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "<unknown>".into());
+    let size_bytes = fs::metadata(&src).map(|m| m.len()).unwrap_or(0);
+    logger::info(
+        "tauri",
+        &format!(
+            "parse_demo: starting (file={basename}, size={size_bytes} bytes)"
+        ),
+    );
 
     let id = uuid::Uuid::new_v4().to_string();
     let out_path = parsed_path(&app, &id)?;
@@ -996,6 +1017,7 @@ async fn run_parser_sidecar(
 ) -> Result<(), String> {
     // Sidecar names in tauri.conf.json expand to `binaries/<name>-<target-triple>`
     // at build/package time.
+    logger::info(name, &format!("spawn sidecar argv={argv:?}"));
     let sidecar = app
         .shell()
         .sidecar(name)
@@ -1052,6 +1074,10 @@ async fn run_parser_sidecar(
                     if let Some((progress, message)) = parse_sidecar_progress(raw_line) {
                         watchdog.mark_progress(progress);
                         emit_parse_progress(app, name, progress, &message);
+                        logger::info(
+                            name,
+                            &format!("ROUNDLAB_PROGRESS {progress:.4} {message}"),
+                        );
                     } else if raw_line.starts_with("OK[") || raw_line.starts_with("OK fallback") {
                         watchdog.mark_final_event("emit-ok");
                         emit_parse_progress(
@@ -1062,6 +1088,7 @@ async fn run_parser_sidecar(
                         );
                         stderr.push_str(raw_line);
                         stderr.push('\n');
+                        logger::info(name, raw_line);
                     } else if raw_line.starts_with("ROUNDLAB_FINAL ") {
                         // Each finalization step from the parser counts as a
                         // liveness signal: it postpones the post-95 timeout.
@@ -1076,9 +1103,16 @@ async fn run_parser_sidecar(
                         eprintln!("[{name}] {raw_line}");
                         stderr.push_str(raw_line);
                         stderr.push('\n');
+                        logger::info(name, raw_line);
                     } else {
                         stderr.push_str(raw_line);
                         stderr.push('\n');
+                        // Mirror non-empty stderr lines into the file too.
+                        // Useful when the parser panics with a stack trace
+                        // we'd otherwise lose.
+                        if !raw_line.trim().is_empty() {
+                            logger::info(name, raw_line);
+                        }
                     }
                 }
             }
@@ -1088,6 +1122,13 @@ async fn run_parser_sidecar(
                 eprintln!(
                     "[{name}] CommandEvent::Terminated received: code={:?} signal={:?}",
                     payload.code, payload.signal
+                );
+                logger::info(
+                    name,
+                    &format!(
+                        "CommandEvent::Terminated received: code={:?} signal={:?}",
+                        payload.code, payload.signal
+                    ),
                 );
                 let mut timeout_triggered = false;
                 if let Ok(mut job) = parse_job().lock() {
@@ -1101,14 +1142,23 @@ async fn run_parser_sidecar(
                 }
                 if timeout_triggered {
                     let _ = fs::remove_file(out_path);
-                    return Err(format!(
+                    let msg = format!(
                         "{name} timeout: killed after {}s in finalization phase",
                         POST_95_TIMEOUT.as_secs()
-                    ));
+                    );
+                    logger::error(name, &msg);
+                    return Err(msg);
                 }
                 let code = payload.code.unwrap_or(-1);
                 if code != 0 {
                     let _ = fs::remove_file(out_path);
+                    logger::error(
+                        name,
+                        &format!("sidecar exited with status {code}; tail of stderr follows"),
+                    );
+                    for ln in stderr.lines().rev().take(20).collect::<Vec<_>>().iter().rev() {
+                        logger::error(name, ln);
+                    }
                     return Err(format!(
                         "{name} exited with status {code}:\n{}",
                         stderr.trim()
@@ -1124,6 +1174,7 @@ async fn run_parser_sidecar(
             }
             CommandEvent::Error(e) => {
                 watchdog.stop();
+                logger::error(name, &format!("CommandEvent::Error: {e}"));
                 if let Ok(mut job) = parse_job().lock() {
                     job.child = None;
                     job.memory_guard = None;
@@ -1137,6 +1188,54 @@ async fn run_parser_sidecar(
 
     watchdog.stop();
     Err(format!("{name} stopped without an exit status"))
+}
+
+// -------------------------- Logger-facing commands --------------------------
+
+/// Absolute path to the active log file, suitable for displaying or
+/// copying from the Debug Console. Computed even before any parse has
+/// run, so the Debug Console can always show where logs live.
+#[tauri::command]
+fn get_log_file_path(app: AppHandle) -> Result<String, String> {
+    let p = logger::log_file_path(&app)?;
+    Ok(p.to_string_lossy().into_owned())
+}
+
+/// Last `lines` lines of the live log file (best-effort; returns empty
+/// if no log has been written yet). The 5 MB rotation cap keeps the
+/// file size bounded so this stays cheap.
+#[tauri::command]
+fn read_log_tail(app: AppHandle, lines: u32) -> Result<String, String> {
+    logger::read_tail(&app, lines as usize)
+}
+
+/// Open the logs folder in the OS file explorer. Used by the Debug
+/// Console "Open logs folder" button so the user can ZIP and share it.
+///
+/// We invoke the OS file manager directly via `std::process::Command`
+/// rather than going through tauri-plugin-shell::open (which is
+/// deprecated in tauri 2 in favour of tauri-plugin-opener).
+#[tauri::command]
+fn open_logs_folder(app: AppHandle) -> Result<(), String> {
+    let path = logger::log_file_path(&app)?;
+    let folder = path
+        .parent()
+        .ok_or_else(|| "log path has no parent".to_string())?;
+    // Ensure it exists before asking the OS to open it; otherwise the
+    // first call (before any parse) would fail.
+    fs::create_dir_all(folder).map_err(|e| format!("mkdir logs: {e}"))?;
+
+    let folder_str = folder.to_string_lossy().into_owned();
+    #[cfg(target_os = "windows")]
+    let result = std::process::Command::new("explorer").arg(&folder_str).spawn();
+    #[cfg(target_os = "macos")]
+    let result = std::process::Command::new("open").arg(&folder_str).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let result = std::process::Command::new("xdg-open").arg(&folder_str).spawn();
+
+    result
+        .map(|_| ())
+        .map_err(|e| format!("open logs folder ({folder_str}): {e}"))
 }
 
 // -------------------------- App entry --------------------------
@@ -1163,6 +1262,9 @@ pub fn run() {
             cancel_parse,
             parse_demo,
             get_debug_info,
+            get_log_file_path,
+            read_log_tail,
+            open_logs_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
