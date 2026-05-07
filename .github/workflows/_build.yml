@@ -51,10 +51,14 @@ on:
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD:
         required: false
 
-permissions:
-  # `contents: write` is needed by tauri-action when release=true to create
-  # the Release and upload assets. It is harmless when release=false.
-  contents: write
+# NOTE on permissions: this reusable workflow does NOT declare top-level
+# permissions. The caller's permissions apply.
+# - `release.yml` declares `contents: write` (needed by tauri-action to
+#   create the GitHub Release and upload assets).
+# - `ci.yml` and `triage-windows.yml` declare `contents: read` (sufficient
+#   when release=false, since we only upload workflow artifacts).
+# Declaring `contents: write` here would FAIL when called from a caller
+# whose own permissions are read-only — GitHub refuses to escalate.
 
 jobs:
   matrix:

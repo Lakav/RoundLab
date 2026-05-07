@@ -40,6 +40,8 @@ jobs:
     uses: ./.github/workflows/_build.yml
     with:
       release: false
-    secrets:
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+    # `inherit` passes through every secret the caller has, including the
+    # optional updater-signing pair. Listing them explicitly was rejected
+    # by the workflow-file parser on this repo (likely because the secrets
+    # are not actually configured here yet).
+    secrets: inherit
