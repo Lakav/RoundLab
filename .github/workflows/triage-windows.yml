@@ -1,23 +1,25 @@
-# Manual Windows build for triage / smoke testing.
+# =============================================================================
+# TRIAGE-ONLY WINDOWS BUILD — NOT a release pipeline.
+# =============================================================================
 #
-# Trigger this from the Actions tab (workflow_dispatch). It builds a Windows
-# x64 NSIS installer and uploads it as a workflow artifact — NO GitHub release
-# is created, NO tag is needed, and the version stays whatever is currently in
-# tauri.conf.json. Use this when you need an .exe to install on a Windows
-# machine for QA / log collection (e.g. the 95-99% wedge triage), without
-# touching the public release channel.
+# Use this when you need an installable .exe on a Windows machine for QA or
+# log collection (e.g. the 95-99% finalization wedge triage), and you do NOT
+# want to cut a public release. It does not create a GitHub release, does not
+# bump any version, and does not push a tag.
+#
+# For a real release: run the `version-bump` workflow, which pushes a tag,
+# which triggers `release.yml`. Do not invoke this workflow as part of a
+# release.
 #
 # Outputs:
-#   - artifact `roundlab-windows-x64-nsis` containing the NSIS installer
-#     (`*.exe`) and the matching `.sig` if updater signing is configured.
-#   - artifact `roundlab-windows-debug-symbols` containing the .pdb so
-#     stack traces can be symbolicated if anything panics.
+#   - artifact `roundlab-windows-x64-nsis`        — installer .exe (+ .sig
+#     if updater secrets are configured)
+#   - artifact `roundlab-windows-debug-symbols`   — matching .pdb so panics
+#     can be symbolicated
 #
-# Updater signing is OPTIONAL here. If the secrets are present the installer
-# is signed with the updater key (so the in-app updater would accept it as a
-# valid update); if not, the build still succeeds and produces an unsigned
-# installer suitable for manual installation only.
-name: build-windows
+# Updater signing is OPTIONAL here: tauri-action skips signing silently if
+# the secrets are absent, and the build still produces an installable .exe.
+name: triage-windows
 
 on:
   workflow_dispatch:
