@@ -1,24 +1,13 @@
-# Continuous integration.
+# Continuous integration for pull requests.
 #
-# - On every PR targeting `main`: run the check matrix only (fast,
-#   cheap, blocks merge if red).
-# - On every push to `main`: run the check matrix AND build macOS+Windows
-#   bundles. The bundles are published as workflow artifacts on the run
-#   page (NOT as a GitHub Release). This gives anyone a downloadable
-#   build of `main` after every push without polluting the release
-#   channel.
+# Runs the check matrix on every PR targeting `main`. PRs cannot be
+# merged while this is red (configure branch protection in repo settings).
 #
-# A real GitHub Release is only created by `release.yml` (triggered by
-# pushing a `v*.*.*` tag, normally via the `version-bump` workflow).
-#
-# All actual logic lives in reusable workflows:
-#   - `_checks.yml`  — typecheck, build, tests, clippy strict
-#   - `_build.yml`   — Tauri bundle matrix (macOS arm64 + Windows x64)
+# This workflow does NOT build installers or create releases. The release
+# pipeline lives in `auto-release.yml` and runs on push to `main`.
 name: ci
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
 
@@ -32,16 +21,3 @@ permissions:
 jobs:
   checks:
     uses: ./.github/workflows/_checks.yml
-
-  build:
-    # Only build on push to `main`. PRs stop at `checks`.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: checks
-    uses: ./.github/workflows/_build.yml
-    with:
-      release: false
-    # `inherit` passes through every secret the caller has, including the
-    # optional updater-signing pair. Listing them explicitly was rejected
-    # by the workflow-file parser on this repo (likely because the secrets
-    # are not actually configured here yet).
-    secrets: inherit
