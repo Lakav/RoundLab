@@ -1,0 +1,151 @@
+# Auto-release on push to main.
+#
+# THIS IS THE MAIN RELEASE PATH.
+#
+# Flow:
+#   1. Run the check matrix (`_checks.yml`).
+#   2. If checks pass, bump the patch version, commit, push tag.
+#   3. Build and publish a real GitHub Release via `_build.yml`.
+#
+# To merge without releasing: include `[skip-release]` anywhere in the
+# commit message of the push that lands on main.
+#
+# Why not just push the tag and let `release.yml` pick it up?
+# Because tags pushed by Actions using GITHUB_TOKEN do NOT trigger other
+# workflows (GitHub's loop-prevention rule). The only way to get the
+# release built without a Personal Access Token is to call `_build.yml`
+# directly here, which is what we do.
+#
+# Anti-loop guards (the bump commit must not trigger another bump):
+#   - skip if the head commit author is `github-actions[bot]`
+#   - skip if the head commit message contains `[skip-bump]`
+#   - skip if the head commit message contains `[skip-release]`
+#   - the bump step writes `[skip-bump]` into its own commit message, so
+#     even if the previous two checks were ever bypassed, the third
+#     would catch it.
+name: auto-release
+
+on:
+  push:
+    branches: [main]
+
+# Serialise auto-releases. Two pushes back-to-back must not race on the
+# bump step (both reading version 1.2.3 → both trying to push 1.2.4).
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  checks:
+    # Skip the whole pipeline if this push is the bump commit itself, or
+    # if the human asked to skip the release.
+    if: |
+      github.event.head_commit.author.username != 'github-actions[bot]' &&
+      !contains(github.event.head_commit.message, '[skip-bump]') &&
+      !contains(github.event.head_commit.message, '[skip-release]')
+    uses: ./.github/workflows/_checks.yml
+
+  bump:
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      new-version: ${{ steps.bump.outputs.new }}
+      tag-name: ${{ steps.bump.outputs.tag }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Rust (for cargo update -p roundlab)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Tauri system deps
+        # tauri-build's build script needs these to even compute a new lockfile.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libsoup-3.0-dev \
+            libjavascriptcoregtk-4.1-dev \
+            patchelf
+
+      - name: Bump patch version + commit + tag + push
+        id: bump
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CURRENT=$(python3 -c "import json; print(json.load(open('desktop/src-tauri/tauri.conf.json'))['version'])")
+          if ! [[ "$CURRENT" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::current version is not a clean semver: $CURRENT"
+            exit 1
+          fi
+
+          IFS=. read -r MA MI PA <<< "$CURRENT"
+          NEW="${MA}.${MI}.$((PA + 1))"
+          TAG="v${NEW}"
+
+          # Defensive: refuse if the tag already exists on origin.
+          if git ls-remote --tags origin "$TAG" | grep -q "$TAG"; then
+            echo "::error::tag $TAG already exists on origin — manifests and tags are out of sync"
+            exit 1
+          fi
+
+          # Patch the three manifests.
+          python3 - <<PY
+          import json, pathlib, re
+          new = "$NEW"
+          for p in ["desktop/package.json", "desktop/src-tauri/tauri.conf.json"]:
+              path = pathlib.Path(p)
+              j = json.loads(path.read_text())
+              j["version"] = new
+              path.write_text(json.dumps(j, indent=2) + "\n")
+          cargo = pathlib.Path("desktop/src-tauri/Cargo.toml")
+          s = cargo.read_text()
+          s_new, n = re.subn(
+              r'(\[package\][^\[]*?\nversion\s*=\s*)"[^"]+"',
+              lambda m: f'{m.group(1)}"{new}"',
+              s, count=1,
+          )
+          if n != 1:
+              raise SystemExit("could not patch [package] version in Cargo.toml")
+          cargo.write_text(s_new)
+          PY
+
+          # Refresh Cargo.lock (path-only crate, no --precise).
+          (cd desktop/src-tauri && cargo update -p roundlab)
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            desktop/package.json \
+            desktop/src-tauri/tauri.conf.json \
+            desktop/src-tauri/Cargo.toml \
+            desktop/src-tauri/Cargo.lock
+
+          git commit -m "chore: bump version to $TAG [skip-bump]"
+          git tag -a "$TAG" -m "RoundLab $TAG"
+          git push origin main
+          git push origin "$TAG"
+
+          echo "new=$NEW" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: bump
+    uses: ./.github/workflows/_build.yml
+    with:
+      release: true
+      tag-name: ${{ needs.bump.outputs.tag-name }}
+    secrets: inherit
