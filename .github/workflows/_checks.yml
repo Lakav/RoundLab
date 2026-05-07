@@ -1,0 +1,143 @@
+# Reusable checks workflow.
+#
+# Called by `ci.yml` (on push/PR) and `release.yml` (before building installers).
+# Centralises the test matrix so CI and release run EXACTLY the same checks.
+#
+# Jobs run in parallel on ubuntu-latest:
+#   - frontend:     TypeScript typecheck + Next.js build
+#   - go:           go vet, go test (parser/)
+#   - rust-tauri:   cargo test, cargo clippy strict (desktop/src-tauri)
+#   - rust-fallback: cargo test, cargo clippy strict (parser-fallback)
+#
+# Lint (eslint) is intentionally NOT run here: there are 4 preexisting
+# `@typescript-eslint/no-explicit-any` errors that are tracked separately.
+# Re-enable once they are fixed.
+name: _checks
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: desktop/pnpm-lock.yaml
+
+      - name: Install desktop UI dependencies
+        working-directory: desktop
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript typecheck
+        working-directory: desktop
+        run: pnpm tsc --noEmit
+
+      - name: Build Next.js renderer
+        working-directory: desktop
+        run: pnpm renderer:build
+
+  go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache-dependency-path: parser/go.sum
+
+      - name: go vet
+        working-directory: parser
+        run: go vet ./...
+
+      - name: go test
+        working-directory: parser
+        run: go test ./...
+
+  rust-tauri:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      # Tauri's Linux build (which clippy --all-targets resolves to here)
+      # needs a bunch of system deps. This list mirrors the Tauri docs for
+      # Ubuntu 24.04.
+      - name: Install Tauri system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libsoup-3.0-dev \
+            libjavascriptcoregtk-4.1-dev \
+            patchelf
+
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri -> target
+          key: tauri-checks
+
+      - name: cargo test
+        working-directory: desktop/src-tauri
+        run: cargo test
+
+      - name: cargo clippy (strict)
+        working-directory: desktop/src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+  rust-fallback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: parser-fallback -> target
+          key: fallback-checks
+
+      - name: cargo test
+        working-directory: parser-fallback
+        run: cargo test
+
+      - name: cargo clippy (strict)
+        working-directory: parser-fallback
+        run: cargo clippy --all-targets -- -D warnings

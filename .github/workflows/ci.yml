@@ -1,0 +1,24 @@
+# Continuous integration: runs on every push to main and on every PR
+# targeting main. Fails fast if any check breaks; PRs cannot be merged
+# while CI is red (configure branch protection in repo settings).
+#
+# All actual checks live in `_checks.yml` so the release pipeline runs the
+# exact same matrix before producing installers.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    uses: ./.github/workflows/_checks.yml
