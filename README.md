@@ -59,7 +59,29 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-Builds are not code-signed. On macOS, use right-click -> Open on first launch. On Windows, SmartScreen may require More info -> Run anyway.
+## Installation notes
+
+### macOS
+
+RoundLab is currently unsigned.
+
+If macOS says the app is damaged or cannot be opened, run:
+
+```bash
+xattr -cr ~/Downloads/RoundLab.app
+open ~/Downloads/RoundLab.app
+```
+
+Then confirm the security prompt from macOS.
+
+### Windows
+
+RoundLab is currently unsigned.
+
+If SmartScreen blocks the app:
+
+1. Click `More info`
+2. Click `Run anyway`
 
 ## Auto-Update
 
