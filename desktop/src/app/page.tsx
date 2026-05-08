@@ -408,22 +408,7 @@ export default function Home() {
         <SettingsPanel />
       </header>
 
-      <main className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-12">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <Image
-            src="/logo.png"
-            alt=""
-            width={92}
-            height={94}
-            priority
-            className="h-auto w-20 object-contain drop-shadow-[0_0_24px_rgba(110,231,183,0.18)]"
-          />
-          <div>
-            <h1 className="text-[18px] font-semibold text-neutral-100">RoundLab</h1>
-            <p className="mt-1 text-[12px] text-neutral-500">CS2 demo replay & analysis</p>
-          </div>
-        </div>
-
+      <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-6 py-8 sm:py-10">
         <div
           onClick={onPickAndParse}
           role="button"
