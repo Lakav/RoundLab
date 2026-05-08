@@ -23,7 +23,9 @@ export function DebugConsole({ isOpen, onClose }: { isOpen: boolean; onClose: ()
   const [debugInfo, setDebugInfo] = useState<Record<string, unknown>>({});
   const [logPath, setLogPath] = useState<string>("");
   const [actionStatus, setActionStatus] = useState<string>("");
-  const [projectileDebug, setProjectileDebug] = useState(false);
+  const [projectileDebug, setProjectileDebug] = useState(
+    () => typeof window !== "undefined" && window.localStorage.getItem(PROJECTILE_DEBUG_KEY) === "1",
+  );
   const [projectileLogLines, setProjectileLogLines] = useState<number | null>(null);
   const [projectileScannedLines, setProjectileScannedLines] = useState<number | null>(null);
   const [projectileLogPaths, setProjectileLogPaths] = useState<string[]>([]);
@@ -41,8 +43,6 @@ export function DebugConsole({ isOpen, onClose }: { isOpen: boolean; onClose: ()
 
   useEffect(() => {
     if (!isOpen) return;
-    const enabled = window.localStorage.getItem(PROJECTILE_DEBUG_KEY) === "1";
-    setProjectileDebug(enabled);
 
     const originalLog = console.log;
     const originalError = console.error;
