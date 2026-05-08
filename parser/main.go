@@ -27,6 +27,8 @@ import (
 // zstdMagic is the first 4 bytes of any Zstandard frame (RFC 8478).
 var zstdMagic = []byte{0x28, 0xB5, 0x2F, 0xFD}
 
+const fireEffectMaxDuration = 7.0
+
 // qualityStep maps a human quality label directly to a tick step.
 // `full` keeps every parser tick. Lower qualities are kept for CLI/debug use,
 // but the desktop app always requests full fidelity.
@@ -56,7 +58,7 @@ type Meta struct {
 	TeamB       string  `json:"teamB"`
 	ScoreA      int     `json:"scoreA"`
 	ScoreB      int     `json:"scoreB"`
-	Partial     bool    `json:"partial,omitempty"` // true if parse aborted early
+	Partial     bool    `json:"partial,omitempty"`    // true if parse aborted early
 	ParseError  string  `json:"parseError,omitempty"` // error message if partial
 }
 
@@ -185,9 +187,14 @@ type Output struct {
 }
 
 type storedRound struct {
-	Path    string
-	Fires   int
-	Effects int
+	Path              string
+	Fires             int
+	Effects           int
+	FireEffects       int
+	LongFireEffects   int
+	MaxFireDuration   float64
+	ProjectileFrames  int
+	ProjectileSamples int
 }
 
 type RoundSpool struct {
@@ -230,11 +237,57 @@ func (s *RoundSpool) Add(round Round) error {
 		return closeErr
 	}
 	s.Rounds = append(s.Rounds, storedRound{
-		Path:    path,
-		Fires:   len(round.WeaponFires),
-		Effects: len(round.Effects),
+		Path:              path,
+		Fires:             len(round.WeaponFires),
+		Effects:           len(round.Effects),
+		FireEffects:       countFireEffects(round.Effects),
+		LongFireEffects:   countLongFireEffects(round.Effects),
+		MaxFireDuration:   maxFireDuration(round.Effects),
+		ProjectileFrames:  len(round.ProjectileFrames),
+		ProjectileSamples: countProjectileSamples(round.ProjectileFrames),
 	})
 	return nil
+}
+
+func countFireEffects(effects []UtilityEffect) int {
+	total := 0
+	for _, effect := range effects {
+		if effect.Type == "fire" {
+			total++
+		}
+	}
+	return total
+}
+
+func countLongFireEffects(effects []UtilityEffect) int {
+	total := 0
+	for _, effect := range effects {
+		if effect.Type == "fire" && effect.End-effect.Start > 9 {
+			total++
+		}
+	}
+	return total
+}
+
+func maxFireDuration(effects []UtilityEffect) float64 {
+	maxDuration := 0.0
+	for _, effect := range effects {
+		if effect.Type != "fire" {
+			continue
+		}
+		if duration := effect.End - effect.Start; duration > maxDuration {
+			maxDuration = duration
+		}
+	}
+	return maxDuration
+}
+
+func countProjectileSamples(frames []ProjectileFrame) int {
+	total := 0
+	for _, frame := range frames {
+		total += len(frame.Projectiles)
+	}
+	return total
 }
 
 func (s *RoundSpool) Count() int {
@@ -904,7 +957,7 @@ func main() {
 			Type:    "fire",
 			Variant: infernoVariant(e.Inferno.Thrower()),
 			Start:   t,
-			End:     t + 7,
+			End:     t + fireEffectMaxDuration,
 			X:       float32(x / n),
 			Y:       float32(y / n),
 			Z:       float32(z / n),
@@ -922,7 +975,16 @@ func main() {
 			return
 		}
 		if idx, found := infernoEffects[e.Inferno.UniqueID()]; found && idx < len(currentRound.Effects) {
-			currentRound.Effects[idx].End = t
+			effect := &currentRound.Effects[idx]
+			maxEnd := effect.Start + fireEffectMaxDuration
+			if t > maxEnd {
+				fmt.Fprintf(os.Stderr,
+					"ROUNDLAB_DEBUG_PROJECTILES fire-effect-clamped source=parser infernoId=%d startTime=%.3f rawEndTime=%.3f rawDuration=%.3f clampedEndTime=%.3f clampedDuration=%.3f maxDuration=%.3f\n",
+					e.Inferno.UniqueID(), effect.Start, t, t-effect.Start, maxEnd, maxEnd-effect.Start, fireEffectMaxDuration)
+				effect.End = maxEnd
+				return
+			}
+			effect.End = t
 		}
 	})
 
@@ -1221,16 +1283,30 @@ func main() {
 		suffix = " (partial — parse aborted mid-demo)"
 	}
 	totalFires, totalEffects := 0, 0
+	totalFireEffects, totalLongFireEffects, maxFireDuration := 0, 0, 0.0
+	totalProjectileFrames, totalProjectileSamples, roundsWithProjectiles := 0, 0, 0
 	for _, round := range roundSpool.Rounds {
 		totalFires += round.Fires
 		totalEffects += round.Effects
+		totalFireEffects += round.FireEffects
+		totalLongFireEffects += round.LongFireEffects
+		if round.MaxFireDuration > maxFireDuration {
+			maxFireDuration = round.MaxFireDuration
+		}
+		totalProjectileFrames += round.ProjectileFrames
+		totalProjectileSamples += round.ProjectileSamples
+		if round.ProjectileFrames > 0 || round.ProjectileSamples > 0 {
+			roundsWithProjectiles++
+		}
 	}
 	emitProgress(0.9990, "Emitting parser OK on stderr...")
 	okStarted := finalStepStart("emit-ok")
 	if _, err := fmt.Fprintf(os.Stderr,
-		"OK[primary] map=%s rounds=%d players=%d fires=%d effects=%d%s\n",
+		"OK[primary] map=%s rounds=%d players=%d fires=%d effects=%d fireEffects=%d longFireEffects=%d maxFireDuration=%.3f projectileFrames=%d projectileSamples=%d roundsWithProjectiles=%d skipProjectiles=%t%s\n",
 		output.Meta.Map, roundSpool.Count(), len(output.Players),
-		totalFires, totalEffects, suffix); err != nil {
+		totalFires, totalEffects, totalFireEffects, totalLongFireEffects, maxFireDuration,
+		totalProjectileFrames, totalProjectileSamples,
+		roundsWithProjectiles, *skipProjectiles, suffix); err != nil {
 		finalStepFailed("emit-ok", okStarted, err)
 		panic(err)
 	}

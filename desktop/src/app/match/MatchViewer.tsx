@@ -16,12 +16,13 @@ import { Home, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { MatchData, Round } from "@/lib/types";
 import { cropFor, MAP_CALIBRATION, RADAR_SIZE } from "@/lib/maps";
-import { getMatchMetadata, getRound } from "@/lib/api";
+import { getMatchMetadata, getRound, writeDebugLog } from "@/lib/api";
 import { invoke } from "@tauri-apps/api/core";
 
 const DRAW_WIDTH = 3;
 const MIN_MAP = 360;
 const MAX_MAP = 760;
+const PROJECTILE_DEBUG_KEY = "roundlab.debugProjectiles";
 
 function hideKnifeRound(data: MatchData): MatchData {
   if (data.rounds.length < 2) return data;
@@ -44,6 +45,38 @@ function assertRenderableRound(round: Round): Round {
     throw new Error(`Round ${round.number} has no frame data.`);
   }
   return round;
+}
+
+function projectileDebugEnabled(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    window.localStorage.getItem(PROJECTILE_DEBUG_KEY) === "1" ||
+    String((window as Window & { ROUNDLAB_DEBUG_PROJECTILES?: unknown }).ROUNDLAB_DEBUG_PROJECTILES ?? "") === "1"
+  );
+}
+
+function logFrontendRoundReceived(matchId: string, round: Round): void {
+  if (!projectileDebugEnabled()) return;
+  const projectileFrames = round.projectileFrames ?? [];
+  const framesWithProjectiles = round.frames.filter((frame) => (frame.projectiles?.length ?? 0) > 0).length;
+  const frameProjectiles = round.frames.reduce((total, frame) => total + (frame.projectiles?.length ?? 0), 0);
+  const projectileFrameProjectiles = projectileFrames.reduce(
+    (total, frame) => total + (frame.projectiles?.length ?? 0),
+    0,
+  );
+  void writeDebugLog(
+    "projectiles",
+    `ROUNDLAB_DEBUG_PROJECTILES frontend-round-received ${JSON.stringify({
+      matchId,
+      roundNumber: round.number,
+      frames: round.frames.length,
+      framesWithProjectiles,
+      frameProjectiles,
+      projectileFrames: projectileFrames.length,
+      projectileFrameProjectiles,
+      effects: round.effects?.length ?? 0,
+    })}`,
+  ).catch(() => {});
 }
 
 export default function MatchViewer({ id }: { id: string }) {
@@ -122,7 +155,9 @@ export default function MatchViewer({ id }: { id: string }) {
       if (loadingRoundsRef.current.has(roundNumber)) return;
       loadingRoundsRef.current.add(roundNumber);
       try {
-        const data = assertRenderableRound(await getRound(id, roundNumber));
+        const debugProjectiles = projectileDebugEnabled();
+        const data = assertRenderableRound(await getRound(id, roundNumber, debugProjectiles));
+        logFrontendRoundReceived(id, data);
         startTransition(() => setRoundData(id, roundNumber, data));
       } catch (e) {
         throw e;

@@ -30,7 +30,6 @@ import {
 } from "@/lib/api";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { UpdateChecker } from "@/components/UpdateChecker";
-import { DebugConsole } from "@/components/DebugConsole";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -59,7 +58,6 @@ export default function Home() {
   const [opening, setOpening] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [debugConsoleOpen, setDebugConsoleOpen] = useState(false);
   const [parseProgress, setParseProgress] = useState<ParseProgress>({
     phase: "idle",
     progress: 0,
@@ -240,21 +238,6 @@ export default function Home() {
       unlisten?.();
     };
   }, [parsePath, uploading]);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === "KeyD") {
-        e.preventDefault();
-        setDebugConsoleOpen((prev) => !prev);
-      }
-      if (e.code === "Escape" && debugConsoleOpen) {
-        setDebugConsoleOpen(false);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [debugConsoleOpen]);
 
   const onPickAndParse = async () => {
     if (uploading) return;
@@ -580,8 +563,6 @@ export default function Home() {
           </div>
         </Modal>
       )}
-
-      <DebugConsole isOpen={debugConsoleOpen} onClose={() => setDebugConsoleOpen(false)} />
     </div>
   );
 }

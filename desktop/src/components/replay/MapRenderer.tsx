@@ -6,11 +6,15 @@ import { useReplay } from "@/lib/replay-store";
 import { MAP_CALIBRATION, RADAR_SIZE, worldToRadar } from "@/lib/maps";
 import type { BombState, Frame, MatchEvent, PlayerPos, ProjectileFrame, ProjectilePos, Round, UtilityEffect, WeaponFireEvent } from "@/lib/types";
 import { iconPathFor } from "@/lib/icons";
+import { writeDebugLog } from "@/lib/api";
 
 const iconTextureCache = new Map<string, Promise<Texture>>();
 const BOMB_CARRIER_COLOR = 0xef4444;
 const BOMB_SECONDS = 40;
+const FIRE_EFFECT_MAX_DURATION = 7;
 const bombFrameFallbackCache = new WeakMap<Round, Frame[]>();
+const PROJECTILE_DEBUG_KEY = "roundlab.debugProjectiles";
+let projectileDebugCache = { checkedAt: 0, enabled: false };
 
 // Pixi v8's Assets.load pipeline for SVG goes through a fetch()+parse step that
 // silently fails inside Tauri's https://tauri.localhost custom scheme on
@@ -149,16 +153,147 @@ function projectileSamples(round: Round): ProjectileSample[] {
   return round.projectileFrames?.length ? round.projectileFrames : round.frames;
 }
 
+function projectileDebugEnabled() {
+  if (typeof window === "undefined") return false;
+  const now = performance.now();
+  if (now - projectileDebugCache.checkedAt < 500) return projectileDebugCache.enabled;
+  projectileDebugCache = {
+    checkedAt: now,
+    enabled:
+      window.localStorage.getItem(PROJECTILE_DEBUG_KEY) === "1" ||
+      String((window as Window & { ROUNDLAB_DEBUG_PROJECTILES?: unknown }).ROUNDLAB_DEBUG_PROJECTILES ?? "") === "1",
+  };
+  return projectileDebugCache.enabled;
+}
+
+function projectileDebugLog(message: string) {
+  if (!projectileDebugEnabled()) return;
+  const line = `ROUNDLAB_DEBUG_PROJECTILES ${message}`;
+  console.info(line);
+  writeDebugLog("projectiles", line).catch(() => {});
+}
+
+function projectileDebugLogForced(message: string) {
+  const line = `ROUNDLAB_DEBUG_PROJECTILES ${message}`;
+  console.info(line);
+  writeDebugLog("projectiles", line).catch(() => {});
+}
+
+function formatProjectileDebugNumber(value: number) {
+  return Number.isFinite(value) ? Number(value.toFixed(3)) : null;
+}
+
+function projectileDebugDistance(projectile: ProjectilePos, effect: UtilityEffect) {
+  return Math.hypot(projectile.x - effect.x, projectile.y - effect.y, projectile.z - effect.z);
+}
+
+function projectileDebugTick(round: Round, tickRate: number, time: number) {
+  return Math.round(round.startTick + time * tickRate);
+}
+
+function fireEffectDebugPayload(effect: UtilityEffect, round: Round, tickRate: number) {
+  const duration = effect.end - effect.start;
+  return {
+    roundNumber: round.number,
+    id: effect.id ?? null,
+    type: effect.type,
+    variant: effect.variant ?? null,
+    startTime: formatProjectileDebugNumber(effect.start),
+    endTime: formatProjectileDebugNumber(effect.end),
+    startTick: projectileDebugTick(round, tickRate, effect.start),
+    endTick: projectileDebugTick(round, tickRate, effect.end),
+    duration: formatProjectileDebugNumber(duration),
+    source: "parser-effect",
+    overExpectedDuration: duration > 9,
+    x: formatProjectileDebugNumber(effect.x),
+    y: formatProjectileDebugNumber(effect.y),
+    z: formatProjectileDebugNumber(effect.z),
+    team: effect.team ?? null,
+  };
+}
+
+function fireClampDebugPayload(effect: UtilityEffect, round: Round, tickRate: number, source: string) {
+  const clampedEnd = Math.min(effect.end, effect.start + FIRE_EFFECT_MAX_DURATION);
+  return {
+    roundNumber: round.number,
+    id: effect.id ?? null,
+    type: effect.type,
+    variant: effect.variant ?? null,
+    source,
+    maxDuration: FIRE_EFFECT_MAX_DURATION,
+    rawStartTime: formatProjectileDebugNumber(effect.start),
+    rawEndTime: formatProjectileDebugNumber(effect.end),
+    rawDuration: formatProjectileDebugNumber(effect.end - effect.start),
+    clampedEndTime: formatProjectileDebugNumber(clampedEnd),
+    clampedDuration: formatProjectileDebugNumber(clampedEnd - effect.start),
+    rawStartTick: projectileDebugTick(round, tickRate, effect.start),
+    rawEndTick: projectileDebugTick(round, tickRate, effect.end),
+    clampedEndTick: projectileDebugTick(round, tickRate, clampedEnd),
+  };
+}
+
+function projectileTrackWindow(frames: ProjectileSample[], id: number) {
+  let first: number | null = null;
+  let last: number | null = null;
+  let samples = 0;
+  let previous: ProjectilePos | null = null;
+  let moved = false;
+  for (const frame of frames) {
+    const projectile = frame.projectiles?.find((candidate) => candidate.id === id);
+    if (!projectile) continue;
+    first = first ?? frame.t;
+    last = frame.t;
+    samples++;
+    if (previous) {
+      const distance = Math.hypot(projectile.x - previous.x, projectile.y - previous.y, projectile.z - previous.z);
+      if (distance > 2) moved = true;
+    }
+    previous = projectile;
+  }
+  return { first, last, samples, moved };
+}
+
+function projectileSampleSourceDebug(frames: ProjectileSample[], id: number, time: number) {
+  const pair = framePair(frames, time);
+  const inA = Boolean(pair?.a.projectiles?.some((projectile) => projectile.id === id));
+  const inB = Boolean(pair?.b.projectiles?.some((projectile) => projectile.id === id));
+  return {
+    frameA: pair ? formatProjectileDebugNumber(pair.a.t) : null,
+    frameB: pair ? formatProjectileDebugNumber(pair.b.t) : null,
+    alpha: pair ? formatProjectileDebugNumber(pair.alpha) : null,
+    inFrameA: inA,
+    inFrameB: inB,
+    selectedBy: inA ? "current-or-interpolated-from-current-frame" : inB ? "future-frame-only" : "none",
+  };
+}
+
+function projectilePositionSuspicion(
+  projectile: ProjectilePos,
+  radar: { x: number; y: number },
+  size: number,
+  track: ReturnType<typeof projectileTrackWindow>,
+): string[] {
+  const reasons: string[] = [];
+  if ([projectile.x, projectile.y, projectile.z].some((value) => !Number.isFinite(value))) reasons.push("invalid-world-coordinates");
+  if (!Number.isFinite(radar.x) || !Number.isFinite(radar.y)) reasons.push("invalid-radar-coordinates");
+  if (Math.abs(projectile.x) < 0.001 && Math.abs(projectile.y) < 0.001 && Math.abs(projectile.z) < 0.001) reasons.push("zero-world-position");
+  if (Math.hypot(radar.x - size / 2, radar.y - size / 2) <= 8 && track.samples <= 2) reasons.push("near-map-center-with-short-history");
+  if (track.first === null || track.samples <= 1) reasons.push("missing-history");
+  if (!track.moved && track.samples >= 2) reasons.push("static-track");
+  return reasons;
+}
+
 function sampleProjectiles(frames: ProjectileSample[], t: number): ProjectilePos[] {
+  if (frames.length > 0 && t < frames[0].t) return [];
   const pair = framePair(frames, t);
   if (!pair) return [];
   const { a, b, alpha } = pair;
-  const from = new Map((a.projectiles ?? []).map((p) => [p.id, p]));
+  const future = new Map((b.projectiles ?? []).map((p) => [p.id, p]));
   const out = new Map<number, ProjectilePos>();
-  for (const pb of b.projectiles ?? []) {
-    const pa = from.get(pb.id);
-    if (!pa) {
-      out.set(pb.id, pb);
+  for (const pa of a.projectiles ?? []) {
+    const pb = future.get(pa.id);
+    if (!pb) {
+      out.set(pa.id, pa);
       continue;
     }
     const dx = pb.x - pa.x;
@@ -169,7 +304,7 @@ function sampleProjectiles(frames: ProjectileSample[], t: number): ProjectilePos
       (pa.thrower ?? 0) === (pb.thrower ?? 0) &&
       dx * dx + dy * dy + dz * dz <= 850 * 850;
     if (!sameProjectile) {
-      out.set(pb.id, pb);
+      out.set(pa.id, pa);
       continue;
     }
     out.set(pb.id, {
@@ -590,8 +725,18 @@ function resolveDecoyEffect(effect: UtilityEffect, frames: ProjectileSample[]): 
   };
 }
 
+function resolveFireEffect(effect: UtilityEffect): UtilityEffect {
+  if (effect.type !== "fire") return effect;
+  const maxEnd = effect.start + FIRE_EFFECT_MAX_DURATION;
+  if (effect.end <= maxEnd) return effect;
+  return {
+    ...effect,
+    end: maxEnd,
+  };
+}
+
 function resolveEffects(effects: UtilityEffect[], frames: ProjectileSample[]): UtilityEffect[] {
-  return effects.map((effect) => resolveDecoyEffect(effect, frames));
+  return effects.map((effect) => resolveFireEffect(resolveDecoyEffect(effect, frames)));
 }
 
 function isSameVisualProjectile(a: ProjectilePos, b: ProjectilePos): boolean {
@@ -637,6 +782,184 @@ function visibleProjectiles(
   }
 
   return [...out.values()];
+}
+
+function summarizeProjectileRound(round: Round, projectileFrames: ProjectileSample[], effects: UtilityEffect[]) {
+  const tracks = new Map<
+    number,
+    {
+      id: number;
+      type: string;
+      thrower: number | null;
+      samples: number;
+      first: number;
+      last: number;
+      valid: number;
+      invalid: number;
+      moved: boolean;
+      firstPos?: ProjectilePos;
+      lastPos?: ProjectilePos;
+    }
+  >();
+  const frameCounts = {
+    frames: round.frames.length,
+    projectileFrames: round.projectileFrames?.length ?? 0,
+    samplesSource: round.projectileFrames?.length ? "projectileFrames" : "frames",
+    samplesWithProjectiles: 0,
+  };
+
+  for (const frame of projectileFrames) {
+    const projectiles = frame.projectiles ?? [];
+    if (projectiles.length) frameCounts.samplesWithProjectiles++;
+    for (const projectile of projectiles) {
+      const valid = [projectile.x, projectile.y, projectile.z].every(Number.isFinite);
+      const track = tracks.get(projectile.id);
+      if (!track) {
+        tracks.set(projectile.id, {
+          id: projectile.id,
+          type: projectile.type,
+          thrower: projectile.thrower ?? null,
+          samples: 1,
+          first: frame.t,
+          last: frame.t,
+          valid: valid ? 1 : 0,
+          invalid: valid ? 0 : 1,
+          moved: false,
+          firstPos: valid ? projectile : undefined,
+          lastPos: valid ? projectile : undefined,
+        });
+        continue;
+      }
+      track.samples++;
+      track.last = frame.t;
+      if (valid) {
+        track.valid++;
+        if (track.lastPos) {
+          const dist = Math.hypot(projectile.x - track.lastPos.x, projectile.y - track.lastPos.y, projectile.z - track.lastPos.z);
+          if (dist > 1) track.moved = true;
+        }
+        track.lastPos = projectile;
+      } else {
+        track.invalid++;
+      }
+    }
+  }
+
+  const typeCounts = new Map<string, number>();
+  const rejected: Array<{ id: number; type: string; reason: string; samples: number; first: number; last: number }> = [];
+  let usableTrajectories = 0;
+  for (const track of tracks.values()) {
+    const effectType = projectileTypeToEffect(track.type) ?? "unknown";
+    typeCounts.set(effectType, (typeCounts.get(effectType) ?? 0) + 1);
+    let reason: string | null = null;
+    if (track.samples < 2) reason = "path too short";
+    else if (track.valid < 2) reason = "invalid coordinates";
+    else if (!track.moved) reason = "static path";
+    if (reason) {
+      rejected.push({
+        id: track.id,
+        type: track.type,
+        reason,
+        samples: track.samples,
+        first: formatProjectileDebugNumber(track.first) ?? track.first,
+        last: formatProjectileDebugNumber(track.last) ?? track.last,
+      });
+    } else {
+      usableTrajectories++;
+    }
+  }
+
+  const effectCounts = new Map<string, number>();
+  for (const effect of effects) {
+    const key = effect.type === "fire" && effect.variant ? `${effect.type}:${effect.variant}` : effect.type;
+    effectCounts.set(key, (effectCounts.get(key) ?? 0) + 1);
+  }
+
+  return {
+    roundNumber: round.number,
+    startTick: round.startTick,
+    endTick: round.endTick,
+    frameCounts,
+    totalProjectileTracks: tracks.size,
+    usableTrajectories,
+    rejectedTrajectories: rejected.length,
+    projectileTypes: Object.fromEntries([...typeCounts.entries()].sort()),
+    effects: Object.fromEntries([...effectCounts.entries()].sort()),
+    effectCount: effects.length,
+    rejectedExamples: rejected.slice(0, 30),
+  };
+}
+
+function projectileEffectMatchDebug(
+  projectile: ProjectilePos,
+  effects: UtilityEffect[],
+  frames: ProjectileSample[],
+  time: number,
+) {
+  const type = projectileTypeToEffect(projectile.type);
+  if (!type) return null;
+  let best: {
+    effect: UtilityEffect;
+    distance: number;
+    hideStart: number;
+    touches: boolean;
+    seenNear: boolean;
+    started: boolean;
+  } | null = null;
+
+  for (const effect of effects) {
+    if (effect.type !== type) continue;
+    const distance = projectileDebugDistance(projectile, effect);
+    if (best && distance >= best.distance) continue;
+    best = {
+      effect,
+      distance,
+      hideStart: projectileHideStart(effect),
+      touches: projectileTouchesEffect(projectile, effect, frames, time),
+      seenNear: projectileSeenNearEffect(projectile, effect, frames),
+      started: time >= projectileHideStart(effect),
+    };
+  }
+
+  return best;
+}
+
+function projectileHiddenReasonDebug(
+  projectile: ProjectilePos,
+  existing: ProjectilePos[],
+  effects: UtilityEffect[],
+  detonatedIds: Set<number>,
+  frames: ProjectileSample[],
+  time: number,
+) {
+  if (detonatedIds.has(projectile.id)) {
+    return { reason: "hidden by detonatedIds", match: projectileEffectMatchDebug(projectile, effects, frames, time) };
+  }
+  const match = projectileEffectMatchDebug(projectile, effects, frames, time);
+  if (match && match.started && (match.touches || match.seenNear)) {
+    return { reason: "hidden by effect resolution", match };
+  }
+  if (existing.some((current) => isSameVisualProjectile(current, projectile))) {
+    return { reason: "duplicate visual projectile", match };
+  }
+  return null;
+}
+
+function projectileRenderIssueDebug(
+  projectile: ProjectilePos,
+  raw: { x: number; y: number }[],
+  current: { x: number; y: number },
+  layer: Container,
+  size: number,
+) {
+  if ([projectile.x, projectile.y, projectile.z].some((value) => !Number.isFinite(value))) return "invalid coordinates";
+  if (raw.some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y))) return "invalid radar path";
+  if (raw.length < 2) return "path too short";
+  if (current.x < -64 || current.y < -64 || current.x > size + 64 || current.y > size + 64) return "outside map bounds";
+  if (!layer.visible) return "layer invisible";
+  if (layer.alpha === 0) return "alpha zero";
+  if (layer.destroyed) return "object destroyed";
+  return null;
 }
 
 function fitSprite(sprite: Sprite, max: number) {
@@ -1233,9 +1556,23 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
   const loadedMapRef = useRef<string | null>(null);
   const defuseVisualRef = useRef<{ key: string; start: number; lastTime: number } | null>(null);
   const deferredDestroyRef = useRef<Array<Container | Graphics | Sprite | Text>>([]);
+  const projectileDebugRoundRef = useRef<string | null>(null);
+  const projectileDebugLastFrameLogRef = useRef(0);
+  const projectileDebugHiddenRef = useRef<Set<string>>(new Set());
+  const projectileDebugAssociationRef = useRef<Set<string>>(new Set());
+  const projectileDebugFireSummaryRef = useRef<Set<string>>(new Set());
+  const projectileDebugFireVisibleRef = useRef<Set<string>>(new Set());
+  const projectileDebugEarlyRef = useRef<Set<string>>(new Set());
+  const projectileDebugSuspiciousRef = useRef<Set<string>>(new Set());
+  const projectileDebugVisibleReasonRef = useRef<Set<string>>(new Set());
+  const projectileDebugDetectedRef = useRef(false);
 
   // init pixi once
   useEffect(() => {
+    const storedDebug = typeof window !== "undefined" ? window.localStorage.getItem(PROJECTILE_DEBUG_KEY) : null;
+    if (storedDebug === "1") {
+      projectileDebugLogForced(`enabled mapRendererMounted localStorage=${storedDebug}`);
+    }
     let disposed = false;
     const host = hostRef.current;
     const sprites = spritesRef.current;
@@ -1365,6 +1702,7 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       const throwerTeams = lastKnownTeams(round.frames, time);
       const scale = size / RADAR_SIZE;
       const seen = new Set<number>();
+      const utilityChildrenBeforeCleanup = utilityLayer.children.length;
       deferredDestroyRef.current.push(...(utilityLayer.removeChildren() as Array<Container | Graphics | Sprite | Text>));
       for (let i = 0; i < 40 && deferredDestroyRef.current.length > 0; i++) {
         const child = deferredDestroyRef.current.shift();
@@ -1378,12 +1716,74 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
 
       const projectileFrames = projectileSamples(round);
       const roundEffects = resolveEffects(round.effects ?? [], projectileFrames);
+      const debugProjectiles = projectileDebugEnabled();
+      if (debugProjectiles) {
+        if (!projectileDebugDetectedRef.current) {
+          projectileDebugDetectedRef.current = true;
+          projectileDebugLogForced(`enabled mapRendererDetected map=${match.meta.map} roundNumber=${round.number} time=${formatProjectileDebugNumber(time)}`);
+        }
+        const roundKey = `${match.meta.map}:${currentRoundIdx}:${round.number}:${round.startTick}:${round.endTick}`;
+        if (projectileDebugRoundRef.current !== roundKey) {
+          projectileDebugRoundRef.current = roundKey;
+          projectileDebugHiddenRef.current.clear();
+          projectileDebugAssociationRef.current.clear();
+          projectileDebugFireSummaryRef.current.clear();
+          projectileDebugFireVisibleRef.current.clear();
+          projectileDebugEarlyRef.current.clear();
+          projectileDebugSuspiciousRef.current.clear();
+          projectileDebugVisibleReasonRef.current.clear();
+          projectileDebugLastFrameLogRef.current = 0;
+          projectileDebugLog(`round-summary-start ${JSON.stringify({
+            roundNumber: round.number,
+            map: match.meta.map,
+            currentRoundIdx,
+            time: formatProjectileDebugNumber(time),
+            localStorage: window.localStorage.getItem(PROJECTILE_DEBUG_KEY),
+          })}`);
+          projectileDebugLog(`round-summary ${JSON.stringify(summarizeProjectileRound(round, projectileFrames, roundEffects))}`);
+          for (const effect of round.effects ?? []) {
+            if (effect.type !== "fire" || effect.end - effect.start <= FIRE_EFFECT_MAX_DURATION) continue;
+            const key = `${round.number}:${effect.id ?? "no-id"}:${effect.start}:${effect.end}:clamped`;
+            if (projectileDebugFireSummaryRef.current.has(key)) continue;
+            projectileDebugFireSummaryRef.current.add(key);
+            projectileDebugLog(`fire-effect-clamped ${JSON.stringify(fireClampDebugPayload(effect, round, match.meta.tickRate, "renderer-resolveEffects"))}`);
+          }
+          for (const effect of roundEffects) {
+            if (effect.type !== "fire") continue;
+            const key = `${round.number}:${effect.id ?? "no-id"}:${effect.start}:${effect.end}`;
+            if (projectileDebugFireSummaryRef.current.has(key)) continue;
+            projectileDebugFireSummaryRef.current.add(key);
+            projectileDebugLog(`fire-effect-summary ${JSON.stringify(fireEffectDebugPayload(effect, round, match.meta.tickRate))}`);
+          }
+        }
+      } else {
+        projectileDebugDetectedRef.current = false;
+      }
       const unitsToPx = scale / calib.scale;
       const activeEffects = roundEffects.filter((e) => time >= e.start && time <= e.end);
       for (const effect of activeEffects) {
         const resolved = fireVariantFromProjectiles(effect, projectileFrames);
         if (resolved.type === "bomb_planted" && displayBomb) continue;
-        if (resolved.type === "fire" && fireIsSmoked(resolved, activeEffects)) continue;
+        if (resolved.type === "fire") {
+          const smoked = fireIsSmoked(resolved, activeEffects);
+          if (debugProjectiles) {
+            const visibleBucket = Math.floor(time * 2) / 2;
+            const key = `${round.number}:${resolved.id ?? "no-id"}:${visibleBucket}:${smoked ? "smoked" : "visible"}`;
+            if (!projectileDebugFireVisibleRef.current.has(key)) {
+              projectileDebugFireVisibleRef.current.add(key);
+              projectileDebugLog(`fire-effect-visible ${JSON.stringify({
+                ...fireEffectDebugPayload(resolved, round, match.meta.tickRate),
+                currentTime: formatProjectileDebugNumber(time),
+                currentTick: projectileDebugTick(round, match.meta.tickRate, time),
+                rendererAction: smoked ? "hidden" : "drawn",
+                disappearanceReason: smoked ? "smoked-by-active-smoke" : time >= resolved.end ? "expired" : "active",
+                secondsVisibleSoFar: formatProjectileDebugNumber(time - resolved.start),
+                secondsLeft: formatProjectileDebugNumber(resolved.end - time),
+              })}`);
+            }
+          }
+          if (smoked) continue;
+        }
         drawEffect(utilityLayer, resolved, time, toRadar, unitsToPx);
       }
 
@@ -1497,6 +1897,7 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       // second flash/HE in the same spot from being swallowed by the first
       // detonation's suppression.
       const detonatedIds = new Set<number>();
+      const detonatedEffectsById = new Map<number, { effect: UtilityEffect; distance: number; rule: string }>();
       const projectileEffects = roundEffects
         .filter((e) => time >= e.start - (e.type === "he" ? 1.25 : 0.12))
         .slice()
@@ -1529,12 +1930,213 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
             bestId = sp.id;
           }
         }
-        if (bestId !== null) detonatedIds.add(bestId);
+        if (bestId !== null) {
+          detonatedIds.add(bestId);
+          detonatedEffectsById.set(bestId, { effect: e, distance: Math.sqrt(bestDist), rule: "closest sampled projectile near effect" });
+          if (debugProjectiles) {
+            const key = `${round.number}:${bestId}:${e.type}:${e.start}`;
+            if (!projectileDebugAssociationRef.current.has(key)) {
+              projectileDebugAssociationRef.current.add(key);
+              projectileDebugLog(`effect-associated ${JSON.stringify({
+                roundNumber: round.number,
+                projectileId: bestId,
+                effectType: e.type,
+                effectVariant: e.variant ?? null,
+                projectileTime: formatProjectileDebugNumber(time),
+                effectTime: formatProjectileDebugNumber(e.start),
+                distance: formatProjectileDebugNumber(Math.sqrt(bestDist)),
+                rule: "closest sampled projectile near effect",
+              })}`);
+            }
+          }
+        }
       }
 
+      const sampledProjectiles = debugProjectiles ? sampleProjectiles(projectileFrames, time) : [];
       const projectiles = visibleProjectiles(projectileFrames, time, projectileEffects, detonatedIds);
+      if (debugProjectiles) {
+        const visibleById = new Set(projectiles.map((projectile) => projectile.id));
+        const accepted: ProjectilePos[] = [];
+        for (const projectile of sampledProjectiles) {
+          if (visibleById.has(projectile.id)) {
+            accepted.push(projectile);
+            continue;
+          }
+          const hidden = projectileHiddenReasonDebug(projectile, accepted, projectileEffects, detonatedIds, projectileFrames, time);
+          const key = `${round.number}:${projectile.id}:${hidden?.reason ?? "hidden unknown"}`;
+          if (!projectileDebugHiddenRef.current.has(key)) {
+            projectileDebugHiddenRef.current.add(key);
+            const detonated = detonatedEffectsById.get(projectile.id);
+            projectileDebugLog(`projectile-hidden ${JSON.stringify({
+              roundNumber: round.number,
+              projectileId: projectile.id,
+              type: projectile.type,
+              reason: hidden?.reason ?? "hidden unknown",
+              currentTime: formatProjectileDebugNumber(time),
+              currentTick: Math.round(round.startTick + time * match.meta.tickRate),
+              detonationTime: hidden?.match ? formatProjectileDebugNumber(hidden.match.effect.start) : null,
+              effect: hidden?.match
+                ? {
+                    type: hidden.match.effect.type,
+                    variant: hidden.match.effect.variant ?? null,
+                    start: formatProjectileDebugNumber(hidden.match.effect.start),
+                    distance: formatProjectileDebugNumber(hidden.match.distance),
+                    hideStart: formatProjectileDebugNumber(hidden.match.hideStart),
+                    touches: hidden.match.touches,
+                    seenNear: hidden.match.seenNear,
+                  }
+                : detonated
+                ? {
+                    type: detonated.effect.type,
+                    variant: detonated.effect.variant ?? null,
+                    start: formatProjectileDebugNumber(detonated.effect.start),
+                    distance: formatProjectileDebugNumber(detonated.distance),
+                    rule: detonated.rule,
+                  }
+                : null,
+            })}`);
+          }
+        }
+      }
+      let debugTrailsDrawn = 0;
+      let debugTrailsNotDrawn = 0;
       for (const projectile of projectiles) {
+        if (debugProjectiles) {
+          const current = toRadar(projectile.x, projectile.y, projectile.z);
+          const track = projectileTrackWindow(projectileFrames, projectile.id);
+          const earlyRound = time <= 5 || (track.first !== null && track.first <= 5);
+          const beforeRound = track.first !== null && track.first < -0.001;
+          const afterRound = track.last !== null && track.last > round.duration + 0.001;
+          const suspicionReasons = [
+            ...projectilePositionSuspicion(projectile, current, size, track),
+            ...(beforeRound ? ["frame-before-round-start"] : []),
+            ...(afterRound ? ["frame-after-round-end"] : []),
+          ];
+          if (earlyRound) {
+            const key = `${round.number}:${projectile.id}:${Math.floor(time * 2) / 2}:early`;
+            if (!projectileDebugEarlyRef.current.has(key)) {
+              projectileDebugEarlyRef.current.add(key);
+              projectileDebugLog(`projectile-early-round ${JSON.stringify({
+                roundNumber: round.number,
+                projectileId: projectile.id,
+                type: projectile.type,
+                currentTime: formatProjectileDebugNumber(time),
+                currentTick: projectileDebugTick(round, match.meta.tickRate, time),
+                roundStartTick: round.startTick,
+                roundEndTick: round.endTick,
+                x: formatProjectileDebugNumber(projectile.x),
+                y: formatProjectileDebugNumber(projectile.y),
+                z: formatProjectileDebugNumber(projectile.z),
+                mapX: formatProjectileDebugNumber(current.x),
+                mapY: formatProjectileDebugNumber(current.y),
+                owner: projectile.thrower ?? null,
+                trackFirstTime: track.first === null ? null : formatProjectileDebugNumber(track.first),
+                trackLastTime: track.last === null ? null : formatProjectileDebugNumber(track.last),
+                trackSamples: track.samples,
+                trackMoved: track.moved,
+                sampleSource: projectileSampleSourceDebug(projectileFrames, projectile.id, time),
+                visibleReason: "sampled-projectile-not-suppressed-by-effect",
+              })}`);
+            }
+          }
+          if (suspicionReasons.length > 0) {
+            const key = `${round.number}:${projectile.id}:${suspicionReasons.join("|")}`;
+            if (!projectileDebugSuspiciousRef.current.has(key)) {
+              projectileDebugSuspiciousRef.current.add(key);
+              projectileDebugLog(`projectile-suspicious-position ${JSON.stringify({
+                roundNumber: round.number,
+                projectileId: projectile.id,
+                type: projectile.type,
+                currentTime: formatProjectileDebugNumber(time),
+                currentTick: projectileDebugTick(round, match.meta.tickRate, time),
+                x: formatProjectileDebugNumber(projectile.x),
+                y: formatProjectileDebugNumber(projectile.y),
+                z: formatProjectileDebugNumber(projectile.z),
+                mapX: formatProjectileDebugNumber(current.x),
+                mapY: formatProjectileDebugNumber(current.y),
+                owner: projectile.thrower ?? null,
+                reasons: suspicionReasons,
+                trackFirstTime: track.first === null ? null : formatProjectileDebugNumber(track.first),
+                trackLastTime: track.last === null ? null : formatProjectileDebugNumber(track.last),
+                trackSamples: track.samples,
+                trackMoved: track.moved,
+                sampleSource: projectileSampleSourceDebug(projectileFrames, projectile.id, time),
+              })}`);
+            }
+          }
+          if (earlyRound || suspicionReasons.length > 0) {
+            const key = `${round.number}:${projectile.id}:${Math.floor(time * 2) / 2}:visible-reason`;
+            if (!projectileDebugVisibleReasonRef.current.has(key)) {
+              projectileDebugVisibleReasonRef.current.add(key);
+              projectileDebugLog(`projectile-visible-reason ${JSON.stringify({
+                roundNumber: round.number,
+                projectileId: projectile.id,
+                type: projectile.type,
+                currentTime: formatProjectileDebugNumber(time),
+                currentTick: projectileDebugTick(round, match.meta.tickRate, time),
+                reason: "present in projectile sample and not hidden by detonatedIds/effect/duplicate filter",
+                detonated: detonatedIds.has(projectile.id),
+                sampleSource: projectileSampleSourceDebug(projectileFrames, projectile.id, time),
+                matchingEffect: projectileEffectMatchDebug(projectile, projectileEffects, projectileFrames, time)
+                  ? {
+                      type: projectileEffectMatchDebug(projectile, projectileEffects, projectileFrames, time)?.effect.type,
+                      start: formatProjectileDebugNumber(projectileEffectMatchDebug(projectile, projectileEffects, projectileFrames, time)?.effect.start ?? NaN),
+                      distance: formatProjectileDebugNumber(projectileEffectMatchDebug(projectile, projectileEffects, projectileFrames, time)?.distance ?? NaN),
+                    }
+                  : null,
+              })}`);
+            }
+          }
+        }
+        if (debugProjectiles) {
+          const raw = projectileHistory(projectileFrames, projectile, time, toRadar);
+          const current = toRadar(projectile.x, projectile.y, projectile.z);
+          const issue = projectileRenderIssueDebug(projectile, raw, current, utilityLayer, size);
+          if (issue) {
+            debugTrailsNotDrawn++;
+            const key = `${round.number}:${projectile.id}:${issue}`;
+            if (!projectileDebugHiddenRef.current.has(key)) {
+              projectileDebugHiddenRef.current.add(key);
+              projectileDebugLog(`trajectory-not-drawn ${JSON.stringify({
+                roundNumber: round.number,
+                projectileId: projectile.id,
+                type: projectile.type,
+                reason: issue,
+                currentTime: formatProjectileDebugNumber(time),
+                currentTick: Math.round(round.startTick + time * match.meta.tickRate),
+                pathPoints: raw.length,
+                currentRadar: {
+                  x: formatProjectileDebugNumber(current.x),
+                  y: formatProjectileDebugNumber(current.y),
+                },
+              })}`);
+            }
+          } else {
+            debugTrailsDrawn++;
+          }
+        }
         drawProjectile(utilityLayer, projectile, projectileFrames, time, throwerTeams, toRadar);
+      }
+      if (debugProjectiles && now - projectileDebugLastFrameLogRef.current >= 1000) {
+        projectileDebugLastFrameLogRef.current = now;
+        projectileDebugLog(`frame-summary ${JSON.stringify({
+          roundNumber: round.number,
+          time: formatProjectileDebugNumber(time),
+          tick: Math.round(round.startTick + time * match.meta.tickRate),
+          sampledProjectiles: sampledProjectiles.length,
+          visibleProjectiles: projectiles.length,
+          visibleTrajectories: debugTrailsDrawn,
+          trajectoriesCreatedThisFrame: debugTrailsDrawn,
+          trajectoriesNotDrawn: debugTrailsNotDrawn,
+          utilityChildrenRemovedAtFrameStart: utilityChildrenBeforeCleanup,
+          deferredDestroyQueue: deferredDestroyRef.current.length,
+          projectileEffectsInWindow: projectileEffects.length,
+          startedEffects: startedEffects.length,
+          detonatedIds: detonatedIds.size,
+          activeEffects: activeEffects.length,
+          utilityLayerVisible: utilityLayer.visible,
+          utilityLayerAlpha: utilityLayer.alpha,
+        })}`);
       }
 
       for (const p of positions) {

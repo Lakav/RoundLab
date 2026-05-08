@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { DebugConsoleHost } from "@/components/DebugConsoleHost";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -20,6 +21,7 @@ export default function RootLayout({
     <html lang="en" className="h-full antialiased dark">
       <body className="min-h-full flex flex-col bg-neutral-950 text-neutral-100">
         {children}
+        <DebugConsoleHost />
       </body>
     </html>
   );

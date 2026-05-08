@@ -61,7 +61,11 @@ struct Meta {
     score_b: i64,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     partial: bool,
-    #[serde(default, rename = "parseError", skip_serializing_if = "String::is_empty")]
+    #[serde(
+        default,
+        rename = "parseError",
+        skip_serializing_if = "String::is_empty"
+    )]
     parse_error: String,
 }
 
@@ -117,6 +121,12 @@ struct RawRound {
         skip_serializing_if = "serde_json::Value::is_null"
     )]
     weapon_fires: serde_json::Value,
+    #[serde(
+        default,
+        rename = "projectileFrames",
+        skip_serializing_if = "serde_json::Value::is_null"
+    )]
+    projectile_frames: serde_json::Value,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -520,15 +530,81 @@ fn get_match_metadata(app: AppHandle, id: String) -> Result<serde_json::Value, S
     }))
 }
 
+#[derive(Default)]
+struct RoundProjectileCounts {
+    frames: usize,
+    frames_with_projectiles: usize,
+    frame_projectiles: usize,
+    projectile_frames: usize,
+    projectile_frame_projectiles: usize,
+    effects: usize,
+}
+
+fn array_len(value: &serde_json::Value) -> usize {
+    value.as_array().map_or(0, Vec::len)
+}
+
+fn projectiles_len(value: &serde_json::Value) -> usize {
+    value
+        .get("projectiles")
+        .and_then(serde_json::Value::as_array)
+        .map_or(0, Vec::len)
+}
+
+fn round_projectile_counts(round: &RawRound) -> RoundProjectileCounts {
+    let mut counts = RoundProjectileCounts {
+        frames: array_len(&round.frames),
+        projectile_frames: array_len(&round.projectile_frames),
+        effects: array_len(&round.effects),
+        ..RoundProjectileCounts::default()
+    };
+    if let Some(frames) = round.frames.as_array() {
+        for frame in frames {
+            let projectiles = projectiles_len(frame);
+            if projectiles > 0 {
+                counts.frames_with_projectiles += 1;
+                counts.frame_projectiles += projectiles;
+            }
+        }
+    }
+    if let Some(projectile_frames) = round.projectile_frames.as_array() {
+        for frame in projectile_frames {
+            counts.projectile_frame_projectiles += projectiles_len(frame);
+        }
+    }
+    counts
+}
+
 /// Full round payload (frames + events + effects + weaponFires).
 #[tauri::command]
-fn get_round(app: AppHandle, id: String, number: i64) -> Result<serde_json::Value, String> {
+fn get_round(
+    app: AppHandle,
+    id: String,
+    number: i64,
+    debug_projectiles: Option<bool>,
+) -> Result<serde_json::Value, String> {
     let m = load_match_cached(&app, &id)?;
     let r = m
         .rounds
         .iter()
         .find(|r| r.number == number)
         .ok_or_else(|| format!("round {number} not found"))?;
+    if debug_projectiles.unwrap_or(false) {
+        let counts = round_projectile_counts(r);
+        logger::info(
+            "projectil",
+            &format!(
+                "ROUNDLAB_DEBUG_PROJECTILES tauri-round-deserialized matchId={id} roundNumber={} frames={} framesWithProjectiles={} frameProjectiles={} projectileFrames={} projectileFrameProjectiles={} effects={}",
+                r.number,
+                counts.frames,
+                counts.frames_with_projectiles,
+                counts.frame_projectiles,
+                counts.projectile_frames,
+                counts.projectile_frame_projectiles,
+                counts.effects
+            ),
+        );
+    }
     serde_json::to_value(r).map_err(|e| e.to_string())
 }
 
@@ -692,10 +768,7 @@ impl Post95Watchdog {
     }
 
     fn last_step_snapshot(&self) -> String {
-        self.last_step
-            .lock()
-            .map(|s| s.clone())
-            .unwrap_or_default()
+        self.last_step.lock().map(|s| s.clone()).unwrap_or_default()
     }
 
     fn stop(&self) {
@@ -781,9 +854,7 @@ fn parse_failure_message(name: &str, code: i32, stderr: &str) -> String {
     if tail.trim().is_empty() {
         format!("{reason}\n\n{name} exited with status {code}.")
     } else {
-        format!(
-            "{reason}\n\n{name} exited with status {code}.\n\nLast parser log lines:\n{tail}"
-        )
+        format!("{reason}\n\n{name} exited with status {code}.\n\nLast parser log lines:\n{tail}")
     }
 }
 
@@ -960,9 +1031,7 @@ async fn parse_demo(
     let size_bytes = fs::metadata(&src).map(|m| m.len()).unwrap_or(0);
     logger::info(
         "tauri",
-        &format!(
-            "parse_demo: starting (file={basename}, size={size_bytes} bytes)"
-        ),
+        &format!("parse_demo: starting (file={basename}, size={size_bytes} bytes)"),
     );
 
     let id = uuid::Uuid::new_v4().to_string();
@@ -1120,10 +1189,7 @@ async fn run_parser_sidecar(
                     if let Some((progress, message)) = parse_sidecar_progress(raw_line) {
                         watchdog.mark_progress(progress);
                         emit_parse_progress(app, name, progress, &message);
-                        logger::info(
-                            name,
-                            &format!("ROUNDLAB_PROGRESS {progress:.4} {message}"),
-                        );
+                        logger::info(name, &format!("ROUNDLAB_PROGRESS {progress:.4} {message}"));
                     } else if raw_line.starts_with("OK[") || raw_line.starts_with("OK fallback") {
                         watchdog.mark_final_event("emit-ok");
                         emit_parse_progress(
@@ -1206,7 +1272,12 @@ async fn run_parser_sidecar(
                     for ln in stderr_tail(&stderr, 40).lines() {
                         logger::error(name, ln);
                     }
-                    emit_parse_progress(app, "failed", 0.0, message.lines().next().unwrap_or("Parsing failed."));
+                    emit_parse_progress(
+                        app,
+                        "failed",
+                        0.0,
+                        message.lines().next().unwrap_or("Parsing failed."),
+                    );
                     return Err(message);
                 }
                 emit_parse_progress(app, name, 0.995, "Sidecar terminated; validating output...");
@@ -1254,6 +1325,64 @@ fn read_log_tail(app: AppHandle, lines: u32) -> Result<String, String> {
     logger::read_tail(&app, lines as usize)
 }
 
+#[derive(Serialize)]
+struct DebugLogScan {
+    lines: String,
+    #[serde(rename = "rawTail")]
+    raw_tail: String,
+    #[serde(rename = "scannedLines")]
+    scanned_lines: usize,
+    #[serde(rename = "matchedLines")]
+    matched_lines: usize,
+    paths: Vec<String>,
+    #[serde(rename = "writtenPath")]
+    written_path: String,
+    #[serde(rename = "projectilePath")]
+    projectile_path: String,
+    #[serde(rename = "projectileSizeBytes")]
+    projectile_size_bytes: u64,
+    #[serde(rename = "projectileLines")]
+    projectile_lines: usize,
+}
+
+#[tauri::command]
+fn read_projectile_debug_logs(app: AppHandle, lines: u32) -> Result<DebugLogScan, String> {
+    let max_lines = if lines == 0 { 2000 } else { lines.min(10_000) };
+    let scan = logger::scan_matching_lines(&app, "ROUNDLAB_DEBUG_PROJECTILES", max_lines as usize)?;
+    Ok(DebugLogScan {
+        lines: scan.lines,
+        raw_tail: scan.raw_tail,
+        scanned_lines: scan.scanned_lines,
+        matched_lines: scan.matched_lines,
+        paths: scan.paths,
+        written_path: logger::log_file_path(&app)?.to_string_lossy().into_owned(),
+        projectile_path: scan.dedicated_path,
+        projectile_size_bytes: scan.dedicated_size,
+        projectile_lines: scan.dedicated_lines,
+    })
+}
+
+#[derive(Serialize)]
+struct ProjectileLogInfo {
+    path: String,
+    #[serde(rename = "sizeBytes")]
+    size_bytes: u64,
+    lines: usize,
+}
+
+#[tauri::command]
+fn get_projectile_log_info(app: AppHandle) -> Result<ProjectileLogInfo, String> {
+    logger::init_logger(&app);
+    let path = logger::projectile_log_file_path(&app)?;
+    let bytes = fs::read(&path).unwrap_or_default();
+    let lines = String::from_utf8_lossy(&bytes).lines().count();
+    Ok(ProjectileLogInfo {
+        path: path.to_string_lossy().into_owned(),
+        size_bytes: bytes.len() as u64,
+        lines,
+    })
+}
+
 /// Open the logs folder in the OS file explorer. Used by the Debug
 /// Console "Open logs folder" button so the user can ZIP and share it.
 ///
@@ -1272,15 +1401,86 @@ fn open_logs_folder(app: AppHandle) -> Result<(), String> {
 
     let folder_str = folder.to_string_lossy().into_owned();
     #[cfg(target_os = "windows")]
-    let result = std::process::Command::new("explorer").arg(&folder_str).spawn();
+    let result = std::process::Command::new("explorer")
+        .arg(&folder_str)
+        .spawn();
     #[cfg(target_os = "macos")]
     let result = std::process::Command::new("open").arg(&folder_str).spawn();
     #[cfg(all(unix, not(target_os = "macos")))]
-    let result = std::process::Command::new("xdg-open").arg(&folder_str).spawn();
+    let result = std::process::Command::new("xdg-open")
+        .arg(&folder_str)
+        .spawn();
 
     result
         .map(|_| ())
         .map_err(|e| format!("open logs folder ({folder_str}): {e}"))
+}
+
+#[tauri::command]
+fn open_projectile_logs_folder(app: AppHandle) -> Result<(), String> {
+    let path = logger::projectile_log_file_path(&app)?;
+    let folder = path
+        .parent()
+        .ok_or_else(|| "projectile log path has no parent".to_string())?;
+    fs::create_dir_all(folder).map_err(|e| format!("mkdir projectile logs folder: {e}"))?;
+
+    let folder_str = folder.to_string_lossy().into_owned();
+    #[cfg(target_os = "windows")]
+    let result = std::process::Command::new("explorer")
+        .arg(&folder_str)
+        .spawn();
+    #[cfg(target_os = "macos")]
+    let result = std::process::Command::new("open").arg(&folder_str).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let result = std::process::Command::new("xdg-open")
+        .arg(&folder_str)
+        .spawn();
+
+    result
+        .map(|_| ())
+        .map_err(|e| format!("open projectile logs folder ({folder_str}): {e}"))
+}
+
+#[tauri::command]
+fn open_projectile_log_file(app: AppHandle) -> Result<(), String> {
+    logger::init_logger(&app);
+    let path = logger::projectile_log_file_path(&app)?;
+    if let Some(folder) = path.parent() {
+        fs::create_dir_all(folder).map_err(|e| format!("mkdir projectile logs folder: {e}"))?;
+    }
+
+    let path_str = path.to_string_lossy().into_owned();
+    #[cfg(target_os = "windows")]
+    let result = std::process::Command::new("cmd")
+        .args(["/C", "start", "", &path_str])
+        .spawn();
+    #[cfg(target_os = "macos")]
+    let result = std::process::Command::new("open").arg(&path_str).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let result = std::process::Command::new("xdg-open")
+        .arg(&path_str)
+        .spawn();
+
+    result
+        .map(|_| ())
+        .map_err(|e| format!("open projectile log file ({path_str}): {e}"))
+}
+
+#[tauri::command]
+fn write_debug_log(app: AppHandle, source: String, message: String) -> Result<String, String> {
+    logger::init_logger(&app);
+    let source = source
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_' || *c == '.')
+        .take(24)
+        .collect::<String>();
+    let source = if source.is_empty() {
+        "frontend".to_string()
+    } else {
+        source
+    };
+    logger::info(&source, &message);
+    Ok(logger::log_file_path(&app)?.to_string_lossy().into_owned())
 }
 
 // -------------------------- App entry --------------------------
@@ -1308,8 +1508,13 @@ pub fn run() {
             parse_demo,
             get_debug_info,
             get_log_file_path,
+            get_projectile_log_info,
             read_log_tail,
+            read_projectile_debug_logs,
             open_logs_folder,
+            open_projectile_logs_folder,
+            open_projectile_log_file,
+            write_debug_log,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

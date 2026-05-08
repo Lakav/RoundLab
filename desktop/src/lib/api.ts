@@ -51,8 +51,12 @@ export async function getMatchMetadata(id: string): Promise<MatchData> {
   return invoke<MatchData>("get_match_metadata", { id });
 }
 
-export async function getRound(id: string, number: number): Promise<Round> {
-  return invoke<Round>("get_round", { id, number });
+export async function getRound(
+  id: string,
+  number: number,
+  debugProjectiles = false,
+): Promise<Round> {
+  return invoke<Round>("get_round", { id, number, debugProjectiles });
 }
 
 export async function deleteMatch(id: string): Promise<void> {
@@ -94,8 +98,46 @@ export async function readLogTail(lines = 200): Promise<string> {
   return invoke<string>("read_log_tail", { lines });
 }
 
+export type ProjectileDebugLogScan = {
+  lines: string;
+  rawTail: string;
+  scannedLines: number;
+  matchedLines: number;
+  paths: string[];
+  writtenPath: string;
+  projectilePath: string;
+  projectileSizeBytes: number;
+  projectileLines: number;
+};
+
+export async function readProjectileDebugLogs(lines = 2000): Promise<ProjectileDebugLogScan> {
+  return invoke<ProjectileDebugLogScan>("read_projectile_debug_logs", { lines });
+}
+
+export type ProjectileLogInfo = {
+  path: string;
+  sizeBytes: number;
+  lines: number;
+};
+
+export async function getProjectileLogInfo(): Promise<ProjectileLogInfo> {
+  return invoke<ProjectileLogInfo>("get_projectile_log_info");
+}
+
 export async function openLogsFolder(): Promise<void> {
   await invoke("open_logs_folder");
+}
+
+export async function openProjectileLogsFolder(): Promise<void> {
+  await invoke("open_projectile_logs_folder");
+}
+
+export async function openProjectileLogFile(): Promise<void> {
+  await invoke("open_projectile_log_file");
+}
+
+export async function writeDebugLog(source: string, message: string): Promise<string> {
+  return invoke<string>("write_debug_log", { source, message });
 }
 
 /** Prompt the user for a demo file. Returns null if cancelled. */
