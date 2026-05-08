@@ -29,6 +29,10 @@ export const DEFAULT_PARSE_OPTIONS: ParseOptions = {
 
 const PARSE_OPTIONS_KEY = "roundlab.parseOptions";
 
+function hasTauriRuntime(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
 export function loadParseOptions(): ParseOptions {
   return { ...DEFAULT_PARSE_OPTIONS };
 }
@@ -44,6 +48,7 @@ export function saveParseOptions(opts: ParseOptions): void {
 }
 
 export async function listMatches(): Promise<MatchSummary[]> {
+  if (!hasTauriRuntime()) return [];
   return invoke<MatchSummary[]>("list_matches");
 }
 

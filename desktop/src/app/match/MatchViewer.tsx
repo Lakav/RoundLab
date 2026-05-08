@@ -1,6 +1,7 @@
 "use client";
 
 import { startTransition, useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useReplay } from "@/lib/replay-store";
 import { MapRenderer } from "@/components/replay/MapRenderer";
@@ -12,7 +13,7 @@ import { RoundList } from "@/components/replay/RoundList";
 import { PlayerHUD } from "@/components/replay/PlayerHUD";
 import { RoundClock } from "@/components/replay/RoundClock";
 import { KillFeed } from "@/components/replay/KillFeed";
-import { Home, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { MatchData, Round } from "@/lib/types";
 import { cropFor, MAP_CALIBRATION, RADAR_SIZE } from "@/lib/maps";
@@ -263,14 +264,30 @@ export default function MatchViewer({ id }: { id: string }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-950">
-        <Loader2 className="size-6 animate-spin text-neutral-400" />
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-neutral-950">
+        <Image
+          src="/logo.png"
+          alt="RoundLab"
+          width={72}
+          height={74}
+          priority
+          className="h-auto w-16 object-contain opacity-90"
+        />
+        <Loader2 className="size-5 animate-spin text-neutral-400" />
       </div>
     );
   }
   if (err || !match) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-neutral-950 text-neutral-100">
+        <Image
+          src="/logo.png"
+          alt="RoundLab"
+          width={72}
+          height={74}
+          priority
+          className="h-auto w-16 object-contain opacity-90"
+        />
         <p className="max-w-md text-center text-sm text-red-400">
           {err ?? "Match not found."}
         </p>
@@ -301,7 +318,13 @@ export default function MatchViewer({ id }: { id: string }) {
           size="sm"
           className="h-8 gap-1.5 border border-white/10 bg-black/40 px-2.5 text-[11px] font-semibold text-neutral-300 hover:bg-black/60 hover:text-neutral-100"
         >
-          <Home className="size-3.5" />
+          <Image
+            src="/logo.png"
+            alt=""
+            width={20}
+            height={21}
+            className="h-auto w-5 object-contain"
+          />
           Home
         </Button>
       </Link>

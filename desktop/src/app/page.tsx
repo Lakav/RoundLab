@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { DragDropEvent } from "@tauri-apps/api/webview";
@@ -11,7 +12,6 @@ import {
   Upload,
   Loader2,
   Play,
-  Crosshair,
   FileArchive,
   MoreHorizontal,
   Pencil,
@@ -206,7 +206,15 @@ export default function Home() {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let cancelled = false;
-    getCurrentWebview()
+    let webview: ReturnType<typeof getCurrentWebview> | undefined;
+    try {
+      webview = getCurrentWebview();
+    } catch {
+      // During non-native renderer checks there is no Tauri webview.
+      return;
+    }
+    if (!webview) return;
+    webview
       .onDragDropEvent((event: { payload: DragDropEvent }) => {
         const payload = event.payload;
         if (payload.type === "enter" || payload.type === "over") {
@@ -231,7 +239,7 @@ export default function Home() {
         else unlisten = fn;
       })
       .catch(() => {
-        // During non-native renderer checks there is no Tauri webview.
+        /* no Tauri webview in non-native renderer checks */
       });
     return () => {
       cancelled = true;
@@ -383,10 +391,15 @@ export default function Home() {
       )}
 
       <header className="flex items-center justify-between border-b border-white/[0.06] px-6 py-3">
-        <div className="flex items-center gap-2.5">
-          <div className="flex size-7 items-center justify-center rounded-md bg-emerald-300/10">
-            <Crosshair className="size-3.5 text-emerald-300" strokeWidth={2.5} />
-          </div>
+        <div className="flex items-center gap-3">
+          <Image
+            src="/logo.png"
+            alt="RoundLab"
+            width={36}
+            height={37}
+            priority
+            className="h-auto w-9 object-contain"
+          />
           <span className="text-sm font-semibold">RoundLab</span>
           {appVersion && (
             <span className="text-[11px] text-neutral-500">v{appVersion}</span>
@@ -396,6 +409,21 @@ export default function Home() {
       </header>
 
       <main className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-12">
+        <div className="flex flex-col items-center gap-2 text-center">
+          <Image
+            src="/logo.png"
+            alt=""
+            width={92}
+            height={94}
+            priority
+            className="h-auto w-20 object-contain drop-shadow-[0_0_24px_rgba(110,231,183,0.18)]"
+          />
+          <div>
+            <h1 className="text-[18px] font-semibold text-neutral-100">RoundLab</h1>
+            <p className="mt-1 text-[12px] text-neutral-500">CS2 demo replay & analysis</p>
+          </div>
+        </div>
+
         <div
           onClick={onPickAndParse}
           role="button"

@@ -6,9 +6,9 @@ export const metadata: Metadata = {
   title: "RoundLab",
   description: "CS2 demo replay & analysis",
   icons: {
-    icon: "/favicon.ico",
-    shortcut: "/favicon.ico",
-    apple: "/app-icon.png",
+    icon: "/logo.png",
+    shortcut: "/logo.png",
+    apple: "/logo.png",
   },
 };
 
