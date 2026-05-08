@@ -134,4 +134,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ needs.bump.outputs.tag-name }}
-        run: gh workflow run release.yml --ref main -f tag-name="$TAG_NAME"
+        run: gh workflow run release.yml -R "${{ github.repository }}" --ref main -f tag-name="$TAG_NAME"
