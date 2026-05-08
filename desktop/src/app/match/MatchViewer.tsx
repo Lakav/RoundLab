@@ -25,27 +25,74 @@ const MIN_MAP = 360;
 const MAX_MAP = 760;
 const PROJECTILE_DEBUG_KEY = "roundlab.debugProjectiles";
 
-function hideKnifeRound(data: MatchData): MatchData {
-  if (data.rounds.length < 2) return data;
-  const r0 = data.rounds[0];
-  const r0Total = (r0.scoreA ?? 0) + (r0.scoreB ?? 0);
-  const weaponNames = [
-    ...r0.events.map((e) => e.weapon ?? ""),
-    ...r0.frames.flatMap((f) =>
-      f.players.flatMap((p) => [p.active ?? "", ...(p.weapons ?? [])]),
-    ),
-  ].filter(Boolean);
-  const hasGun = weaponNames.some((w) => !/knife|bayonet|karambit|c4/i.test(w));
-  const looksLikeKnifeRound = r0Total === 0 && r0.duration <= 75 && !hasGun;
-  if (!looksLikeKnifeRound) return data;
-  return { ...data, rounds: data.rounds.slice(1) };
-}
-
 function assertRenderableRound(round: Round): Round {
   if (round.frames.length === 0) {
     throw new Error(`Round ${round.number} has no frame data.`);
   }
   return round;
+}
+
+function logFrontendRoundList(matchId: string, data: MatchData): void {
+  const selectedInitialRoundIndex = 0;
+  const rounds = data.rounds.map((round, roundIndex) => ({
+    roundIndex,
+    roundNumber: round.number,
+    startTick: round.startTick,
+    endTick: round.endTick,
+    freezeEndTick: round.freezeEndTick ?? null,
+    duration: round.duration,
+    reason: "loaded",
+    selectedInitialRoundIndex,
+  }));
+  const first = data.rounds[0];
+  void writeDebugLog(
+    "rounds",
+    `ROUNDLAB_DEBUG_ROUNDS frontend-round-list ${JSON.stringify({ matchId, selectedInitialRoundIndex, rounds })}`,
+  ).catch(() => {});
+  if (first) {
+    void writeDebugLog(
+      "rounds",
+      `ROUNDLAB_DEBUG_ROUNDS replay-initial-round ${JSON.stringify({
+        matchId,
+        roundIndex: 0,
+        roundNumber: first.number,
+        startTick: first.startTick,
+        endTick: first.endTick,
+        freezeEndTick: first.freezeEndTick ?? null,
+        duration: first.duration,
+        reason: "setMatch",
+        selectedInitialRoundIndex,
+      })}`,
+    ).catch(() => {});
+    void writeDebugLog(
+      "rounds",
+      `ROUNDLAB_DEBUG_ROUNDS replay-auto-seek ${JSON.stringify({
+        matchId,
+        roundIndex: 0,
+        roundNumber: first.number,
+        startTick: first.startTick,
+        endTick: first.endTick,
+        freezeEndTick: first.freezeEndTick ?? null,
+        duration: first.duration,
+        reason: "none",
+        selectedInitialRoundIndex,
+      })}`,
+    ).catch(() => {});
+  }
+}
+
+function logFrontendRoundScore(matchId: string, source: string, round: Round): void {
+  void writeDebugLog(
+    "rounds",
+    `ROUNDLAB_DEBUG_SCORE frontend-round-score ${JSON.stringify({
+      matchId,
+      source,
+      roundNumber: round.number,
+      ctScore: round.scoreA,
+      tScore: round.scoreB,
+      winningSide: round.winner ?? null,
+    })}`,
+  ).catch(() => {});
 }
 
 function projectileDebugEnabled(): boolean {
@@ -159,6 +206,7 @@ export default function MatchViewer({ id }: { id: string }) {
         const debugProjectiles = projectileDebugEnabled();
         const data = assertRenderableRound(await getRound(id, roundNumber, debugProjectiles));
         logFrontendRoundReceived(id, data);
+        logFrontendRoundScore(id, "get-round", data);
         startTransition(() => setRoundData(id, roundNumber, data));
       } catch (e) {
         throw e;
@@ -175,13 +223,15 @@ export default function MatchViewer({ id }: { id: string }) {
       try {
         const data = await getMatchMetadata(id);
         if (cancel) return;
-        const visibleData = hideKnifeRound(data);
+        const visibleData = data;
         if (visibleData.rounds.length === 0) {
           throw new Error("This demo parsed successfully, but no playable rounds were found.");
         }
         if (!MAP_CALIBRATION[visibleData.meta.map]) {
           throw new Error(`Unsupported map "${visibleData.meta.map || "unknown"}".`);
         }
+        logFrontendRoundList(id, visibleData);
+        visibleData.rounds.forEach((round) => logFrontendRoundScore(id, "metadata", round));
         startTransition(() => setMatch(id, visibleData));
         setLoading(false);
       } catch (e: unknown) {

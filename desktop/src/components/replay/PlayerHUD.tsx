@@ -1,10 +1,12 @@
 "use client";
 
+import { useEffect } from "react";
 import { useReplay } from "@/lib/replay-store";
 import { cn } from "@/lib/utils";
 import type { Frame, PlayerPos } from "@/lib/types";
 import { iconPathFor } from "@/lib/icons";
 import { THEME, sideColors } from "@/lib/theme";
+import { writeDebugLog } from "@/lib/api";
 
 const BOMB_CARRIER_COLOR = "#ef4444";
 
@@ -38,6 +40,21 @@ export function PlayerHUD({ side }: { side: "CT" | "T" }) {
   const match = useReplay((s) => s.match);
   const currentRoundIdx = useReplay((s) => s.currentRoundIdx);
   const time = useReplay((s) => s.time) ?? 0;
+  const debugRound = match?.rounds[currentRoundIdx];
+  useEffect(() => {
+    if (!debugRound) return;
+    void writeDebugLog(
+      "rounds",
+      `ROUNDLAB_DEBUG_SCORE hud-round-score ${JSON.stringify({
+        source: "hud",
+        roundNumber: debugRound.number,
+        side,
+        ctScore: debugRound.scoreA,
+        tScore: debugRound.scoreB,
+        winningSide: debugRound.winner ?? null,
+      })}`,
+    ).catch(() => {});
+  }, [debugRound?.number, debugRound?.scoreA, debugRound?.scoreB, debugRound?.winner, side]);
   if (!match) return null;
   const round = match.rounds[currentRoundIdx];
   if (!round) return null;
@@ -65,7 +82,7 @@ export function PlayerHUD({ side }: { side: "CT" | "T" }) {
   const currentSideCode = majoritySide(players.map((p) => p.steamId), currentTeams) ?? baseTeamCode;
   const currentSide = currentSideCode === 3 ? "CT" : "T";
   const teamName = displayTeamName(side === "CT" ? match.meta.teamA : match.meta.teamB, side);
-  const teamScore = side === "CT" ? round.scoreA ?? 0 : round.scoreB ?? 0;
+  const teamScore = side === "CT" ? round.scoreA : round.scoreB;
   const cols = sideColors(currentSide);
 
   return (
@@ -101,7 +118,7 @@ export function PlayerHUD({ side }: { side: "CT" | "T" }) {
           className="shrink-0 font-mono text-[15px] font-bold tabular-nums"
           style={{ color: THEME.textBright }}
         >
-          {teamScore}
+          {teamScore ?? "-"}
         </span>
       </div>
 

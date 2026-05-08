@@ -177,7 +177,7 @@ type Round struct {
 	WeaponFires      []WeaponFireEvent `json:"weaponFires,omitempty"`
 	ProjectileFrames []ProjectileFrame `json:"projectileFrames,omitempty"`
 	LiveStarted      bool              `json:"-"`
-	TeamScores       map[string]int    `json:"-"`
+	TeamScores       map[string]int    `json:"teamScores,omitempty"`
 }
 
 type Output struct {
@@ -219,9 +219,11 @@ func (s *RoundSpool) Close() {
 
 func (s *RoundSpool) Add(round Round) error {
 	if len(round.Frames) == 0 {
+		logParserRoundFiltered(round, "no_frames")
 		return nil
 	}
 	round.Number = len(s.Rounds)
+	logParserRoundCreated(round)
 	path := filepath.Join(s.Dir, fmt.Sprintf("round-%03d.json", len(s.Rounds)))
 	file, err := os.Create(path)
 	if err != nil {
@@ -412,6 +414,24 @@ func teamStr(t common.Team) string {
 		return "CT"
 	}
 	return "SPEC"
+}
+
+func logParserRoundScore(round Round, source string) {
+	fmt.Fprintf(os.Stderr,
+		"ROUNDLAB_DEBUG_SCORE parser-round-score source=%s round=%d ctScore=%d tScore=%d winningSide=%s\n",
+		source, round.Number, round.ScoreA, round.ScoreB, round.Winner)
+}
+
+func logParserRoundCreated(round Round) {
+	fmt.Fprintf(os.Stderr,
+		"ROUNDLAB_DEBUG_ROUNDS parser-round-created roundIndex=%d startTick=%d endTick=%d freezeEndTick=%d duration=%.3f selectedInitialRoundIndex=-1 reason=created\n",
+		round.Number, round.StartTick, round.EndTick, round.FreezeEndTick, round.Duration)
+}
+
+func logParserRoundFiltered(round Round, reason string) {
+	fmt.Fprintf(os.Stderr,
+		"ROUNDLAB_DEBUG_ROUNDS parser-round-filtered roundIndex=%d startTick=%d endTick=%d freezeEndTick=%d duration=%.3f selectedInitialRoundIndex=-1 reason=%q\n",
+		round.Number, round.StartTick, round.EndTick, round.FreezeEndTick, round.Duration, reason)
 }
 
 func infernoVariant(thrower *common.Player) string {
@@ -629,7 +649,9 @@ func main() {
 			}
 		}
 		teamScores[name] = score
-		teamSide[name] = teamStr(ts.Team())
+		if _, known := teamSide[name]; !known {
+			teamSide[name] = teamStr(ts.Team())
+		}
 	}
 
 	addPlayer := func(pl *common.Player) {
@@ -1405,6 +1427,8 @@ func writeOutput(path string, output Output, spool *RoundSpool, teamAName, teamB
 		round.Number = idx
 		round.ScoreA = round.TeamScores[teamAName]
 		round.ScoreB = round.TeamScores[teamBName]
+		logParserRoundScore(round, "write-output")
+		round.TeamScores = nil
 		if idx > 0 {
 			if _, err := gz.Write([]byte(",")); err != nil {
 				return err

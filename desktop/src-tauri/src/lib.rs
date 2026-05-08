@@ -81,7 +81,7 @@ struct Player {
 
 /// A round stored on disk: we keep the heavy fields as raw JSON so we can
 /// choose to strip them for metadata calls without paying the parse cost.
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 struct RawRound {
     #[serde(default)]
     number: i64,
@@ -295,8 +295,60 @@ fn read_match_file(path: &Path) -> Result<MatchFile, String> {
     let mut buf = Vec::with_capacity(4 * 1024 * 1024);
     gz.read_to_end(&mut buf)
         .map_err(|e| format!("gunzip: {e}"))?;
-    let m: MatchFile = serde_json::from_slice(&buf).map_err(|e| format!("parse json: {e}"))?;
+    let mut m: MatchFile = serde_json::from_slice(&buf).map_err(|e| format!("parse json: {e}"))?;
+    backfill_missing_round_scores(&mut m);
     Ok(m)
+}
+
+fn backfill_missing_round_scores(m: &mut MatchFile) {
+    let mut ct_score = 0;
+    let mut t_score = 0;
+    for round in &mut m.rounds {
+        let missing = round.score_a.is_none() || round.score_b.is_none();
+        if missing {
+            match round.winner.as_str() {
+                "CT" => ct_score += 1,
+                "T" => t_score += 1,
+                _ => {}
+            }
+            if round.score_a.is_none() {
+                round.score_a = Some(ct_score);
+            }
+            if round.score_b.is_none() {
+                round.score_b = Some(t_score);
+            }
+        } else {
+            ct_score = round.score_a.unwrap_or(ct_score);
+            t_score = round.score_b.unwrap_or(t_score);
+        }
+    }
+}
+
+fn log_tauri_round_score(source: &str, round: &RawRound) {
+    logger::info(
+        "rounds",
+        &format!(
+            "ROUNDLAB_DEBUG_SCORE tauri-round-score source={source} round={} ctScore={} tScore={} winningSide={}",
+            round.number,
+            round.score_a.unwrap_or(-1),
+            round.score_b.unwrap_or(-1),
+            round.winner
+        ),
+    );
+}
+
+fn log_tauri_round_loaded(source: &str, round_index: usize, round: &RawRound) {
+    logger::info(
+        "rounds",
+        &format!(
+            "ROUNDLAB_DEBUG_ROUNDS tauri-round-loaded source={source} roundIndex={round_index} roundNumber={} startTick={} endTick={} freezeEndTick={} duration={:.3} selectedInitialRoundIndex=-1 reason=loaded",
+            round.number,
+            round.start_tick,
+            round.end_tick,
+            round.freeze_end_tick.unwrap_or(-1),
+            round.duration
+        ),
+    );
 }
 
 fn read_match_name(path: &Path) -> Result<String, String> {
@@ -507,7 +559,10 @@ fn get_match_metadata(app: AppHandle, id: String) -> Result<serde_json::Value, S
     let rounds: Vec<serde_json::Value> = m
         .rounds
         .iter()
-        .map(|r| {
+        .enumerate()
+        .map(|(idx, r)| {
+            log_tauri_round_loaded("metadata", idx, r);
+            log_tauri_round_score("metadata", r);
             serde_json::json!({
                 "number": r.number,
                 "startTick": r.start_tick,
@@ -589,6 +644,8 @@ fn get_round(
         .iter()
         .find(|r| r.number == number)
         .ok_or_else(|| format!("round {number} not found"))?;
+    log_tauri_round_loaded("get-round", number as usize, r);
+    log_tauri_round_score("get-round", r);
     if debug_projectiles.unwrap_or(false) {
         let counts = round_projectile_counts(r);
         logger::info(
@@ -1587,6 +1644,54 @@ mod tests {
         let name = read_match_name(&path).expect("read match name");
         let _ = fs::remove_file(&path);
         assert_eq!(name, "13-11 - NAVI vs Vitality - de_mirage");
+    }
+
+    #[test]
+    fn backfill_missing_round_scores_prevents_zero_fallback_for_old_parses() {
+        let mut m = MatchFile {
+            meta: Meta {
+                map: "de_mirage".into(),
+                tick_rate: 64.0,
+                sample_rate: 64.0,
+                duration_sec: 0.0,
+                team_a: "A".into(),
+                team_b: "B".into(),
+                score_a: 2,
+                score_b: 1,
+                partial: false,
+                parse_error: String::new(),
+            },
+            players: vec![],
+            rounds: vec![
+                RawRound {
+                    number: 0,
+                    winner: "CT".into(),
+                    ..RawRound::default()
+                },
+                RawRound {
+                    number: 1,
+                    winner: "T".into(),
+                    ..RawRound::default()
+                },
+                RawRound {
+                    number: 2,
+                    winner: "CT".into(),
+                    ..RawRound::default()
+                },
+            ],
+        };
+
+        backfill_missing_round_scores(&mut m);
+
+        let scores = m
+            .rounds
+            .iter()
+            .map(|r| (r.score_a, r.score_b))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            scores,
+            vec![(Some(1), Some(0)), (Some(1), Some(1)), (Some(2), Some(1))]
+        );
     }
 
     #[test]
