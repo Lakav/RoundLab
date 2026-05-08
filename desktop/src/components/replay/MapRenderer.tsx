@@ -940,7 +940,10 @@ type PlayerSprite = {
   arrow: Graphics;
   arrowRotator: Container;
   labelBadge: Container;
-  label: Text;
+  labelFill: Text;
+  labelEmpty: Text;
+  labelFillMask: Graphics;
+  labelEmptyMask: Graphics;
   held: Sprite;
   heldPath: string | null;
   actionGroup: Container;
@@ -1555,7 +1558,7 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
           const labelBadge = new Container();
           const badgeBg = new Graphics();
           labelBadge.addChild(badgeBg);
-          const label = new Text({
+          const labelFill = new Text({
             text: displayName(playerInfo?.name),
             style: {
               fontFamily: "ui-sans-serif, system-ui",
@@ -1565,9 +1568,31 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
             },
             resolution: Math.max(2, window.devicePixelRatio || 1),
           });
-          label.anchor.set(0.5, 0.5);
-          label.scale.set(0.24);
-          labelBadge.addChild(label);
+          labelFill.anchor.set(0.5, 0.5);
+          labelFill.scale.set(0.24);
+
+          const labelEmpty = new Text({
+            text: labelFill.text,
+            style: {
+              fontFamily: "ui-sans-serif, system-ui",
+              fontSize: 44,
+              fontWeight: "600",
+              fill: 0xffffff,
+            },
+            resolution: Math.max(2, window.devicePixelRatio || 1),
+          });
+          labelEmpty.anchor.set(0.5, 0.5);
+          labelEmpty.scale.set(0.24);
+
+          const labelFillMask = new Graphics();
+          const labelEmptyMask = new Graphics();
+          labelFill.mask = labelFillMask;
+          labelEmpty.mask = labelEmptyMask;
+
+          labelBadge.addChild(labelFillMask);
+          labelBadge.addChild(labelEmptyMask);
+          labelBadge.addChild(labelEmpty);
+          labelBadge.addChild(labelFill);
           labelBadge.position.set(0, -13);
 
           // Player arrow wrapped in a rotator.
@@ -1607,7 +1632,10 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
             arrow,
             arrowRotator,
             labelBadge,
-            label,
+            labelFill,
+            labelEmpty,
+            labelFillMask,
+            labelEmptyMask,
             held,
             heldPath: null,
             actionGroup,
@@ -1655,21 +1683,37 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
 
         // Name badge background in team color.
         const badgeBg = s.labelBadge.getChildAt(0) as Graphics;
-        const labelText = s.labelBadge.getChildAt(1) as Text;
-        const labelWidth = labelText.width;
+        const labelWidth = s.labelFill.width;
         const padX = 4;
         const padY = 1.5;
         const bw = labelWidth + padX * 2;
         const bh = 8;
+        const bx = -bw / 2;
+        const by = -bh / 2 - padY + 1;
+        const badgeHeight = bh + padY;
+        const filledWidth = bw * hpPct;
+        const emptyWidth = bw - filledWidth;
         badgeBg.clear();
-        badgeBg.roundRect(-bw / 2, -bh / 2 - padY + 1, bw, bh + padY, 3)
+        badgeBg.roundRect(bx, by, bw, badgeHeight, 3)
           .fill({ color: 0x1d1f1f, alpha: alive ? 0.88 : 0.45 });
-        badgeBg.roundRect(-bw / 2, -bh / 2 - padY + 1, bw * hpPct, bh + padY, 3)
+        badgeBg.roundRect(bx, by, filledWidth, badgeHeight, 3)
           .fill({ color: baseColor, alpha: alive ? 0.95 : 0.35 });
-        badgeBg.roundRect(-bw / 2, -bh / 2 - padY + 1, bw, bh + padY, 3)
+        badgeBg.roundRect(bx, by, bw, badgeHeight, 3)
           .stroke({ color: 0x000000, width: 1, alpha: alive ? 0.55 : 0.3 });
-        labelText.position.set(0, 0);
-        labelText.alpha = alive ? 1 : 0.45;
+        s.labelFill.position.set(0, 0);
+        s.labelEmpty.position.set(0, 0);
+        s.labelFill.alpha = alive ? 1 : 0.45;
+        s.labelEmpty.alpha = alive ? 1 : 0.45;
+        s.labelEmpty.style.fill = baseColor;
+
+        s.labelFillMask.clear();
+        s.labelEmptyMask.clear();
+        if (filledWidth > 0) {
+          s.labelFillMask.rect(bx, by, filledWidth, badgeHeight).fill({ color: 0xffffff });
+        }
+        if (emptyWidth > 0) {
+          s.labelEmptyMask.rect(bx + filledWidth, by, emptyWidth, badgeHeight).fill({ color: 0xffffff });
+        }
 
         s.flashArc.clear();
         if (alive && p.flashLeft && p.flashLeft > 0 && p.flashTotal && p.flashTotal > 0) {
