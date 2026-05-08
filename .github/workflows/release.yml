@@ -10,6 +10,7 @@
 #   TAURI_SIGNING_PRIVATE_KEY           — contents of the updater private key
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  — empty if the key has no password
 name: release
+run-name: Release ${{ inputs.tag-name || github.ref_name }}
 
 on:
   push:
