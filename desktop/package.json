@@ -1,6 +1,6 @@
 {
   "name": "roundlab-desktop",
-  "version": "0.1.36",
+  "version": "0.1.37",
   "private": true,
   "scripts": {
     "renderer:dev": "next dev",
