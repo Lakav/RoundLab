@@ -935,6 +935,7 @@ fn rename_match(app: AppHandle, id: String, name: String) -> Result<MatchSummary
 struct DiagnosticPlayerSample {
     id: i64,
     team: i64,
+    slot: i64,
     x: f64,
     y: f64,
     t: f64,
@@ -946,6 +947,7 @@ fn diagnostic_player(sample: DiagnosticPlayerSample) -> serde_json::Value {
     let DiagnosticPlayerSample {
         id,
         team,
+        slot,
         x,
         y,
         t,
@@ -967,7 +969,7 @@ fn diagnostic_player(sample: DiagnosticPlayerSample) -> serde_json::Value {
         "yaw": (t * 20.0) % 360.0,
         "hp": hp,
         "armor": if t < 8.0 { 0 } else { 100 },
-        "money": 800 + id * 250,
+        "money": 800 + slot * 700,
         "helmet": t >= 8.0,
         "kit": team == 3 && id % 2 == 0,
         "hasBomb": has_bomb,
@@ -994,10 +996,11 @@ fn diagnostic_round(number: i64, start_tick: i64, score_a: i64, score_b: i64) ->
     for step in 0..=60 {
         let t = step as f64 * 0.5;
         let push = t * 32.0;
-        let player = |id, team, x, y, alive_until, has_bomb| {
+        let player = |id, team, slot, x, y, alive_until, has_bomb| {
             diagnostic_player(DiagnosticPlayerSample {
                 id,
                 team,
+                slot,
                 x,
                 y,
                 t,
@@ -1006,42 +1009,55 @@ fn diagnostic_round(number: i64, start_tick: i64, score_a: i64, score_b: i64) ->
             })
         };
         let players = serde_json::json!([
-            player(1001, 2, -1180.0 + push, -880.0 + push * 0.22, 27.0, false),
+            player(
+                1001,
+                2,
+                1,
+                -1180.0 + push,
+                -880.0 + push * 0.22,
+                72.0,
+                false
+            ),
             player(
                 1002,
                 2,
+                2,
                 -1260.0 + push * 0.9,
                 -1020.0 + push * 0.16,
-                31.0,
+                80.0,
                 false
             ),
             player(
                 1003,
                 2,
+                3,
                 -1340.0 + push * 0.72,
                 -1120.0 + push * 0.12,
-                40.0,
+                115.0,
                 t < 21.2
             ),
             player(
                 1004,
                 2,
+                4,
                 -1510.0 + push * 0.44,
                 -760.0 + push * 0.08,
-                40.0,
+                115.0,
                 false
             ),
             player(
                 1005,
                 2,
+                5,
                 -1420.0 + push * 0.62,
                 -940.0 + push * 0.18,
-                40.0,
+                115.0,
                 false
             ),
             player(
                 2001,
                 3,
+                1,
                 310.0 - push * 0.25,
                 -1220.0 + push * 0.08,
                 13.4,
@@ -1050,6 +1066,7 @@ fn diagnostic_round(number: i64, start_tick: i64, score_a: i64, score_b: i64) ->
             player(
                 2002,
                 3,
+                2,
                 160.0 - push * 0.22,
                 -940.0 + push * 0.04,
                 25.0,
@@ -1058,25 +1075,28 @@ fn diagnostic_round(number: i64, start_tick: i64, score_a: i64, score_b: i64) ->
             player(
                 2003,
                 3,
+                3,
                 -30.0 - push * 0.16,
                 -670.0 + push * 0.03,
-                40.0,
+                115.0,
                 false
             ),
             player(
                 2004,
                 3,
+                4,
                 420.0 - push * 0.18,
                 -780.0 + push * 0.05,
-                40.0,
+                115.0,
                 false
             ),
             player(
                 2005,
                 3,
+                5,
                 520.0 - push * 0.3,
                 -1010.0 + push * 0.1,
-                40.0,
+                115.0,
                 false
             )
         ]);
@@ -1103,7 +1123,7 @@ fn diagnostic_round(number: i64, start_tick: i64, score_a: i64, score_b: i64) ->
         start_tick,
         freeze_end_tick: Some(start_tick + 128),
         end_tick: start_tick + 2048,
-        duration: 30.0,
+        duration: 60.0,
         winner: "T".into(),
         winner_name: Some("Diagnostic T".into()),
         score_a: Some(score_a),
@@ -1115,14 +1135,14 @@ fn diagnostic_round(number: i64, start_tick: i64, score_a: i64, score_b: i64) ->
             {"t": 21.2, "type": "bomb_planted", "player": 1003},
             {"t": 25.0, "type": "kill", "killer": 1002, "victim": 2002, "weapon": "molotov"},
             {"t": 27.0, "type": "kill", "killer": 2003, "victim": 1001, "weapon": "awp"},
-            {"t": 30.0, "type": "round_end", "winner": "T"}
+            {"t": 60.0, "type": "round_end", "winner": "T"}
         ]),
         effects: serde_json::json!([
             {"id": 8101, "type": "smoke", "start": 6.4, "end": 24.0, "x": -450.0, "y": -650.0, "z": 0, "team": 2},
             {"id": 8102, "type": "fire", "variant": "molotov", "start": 10.1, "end": 17.5, "x": -560.0, "y": -770.0, "z": 0, "team": 2},
             {"id": 8103, "type": "flash", "start": 14.3, "end": 15.2, "x": -380.0, "y": -590.0, "z": 0, "team": 2},
             {"id": 8104, "type": "he", "start": 16.8, "end": 17.6, "x": -310.0, "y": -720.0, "z": 0, "team": 3},
-            {"id": 8105, "type": "bomb_planted", "start": 21.2, "end": 30.0, "x": -150.0, "y": -880.0, "z": 0, "team": 2}
+            {"id": 8105, "type": "bomb_planted", "start": 21.2, "end": 60.0, "x": -150.0, "y": -880.0, "z": 0, "team": 2}
         ]),
         weapon_fires: serde_json::json!([
             {"t": 12.8, "shooter": 1001, "weapon": "ak47", "x": -760.0, "y": -820.0, "z": 0, "yaw": 32, "team": 2},
@@ -1140,11 +1160,11 @@ fn diagnostic_match_file() -> MatchFile {
             map: "de_mirage".into(),
             tick_rate: 64.0,
             sample_rate: 2.0,
-            duration_sec: 60.0,
-            team_a: "Diagnostic T".into(),
-            team_b: "Diagnostic CT".into(),
-            score_a: 2,
-            score_b: 0,
+            duration_sec: 120.0,
+            team_a: "Diagnostic CT".into(),
+            team_b: "Diagnostic T".into(),
+            score_a: 0,
+            score_b: 2,
             partial: false,
             parse_error: String::new(),
         },
@@ -1202,7 +1222,7 @@ fn diagnostic_match_file() -> MatchFile {
         ],
         rounds: vec![
             diagnostic_round(0, 0, 0, 0),
-            diagnostic_round(1, 4096, 1, 0),
+            diagnostic_round(1, 4096, 0, 1),
         ],
     }
 }
