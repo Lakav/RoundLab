@@ -9,7 +9,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::fs;
-use std::io::{BufReader, Read};
+use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -17,7 +17,7 @@ use std::sync::{
 };
 use std::time::{Duration, Instant, SystemTime};
 
-use flate2::read::GzDecoder;
+use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
@@ -932,6 +932,317 @@ fn rename_match(app: AppHandle, id: String, name: String) -> Result<MatchSummary
     })
 }
 
+struct DiagnosticPlayerSample {
+    id: i64,
+    team: i64,
+    x: f64,
+    y: f64,
+    t: f64,
+    alive_until: f64,
+    has_bomb: bool,
+}
+
+fn diagnostic_player(sample: DiagnosticPlayerSample) -> serde_json::Value {
+    let DiagnosticPlayerSample {
+        id,
+        team,
+        x,
+        y,
+        t,
+        alive_until,
+        has_bomb,
+    } = sample;
+    let hp = if t > alive_until { 0 } else { 100 };
+    let active = match (team, t < 8.0) {
+        (2, true) => "glock",
+        (2, false) => "ak47",
+        (3, true) => "usp_silencer",
+        _ => "m4a1_silencer",
+    };
+    serde_json::json!({
+        "id": id,
+        "x": x,
+        "y": y,
+        "z": 0,
+        "yaw": (t * 20.0) % 360.0,
+        "hp": hp,
+        "armor": if t < 8.0 { 0 } else { 100 },
+        "money": 800 + id * 250,
+        "helmet": t >= 8.0,
+        "kit": team == 3 && id % 2 == 0,
+        "hasBomb": has_bomb,
+        "team": team,
+        "active": active,
+        "weapons": if team == 2 {
+            serde_json::json!([active, "glock", "weapon_knife", "flashbang", "smokegrenade", "molotov", "c4"])
+        } else {
+            serde_json::json!([active, "usp_silencer", "weapon_knife", "flashbang", "hegrenade", "incgrenade", "defuser"])
+        },
+        "flashLeft": if (14.0..16.0).contains(&t) && team == 3 { 1.5 } else { 0.0 },
+        "flashTotal": 2.0,
+        "activeAction": if has_bomb && (18.0..21.2).contains(&t) {
+            serde_json::json!({"type": "plant", "item": "c4", "elapsed": t - 18.0, "duration": 3.2})
+        } else {
+            serde_json::Value::Null
+        }
+    })
+}
+
+fn diagnostic_round(number: i64, start_tick: i64, score_a: i64, score_b: i64) -> RawRound {
+    let mut frames = Vec::new();
+    let mut projectile_frames = Vec::new();
+    for step in 0..=60 {
+        let t = step as f64 * 0.5;
+        let push = t * 32.0;
+        let player = |id, team, x, y, alive_until, has_bomb| {
+            diagnostic_player(DiagnosticPlayerSample {
+                id,
+                team,
+                x,
+                y,
+                t,
+                alive_until,
+                has_bomb,
+            })
+        };
+        let players = serde_json::json!([
+            player(1001, 2, -1180.0 + push, -880.0 + push * 0.22, 27.0, false),
+            player(
+                1002,
+                2,
+                -1260.0 + push * 0.9,
+                -1020.0 + push * 0.16,
+                31.0,
+                false
+            ),
+            player(
+                1003,
+                2,
+                -1340.0 + push * 0.72,
+                -1120.0 + push * 0.12,
+                40.0,
+                t < 21.2
+            ),
+            player(
+                1004,
+                2,
+                -1510.0 + push * 0.44,
+                -760.0 + push * 0.08,
+                40.0,
+                false
+            ),
+            player(
+                1005,
+                2,
+                -1420.0 + push * 0.62,
+                -940.0 + push * 0.18,
+                40.0,
+                false
+            ),
+            player(
+                2001,
+                3,
+                310.0 - push * 0.25,
+                -1220.0 + push * 0.08,
+                13.4,
+                false
+            ),
+            player(
+                2002,
+                3,
+                160.0 - push * 0.22,
+                -940.0 + push * 0.04,
+                25.0,
+                false
+            ),
+            player(
+                2003,
+                3,
+                -30.0 - push * 0.16,
+                -670.0 + push * 0.03,
+                40.0,
+                false
+            ),
+            player(
+                2004,
+                3,
+                420.0 - push * 0.18,
+                -780.0 + push * 0.05,
+                40.0,
+                false
+            ),
+            player(
+                2005,
+                3,
+                520.0 - push * 0.3,
+                -1010.0 + push * 0.1,
+                40.0,
+                false
+            )
+        ]);
+        let mut projectiles = Vec::new();
+        if (4.0..=6.5).contains(&t) {
+            projectiles.push(serde_json::json!({"id": 7101, "type": "smokegrenade", "x": -1020.0 + (t - 4.0) * 230.0, "y": -840.0 + (t - 4.0) * 80.0, "z": 80.0 - (t - 5.2).abs() * 22.0, "thrower": 1001}));
+        }
+        if (8.0..=10.2).contains(&t) {
+            projectiles.push(serde_json::json!({"id": 7102, "type": "molotov", "x": -980.0 + (t - 8.0) * 190.0, "y": -980.0 + (t - 8.0) * 96.0, "z": 90.0 - (t - 9.1).abs() * 28.0, "thrower": 1002}));
+        }
+        if (13.0..=14.4).contains(&t) {
+            projectiles.push(serde_json::json!({"id": 7103, "type": "flashbang", "x": -760.0 + (t - 13.0) * 260.0, "y": -760.0 + (t - 13.0) * 120.0, "z": 120.0 - (t - 13.7).abs() * 35.0, "thrower": 1004}));
+        }
+        let bomb = if t < 21.2 {
+            serde_json::json!({"status": "carried", "carrier": 1003, "x": -1340.0 + push * 0.72, "y": -1120.0 + push * 0.12, "z": 0})
+        } else {
+            serde_json::json!({"status": "planted", "x": -150.0, "y": -880.0, "z": 0})
+        };
+        frames.push(serde_json::json!({"t": t, "players": players, "bomb": bomb, "projectiles": projectiles}));
+        projectile_frames.push(serde_json::json!({"t": t, "projectiles": projectiles}));
+    }
+    RawRound {
+        number,
+        start_tick,
+        freeze_end_tick: Some(start_tick + 128),
+        end_tick: start_tick + 2048,
+        duration: 30.0,
+        winner: "T".into(),
+        winner_name: Some("Diagnostic T".into()),
+        score_a: Some(score_a),
+        score_b: Some(score_b),
+        frames: serde_json::Value::Array(frames),
+        events: serde_json::json!([
+            {"t": 13.4, "type": "kill", "killer": 1001, "victim": 2001, "weapon": "ak47", "hs": true},
+            {"t": 18.0, "type": "bomb_defuse_abort", "player": 2002},
+            {"t": 21.2, "type": "bomb_planted", "player": 1003},
+            {"t": 25.0, "type": "kill", "killer": 1002, "victim": 2002, "weapon": "molotov"},
+            {"t": 27.0, "type": "kill", "killer": 2003, "victim": 1001, "weapon": "awp"},
+            {"t": 30.0, "type": "round_end", "winner": "T"}
+        ]),
+        effects: serde_json::json!([
+            {"id": 8101, "type": "smoke", "start": 6.4, "end": 24.0, "x": -450.0, "y": -650.0, "z": 0, "team": 2},
+            {"id": 8102, "type": "fire", "variant": "molotov", "start": 10.1, "end": 17.5, "x": -560.0, "y": -770.0, "z": 0, "team": 2},
+            {"id": 8103, "type": "flash", "start": 14.3, "end": 15.2, "x": -380.0, "y": -590.0, "z": 0, "team": 2},
+            {"id": 8104, "type": "he", "start": 16.8, "end": 17.6, "x": -310.0, "y": -720.0, "z": 0, "team": 3},
+            {"id": 8105, "type": "bomb_planted", "start": 21.2, "end": 30.0, "x": -150.0, "y": -880.0, "z": 0, "team": 2}
+        ]),
+        weapon_fires: serde_json::json!([
+            {"t": 12.8, "shooter": 1001, "weapon": "ak47", "x": -760.0, "y": -820.0, "z": 0, "yaw": 32, "team": 2},
+            {"t": 13.3, "shooter": 1001, "weapon": "ak47", "x": -744.0, "y": -816.0, "z": 0, "yaw": 34, "team": 2},
+            {"t": 24.9, "shooter": 1002, "weapon": "ak47", "x": -590.0, "y": -900.0, "z": 0, "yaw": 18, "team": 2},
+            {"t": 27.0, "shooter": 2003, "weapon": "awp", "x": -220.0, "y": -630.0, "z": 0, "yaw": 212, "team": 3}
+        ]),
+        projectile_frames: serde_json::Value::Array(projectile_frames),
+    }
+}
+
+fn diagnostic_match_file() -> MatchFile {
+    MatchFile {
+        meta: Meta {
+            map: "de_mirage".into(),
+            tick_rate: 64.0,
+            sample_rate: 2.0,
+            duration_sec: 60.0,
+            team_a: "Diagnostic T".into(),
+            team_b: "Diagnostic CT".into(),
+            score_a: 2,
+            score_b: 0,
+            partial: false,
+            parse_error: String::new(),
+        },
+        players: vec![
+            Player {
+                steam_id: 1001,
+                name: "Diag-T Entry".into(),
+                team: "T".into(),
+            },
+            Player {
+                steam_id: 1002,
+                name: "Diag-T Pack".into(),
+                team: "T".into(),
+            },
+            Player {
+                steam_id: 1003,
+                name: "Diag-T Bomb".into(),
+                team: "T".into(),
+            },
+            Player {
+                steam_id: 1004,
+                name: "Diag-T Lurk".into(),
+                team: "T".into(),
+            },
+            Player {
+                steam_id: 1005,
+                name: "Diag-T Trade".into(),
+                team: "T".into(),
+            },
+            Player {
+                steam_id: 2001,
+                name: "Diag-CT Anchor".into(),
+                team: "CT".into(),
+            },
+            Player {
+                steam_id: 2002,
+                name: "Diag-CT Rotator".into(),
+                team: "CT".into(),
+            },
+            Player {
+                steam_id: 2003,
+                name: "Diag-CT AWPer".into(),
+                team: "CT".into(),
+            },
+            Player {
+                steam_id: 2004,
+                name: "Diag-CT Support".into(),
+                team: "CT".into(),
+            },
+            Player {
+                steam_id: 2005,
+                name: "Diag-CT Retake".into(),
+                team: "CT".into(),
+            },
+        ],
+        rounds: vec![
+            diagnostic_round(0, 0, 0, 0),
+            diagnostic_round(1, 4096, 1, 0),
+        ],
+    }
+}
+
+#[tauri::command]
+fn create_visual_test_match(app: AppHandle) -> Result<MatchSummary, String> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let path = parsed_path(&app, &id)?;
+    let file = fs::File::create(&path).map_err(|e| format!("create visual test match: {e}"))?;
+    let mut gz = GzEncoder::new(file, Compression::fast());
+    let raw = serde_json::to_vec(&diagnostic_match_file())
+        .map_err(|e| format!("serialize visual test match: {e}"))?;
+    gz.write_all(&raw)
+        .map_err(|e| format!("write visual test match: {e}"))?;
+    gz.finish()
+        .map_err(|e| format!("finish visual test match: {e}"))?;
+    write_match_info(
+        &app,
+        &id,
+        &StoredMatchInfo {
+            name: "Visual diagnostic replay".into(),
+            source_path: "generated://roundlab-visual-diagnostic".into(),
+        },
+    )?;
+    invalidate_cache(&id);
+    let md = fs::metadata(&path).map_err(|e| format!("metadata: {e}"))?;
+    let created = md
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    Ok(MatchSummary {
+        id,
+        name: "Visual diagnostic replay".into(),
+        created_at: created,
+        size: md.len(),
+    })
+}
+
 #[tauri::command]
 fn enter_match_fullscreen(app: AppHandle) -> Result<(), String> {
     let window = app
@@ -1779,6 +2090,7 @@ pub fn run() {
             get_round,
             delete_match,
             rename_match,
+            create_visual_test_match,
             enter_match_fullscreen,
             cancel_parse,
             parse_demo,
@@ -2004,6 +2316,31 @@ mod tests {
         assert_eq!(
             (m.rounds[0].score_a, m.rounds[0].score_b),
             (Some(0), Some(0))
+        );
+    }
+
+    #[test]
+    fn diagnostic_match_file_exercises_visual_surfaces() {
+        let m = diagnostic_match_file();
+
+        assert_eq!(m.meta.map, "de_mirage");
+        assert_eq!(m.players.len(), 10);
+        assert_eq!(m.rounds.len(), 2);
+        let round = &m.rounds[0];
+        assert!(array_len(&round.frames) > 0);
+        assert!(array_len(&round.projectile_frames) > 0);
+        assert!(array_len(&round.effects) >= 4);
+        assert!(round
+            .events
+            .as_array()
+            .expect("events array")
+            .iter()
+            .any(|event| event.get("type").and_then(serde_json::Value::as_str) == Some("kill")));
+        assert!(
+            serde_json::to_vec(&m)
+                .expect("diagnostic match should serialize")
+                .len()
+                > 1024
         );
     }
 

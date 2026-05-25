@@ -7,6 +7,7 @@ import MatchViewer from "./MatchViewer";
 function MatchPageInner() {
   const params = useSearchParams();
   const id = params.get("id") ?? "";
+  const visualTest = params.get("visualTest") === "1";
   if (!id) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-300">
@@ -14,7 +15,7 @@ function MatchPageInner() {
       </div>
     );
   }
-  return <MatchViewer id={id} />;
+  return <MatchViewer id={id} visualTest={visualTest} />;
 }
 
 export default function MatchPage() {

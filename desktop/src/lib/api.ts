@@ -75,6 +75,10 @@ export async function renameMatch(
   return invoke<MatchSummary>("rename_match", { id, name });
 }
 
+export async function createVisualTestMatch(): Promise<MatchSummary> {
+  return invoke<MatchSummary>("create_visual_test_match");
+}
+
 /** Parse a local .dem or .dem.zst file. Returns the new match id. */
 export async function parseDemo(
   srcPath: string,

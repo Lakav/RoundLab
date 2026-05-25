@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import {
   cancelParse,
+  createVisualTestMatch,
   deleteMatch,
   getMatchMetadata,
   listMatches,
@@ -56,6 +57,7 @@ export default function Home() {
   const router = useRouter();
   const [uploading, setUploading] = useState(false);
   const [opening, setOpening] = useState(false);
+  const [visualTestRunning, setVisualTestRunning] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [parseProgress, setParseProgress] = useState<ParseProgress>({
@@ -259,7 +261,7 @@ export default function Home() {
     }
   };
 
-  const openMatch = async (id: string) => {
+  const openMatch = async (id: string, visualTest = false) => {
     if (uploading) return;
     setOpening(true);
     // Warm the Rust-side match cache before navigating so MatchViewer's
@@ -270,7 +272,22 @@ export default function Home() {
     } catch {
       /* ignore — let MatchViewer surface the real error */
     }
-    router.push(`/match/?id=${id}`);
+    router.push(`/match/?id=${id}${visualTest ? "&visualTest=1" : ""}`);
+  };
+
+  const onRunVisualTest = async () => {
+    if (uploading || opening || visualTestRunning) return;
+    setError(null);
+    setVisualTestRunning(true);
+    try {
+      const summary = await createVisualTestMatch();
+      setMatches((items) => [summary, ...items.filter((m) => m.id !== summary.id)]);
+      await openMatch(summary.id, true);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setVisualTestRunning(false);
+    }
   };
 
   const onCancelParse = async () => {
@@ -405,7 +422,10 @@ export default function Home() {
             <span className="text-[11px] text-neutral-500">v{appVersion}</span>
           )}
         </div>
-        <SettingsPanel />
+        <SettingsPanel
+          onRunVisualTest={() => void onRunVisualTest()}
+          visualTestRunning={visualTestRunning}
+        />
       </header>
 
       <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-6 py-8 sm:py-10">

@@ -1,12 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { X, Settings } from "lucide-react";
+import { Loader2, Play, Settings, X } from "lucide-react";
 
 /** Renders a small gear button. Clicking it opens an inline panel where the
  *  user can tune parse-quality and capture toggles. Changes are persisted to
  *  localStorage immediately and will apply to the next parse. */
-export function SettingsPanel() {
+export function SettingsPanel({
+  onRunVisualTest,
+  visualTestRunning = false,
+}: {
+  onRunVisualTest?: () => void;
+  visualTestRunning?: boolean;
+}) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -45,6 +51,23 @@ export function SettingsPanel() {
                 Full tick capture
               </div>
             </Field>
+            {onRunVisualTest && (
+              <Field label="Diagnostics">
+                <button
+                  type="button"
+                  onClick={onRunVisualTest}
+                  disabled={visualTestRunning}
+                  className="flex w-full items-center justify-center gap-2 rounded-md border border-sky-300/20 bg-sky-300/10 px-3 py-2 text-xs font-medium text-sky-100 transition-colors hover:bg-sky-300/15 disabled:cursor-wait disabled:opacity-70"
+                >
+                  {visualTestRunning ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Play className="size-3.5" />
+                  )}
+                  Launch visual test replay
+                </button>
+              </Field>
+            )}
           </div>
         </div>
       )}

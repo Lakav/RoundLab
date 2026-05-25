@@ -127,12 +127,14 @@ function logFrontendRoundReceived(matchId: string, round: Round): void {
   ).catch(() => {});
 }
 
-export default function MatchViewer({ id }: { id: string }) {
+export default function MatchViewer({ id, visualTest = false }: { id: string; visualTest?: boolean }) {
   const setMatch = useReplay((s) => s.setMatch);
   const setRoundData = useReplay((s) => s.setRoundData);
   const match = useReplay((s) => s.match);
   const currentRoundIdx = useReplay((s) => s.currentRoundIdx);
   const setTime = useReplay((s) => s.setTime);
+  const setPlaying = useReplay((s) => s.setPlaying);
+  const setSpeed = useReplay((s) => s.setSpeed);
   const togglePlay = useReplay((s) => s.togglePlay);
 
   const [loading, setLoading] = useState(true);
@@ -263,6 +265,21 @@ export default function MatchViewer({ id }: { id: string }) {
     };
   }, [currentRoundIdx, loadRoundData, match]);
 
+  useEffect(() => {
+    if (!visualTest || loading || !match) return;
+    setTime(0);
+    setSpeed(1);
+    setPlaying(true);
+    void writeDebugLog(
+      "diagnostic",
+      `ROUNDLAB_DIAGNOSTIC visual-test-started ${JSON.stringify({
+        matchId: id,
+        rounds: match.rounds.length,
+        map: match.meta.map,
+      })}`,
+    ).catch(() => {});
+  }, [id, loading, match, setPlaying, setSpeed, setTime, visualTest]);
+
   // Prefetch the two neighbouring rounds in the background so switching
   // rounds feels instantaneous. The Rust side caches the decoded match
   // across calls, so these fetches are cheap — they mostly re-serialize
@@ -362,6 +379,7 @@ export default function MatchViewer({ id }: { id: string }) {
           {match.meta.parseError && <span className="text-yellow-300 ml-2">({match.meta.parseError})</span>}
         </div>
       )}
+      {visualTest && <VisualTestPanel match={match} currentRoundIdx={currentRoundIdx} />}
       <Link href="/" className="fixed left-4 top-4 z-50">
         <Button
           variant="ghost"
@@ -442,6 +460,43 @@ export default function MatchViewer({ id }: { id: string }) {
           </div>
         </div>
       </main>
+    </div>
+  );
+}
+
+function VisualTestPanel({
+  match,
+  currentRoundIdx,
+}: {
+  match: MatchData;
+  currentRoundIdx: number;
+}) {
+  const round = match.rounds[currentRoundIdx];
+  const checks = [
+    ["Map", Boolean(MAP_CALIBRATION[match.meta.map])],
+    ["Players", match.players.length === 10],
+    ["Frames", (round?.frames.length ?? 0) > 0],
+    ["Effects", (round?.effects?.length ?? 0) >= 4],
+    ["Projectiles", (round?.projectileFrames?.length ?? 0) > 0],
+    ["Killfeed", (round?.events ?? []).some((event) => event.type === "kill")],
+    ["Shots", (round?.weaponFires?.length ?? 0) > 0],
+    ["Bomb", (round?.events ?? []).some((event) => event.type === "bomb_planted")],
+  ];
+
+  return (
+    <div className="fixed right-4 top-4 z-50 w-52 rounded-md border border-sky-300/20 bg-black/70 p-3 text-[11px] text-neutral-200 shadow-xl backdrop-blur">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="font-semibold text-sky-100">Visual test</span>
+        <span className="text-neutral-500">R{currentRoundIdx + 1}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+        {checks.map(([label, ok]) => (
+          <div key={String(label)} className="flex items-center gap-1.5">
+            <span className={ok ? "text-emerald-300" : "text-red-300"}>{ok ? "OK" : "FAIL"}</span>
+            <span className="truncate text-neutral-400">{label}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
