@@ -41,20 +41,24 @@ export function PlayerHUD({ side }: { side: "CT" | "T" }) {
   const currentRoundIdx = useReplay((s) => s.currentRoundIdx);
   const time = useReplay((s) => s.time) ?? 0;
   const debugRound = match?.rounds[currentRoundIdx];
+  const debugRoundNumber = debugRound?.number;
+  const debugScoreA = debugRound?.scoreA;
+  const debugScoreB = debugRound?.scoreB;
+  const debugWinner = debugRound?.winner;
   useEffect(() => {
-    if (!debugRound) return;
+    if (debugRoundNumber === undefined) return;
     void writeDebugLog(
       "rounds",
       `ROUNDLAB_DEBUG_SCORE hud-round-score ${JSON.stringify({
         source: "hud",
-        roundNumber: debugRound.number,
+        roundNumber: debugRoundNumber,
         side,
-        ctScore: debugRound.scoreA,
-        tScore: debugRound.scoreB,
-        winningSide: debugRound.winner ?? null,
+        ctScore: debugScoreA,
+        tScore: debugScoreB,
+        winningSide: debugWinner ?? null,
       })}`,
     ).catch(() => {});
-  }, [debugRound?.number, debugRound?.scoreA, debugRound?.scoreB, debugRound?.winner, side]);
+  }, [debugRoundNumber, debugScoreA, debugScoreB, debugWinner, side]);
   if (!match) return null;
   const round = match.rounds[currentRoundIdx];
   if (!round) return null;

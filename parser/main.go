@@ -422,6 +422,138 @@ func logParserRoundScore(round Round, source string) {
 		source, round.Number, round.ScoreA, round.ScoreB, round.Winner)
 }
 
+func isKnifeOrBombWeaponName(name string) bool {
+	n := strings.ToLower(strings.TrimSpace(name))
+	if n == "" || n == "world" {
+		return true
+	}
+	return strings.Contains(n, "knife") ||
+		strings.Contains(n, "bayonet") ||
+		strings.Contains(n, "karambit") ||
+		strings.Contains(n, "butterfly") ||
+		strings.Contains(n, "stiletto") ||
+		strings.Contains(n, "ursus") ||
+		strings.Contains(n, "talon") ||
+		strings.Contains(n, "skeleton") ||
+		strings.Contains(n, "kukri") ||
+		strings.Contains(n, "bowie") ||
+		strings.Contains(n, "flip") ||
+		strings.Contains(n, "gut") ||
+		strings.Contains(n, "c4") ||
+		strings.Contains(n, "bomb")
+}
+
+func roundWeaponUsageSummary(round Round) map[string]int {
+	counts := map[string]int{}
+	for _, event := range round.Events {
+		if event.Type == "kill" && event.Weapon != "" {
+			counts[event.Weapon]++
+		}
+	}
+	for _, frame := range round.Frames {
+		for _, player := range frame.Players {
+			if player.Active != "" {
+				counts[player.Active]++
+			}
+			for _, weapon := range player.Weapons {
+				if weapon != "" {
+					counts[weapon]++
+				}
+			}
+		}
+	}
+	return counts
+}
+
+func compactWeaponUsageSummary(round Round) string {
+	counts := roundWeaponUsageSummary(round)
+	if len(counts) == 0 {
+		return "none"
+	}
+	keys := make([]string, 0, len(counts))
+	for key := range counts {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if counts[keys[i]] == counts[keys[j]] {
+			return keys[i] < keys[j]
+		}
+		return counts[keys[i]] > counts[keys[j]]
+	})
+	if len(keys) > 10 {
+		keys = keys[:10]
+	}
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, fmt.Sprintf("%s:%d", strings.ReplaceAll(key, " ", "_"), counts[key]))
+	}
+	return strings.Join(parts, ",")
+}
+
+func roundTotalKills(round Round) int {
+	total := 0
+	for _, event := range round.Events {
+		if event.Type == "kill" {
+			total++
+		}
+	}
+	return total
+}
+
+func looksLikeKnifeRound(round Round) bool {
+	if round.Duration > 90 || roundTotalKills(round) == 0 {
+		return false
+	}
+	weapons := roundWeaponUsageSummary(round)
+	if len(weapons) == 0 {
+		return false
+	}
+	for weapon := range weapons {
+		if !isKnifeOrBombWeaponName(weapon) {
+			return false
+		}
+	}
+	return true
+}
+
+func logScoreAdjustment(event string, roundIndex int, round Round, scoreA, scoreB int, isKnifeRound bool) {
+	fmt.Fprintf(os.Stderr,
+		"ROUNDLAB_DEBUG_SCORE %s roundIndex=%d startTick=%d totalKills=%d weaponUsage=%s scoreA=%d scoreB=%d isKnifeRound=%t\n",
+		event,
+		roundIndex,
+		round.StartTick,
+		roundTotalKills(round),
+		compactWeaponUsageSummary(round),
+		scoreA,
+		scoreB,
+		isKnifeRound,
+	)
+}
+
+func winnerSlot(round Round, teamAName, teamBName string, rawA, rawB, scoreA, scoreB int) string {
+	if round.WinnerName != "" {
+		if round.WinnerName == teamAName {
+			return "A"
+		}
+		if round.WinnerName == teamBName {
+			return "B"
+		}
+	}
+	if rawA > scoreA && rawB == scoreB {
+		return "A"
+	}
+	if rawB > scoreB && rawA == scoreA {
+		return "B"
+	}
+	if rawA > scoreA && rawA-scoreA >= rawB-scoreB {
+		return "A"
+	}
+	if rawB > scoreB {
+		return "B"
+	}
+	return ""
+}
+
 func logParserRoundCreated(round Round) {
 	fmt.Fprintf(os.Stderr,
 		"ROUNDLAB_DEBUG_ROUNDS parser-round-created roundIndex=%d startTick=%d endTick=%d freezeEndTick=%d duration=%.3f selectedInitialRoundIndex=-1 reason=created\n",
@@ -459,6 +591,104 @@ func isUtilityActionName(name string) bool {
 		strings.Contains(n, "molotov") ||
 		strings.Contains(n, "incendiary") ||
 		strings.Contains(n, "decoy")
+}
+
+var knifeDefinitionNames = map[uint64]string{
+	41:  "weapon_knifegg",
+	42:  "weapon_knife",
+	59:  "weapon_knife_t",
+	80:  "weapon_knife_ghost",
+	500: "weapon_bayonet",
+	503: "weapon_knife_css",
+	505: "weapon_knife_flip",
+	506: "weapon_knife_gut",
+	507: "weapon_knife_karambit",
+	508: "weapon_knife_m9_bayonet",
+	509: "weapon_knife_tactical",
+	512: "weapon_knife_falchion",
+	514: "weapon_knife_survival_bowie",
+	515: "weapon_knife_butterfly",
+	516: "weapon_knife_push",
+	517: "weapon_knife_cord",
+	518: "weapon_knife_canis",
+	519: "weapon_knife_ursus",
+	520: "weapon_knife_gypsy_jackknife",
+	521: "weapon_knife_outdoor",
+	522: "weapon_knife_stiletto",
+	523: "weapon_knife_widowmaker",
+	525: "weapon_knife_skeleton",
+	526: "weapon_knife_kukri",
+}
+
+func equipmentDefinitionIndex(w *common.Equipment) (uint64, bool) {
+	if w == nil || w.Entity == nil {
+		return 0, false
+	}
+	val, ok := w.Entity.PropertyValue("m_iItemDefinitionIndex")
+	if !ok || val.Any == nil {
+		return 0, false
+	}
+	switch v := val.Any.(type) {
+	case uint64:
+		return v, true
+	case uint32:
+		return uint64(v), true
+	case int32:
+		if v < 0 {
+			return 0, false
+		}
+		return uint64(v), true
+	case int64:
+		if v < 0 {
+			return 0, false
+		}
+		return uint64(v), true
+	case int:
+		if v < 0 {
+			return 0, false
+		}
+		return uint64(v), true
+	}
+	return 0, false
+}
+
+func weaponDisplayName(w *common.Equipment) (name string, defIndex uint64, isKnife bool, fallbackReason string) {
+	if w == nil {
+		return "", 0, false, "nil weapon"
+	}
+	raw := w.String()
+	defIndex, hasDefIndex := equipmentDefinitionIndex(w)
+	isKnife = w.Type == common.EqKnife || strings.Contains(strings.ToLower(raw), "knife")
+	if !isKnife {
+		return raw, defIndex, false, ""
+	}
+	if hasDefIndex {
+		if mapped, ok := knifeDefinitionNames[defIndex]; ok {
+			return mapped, defIndex, true, ""
+		}
+		return raw, defIndex, true, "unknown knife definition index"
+	}
+	return raw, 0, true, "missing item definition index"
+}
+
+func logWeaponKnifeDebug(event string, player *common.Player, tick int, rawName string, defIndex uint64, mappedName string, fallbackReason string) {
+	playerName := ""
+	var steamID uint64
+	if player != nil {
+		playerName = player.Name
+		steamID = player.SteamID64
+	}
+	fmt.Fprintf(os.Stderr,
+		"ROUNDLAB_DEBUG_WEAPONS %s player=%q steamId=%d tick=%d rawWeaponName=%q itemDefinitionIndex=%d mappedIconName=%q fallbackReason=%q\n",
+		event,
+		playerName,
+		steamID,
+		tick,
+		rawName,
+		defIndex,
+		mappedName,
+		fallbackReason,
+	)
 }
 
 func main() {
@@ -1417,6 +1647,9 @@ func writeOutput(path string, output Output, spool *RoundSpool, teamAName, teamB
 		return err
 	}
 
+	scoreA := 0
+	scoreB := 0
+	writtenRounds := 0
 	for idx, stored := range spool.Rounds {
 		writeProgress := 0.90 + 0.08*(float64(idx)/float64(len(spool.Rounds)))
 		emitProgress(writeProgress, fmt.Sprintf("Writing round %d/%d...", idx+1, len(spool.Rounds)))
@@ -1424,12 +1657,22 @@ func writeOutput(path string, output Output, spool *RoundSpool, teamAName, teamB
 		if err != nil {
 			return err
 		}
-		round.Number = idx
-		round.ScoreA = round.TeamScores[teamAName]
-		round.ScoreB = round.TeamScores[teamBName]
+		rawA := round.TeamScores[teamAName]
+		rawB := round.TeamScores[teamBName]
+		isKnifeRound := looksLikeKnifeRound(round)
+		logScoreAdjustment("score-before-adjust", idx, round, rawA, rawB, isKnifeRound)
+		if isKnifeRound {
+			logScoreAdjustment("knife-round-detected", idx, round, rawA, rawB, true)
+			logScoreAdjustment("knife-round-hidden", idx, round, rawA, rawB, true)
+			continue
+		}
+		round.Number = writtenRounds
+		round.ScoreA = scoreA
+		round.ScoreB = scoreB
+		logScoreAdjustment("score-after-adjust", idx, round, round.ScoreA, round.ScoreB, false)
 		logParserRoundScore(round, "write-output")
 		round.TeamScores = nil
-		if idx > 0 {
+		if writtenRounds > 0 {
 			if _, err := gz.Write([]byte(",")); err != nil {
 				return err
 			}
@@ -1437,10 +1680,17 @@ func writeOutput(path string, output Output, spool *RoundSpool, teamAName, teamB
 		if err := writeJSON(gz, round); err != nil {
 			return err
 		}
+		switch winnerSlot(round, teamAName, teamBName, rawA, rawB, scoreA, scoreB) {
+		case "A":
+			scoreA++
+		case "B":
+			scoreB++
+		}
+		writtenRounds++
 		// Periodic flush keeps the deflate window from accumulating into a
 		// single multi-second hit during gz.Close(). Critical on Windows
 		// where the final flush + fsync was leaving the UI stuck at 99%.
-		if idx%8 == 7 {
+		if writtenRounds%8 == 0 {
 			if err := gz.Flush(); err != nil {
 				return err
 			}

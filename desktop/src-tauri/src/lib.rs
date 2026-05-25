@@ -7,7 +7,7 @@
 //! - Each match is parsed once, then cached. Subsequent reads stream the
 //!   gzipped JSON on demand — we don't keep the full match in memory.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -297,6 +297,9 @@ fn read_match_file(path: &Path) -> Result<MatchFile, String> {
         .map_err(|e| format!("gunzip: {e}"))?;
     let mut m: MatchFile = serde_json::from_slice(&buf).map_err(|e| format!("parse json: {e}"))?;
     backfill_missing_round_scores(&mut m);
+    if should_normalize_competitive_round_scores(&m) {
+        normalize_competitive_round_scores(&mut m);
+    }
     Ok(m)
 }
 
@@ -322,6 +325,222 @@ fn backfill_missing_round_scores(m: &mut MatchFile) {
             t_score = round.score_b.unwrap_or(t_score);
         }
     }
+}
+
+fn is_knife_or_bomb_weapon_name(name: &str) -> bool {
+    let n = name.trim().to_lowercase();
+    n.is_empty()
+        || n == "world"
+        || n.contains("knife")
+        || n.contains("bayonet")
+        || n.contains("karambit")
+        || n.contains("butterfly")
+        || n.contains("stiletto")
+        || n.contains("ursus")
+        || n.contains("talon")
+        || n.contains("skeleton")
+        || n.contains("kukri")
+        || n.contains("bowie")
+        || n.contains("flip")
+        || n.contains("gut")
+        || n.contains("c4")
+        || n.contains("bomb")
+}
+
+fn collect_round_weapon_usage(round: &RawRound) -> HashMap<String, usize> {
+    let mut counts = HashMap::new();
+    if let Some(events) = round.events.as_array() {
+        for event in events {
+            if event.get("type").and_then(serde_json::Value::as_str) != Some("kill") {
+                continue;
+            }
+            if let Some(weapon) = event.get("weapon").and_then(serde_json::Value::as_str) {
+                if !weapon.is_empty() {
+                    *counts.entry(weapon.to_string()).or_insert(0) += 1;
+                }
+            }
+        }
+    }
+    if let Some(frames) = round.frames.as_array() {
+        for frame in frames {
+            let Some(players) = frame.get("players").and_then(serde_json::Value::as_array) else {
+                continue;
+            };
+            for player in players {
+                if let Some(active) = player.get("active").and_then(serde_json::Value::as_str) {
+                    if !active.is_empty() {
+                        *counts.entry(active.to_string()).or_insert(0) += 1;
+                    }
+                }
+                if let Some(weapons) = player.get("weapons").and_then(serde_json::Value::as_array) {
+                    for weapon in weapons {
+                        if let Some(name) = weapon.as_str() {
+                            if !name.is_empty() {
+                                *counts.entry(name.to_string()).or_insert(0) += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    counts
+}
+
+fn compact_weapon_usage_summary(round: &RawRound) -> String {
+    let mut counts = collect_round_weapon_usage(round)
+        .into_iter()
+        .collect::<Vec<(String, usize)>>();
+    if counts.is_empty() {
+        return "none".into();
+    }
+    counts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    counts
+        .into_iter()
+        .take(10)
+        .map(|(weapon, count)| format!("{}:{count}", weapon.replace(' ', "_")))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn round_total_kills(round: &RawRound) -> usize {
+    round
+        .events
+        .as_array()
+        .map(|events| {
+            events
+                .iter()
+                .filter(|event| {
+                    event.get("type").and_then(serde_json::Value::as_str) == Some("kill")
+                })
+                .count()
+        })
+        .unwrap_or(0)
+}
+
+fn looks_like_knife_round(round: &RawRound) -> bool {
+    if round.duration > 90.0 || round_total_kills(round) == 0 {
+        return false;
+    }
+    let weapons = collect_round_weapon_usage(round);
+    !weapons.is_empty()
+        && weapons
+            .keys()
+            .all(|weapon| is_knife_or_bomb_weapon_name(weapon))
+}
+
+fn log_score_adjustment(
+    event: &str,
+    round_index: usize,
+    round: &RawRound,
+    score_a: i64,
+    score_b: i64,
+    is_knife_round: bool,
+) {
+    logger::info(
+        "rounds",
+        &format!(
+            "ROUNDLAB_DEBUG_SCORE {event} roundIndex={round_index} startTick={} totalKills={} weaponUsage={} scoreA={score_a} scoreB={score_b} isKnifeRound={is_knife_round}",
+            round.start_tick,
+            round_total_kills(round),
+            compact_weapon_usage_summary(round)
+        ),
+    );
+}
+
+fn should_normalize_competitive_round_scores(m: &MatchFile) -> bool {
+    if m.rounds.iter().any(looks_like_knife_round) {
+        return true;
+    }
+    m.rounds
+        .first()
+        .map(|round| round.score_a.unwrap_or(0) != 0 || round.score_b.unwrap_or(0) != 0)
+        .unwrap_or(false)
+}
+
+fn winner_slot(
+    round: &RawRound,
+    team_a_name: &str,
+    team_b_name: &str,
+    raw_a: i64,
+    raw_b: i64,
+    score_a: i64,
+    score_b: i64,
+) -> Option<char> {
+    if let Some(winner_name) = &round.winner_name {
+        if winner_name == team_a_name {
+            return Some('A');
+        }
+        if winner_name == team_b_name {
+            return Some('B');
+        }
+    }
+    if raw_a > score_a && raw_b == score_b {
+        return Some('A');
+    }
+    if raw_b > score_b && raw_a == score_a {
+        return Some('B');
+    }
+    if raw_a > score_a && raw_a - score_a >= raw_b - score_b {
+        return Some('A');
+    }
+    if raw_b > score_b {
+        return Some('B');
+    }
+    None
+}
+
+fn normalize_competitive_round_scores(m: &mut MatchFile) {
+    let team_a_name = m.meta.team_a.clone();
+    let team_b_name = m.meta.team_b.clone();
+    let mut score_a = 0;
+    let mut score_b = 0;
+    let mut visible = Vec::with_capacity(m.rounds.len());
+    for (idx, round) in m.rounds.drain(..).enumerate() {
+        let raw_a = round.score_a.unwrap_or(score_a);
+        let raw_b = round.score_b.unwrap_or(score_b);
+        let is_knife_round = looks_like_knife_round(&round);
+        log_score_adjustment(
+            "score-before-adjust",
+            idx,
+            &round,
+            raw_a,
+            raw_b,
+            is_knife_round,
+        );
+        if is_knife_round {
+            log_score_adjustment("knife-round-detected", idx, &round, raw_a, raw_b, true);
+            log_score_adjustment("knife-round-hidden", idx, &round, raw_a, raw_b, true);
+            continue;
+        }
+        let mut adjusted = round;
+        adjusted.number = visible.len() as i64;
+        adjusted.score_a = Some(score_a);
+        adjusted.score_b = Some(score_b);
+        log_score_adjustment(
+            "score-after-adjust",
+            idx,
+            &adjusted,
+            score_a,
+            score_b,
+            false,
+        );
+        match winner_slot(
+            &adjusted,
+            &team_a_name,
+            &team_b_name,
+            raw_a,
+            raw_b,
+            score_a,
+            score_b,
+        ) {
+            Some('A') => score_a += 1,
+            Some('B') => score_b += 1,
+            _ => {}
+        }
+        visible.push(adjusted);
+    }
+    m.rounds = visible;
 }
 
 fn log_tauri_round_score(source: &str, round: &RawRound) {
@@ -1691,6 +1910,100 @@ mod tests {
         assert_eq!(
             scores,
             vec![(Some(1), Some(0)), (Some(1), Some(1)), (Some(2), Some(1))]
+        );
+    }
+
+    fn test_meta() -> Meta {
+        Meta {
+            map: "de_mirage".into(),
+            tick_rate: 64.0,
+            sample_rate: 64.0,
+            duration_sec: 0.0,
+            team_a: "A".into(),
+            team_b: "B".into(),
+            score_a: 2,
+            score_b: 0,
+            partial: false,
+            parse_error: String::new(),
+        }
+    }
+
+    fn rifle_round(number: i64, score_a: i64, score_b: i64, winner_name: &str) -> RawRound {
+        RawRound {
+            number,
+            duration: 95.0,
+            winner_name: Some(winner_name.into()),
+            score_a: Some(score_a),
+            score_b: Some(score_b),
+            events: serde_json::json!([
+                {"type": "kill", "weapon": "ak47"}
+            ]),
+            frames: serde_json::json!([
+                {"players": [{"active": "ak47", "weapons": ["ak47", "weapon_knife"]}]}
+            ]),
+            ..RawRound::default()
+        }
+    }
+
+    #[test]
+    fn normalize_round_scores_is_skipped_for_already_normalized_matches() {
+        let m = MatchFile {
+            meta: test_meta(),
+            players: vec![],
+            rounds: vec![rifle_round(0, 0, 0, "A"), rifle_round(1, 1, 0, "A")],
+        };
+
+        assert!(!should_normalize_competitive_round_scores(&m));
+    }
+
+    #[test]
+    fn normalize_round_scores_detects_old_after_round_scores() {
+        let mut m = MatchFile {
+            meta: test_meta(),
+            players: vec![],
+            rounds: vec![rifle_round(0, 1, 0, "A"), rifle_round(1, 2, 0, "A")],
+        };
+
+        assert!(should_normalize_competitive_round_scores(&m));
+        normalize_competitive_round_scores(&mut m);
+
+        let scores = m
+            .rounds
+            .iter()
+            .map(|r| (r.number, r.score_a, r.score_b))
+            .collect::<Vec<_>>();
+        assert_eq!(scores, vec![(0, Some(0), Some(0)), (1, Some(1), Some(0))]);
+    }
+
+    #[test]
+    fn normalize_round_scores_hides_knife_rounds_and_renumbers() {
+        let knife_round = RawRound {
+            number: 0,
+            duration: 20.0,
+            score_a: Some(1),
+            score_b: Some(0),
+            events: serde_json::json!([
+                {"type": "kill", "weapon": "weapon_knife"}
+            ]),
+            frames: serde_json::json!([
+                {"players": [{"active": "weapon_knife", "weapons": ["weapon_knife"]}]}
+            ]),
+            ..RawRound::default()
+        };
+        let mut m = MatchFile {
+            meta: test_meta(),
+            players: vec![],
+            rounds: vec![knife_round, rifle_round(1, 2, 0, "A")],
+        };
+
+        assert!(should_normalize_competitive_round_scores(&m));
+        normalize_competitive_round_scores(&mut m);
+
+        assert_eq!(m.rounds.len(), 1);
+        assert_eq!(m.rounds[0].number, 0);
+        assert_eq!(
+            (m.rounds[0].score_a, m.rounds[0].score_b),
+            (Some(0), Some(0))
         );
     }
 
