@@ -993,125 +993,56 @@ fn diagnostic_player(sample: DiagnosticPlayerSample) -> serde_json::Value {
 fn diagnostic_round(number: i64, start_tick: i64, score_a: i64, score_b: i64) -> RawRound {
     let mut frames = Vec::new();
     let mut projectile_frames = Vec::new();
-    for step in 0..=60 {
+    for step in 0..=76 {
         let t = step as f64 * 0.5;
-        let push = t * 32.0;
-        let player = |id, team, slot, x, y, alive_until, has_bomb| {
+        let player = |id, team, slot, base_x, base_y, move_x, move_y, alive_until, has_bomb| {
+            let live_t = t.min(alive_until);
+            let push = live_t * 32.0;
             diagnostic_player(DiagnosticPlayerSample {
                 id,
                 team,
                 slot,
-                x,
-                y,
+                x: base_x + push * move_x,
+                y: base_y + push * move_y,
                 t,
                 alive_until,
                 has_bomb,
             })
         };
         let players = serde_json::json!([
-            player(
-                1001,
-                2,
-                1,
-                -1180.0 + push,
-                -880.0 + push * 0.22,
-                72.0,
-                false
-            ),
-            player(
-                1002,
-                2,
-                2,
-                -1260.0 + push * 0.9,
-                -1020.0 + push * 0.16,
-                80.0,
-                false
-            ),
-            player(
-                1003,
-                2,
-                3,
-                -1340.0 + push * 0.72,
-                -1120.0 + push * 0.12,
-                115.0,
-                t < 21.2
-            ),
-            player(
-                1004,
-                2,
-                4,
-                -1510.0 + push * 0.44,
-                -760.0 + push * 0.08,
-                115.0,
-                false
-            ),
-            player(
-                1005,
-                2,
-                5,
-                -1420.0 + push * 0.62,
-                -940.0 + push * 0.18,
-                115.0,
-                false
-            ),
-            player(
-                2001,
-                3,
-                1,
-                310.0 - push * 0.25,
-                -1220.0 + push * 0.08,
-                13.4,
-                false
-            ),
-            player(
-                2002,
-                3,
-                2,
-                160.0 - push * 0.22,
-                -940.0 + push * 0.04,
-                25.0,
-                false
-            ),
-            player(
-                2003,
-                3,
-                3,
-                -30.0 - push * 0.16,
-                -670.0 + push * 0.03,
-                115.0,
-                false
-            ),
-            player(
-                2004,
-                3,
-                4,
-                420.0 - push * 0.18,
-                -780.0 + push * 0.05,
-                115.0,
-                false
-            ),
-            player(
-                2005,
-                3,
-                5,
-                520.0 - push * 0.3,
-                -1010.0 + push * 0.1,
-                115.0,
-                false
-            )
+            player(1001, 2, 1, -1180.0, -880.0, 1.0, 0.22, 27.0, false),
+            player(1002, 2, 2, -1260.0, -1020.0, 0.9, 0.16, 38.0, false),
+            player(1003, 2, 3, -1340.0, -1120.0, 0.72, 0.12, 38.0, t < 21.2),
+            player(1004, 2, 4, -1510.0, -760.0, 0.44, 0.08, 38.0, false),
+            player(1005, 2, 5, -1420.0, -940.0, 0.62, 0.18, 38.0, false),
+            player(2001, 3, 1, 310.0, -1220.0, -0.25, 0.08, 13.4, false),
+            player(2002, 3, 2, 160.0, -940.0, -0.22, 0.04, 25.0, false),
+            player(2003, 3, 3, -30.0, -670.0, -0.16, 0.03, 38.0, false),
+            player(2004, 3, 4, 420.0, -780.0, -0.18, 0.05, 38.0, false),
+            player(2005, 3, 5, 520.0, -1010.0, -0.3, 0.1, 38.0, false)
         ]);
         let mut projectiles = Vec::new();
         if (4.0..=6.5).contains(&t) {
             projectiles.push(serde_json::json!({"id": 7101, "type": "smokegrenade", "x": -1020.0 + (t - 4.0) * 230.0, "y": -840.0 + (t - 4.0) * 80.0, "z": 80.0 - (t - 5.2).abs() * 22.0, "thrower": 1001}));
         }
-        if (8.0..=10.2).contains(&t) {
-            projectiles.push(serde_json::json!({"id": 7102, "type": "molotov", "x": -980.0 + (t - 8.0) * 190.0, "y": -980.0 + (t - 8.0) * 96.0, "z": 90.0 - (t - 9.1).abs() * 28.0, "thrower": 1002}));
+        if (6.0..=8.2).contains(&t) {
+            projectiles.push(serde_json::json!({"id": 7102, "type": "molotov", "x": -1160.0 + (t - 6.0) * 115.0, "y": -1160.0 + (t - 6.0) * 42.0, "z": 88.0 - (t - 7.1).abs() * 24.0, "thrower": 1002}));
+        }
+        if (8.5..=10.6).contains(&t) {
+            projectiles.push(serde_json::json!({"id": 7103, "type": "hegrenade", "x": -1280.0 + (t - 8.5) * 150.0, "y": -720.0 + (t - 8.5) * 54.0, "z": 100.0 - (t - 9.55).abs() * 32.0, "thrower": 2004}));
+        }
+        if (11.0..=13.5).contains(&t) {
+            projectiles.push(serde_json::json!({"id": 7104, "type": "smokegrenade", "x": -760.0 + (t - 11.0) * 210.0, "y": -1220.0 + (t - 11.0) * 60.0, "z": 82.0 - (t - 12.25).abs() * 21.0, "thrower": 1005}));
         }
         if (13.0..=14.4).contains(&t) {
-            projectiles.push(serde_json::json!({"id": 7103, "type": "flashbang", "x": -760.0 + (t - 13.0) * 260.0, "y": -760.0 + (t - 13.0) * 120.0, "z": 120.0 - (t - 13.7).abs() * 35.0, "thrower": 1004}));
+            projectiles.push(serde_json::json!({"id": 7105, "type": "flashbang", "x": -760.0 + (t - 13.0) * 260.0, "y": -760.0 + (t - 13.0) * 120.0, "z": 120.0 - (t - 13.7).abs() * 35.0, "thrower": 1004}));
+        }
+        if (16.0..=18.4).contains(&t) {
+            projectiles.push(serde_json::json!({"id": 7106, "type": "incgrenade", "x": 70.0 - (t - 16.0) * 165.0, "y": -900.0 + (t - 16.0) * 74.0, "z": 86.0 - (t - 17.2).abs() * 26.0, "thrower": 2002}));
         }
         let bomb = if t < 21.2 {
-            serde_json::json!({"status": "carried", "carrier": 1003, "x": -1340.0 + push * 0.72, "y": -1120.0 + push * 0.12, "z": 0})
+            let bomb_push = t * 32.0;
+            serde_json::json!({"status": "carried", "carrier": 1003, "x": -1340.0 + bomb_push * 0.72, "y": -1120.0 + bomb_push * 0.12, "z": 0})
         } else {
             serde_json::json!({"status": "planted", "x": -150.0, "y": -880.0, "z": 0})
         };
@@ -1122,8 +1053,8 @@ fn diagnostic_round(number: i64, start_tick: i64, score_a: i64, score_b: i64) ->
         number,
         start_tick,
         freeze_end_tick: Some(start_tick + 128),
-        end_tick: start_tick + 2048,
-        duration: 60.0,
+        end_tick: start_tick + 2432,
+        duration: 38.0,
         winner: "T".into(),
         winner_name: Some("Diagnostic T".into()),
         score_a: Some(score_a),
@@ -1135,14 +1066,17 @@ fn diagnostic_round(number: i64, start_tick: i64, score_a: i64, score_b: i64) ->
             {"t": 21.2, "type": "bomb_planted", "player": 1003},
             {"t": 25.0, "type": "kill", "killer": 1002, "victim": 2002, "weapon": "molotov"},
             {"t": 27.0, "type": "kill", "killer": 2003, "victim": 1001, "weapon": "awp"},
-            {"t": 60.0, "type": "round_end", "winner": "T"}
+            {"t": 34.0, "type": "bomb_exploded", "player": 1003},
+            {"t": 38.0, "type": "round_end", "winner": "T"}
         ]),
         effects: serde_json::json!([
             {"id": 8101, "type": "smoke", "start": 6.4, "end": 24.0, "x": -450.0, "y": -650.0, "z": 0, "team": 2},
-            {"id": 8102, "type": "fire", "variant": "molotov", "start": 10.1, "end": 17.5, "x": -560.0, "y": -770.0, "z": 0, "team": 2},
-            {"id": 8103, "type": "flash", "start": 14.3, "end": 15.2, "x": -380.0, "y": -590.0, "z": 0, "team": 2},
-            {"id": 8104, "type": "he", "start": 16.8, "end": 17.6, "x": -310.0, "y": -720.0, "z": 0, "team": 3},
-            {"id": 8105, "type": "bomb_planted", "start": 21.2, "end": 60.0, "x": -150.0, "y": -880.0, "z": 0, "team": 2}
+            {"id": 8102, "type": "fire", "variant": "molotov", "start": 8.1, "end": 15.5, "x": -910.0, "y": -1065.0, "z": 0, "team": 2},
+            {"id": 8103, "type": "he", "start": 10.5, "end": 11.3, "x": -980.0, "y": -610.0, "z": 0, "team": 3},
+            {"id": 8104, "type": "smoke", "start": 13.4, "end": 31.0, "x": -235.0, "y": -1070.0, "z": 0, "team": 2},
+            {"id": 8105, "type": "flash", "start": 14.3, "end": 15.2, "x": -380.0, "y": -590.0, "z": 0, "team": 2},
+            {"id": 8106, "type": "fire", "variant": "incendiary", "start": 18.3, "end": 25.5, "x": -275.0, "y": -725.0, "z": 0, "team": 3},
+            {"id": 8107, "type": "bomb_planted", "start": 21.2, "end": 38.0, "x": -150.0, "y": -880.0, "z": 0, "team": 2}
         ]),
         weapon_fires: serde_json::json!([
             {"t": 12.8, "shooter": 1001, "weapon": "ak47", "x": -760.0, "y": -820.0, "z": 0, "yaw": 32, "team": 2},
@@ -1160,7 +1094,7 @@ fn diagnostic_match_file() -> MatchFile {
             map: "de_mirage".into(),
             tick_rate: 64.0,
             sample_rate: 2.0,
-            duration_sec: 120.0,
+            duration_sec: 76.0,
             team_a: "Diagnostic CT".into(),
             team_b: "Diagnostic T".into(),
             score_a: 0,
