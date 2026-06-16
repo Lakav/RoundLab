@@ -2082,7 +2082,7 @@ mod tests {
     };
     use flate2::read::GzDecoder;
     use serde_json::Value;
-    use std::{io::Read, io::Write};
+    use std::{io::Read, io::Write, path::Path};
 
     /// A small plain (non-zstd) file is read back verbatim.
     #[test]
@@ -2170,6 +2170,139 @@ mod tests {
         assert_eq!(json["rounds"].as_array().unwrap().len(), output.rounds.len());
         assert!(json["meta"]["tickRate"].as_f64().unwrap_or_default() > 0.0);
         assert!(json["players"].as_array().unwrap().len() >= output.players.len());
+        assert_split_output_is_usable(&output_path, &json, &output);
+    }
+
+    fn assert_split_output_is_usable(output_path: &Path, manifest: &Value, output: &Output) {
+        let rounds = manifest["rounds"].as_array().expect("manifest rounds array");
+        let base_dir = output_path.parent().expect("output path parent");
+        let mut split_total_frames = 0usize;
+        let mut split_total_events = 0usize;
+        let mut split_total_kills = 0usize;
+        let mut split_total_bomb_events = 0usize;
+        let mut split_total_effects = 0usize;
+        let mut split_total_weapon_fires = 0usize;
+        let mut split_total_projectile_frames = 0usize;
+        let mut split_frames_with_players = 0usize;
+        let mut split_players_with_weapons = 0usize;
+
+        for (idx, manifest_round) in rounds.iter().enumerate() {
+            assert_eq!(
+                manifest_round["frames"].as_array().unwrap().len(),
+                0,
+                "manifest round should not contain frame payloads"
+            );
+            assert_eq!(
+                manifest_round["events"].as_array().unwrap().len(),
+                0,
+                "manifest round should not contain event payloads"
+            );
+            let round_file = manifest_round["roundFile"]
+                .as_str()
+                .expect("manifest roundFile");
+            assert!(
+                !round_file.contains("..") && !round_file.starts_with('/'),
+                "roundFile must stay relative and safe: {round_file}"
+            );
+            let round_path = base_dir.join(round_file);
+            assert!(round_path.exists(), "missing split round file: {round_file}");
+            let round_json = read_gzip_json(&round_path);
+            assert_eq!(
+                round_json["number"].as_u64().unwrap(),
+                output.rounds[idx].number as u64
+            );
+            assert!(
+                round_json.get("roundFile").is_none(),
+                "full round payload must not recursively point to another roundFile"
+            );
+
+            let frames = round_json["frames"].as_array().expect("round frames array");
+            let events = round_json["events"].as_array().expect("round events array");
+            let effects = round_json
+                .get("effects")
+                .and_then(Value::as_array)
+                .map(Vec::len)
+                .unwrap_or_default();
+            let weapon_fires = round_json
+                .get("weaponFires")
+                .and_then(Value::as_array)
+                .map(Vec::len)
+                .unwrap_or_default();
+            let projectile_frames = round_json
+                .get("projectileFrames")
+                .and_then(Value::as_array)
+                .map(Vec::len)
+                .unwrap_or_default();
+
+            assert_eq!(frames.len(), output.rounds[idx].frames.len());
+            assert_eq!(events.len(), output.rounds[idx].events.len());
+            assert_eq!(effects, output.rounds[idx].effects.len());
+            assert_eq!(weapon_fires, output.rounds[idx].weapon_fires.len());
+            assert_eq!(projectile_frames, output.rounds[idx].projectile_frames.len());
+
+            split_total_frames += frames.len();
+            split_total_events += events.len();
+            split_total_effects += effects;
+            split_total_weapon_fires += weapon_fires;
+            split_total_projectile_frames += projectile_frames;
+
+            for frame in frames {
+                let players = frame
+                    .get("players")
+                    .and_then(Value::as_array)
+                    .expect("frame players array");
+                if !players.is_empty() {
+                    split_frames_with_players += 1;
+                }
+                split_players_with_weapons += players
+                    .iter()
+                    .filter(|player| {
+                        player
+                            .get("active")
+                            .and_then(Value::as_str)
+                            .is_some_and(|active| !active.is_empty())
+                            || player
+                                .get("weapons")
+                                .and_then(Value::as_array)
+                                .is_some_and(|weapons| !weapons.is_empty())
+                    })
+                    .count();
+            }
+
+            for event in events {
+                match event.get("type").and_then(Value::as_str).unwrap_or_default() {
+                    "kill" => split_total_kills += 1,
+                    "bomb_planted" | "bomb_defuse_start" | "bomb_defuse_abort"
+                    | "bomb_defused" | "bomb_exploded" => split_total_bomb_events += 1,
+                    _ => {}
+                }
+            }
+        }
+
+        assert!(split_total_frames > 0, "split output lost replay frames");
+        assert!(
+            split_frames_with_players > 0,
+            "split output lost frame player payloads"
+        );
+        assert!(
+            split_players_with_weapons > 0,
+            "split output lost weapon state in frames"
+        );
+        assert!(split_total_events > 0, "split output lost events");
+        assert!(split_total_kills > 0, "split output lost kill events");
+        assert!(
+            split_total_bomb_events > 0,
+            "split output lost bomb events"
+        );
+        assert!(split_total_effects > 0, "split output lost utility effects");
+        assert!(
+            split_total_weapon_fires > 0,
+            "split output lost weapon fire events"
+        );
+        assert!(
+            split_total_projectile_frames > 0,
+            "split output lost projectile frames"
+        );
     }
 
     fn assert_replay_output_is_usable(output: &Output) {
