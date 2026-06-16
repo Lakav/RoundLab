@@ -126,6 +126,12 @@ struct RawRound {
         skip_serializing_if = "serde_json::Value::is_null"
     )]
     projectile_frames: serde_json::Value,
+    #[serde(
+        default,
+        rename = "roundFile",
+        skip_serializing_if = "Option::is_none"
+    )]
+    round_file: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -296,10 +302,14 @@ fn read_match_file(path: &Path) -> Result<MatchFile, String> {
         .map_err(|e| format!("gunzip: {e}"))?;
     let mut m: MatchFile = serde_json::from_slice(&buf).map_err(|e| format!("parse json: {e}"))?;
     backfill_missing_round_scores(&mut m);
-    if should_normalize_competitive_round_scores(&m) {
+    if !is_split_match(&m) && should_normalize_competitive_round_scores(&m) {
         normalize_competitive_round_scores(&mut m);
     }
     Ok(m)
+}
+
+fn is_split_match(m: &MatchFile) -> bool {
+    m.rounds.iter().any(|round| round.round_file.is_some())
 }
 
 fn backfill_missing_round_scores(m: &mut MatchFile) {
@@ -718,6 +728,60 @@ fn invalidate_cache(id: &str) {
     }
 }
 
+fn split_round_path(app: &AppHandle, relative: &str) -> Result<PathBuf, String> {
+    let path = Path::new(relative);
+    if !is_safe_relative_round_file(path) {
+        return Err("invalid round file path".into());
+    }
+    Ok(parsed_dir(app)?.join(path))
+}
+
+fn is_safe_relative_round_file(path: &Path) -> bool {
+    !path.is_absolute()
+        && path
+            .components()
+            .all(|component| matches!(component, std::path::Component::Normal(_)))
+}
+
+fn read_split_round(app: &AppHandle, relative: &str) -> Result<RawRound, String> {
+    let path = split_round_path(app, relative)?;
+    let f = fs::File::open(&path).map_err(|e| format!("open round: {e}"))?;
+    let br = BufReader::new(f);
+    let mut gz = GzDecoder::new(br);
+    let mut buf = Vec::with_capacity(2 * 1024 * 1024);
+    gz.read_to_end(&mut buf)
+        .map_err(|e| format!("gunzip round: {e}"))?;
+    serde_json::from_slice(&buf).map_err(|e| format!("parse round json: {e}"))
+}
+
+fn split_rounds_dir_for_id(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
+    Ok(parsed_dir(app)?.join(id))
+}
+
+fn dir_size(path: &Path) -> u64 {
+    let Ok(entries) = fs::read_dir(path) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .map(|entry| {
+            let path = entry.path();
+            match entry.metadata() {
+                Ok(metadata) if metadata.is_dir() => dir_size(&path),
+                Ok(metadata) => metadata.len(),
+                Err(_) => 0,
+            }
+        })
+        .sum()
+}
+
+fn parsed_match_size(app: &AppHandle, id: &str, manifest_size: u64) -> u64 {
+    let split_size = split_rounds_dir_for_id(app, id)
+        .map(|path| dir_size(&path))
+        .unwrap_or(0);
+    manifest_size + split_size
+}
+
 // -------------------------- Commands --------------------------
 
 #[tauri::command]
@@ -756,11 +820,12 @@ fn list_matches(app: AppHandle) -> Result<Vec<MatchSummary>, String> {
         } else {
             info.name
         };
+        let size = parsed_match_size(&app, &stem, md.len());
         out.push(MatchSummary {
             id: stem,
             name,
             created_at: created,
-            size: md.len(),
+            size,
         });
     }
     // Newest first
@@ -857,11 +922,18 @@ fn get_round(
     debug_projectiles: Option<bool>,
 ) -> Result<serde_json::Value, String> {
     let m = load_match_cached(&app, &id)?;
-    let r = m
+    let manifest_round = m
         .rounds
         .iter()
         .find(|r| r.number == number)
         .ok_or_else(|| format!("round {number} not found"))?;
+    let loaded_round;
+    let r = if let Some(round_file) = &manifest_round.round_file {
+        loaded_round = read_split_round(&app, round_file)?;
+        &loaded_round
+    } else {
+        manifest_round
+    };
     log_tauri_round_loaded("get-round", number as usize, r);
     log_tauri_round_score("get-round", r);
     if debug_projectiles.unwrap_or(false) {
@@ -889,6 +961,10 @@ fn delete_match(app: AppHandle, id: String) -> Result<(), String> {
     let path = parsed_path(&app, &id)?;
     if path.exists() {
         fs::remove_file(&path).map_err(|e| format!("remove: {e}"))?;
+    }
+    let split_dir = parsed_dir(&app)?.join(&id);
+    if split_dir.exists() {
+        fs::remove_dir_all(&split_dir).map_err(|e| format!("remove split rounds: {e}"))?;
     }
     if let Ok(meta_path) = metadata_path(&app, &id) {
         let _ = fs::remove_file(meta_path);
@@ -922,12 +998,13 @@ fn rename_match(app: AppHandle, id: String, name: String) -> Result<MatchSummary
         .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
         .map(|d| d.as_millis())
         .unwrap_or(0);
+    let size = parsed_match_size(&app, &id, md.len());
 
     Ok(MatchSummary {
         id,
         name: trimmed.to_string(),
         created_at: created,
-        size: md.len(),
+        size,
     })
 }
 
@@ -1084,6 +1161,7 @@ fn diagnostic_round(number: i64, start_tick: i64, score_a: i64, score_b: i64) ->
             {"t": 27.0, "shooter": 2003, "weapon": "awp", "x": -220.0, "y": -630.0, "z": 0, "yaw": 212, "team": 3}
         ]),
         projectile_frames: serde_json::Value::Array(projectile_frames),
+        round_file: None,
     }
 }
 
@@ -2083,6 +2161,22 @@ mod tests {
         let name = read_match_name(&path).expect("read match name");
         let _ = fs::remove_file(&path);
         assert_eq!(name, "13-11 - NAVI vs Vitality - de_mirage");
+    }
+
+    #[test]
+    fn split_round_file_paths_reject_escape_attempts() {
+        assert!(is_safe_relative_round_file(Path::new(
+            "match-id/round-000.json.gz"
+        )));
+        assert!(!is_safe_relative_round_file(Path::new(
+            "../match-id/round-000.json.gz"
+        )));
+        assert!(!is_safe_relative_round_file(Path::new(
+            "match-id/../round-000.json.gz"
+        )));
+        assert!(!is_safe_relative_round_file(Path::new(
+            "/tmp/round-000.json.gz"
+        )));
     }
 
     #[test]

@@ -2,7 +2,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fs,
     io::{BufReader, Read, Write},
-    path::Path,
+    path::{Path, PathBuf},
     time::Instant,
 };
 
@@ -52,7 +52,7 @@ struct Player {
     team: String,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct Frame {
     t: f64,
     players: Vec<PlayerPos>,
@@ -72,7 +72,7 @@ struct BombState {
     carrier: Option<u64>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct ProjectileFrame {
     t: f64,
     projectiles: Vec<ProjectilePos>,
@@ -156,7 +156,7 @@ struct BlindSpan {
     total: f64,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct Event {
     t: f64,
     #[serde(rename = "type")]
@@ -179,7 +179,7 @@ struct Event {
     winner: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Round {
     number: usize,
@@ -198,9 +198,11 @@ struct Round {
     weapon_fires: Vec<WeaponFireEvent>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     projectile_frames: Vec<ProjectileFrame>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    round_file: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct UtilityEffect {
     #[serde(rename = "type")]
     kind: String,
@@ -215,7 +217,7 @@ struct UtilityEffect {
     team: Option<i64>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WeaponFireEvent {
     t: f64,
@@ -235,6 +237,13 @@ struct WeaponFireEvent {
 struct Output {
     meta: Meta,
     players: Vec<Player>,
+    rounds: Vec<Round>,
+}
+
+#[derive(Serialize)]
+struct ManifestOutput<'a> {
+    meta: &'a Meta,
+    players: &'a [Player],
     rounds: Vec<Round>,
 }
 
@@ -734,6 +743,7 @@ fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)>
             effects: round_effects(&events, span, &rows_by_tick),
             weapon_fires: round_weapon_fires(&events, span, &rows_by_tick),
             projectile_frames,
+            round_file: None,
             frames,
         });
 
@@ -1916,50 +1926,129 @@ impl<W: Write> Write for CountingWriter<W> {
 fn write_json_gz(path: &str, output: &Output) -> Result<WriteStats> {
     let write_started = final_step_start("write_json_gz");
     let mut stats = WriteStats::default();
-    let create_started = final_step_start("File::create");
-    let file = fs::File::create(Path::new(path)).with_context(|| format!("create {path}"))?;
-    final_step_done("File::create", create_started);
+    let output_path = Path::new(path);
+    let rounds_dir = split_rounds_dir(output_path)?;
+    if rounds_dir.exists() {
+        fs::remove_dir_all(&rounds_dir)
+            .with_context(|| format!("remove old rounds dir {}", rounds_dir.display()))?;
+    }
+    fs::create_dir_all(&rounds_dir)
+        .with_context(|| format!("create rounds dir {}", rounds_dir.display()))?;
+
+    emit_progress(0.94, "Serializing split parser JSON...");
+    let round_dir_name = rounds_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| anyhow!("invalid rounds dir name"))?
+        .to_string();
+    let mut manifest_rounds = Vec::with_capacity(output.rounds.len());
+    for round in &output.rounds {
+        let file_name = format!("round-{:03}.json.gz", round.number);
+        let relative = format!("{round_dir_name}/{file_name}");
+        let mut full_round = round.clone();
+        full_round.round_file = None;
+        let round_path = rounds_dir.join(&file_name);
+        add_write_stats(
+            &mut stats,
+            write_gzip_json(&round_path, &full_round, "round")?,
+        );
+
+        let mut header = round.clone();
+        header.frames.clear();
+        header.events.clear();
+        header.effects.clear();
+        header.weapon_fires.clear();
+        header.projectile_frames.clear();
+        header.round_file = Some(relative);
+        manifest_rounds.push(header);
+    }
+
+    let manifest = ManifestOutput {
+        meta: &output.meta,
+        players: &output.players,
+        rounds: manifest_rounds,
+    };
+    add_write_stats(
+        &mut stats,
+        write_gzip_json(output_path, &manifest, "manifest")?,
+    );
+
+    stats.write_output_ms = elapsed_ms(write_started);
+    final_step_done("write_json_gz", write_started);
+    Ok(stats)
+}
+
+fn split_rounds_dir(path: &Path) -> Result<PathBuf> {
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| anyhow!("invalid output path"))?;
+    let stem = name
+        .strip_suffix(".json.gz")
+        .or_else(|| name.strip_suffix(".gz"))
+        .unwrap_or(name);
+    Ok(path.with_file_name(stem))
+}
+
+fn add_write_stats(total: &mut WriteStats, next: WriteStats) {
+    total.serialize_json_ms += next.serialize_json_ms;
+    total.raw_json_bytes += next.raw_json_bytes;
+    total.gz_flush_ms += next.gz_flush_ms;
+    total.gzip_finish_ms += next.gzip_finish_ms;
+    total.fsync_ms += next.fsync_ms;
+    total.output_gzip_bytes += next.output_gzip_bytes;
+}
+
+fn write_gzip_json<T: Serialize>(path: &Path, value: &T, label: &str) -> Result<WriteStats> {
+    let mut stats = WriteStats::default();
+    let create_step = format!("{label}:File::create");
+    let create_started = final_step_start(&create_step);
+    let file = fs::File::create(path).with_context(|| format!("create {}", path.display()))?;
+    final_step_done(&create_step, create_started);
     let mut gz = GzEncoder::new(file, Compression::default());
-    emit_progress(0.94, "Serializing parser JSON...");
-    let serialize_started = final_step_start("serde_json::to_writer");
+
+    let serialize_step = format!("{label}:serde_json::to_writer");
+    let serialize_started = final_step_start(&serialize_step);
     {
         let mut counting = CountingWriter {
             inner: &mut gz,
             bytes: 0,
         };
-        serde_json::to_writer(&mut counting, output)?;
+        serde_json::to_writer(&mut counting, value)?;
         stats.raw_json_bytes = counting.bytes;
     }
     stats.serialize_json_ms = elapsed_ms(serialize_started);
-    final_step_done("serde_json::to_writer", serialize_started);
-    emit_progress(0.985, "Flushing parser gzip buffer...");
-    let flush_started = final_step_start("gz.flush");
+    final_step_done(&serialize_step, serialize_started);
+
+    let flush_step = format!("{label}:gz.flush");
+    let flush_started = final_step_start(&flush_step);
     gz.flush()?;
     stats.gz_flush_ms = elapsed_ms(flush_started);
-    final_step_done("gz.flush", flush_started);
-    emit_progress(0.992, "Finalizing parser gzip stream...");
-    let finish_started = final_step_start("gz.finish");
+    final_step_done(&flush_step, flush_started);
+
+    let finish_step = format!("{label}:gz.finish");
+    let finish_started = final_step_start(&finish_step);
     let file = gz.finish()?;
     stats.gzip_finish_ms = elapsed_ms(finish_started);
-    final_step_done("gz.finish", finish_started);
+    final_step_done(&finish_step, finish_started);
+
     if skip_fsync() {
         emit_progress(
             0.995,
             "Skipping parser disk fsync (ROUNDLAB_PARSER_SKIP_FSYNC).",
         );
     } else {
-        emit_progress(0.995, "Flushing parser output to disk...");
-        let sync_started = final_step_start("File::sync_all");
+        let sync_step = format!("{label}:File::sync_all");
+        let sync_started = final_step_start(&sync_step);
         file.sync_all()?;
         stats.fsync_ms = elapsed_ms(sync_started);
-        final_step_done("File::sync_all", sync_started);
+        final_step_done(&sync_step, sync_started);
     }
     drop(file);
     stats.output_gzip_bytes = fs::metadata(path).map(|m| m.len()).unwrap_or_default();
-    stats.write_output_ms = elapsed_ms(write_started);
-    final_step_done("write_json_gz", write_started);
     Ok(stats)
 }
+
 
 #[cfg(test)]
 mod tests {
