@@ -477,7 +477,9 @@ fn parse_demo_to_output(args: &Args) -> Result<Output> {
 
 fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)> {
     let mut stats = ParserStats {
-        input_bytes: fs::metadata(&args.input).map(|m| m.len()).unwrap_or_default(),
+        input_bytes: fs::metadata(&args.input)
+            .map(|m| m.len())
+            .unwrap_or_default(),
         ..ParserStats::default()
     };
     let bytes = timed(&mut stats.read_demo_ms, || read_demo(&args.input))?;
@@ -954,16 +956,20 @@ where
     let mut it = args.into_iter();
     while let Some(arg) = it.next() {
         match arg.as_ref() {
-            "-in" => out.input = it
-                .next()
-                .ok_or_else(|| anyhow!("-in needs a value"))?
-                .as_ref()
-                .to_string(),
-            "-out" => out.output = it
-                .next()
-                .ok_or_else(|| anyhow!("-out needs a value"))?
-                .as_ref()
-                .to_string(),
+            "-in" => {
+                out.input = it
+                    .next()
+                    .ok_or_else(|| anyhow!("-in needs a value"))?
+                    .as_ref()
+                    .to_string()
+            }
+            "-out" => {
+                out.output = it
+                    .next()
+                    .ok_or_else(|| anyhow!("-out needs a value"))?
+                    .as_ref()
+                    .to_string()
+            }
             "-quality" => {
                 out.quality = it
                     .next()
@@ -981,7 +987,10 @@ where
         bail!("usage: parser -in demo.dem[.zst] -out out.json.gz [-quality full|high|medium|low]");
     }
     if !matches!(out.quality.as_str(), "full" | "high" | "medium" | "low") {
-        bail!("invalid -quality {}, expected full|high|medium|low", out.quality);
+        bail!(
+            "invalid -quality {}, expected full|high|medium|low",
+            out.quality
+        );
     }
     Ok(out)
 }
@@ -2307,7 +2316,6 @@ fn write_gzip_json_inner<T: Serialize>(
     Ok(stats)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -2419,8 +2427,7 @@ mod tests {
 
     #[test]
     fn parse_args_from_rejects_unknown_arguments() {
-        let err = parse_args_from(["-in", "demo.dem", "-out", "out.json.gz", "-wat"])
-            .unwrap_err();
+        let err = parse_args_from(["-in", "demo.dem", "-out", "out.json.gz", "-wat"]).unwrap_err();
         assert!(format!("{err:#}").contains("unknown argument: -wat"));
     }
 
@@ -2454,7 +2461,10 @@ mod tests {
 
         write_json_gz(&args.output, &output).unwrap();
         let json = read_gzip_json(&output_path);
-        assert_eq!(json["rounds"].as_array().unwrap().len(), output.rounds.len());
+        assert_eq!(
+            json["rounds"].as_array().unwrap().len(),
+            output.rounds.len()
+        );
         assert!(json["meta"]["tickRate"].as_f64().unwrap_or_default() > 0.0);
         assert!(json["players"].as_array().unwrap().len() >= output.players.len());
         assert_split_output_is_usable(&output_path, &json, &output);
@@ -2494,7 +2504,10 @@ mod tests {
             std::fs::read(rounds_dir.join("round-000.json.gz")).unwrap(),
             b"old-round"
         );
-        assert!(!backup_rounds_dir.exists(), "round backup should be restored");
+        assert!(
+            !backup_rounds_dir.exists(),
+            "round backup should be restored"
+        );
         assert!(
             !backup_manifest_path.exists(),
             "manifest backup should be restored"
@@ -2502,7 +2515,9 @@ mod tests {
     }
 
     fn assert_split_output_is_usable(output_path: &Path, manifest: &Value, output: &Output) {
-        let rounds = manifest["rounds"].as_array().expect("manifest rounds array");
+        let rounds = manifest["rounds"]
+            .as_array()
+            .expect("manifest rounds array");
         let base_dir = output_path.parent().expect("output path parent");
         let mut split_total_frames = 0usize;
         let mut split_total_events = 0usize;
@@ -2533,7 +2548,10 @@ mod tests {
                 "roundFile must stay relative and safe: {round_file}"
             );
             let round_path = base_dir.join(round_file);
-            assert!(round_path.exists(), "missing split round file: {round_file}");
+            assert!(
+                round_path.exists(),
+                "missing split round file: {round_file}"
+            );
             let round_json = read_gzip_json(&round_path);
             assert_eq!(
                 round_json["number"].as_u64().unwrap(),
@@ -2566,7 +2584,10 @@ mod tests {
             assert_eq!(events.len(), output.rounds[idx].events.len());
             assert_eq!(effects, output.rounds[idx].effects.len());
             assert_eq!(weapon_fires, output.rounds[idx].weapon_fires.len());
-            assert_eq!(projectile_frames, output.rounds[idx].projectile_frames.len());
+            assert_eq!(
+                projectile_frames,
+                output.rounds[idx].projectile_frames.len()
+            );
 
             split_total_frames += frames.len();
             split_total_events += events.len();
@@ -2598,10 +2619,14 @@ mod tests {
             }
 
             for event in events {
-                match event.get("type").and_then(Value::as_str).unwrap_or_default() {
+                match event
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                {
                     "kill" => split_total_kills += 1,
-                    "bomb_planted" | "bomb_defuse_start" | "bomb_defuse_abort"
-                    | "bomb_defused" | "bomb_exploded" => split_total_bomb_events += 1,
+                    "bomb_planted" | "bomb_defuse_start" | "bomb_defuse_abort" | "bomb_defused"
+                    | "bomb_exploded" => split_total_bomb_events += 1,
                     _ => {}
                 }
             }
@@ -2618,10 +2643,7 @@ mod tests {
         );
         assert!(split_total_events > 0, "split output lost events");
         assert!(split_total_kills > 0, "split output lost kill events");
-        assert!(
-            split_total_bomb_events > 0,
-            "split output lost bomb events"
-        );
+        assert!(split_total_bomb_events > 0, "split output lost bomb events");
         assert!(split_total_effects > 0, "split output lost utility effects");
         assert!(
             split_total_weapon_fires > 0,
@@ -2650,7 +2672,10 @@ mod tests {
         let mut players_with_weapons = 0usize;
 
         for round in &output.rounds {
-            assert!(round.end_tick >= round.start_tick, "round tick range is invalid");
+            assert!(
+                round.end_tick >= round.start_tick,
+                "round tick range is invalid"
+            );
             assert!(!round.frames.is_empty(), "round has no frames");
             total_frames += round.frames.len();
             total_events += round.events.len();

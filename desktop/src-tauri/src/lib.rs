@@ -126,11 +126,7 @@ struct RawRound {
         skip_serializing_if = "serde_json::Value::is_null"
     )]
     projectile_frames: serde_json::Value,
-    #[serde(
-        default,
-        rename = "roundFile",
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(default, rename = "roundFile", skip_serializing_if = "Option::is_none")]
     round_file: Option<String>,
 }
 
@@ -1791,7 +1787,12 @@ async fn parse_demo(
     emit_parse_progress(&app, "finalizing", 0.997, "Finalizing match metadata…");
     if let Err(err) = validate_parsed_match_output(&app, &out_path) {
         remove_parsed_output_artifacts(&app, &id);
-        emit_parse_progress(&app, "failed", 0.0, "Parsing failed: invalid parser output.");
+        emit_parse_progress(
+            &app,
+            "failed",
+            0.0,
+            "Parsing failed: invalid parser output.",
+        );
         return Err(format!("parser produced invalid output: {err}"));
     }
     eprintln!("parse_demo: parser exited cleanly, reading match name from {out_path:?}");

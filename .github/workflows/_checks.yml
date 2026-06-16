@@ -51,6 +51,10 @@ jobs:
         with:
           workspaces: parser -> target
 
+      - name: Format Rust parser
+        working-directory: parser
+        run: cargo fmt --check
+
       - name: Test Rust parser
         working-directory: parser
         run: cargo test
@@ -80,6 +84,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop/src-tauri -> target
+
+      - name: Format Tauri commands
+        working-directory: desktop/src-tauri
+        run: cargo fmt --check
 
       - name: Test Tauri commands
         working-directory: desktop/src-tauri
