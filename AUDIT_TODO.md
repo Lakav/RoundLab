@@ -13,16 +13,14 @@ Ce document regroupe les problemes identifies pendant l'audit et les points obse
 Risques principaux :
 
 1. Cle privee Tauri presente localement dans le workspace.
-2. Fuite de fichiers temporaires du parseur Go a cause de `os.Exit(0)`.
-3. Risque OOM / freezes : match complet decompresse en memoire, cache Rust, store JS, prechargement de rounds.
+2. Risque OOM / freezes : match complet decompresse en memoire, cache Rust, store JS, prechargement de rounds.
 4. Race async : un round d'un ancien match peut etre injecte dans le match courant.
-5. Fallback Rust dangereux sur gros `.dem.zst` car il lit et decompresse tout en RAM.
+5. Parser Rust a surveiller sur gros `.dem.zst` car le payload demo decompresse reste materialise en memoire.
 
 Zones les plus sensibles :
 
 - `desktop/src-tauri/src/lib.rs`
-- `parser/main.go`
-- `parser-fallback/src/main.rs`
+- `parser/src/main.rs`
 - `desktop/src/app/match/MatchViewer.tsx`
 - `desktop/src/components/replay/MapRenderer.tsx`
 
@@ -67,24 +65,16 @@ Zones les plus sensibles :
 
 ## Priorite 1 - Memoire, ressources, freezes
 
-### 4. Fuite de fichiers temporaires du parseur Go
+### 4. Parser Rust unique a surveiller
 
 - Gravite : Haute
-- Fichier : `parser/main.go`
-- Zone : `newRoundSpool()`, `defer roundSpool.Close()`, `os.Exit(0)`
-- Description : le parseur cree des fichiers temporaires de rounds, mais `os.Exit(0)` bypass les `defer`, donc le nettoyage ne s'execute pas.
-- Impact possible : fuite de donnees locales dans `/tmp` et remplissage disque progressif.
-- Preuve : `roundSpool.Close()` est en `defer`, mais `os.Exit(0)` est appele a la fin du parse.
-- Correction recommandee :
-
-```go
-if roundSpool != nil {
-    roundSpool.Close()
-}
-os.Stderr.Sync()
-os.Stdout.Sync()
-os.Exit(0)
-```
+- Fichier : `parser/src/main.rs`
+- Description : le parseur Go historique a ete supprime. Le parseur Rust est maintenant le seul chemin de parse, donc toute regression parser devient bloquante.
+- Impact possible : perte de fonctionnalite replay si une feature anciennement couverte par Go n'est pas equivalente cote Rust.
+- Correction :
+  - Garder `cargo test` et `cargo clippy --all-targets -- -D warnings` en CI.
+  - Alimenter `ROUNDLAB_TEST_DEMO` localement avec des demos representatives avant release.
+  - Ajouter des fixtures/snapshots legers pour les cas critiques quand possible.
 
 ### 5. Gros risque RAM / OOM / freezes
 
@@ -102,18 +92,18 @@ os.Exit(0)
   - Remplacer le cache "4 matchs" par un cache borne en bytes.
   - Ajouter mesures RAM / temps de chargement par etape.
 
-### 6. Fallback Rust lit et decompresse tout en memoire
+### 6. Parser Rust materialise le demo decompresse en memoire
 
 - Gravite : Haute
-- Fichier : `parser-fallback/src/main.rs`
+- Fichier : `parser/src/main.rs`
 - Zone : `read_demo()`
-- Description : le fallback fait `fs::read(path)` puis `zstd::decode_all`.
-- Impact possible : gros fichier ou zstd bomb = OOM local.
-- Preuve : lecture/decompression full-buffer.
+- Description : le parseur lit le demo decompresse dans un `Vec<u8>` cappe avant de lancer les passes demoparser.
+- Impact possible : gros fichier legitime = pression RAM importante, meme si les zstd bombs sont limitees.
+- Preuve : `read_demo()` refuse les entrees au-dessus de `MAX_DEMO_SIZE`, mais retourne encore un buffer complet.
 - Correction :
-  - Passer en streaming.
-  - Ajouter une limite stricte de taille decompressee.
-  - Refuser les fichiers trop gros avec une erreur claire.
+  - Reduire le plafond si les machines modestes souffrent.
+  - Etudier une API de parse streaming cote demoparser si disponible.
+  - Garder l'erreur de limite claire pour les fichiers trop gros.
 
 ### 7. Freezes legers dans l'app
 
@@ -185,11 +175,11 @@ setRoundData: (matchId, roundNumber, round) =>
   });
 ```
 
-### 11. Parses partiels consideres comme succes
+### 11. Parses partiels a clarifier
 
 - Gravite : Haute
-- Fichier : `parser/main.go`
-- Description : si `ParseToEnd()` echoue apres quelques rounds, le parseur conserve les rounds partiels et sort avec code 0.
+- Fichier : `parser/src/main.rs`
+- Description : le comportement attendu sur parse partiel doit rester explicite maintenant que Rust est le seul parseur.
 - Impact possible : l'utilisateur croit analyser un match complet alors que la fin est absente.
 - Correction :
   - Ajouter `meta.partial = true`.
@@ -256,7 +246,7 @@ setRoundData: (matchId, roundNumber, round) =>
 ### 17. Ajouter un point a l'endroit ou un joueur meurt
 
 - Gravite : Faible / Moyenne
-- Fichiers probables : `parser/main.go`, `parser-fallback/src/main.rs`, `desktop/src/components/replay/MapRenderer.tsx`
+- Fichiers probables : `parser/src/main.rs`, `desktop/src/components/replay/MapRenderer.tsx`
 - Description : afficher un marqueur de mort sur la position du joueur tue.
 - Correction :
   - Ideal : ajouter `x/y/z` dans l'event `kill` cote parser au moment de l'event.
@@ -311,23 +301,21 @@ setRoundData: (matchId, roundNumber, round) =>
   - Mettre a jour Next quand il embarque `postcss >= 8.5.10`.
   - Ou tester un override pnpm compatible.
 
-### 22. `cargo audit` et `govulncheck` absents
+### 22. `cargo audit` absent
 
 - Gravite : Moyenne
-- Description : l'audit de vuln Rust/Go n'a pas pu etre fait.
+- Description : l'audit de vuln Rust n'a pas pu etre fait.
 - Commandes :
   - `cargo audit` -> commande absente.
-  - `govulncheck ./...` -> commande absente.
 - Correction :
   - Installer `cargo-audit`.
-  - Installer `govulncheck`.
   - Ajouter ces checks a la CI.
 
 ### 23. Clippy echoue en mode strict
 
 - Gravite : Faible
-- Fichiers : `desktop/src-tauri/src/lib.rs`, `parser-fallback/src/main.rs`
-- Description : `cargo clippy --all-targets -- -D warnings` echoue sur des warnings simples.
+- Fichiers : `desktop/src-tauri/src/lib.rs`, `parser/src/main.rs`
+- Description : ancien point d'audit. Le parser Rust passe maintenant `cargo clippy --all-targets -- -D warnings`; verifier aussi Tauri si Clippy strict est ajoute globalement.
 - Impact possible : CI stricte impossible, dette qualite.
 - Correction :
   - Appliquer les suggestions Clippy.
@@ -337,9 +325,8 @@ setRoundData: (matchId, roundNumber, round) =>
 
 - Gravite : Moyenne
 - Description :
-  - `go test ./...` passe mais indique `[no test files]`.
-  - `cargo test` fallback passe avec 0 test.
-  - Tauri a seulement 2 tests.
+  - Le parser Rust a des tests de lecture limitee et un test d'integration optionnel via `ROUNDLAB_TEST_DEMO`.
+  - Il manque encore des fixtures versionnees pour les cas gameplay critiques.
 - Impact possible : regressions parser/replay non detectees.
 - Correction :
   - Ajouter fixtures `.dem` petites.
@@ -351,27 +338,23 @@ setRoundData: (matchId, roundNumber, round) =>
 - `pnpm lint` : OK
 - `pnpm renderer:build` : OK
 - `pnpm audit --prod` : echec, 1 vulnerabilite moderee PostCSS
-- `go test ./...` : OK, mais aucun test
-- `go vet ./...` : OK
-- `cargo test` dans `desktop/src-tauri` : OK, 2 tests
-- `cargo test` dans `parser-fallback` : OK, 0 test
+- `cargo test` dans `desktop/src-tauri` : OK
+- `cargo test` dans `parser` : OK
 - `cargo audit` : indisponible
-- `govulncheck ./...` : indisponible
-- `cargo clippy --all-targets -- -D warnings` : echec sur warnings
+- `cargo clippy --all-targets -- -D warnings` dans `parser` : OK
 
 ## Ordre recommande de traitement
 
 1. Sortir/rotater la cle Tauri si elle est reelle.
-2. Corriger la fuite `/tmp` du parseur Go.
-3. Corriger la race async entre matchs.
-4. Instrumenter les freezes et le blocage Windows a 95%.
-5. Revoir la strategie memoire : stockage par round, cache borne, pas de warmup global.
-6. Streamer le fallback Rust et limiter la taille decompressee.
-7. Rendre visibles les parses partiels.
-8. Faire fonctionner l'updater end-to-end.
-9. Corriger Cache / calibration map.
-10. Debugger trajectoires de stuffs, smoke blast, molo pompier.
-11. Ajouter marqueur de mort.
-12. Ajouter logo et polish fullscreen.
-13. Corriger dependances, Clippy, audit Go/Rust.
-14. Ajouter tests parser/replay.
+2. Corriger la race async entre matchs.
+3. Instrumenter les freezes et le blocage Windows a 95%.
+4. Revoir la strategie memoire : stockage par round, cache borne, pas de warmup global.
+5. Reduire la pression RAM du parser Rust si les gros demos restent problematiques.
+6. Rendre visibles les parses partiels.
+7. Faire fonctionner l'updater end-to-end.
+8. Corriger Cache / calibration map.
+9. Debugger trajectoires de stuffs, smoke blast, molo pompier.
+10. Ajouter marqueur de mort.
+11. Ajouter logo et polish fullscreen.
+12. Corriger dependances et audit Rust.
+13. Ajouter tests parser/replay.

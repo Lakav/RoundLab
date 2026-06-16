@@ -35,21 +35,6 @@ jobs:
         working-directory: desktop
         run: pnpm exec tsc --noEmit
 
-  go:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.24"
-          cache-dependency-path: parser/go.sum
-
-      - name: Test parser
-        working-directory: parser
-        run: go test ./...
-
   rust:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -64,8 +49,12 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: parser-fallback -> target
+          workspaces: parser -> target
 
-      - name: Check parser fallback
-        working-directory: parser-fallback
-        run: cargo check
+      - name: Test Rust parser
+        working-directory: parser
+        run: cargo test
+
+      - name: Clippy Rust parser
+        working-directory: parser
+        run: cargo clippy --all-targets -- -D warnings

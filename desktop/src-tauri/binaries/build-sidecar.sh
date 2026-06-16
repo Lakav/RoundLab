@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Build the parser sidecars and copy them into binaries/ using the Rust
+# Build the Rust parser sidecar and copy it into binaries/ using the Rust
 # target-triple suffix that Tauri's `externalBin` expects.
 #
 # Usage:
@@ -12,7 +12,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 PARSER_DIR="$REPO_ROOT/parser"
-FALLBACK_DIR="$REPO_ROOT/parser-fallback"
 
 if [[ -z "${TARGET:-}" ]]; then
     if ! command -v rustc >/dev/null 2>&1; then
@@ -23,12 +22,12 @@ if [[ -z "${TARGET:-}" ]]; then
 fi
 
 case "$TARGET" in
-    aarch64-apple-darwin)   GOOS=darwin GOARCH=arm64 ; SUFFIX="" ;;
-    x86_64-apple-darwin)    GOOS=darwin GOARCH=amd64 ; SUFFIX="" ;;
-    x86_64-unknown-linux-gnu) GOOS=linux  GOARCH=amd64 ; SUFFIX="" ;;
-    aarch64-unknown-linux-gnu) GOOS=linux  GOARCH=arm64 ; SUFFIX="" ;;
-    x86_64-pc-windows-msvc|x86_64-pc-windows-gnu) GOOS=windows GOARCH=amd64 ; SUFFIX=".exe" ;;
-    aarch64-pc-windows-msvc) GOOS=windows GOARCH=arm64 ; SUFFIX=".exe" ;;
+    aarch64-apple-darwin)   SUFFIX="" ;;
+    x86_64-apple-darwin)    SUFFIX="" ;;
+    x86_64-unknown-linux-gnu) SUFFIX="" ;;
+    aarch64-unknown-linux-gnu) SUFFIX="" ;;
+    x86_64-pc-windows-msvc|x86_64-pc-windows-gnu) SUFFIX=".exe" ;;
+    aarch64-pc-windows-msvc) SUFFIX=".exe" ;;
     *)
         echo "error: unsupported TARGET '$TARGET'" >&2
         exit 1
@@ -36,21 +35,11 @@ case "$TARGET" in
 esac
 
 OUT="$SCRIPT_DIR/parser-${TARGET}${SUFFIX}"
-FALLBACK_OUT="$SCRIPT_DIR/parser-fallback-${TARGET}${SUFFIX}"
 
-echo "→ building parser for GOOS=$GOOS GOARCH=$GOARCH → $OUT"
+echo "→ building Rust parser for TARGET=$TARGET → $OUT"
 
 cd "$PARSER_DIR"
-# Keep stripped static binaries small.
-env GOTOOLCHAIN=local GOOS="$GOOS" GOARCH="$GOARCH" CGO_ENABLED=0 \
-    go build -trimpath -ldflags="-s -w" -o "$OUT" .
-
+CARGO_NET_GIT_FETCH_WITH_CLI=true cargo build --release --target "$TARGET"
+cp "$PARSER_DIR/target/$TARGET/release/roundlab-parser${SUFFIX}" "$OUT"
 chmod +x "$OUT"
 echo "✓ built $(basename "$OUT") ($(du -h "$OUT" | cut -f1))"
-
-echo "→ building fallback parser for TARGET=$TARGET → $FALLBACK_OUT"
-cd "$FALLBACK_DIR"
-CARGO_NET_GIT_FETCH_WITH_CLI=true cargo build --release --target "$TARGET"
-cp "$FALLBACK_DIR/target/$TARGET/release/roundlab-parser-fallback${SUFFIX}" "$FALLBACK_OUT"
-chmod +x "$FALLBACK_OUT"
-echo "✓ built $(basename "$FALLBACK_OUT") ($(du -h "$FALLBACK_OUT" | cut -f1))"

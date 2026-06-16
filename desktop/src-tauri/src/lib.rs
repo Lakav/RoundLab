@@ -2,8 +2,7 @@
 //!
 //! Invariants:
 //! - All parsed demos live under `<app_data_dir>/parsed/<uuid>.json.gz`.
-//! - Parser binaries are shipped as Tauri sidecars (`binaries/parser-*` and
-//!   `binaries/parser-fallback-*`).
+//! - The Rust parser is shipped as a Tauri sidecar (`binaries/parser-*`).
 //! - Each match is parsed once, then cached. Subsequent reads stream the
 //!   gzipped JSON on demand — we don't keep the full match in memory.
 
@@ -1468,12 +1467,6 @@ fn windows_parser_memory_limit_bytes() -> Option<usize> {
 }
 
 #[cfg(windows)]
-fn windows_go_heap_limit_mb(process_limit_bytes: usize) -> String {
-    let go_heap_bytes = (process_limit_bytes as u64).saturating_mul(85) / 100;
-    ((go_heap_bytes / 1024 / 1024).max(512)).to_string()
-}
-
-#[cfg(windows)]
 fn attach_windows_memory_limit(pid: u32, limit_bytes: usize) -> Result<ParserMemoryGuard, String> {
     unsafe {
         let job_handle = CreateJobObjectW(std::ptr::null(), std::ptr::null());
@@ -1591,9 +1584,7 @@ async fn parse_demo(
     ];
 
     emit_parse_progress(&app, "starting", 0.04, "Preparing parser…");
-    if let Err(primary_error) =
-        run_parser_sidecar(&app, "parser", argv.clone(), &out_path, 0.08).await
-    {
+    if let Err(parser_error) = run_parser_sidecar(&app, "parser", argv, &out_path, 0.08).await {
         if parse_job()
             .lock()
             .map_err(|e| e.to_string())?
@@ -1604,41 +1595,17 @@ async fn parse_demo(
             return Err("Parsing cancelled.".into());
         }
         let _ = fs::remove_file(&out_path);
-        if is_parser_oom(&primary_error) {
+        if is_parser_oom(&parser_error) {
             emit_parse_progress(
                 &app,
                 "failed",
                 0.0,
                 "Parsing failed: parser ran out of memory.",
             );
-            return Err(primary_error);
+            return Err(parser_error);
         }
-        eprintln!("primary parser failed, trying fallback parser:\n{primary_error}");
-        emit_parse_progress(
-            &app,
-            "fallback",
-            0.35,
-            "Primary parser failed, trying fallback…",
-        );
-        if let Err(fallback_error) =
-            run_parser_sidecar(&app, "parser-fallback", argv, &out_path, 0.38).await
-        {
-            if parse_job()
-                .lock()
-                .map_err(|e| e.to_string())?
-                .cancel_requested
-            {
-                let _ = fs::remove_file(&out_path);
-                emit_parse_progress(&app, "cancelled", 0.0, "Parsing cancelled.");
-                return Err("Parsing cancelled.".into());
-            }
-            let _ = fs::remove_file(&out_path);
-            let msg = format!(
-                "Both parsers failed.\n\nPrimary parser:\n{primary_error}\n\nFallback parser:\n{fallback_error}"
-            );
-            emit_parse_progress(&app, "failed", 0.0, "Parsing failed.");
-            return Err(msg);
-        }
+        emit_parse_progress(&app, "failed", 0.0, "Parsing failed.");
+        return Err(parser_error);
     }
 
     if !out_path.exists() {
@@ -1682,18 +1649,6 @@ async fn run_parser_sidecar(
 
     #[cfg(windows)]
     let memory_limit_bytes = windows_parser_memory_limit_bytes();
-    #[cfg(windows)]
-    let sidecar = {
-        let mut sidecar = sidecar;
-        if let Some(limit_bytes) = memory_limit_bytes {
-            sidecar = sidecar.env(
-                "ROUNDLAB_PARSER_MEMORY_LIMIT_MB",
-                windows_go_heap_limit_mb(limit_bytes),
-            );
-        }
-        sidecar
-    };
-
     let (mut rx, child) = sidecar.spawn().map_err(|e| format!("spawn {name}: {e}"))?;
     #[cfg(windows)]
     let memory_guard = if let Some(limit_bytes) = memory_limit_bytes {
@@ -1731,7 +1686,7 @@ async fn run_parser_sidecar(
                         watchdog.mark_progress(progress);
                         emit_parse_progress(app, name, progress, &message);
                         logger::info(name, &format!("ROUNDLAB_PROGRESS {progress:.4} {message}"));
-                    } else if raw_line.starts_with("OK[") || raw_line.starts_with("OK fallback") {
+                    } else if raw_line.starts_with("OK[") {
                         watchdog.mark_final_event("emit-ok");
                         emit_parse_progress(
                             app,
@@ -1822,8 +1777,7 @@ async fn run_parser_sidecar(
                     return Err(message);
                 }
                 emit_parse_progress(app, name, 0.995, "Sidecar terminated; validating output...");
-                // Always echo the sidecar's final OK line so we can tell
-                // primary vs fallback from the Tauri logs.
+                // Always echo the sidecar's final OK line in Tauri logs.
                 if !stderr.trim().is_empty() {
                     eprintln!("[{name}] {}", stderr.trim());
                 }
@@ -2132,7 +2086,7 @@ mod tests {
     }
 
     #[test]
-    fn backfill_missing_round_scores_prevents_zero_fallback_for_old_parses() {
+    fn backfill_missing_round_scores_prevents_zero_scores_for_old_parses() {
         let mut m = MatchFile {
             meta: Meta {
                 map: "de_mirage".into(),

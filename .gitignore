@@ -42,9 +42,7 @@ test.json
 test.json.gz
 
 # compiled binaries
-parser/parser
-parser/*.exe
-parser-fallback/target/
+parser/target/
 
 # temp / caches
 coverage/

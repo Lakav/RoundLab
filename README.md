@@ -7,7 +7,7 @@ No demo is uploaded. No server is required.
 ## Features
 
 - Import local `.dem` and `.dem.zst` files.
-- Parse CS2 demos with bundled Go and Rust parser sidecars.
+- Parse CS2 demos with a bundled Rust parser sidecar.
 - Replay rounds on a 2D radar.
 - Scrub the round timeline, play/pause, and change playback speed.
 - Draw annotations over the review.
@@ -17,20 +17,19 @@ No demo is uploaded. No server is required.
 
 ```txt
 desktop/         Tauri desktop app and renderer
-parser/          Primary Go demo parser sidecar
-parser-fallback/ Rust fallback parser sidecar
+parser/          Rust demo parser sidecar
 ressources/      Source assets
 ```
 
 ## Local Development
 
-Prerequisites: Rust (`rustup`), Go 1.23+, Node 20+, pnpm 10+, and `protoc` 23.x on your `PATH`.
+Prerequisites: Rust (`rustup`), Node 20+, pnpm 10+, and `protoc` 23.x on your `PATH`.
 
 ```bash
 cd desktop
 pnpm install
 
-# Build parser sidecars for your host platform.
+# Build the parser sidecar for your host platform.
 pnpm sidecar:build
 
 # Launch the native desktop app.

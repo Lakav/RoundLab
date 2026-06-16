@@ -12,7 +12,7 @@
 //! Fields:
 //!   timestamp  — ISO-8601 UTC, millisecond precision
 //!   level      — INFO | WARN | ERROR (5-char padded so columns align)
-//!   source     — primary | fallback | tauri | frontend (9-char padded)
+//!   source     — parser | tauri | frontend (9-char padded)
 //!   message    — free-form, never trusted to be UTF-8 cleanly
 //!
 //! Path: <app_data_dir>/RoundLab/logs/roundlab.log

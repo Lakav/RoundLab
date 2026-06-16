@@ -162,9 +162,8 @@ In **Settings → Branches → main → Branch protection rules**, require
 the four `_checks.yml` jobs as required status checks:
 
 - `checks / frontend`
-- `checks / go`
 - `checks / rust-tauri`
-- `checks / rust-fallback`
+- `checks / rust`
 
 Names appear in the list once at least one PR has run CI. PRs only run
 `_checks.yml`, never `_build.yml`, so merge time stays fast.

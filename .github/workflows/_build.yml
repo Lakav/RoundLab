@@ -129,18 +129,12 @@ jobs:
           key: ${{ matrix.rust-target }}
           workspaces: |
             desktop/src-tauri -> target
-            parser-fallback -> target
+            parser -> target
 
       - name: Install protoc
         uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.24"
-          cache-dependency-path: parser/go.sum
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -158,7 +152,7 @@ jobs:
         working-directory: desktop
         run: pnpm install --frozen-lockfile
 
-      - name: Build parser sidecars for ${{ matrix.rust-target }}
+      - name: Build parser sidecar for ${{ matrix.rust-target }}
         shell: bash
         working-directory: desktop/src-tauri/binaries
         env:
