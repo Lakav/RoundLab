@@ -2333,7 +2333,37 @@ mod tests {
     };
     use flate2::read::GzDecoder;
     use serde_json::Value;
-    use std::{io::Read, io::Write, path::Path};
+    use std::{
+        io::{Read, Write},
+        path::Path,
+    };
+
+    #[derive(Debug, Default, PartialEq, Eq)]
+    struct ReplayMetrics {
+        rounds: usize,
+        players: usize,
+        frames: usize,
+        frame_players: usize,
+        frames_with_players: usize,
+        frames_with_bomb_state: usize,
+        players_with_weapons: usize,
+        events: usize,
+        kills: usize,
+        bomb_events: usize,
+        effects: usize,
+        weapon_fires: usize,
+        projectile_frames: usize,
+        projectile_samples: usize,
+    }
+
+    #[derive(Debug)]
+    struct ExpectedReplayFloor {
+        label: &'static str,
+        map: &'static str,
+        score_a: i32,
+        score_b: i32,
+        metrics: ReplayMetrics,
+    }
 
     /// A small plain (non-zstd) file is read back verbatim.
     #[test]
@@ -2467,6 +2497,9 @@ mod tests {
 
         let output = parse_demo_to_output(&args).unwrap();
         assert_replay_output_is_usable(&output);
+        if let Some(expected) = expected_floor_for_demo(&args.input) {
+            assert_reference_demo_floor(&output, expected);
+        }
 
         write_json_gz(&args.output, &output).unwrap();
         let json = read_gzip_json(&output_path);
@@ -2477,6 +2510,9 @@ mod tests {
         assert!(json["meta"]["tickRate"].as_f64().unwrap_or_default() > 0.0);
         assert!(json["players"].as_array().unwrap().len() >= output.players.len());
         assert_split_output_is_usable(&output_path, &json, &output);
+        if let Some(expected) = expected_floor_for_demo(&args.input) {
+            assert_split_reference_demo_floor(&json, expected);
+        }
     }
 
     #[test]
@@ -2574,6 +2610,7 @@ mod tests {
         let mut split_total_weapon_fires = 0usize;
         let mut split_total_projectile_frames = 0usize;
         let mut split_frames_with_players = 0usize;
+        let mut split_frames_with_bomb_state = 0usize;
         let mut split_players_with_weapons = 0usize;
 
         for (idx, manifest_round) in rounds.iter().enumerate() {
@@ -2650,6 +2687,9 @@ mod tests {
                 if !players.is_empty() {
                     split_frames_with_players += 1;
                 }
+                if frame.get("bomb").is_some_and(|bomb| !bomb.is_null()) {
+                    split_frames_with_bomb_state += 1;
+                }
                 split_players_with_weapons += players
                     .iter()
                     .filter(|player| {
@@ -2685,6 +2725,10 @@ mod tests {
             "split output lost frame player payloads"
         );
         assert!(
+            split_frames_with_bomb_state > 0,
+            "split output lost bomb state in frames"
+        );
+        assert!(
             split_players_with_weapons > 0,
             "split output lost weapon state in frames"
         );
@@ -2708,60 +2752,197 @@ mod tests {
         assert!(!output.players.is_empty(), "expected parsed players");
         assert!(!output.rounds.is_empty(), "expected parsed rounds");
 
-        let mut total_frames = 0usize;
-        let mut total_events = 0usize;
-        let mut total_kills = 0usize;
-        let mut total_bomb_events = 0usize;
-        let mut total_effects = 0usize;
-        let mut total_weapon_fires = 0usize;
-        let mut total_projectile_frames = 0usize;
-        let mut frames_with_players = 0usize;
-        let mut players_with_weapons = 0usize;
-
         for round in &output.rounds {
             assert!(
                 round.end_tick >= round.start_tick,
                 "round tick range is invalid"
             );
             assert!(!round.frames.is_empty(), "round has no frames");
-            total_frames += round.frames.len();
-            total_events += round.events.len();
-            total_effects += round.effects.len();
-            total_weapon_fires += round.weapon_fires.len();
-            total_projectile_frames += round.projectile_frames.len();
+        }
+
+        let metrics = collect_replay_metrics(output);
+        assert!(metrics.frames > 0, "expected replay frames");
+        assert!(
+            metrics.frames_with_players > 0,
+            "expected frames with players"
+        );
+        assert!(
+            metrics.frames_with_bomb_state > 0,
+            "expected bomb state in frames"
+        );
+        assert!(
+            metrics.players_with_weapons > 0,
+            "expected weapon state in frames"
+        );
+        assert!(metrics.events > 0, "expected round events");
+        assert!(metrics.kills > 0, "expected kill events");
+        assert!(metrics.bomb_events > 0, "expected bomb events");
+        assert!(metrics.effects > 0, "expected utility/bomb effects");
+        assert!(metrics.weapon_fires > 0, "expected weapon fire events");
+        assert!(
+            metrics.projectile_frames > 0,
+            "expected projectile trajectory frames"
+        );
+    }
+
+    fn expected_floor_for_demo(input: &str) -> Option<ExpectedReplayFloor> {
+        let file_name = Path::new(input).file_name()?.to_str()?;
+        match file_name {
+            "1-128af027-81e2-40d5-a0ea-0281f0b5d16e-1-1.dem.zst" => Some(ExpectedReplayFloor {
+                label: "small de_dust2 reference demo",
+                map: "de_dust2",
+                score_a: 11,
+                score_b: 3,
+                metrics: ReplayMetrics {
+                    rounds: 14,
+                    players: 10,
+                    frames: 67_000,
+                    frame_players: 480_000,
+                    frames_with_players: 67_000,
+                    frames_with_bomb_state: 55_000,
+                    players_with_weapons: 300_000,
+                    events: 120,
+                    kills: 100,
+                    bomb_events: 9,
+                    effects: 230,
+                    weapon_fires: 1_950,
+                    projectile_frames: 51_000,
+                    projectile_samples: 130_000,
+                },
+            }),
+            _ => None,
+        }
+    }
+
+    fn assert_reference_demo_floor(output: &Output, expected: ExpectedReplayFloor) {
+        assert_eq!(output.meta.map, expected.map, "reference demo map changed");
+        assert_eq!(
+            output.meta.score_a, expected.score_a,
+            "reference demo score A changed"
+        );
+        assert_eq!(
+            output.meta.score_b, expected.score_b,
+            "reference demo score B changed"
+        );
+        assert_metrics_meet_floor(
+            &collect_replay_metrics(output),
+            &expected.metrics,
+            expected.label,
+        );
+    }
+
+    fn assert_split_reference_demo_floor(manifest: &Value, expected: ExpectedReplayFloor) {
+        assert_eq!(
+            manifest["meta"]["map"].as_str().unwrap_or_default(),
+            expected.map
+        );
+        assert_eq!(
+            manifest["meta"]["scoreA"].as_i64().unwrap_or_default(),
+            expected.score_a as i64
+        );
+        assert_eq!(
+            manifest["meta"]["scoreB"].as_i64().unwrap_or_default(),
+            expected.score_b as i64
+        );
+        let metrics = collect_manifest_metrics(manifest);
+        assert_eq!(
+            metrics.rounds, expected.metrics.rounds,
+            "split manifest round count changed for {}",
+            expected.label
+        );
+        assert_eq!(
+            metrics.players, expected.metrics.players,
+            "split manifest player count changed for {}",
+            expected.label
+        );
+    }
+
+    fn assert_metrics_meet_floor(actual: &ReplayMetrics, floor: &ReplayMetrics, label: &str) {
+        macro_rules! floor {
+            ($field:ident) => {
+                assert!(
+                    actual.$field >= floor.$field,
+                    "{} {} below floor: actual={} floor={}",
+                    label,
+                    stringify!($field),
+                    actual.$field,
+                    floor.$field
+                );
+            };
+        }
+
+        floor!(rounds);
+        floor!(players);
+        floor!(frames);
+        floor!(frame_players);
+        floor!(frames_with_players);
+        floor!(frames_with_bomb_state);
+        floor!(players_with_weapons);
+        floor!(events);
+        floor!(kills);
+        floor!(bomb_events);
+        floor!(effects);
+        floor!(weapon_fires);
+        floor!(projectile_frames);
+        floor!(projectile_samples);
+    }
+
+    fn collect_replay_metrics(output: &Output) -> ReplayMetrics {
+        let mut metrics = ReplayMetrics {
+            rounds: output.rounds.len(),
+            players: output.players.len(),
+            ..ReplayMetrics::default()
+        };
+
+        for round in &output.rounds {
+            metrics.frames += round.frames.len();
+            metrics.events += round.events.len();
+            metrics.effects += round.effects.len();
+            metrics.weapon_fires += round.weapon_fires.len();
+            metrics.projectile_frames += round.projectile_frames.len();
 
             for frame in &round.frames {
+                metrics.frame_players += frame.players.len();
                 if !frame.players.is_empty() {
-                    frames_with_players += 1;
+                    metrics.frames_with_players += 1;
                 }
-                players_with_weapons += frame
+                if frame.bomb.is_some() {
+                    metrics.frames_with_bomb_state += 1;
+                }
+                metrics.players_with_weapons += frame
                     .players
                     .iter()
                     .filter(|player| !player.active.is_empty() || !player.weapons.is_empty())
                     .count();
             }
+            for projectile_frame in &round.projectile_frames {
+                metrics.projectile_samples += projectile_frame.projectiles.len();
+            }
             for event in &round.events {
                 match event.kind.as_str() {
-                    "kill" => total_kills += 1,
+                    "kill" => metrics.kills += 1,
                     "bomb_planted" | "bomb_defuse_start" | "bomb_defuse_abort" | "bomb_defused"
-                    | "bomb_exploded" => total_bomb_events += 1,
+                    | "bomb_exploded" => metrics.bomb_events += 1,
                     _ => {}
                 }
             }
         }
 
-        assert!(total_frames > 0, "expected replay frames");
-        assert!(frames_with_players > 0, "expected frames with players");
-        assert!(players_with_weapons > 0, "expected weapon state in frames");
-        assert!(total_events > 0, "expected round events");
-        assert!(total_kills > 0, "expected kill events");
-        assert!(total_bomb_events > 0, "expected bomb events");
-        assert!(total_effects > 0, "expected utility/bomb effects");
-        assert!(total_weapon_fires > 0, "expected weapon fire events");
-        assert!(
-            total_projectile_frames > 0,
-            "expected projectile trajectory frames"
-        );
+        metrics
+    }
+
+    fn collect_manifest_metrics(manifest: &Value) -> ReplayMetrics {
+        ReplayMetrics {
+            rounds: manifest["rounds"]
+                .as_array()
+                .map(Vec::len)
+                .unwrap_or_default(),
+            players: manifest["players"]
+                .as_array()
+                .map(Vec::len)
+                .unwrap_or_default(),
+            ..ReplayMetrics::default()
+        }
     }
 
     fn read_gzip_json(path: &std::path::Path) -> Value {

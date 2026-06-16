@@ -45,6 +45,28 @@ pnpm tauri:build
 
 The resulting installers land in `desktop/src-tauri/target/release/bundle/`.
 
+## Parser Validation
+
+Parser unit tests run without committed demo fixtures:
+
+```bash
+cd parser
+cargo test
+```
+
+For real replay-integrity coverage, point `ROUNDLAB_TEST_DEMO` at a local `.dem`
+or `.dem.zst` file. Large demos must stay outside Git.
+
+```bash
+cd parser
+ROUNDLAB_TEST_DEMO=/path/to/demo.dem.zst cargo test roundlab_test_demo_produces_replay_json_when_configured -- --nocapture
+```
+
+When the demo is the current reference file
+`1-128af027-81e2-40d5-a0ea-0281f0b5d16e-1-1.dem.zst`, the test enforces
+strong floors for rounds, scores, players, frames, kills, bomb events, bomb
+state, utility effects, weapon fires, and projectile frames.
+
 ## Releases
 
 The release workflow builds macOS Apple Silicon and Windows x64 installers when a `v*.*.*` tag is pushed.
