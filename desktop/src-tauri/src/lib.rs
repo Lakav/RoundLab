@@ -754,8 +754,90 @@ fn read_split_round(app: &AppHandle, relative: &str) -> Result<RawRound, String>
     serde_json::from_slice(&buf).map_err(|e| format!("parse round json: {e}"))
 }
 
+fn validate_parsed_match_output(app: &AppHandle, path: &Path) -> Result<(), String> {
+    let m = read_match_file(path)?;
+    validate_match_output(&m, |round_file| read_split_round(app, round_file))
+}
+
+fn validate_match_output<F>(m: &MatchFile, mut read_round: F) -> Result<(), String>
+where
+    F: FnMut(&str) -> Result<RawRound, String>,
+{
+    if m.meta.map.trim().is_empty() {
+        return Err("parser output is missing meta.map".into());
+    }
+    if m.players.is_empty() {
+        return Err("parser output has no players".into());
+    }
+    if m.rounds.is_empty() {
+        return Err("parser output has no rounds".into());
+    }
+    if !is_split_match(m) {
+        return Ok(());
+    }
+
+    let mut total_frames = 0usize;
+    let mut total_events = 0usize;
+    for manifest_round in &m.rounds {
+        let round_file = manifest_round
+            .round_file
+            .as_deref()
+            .ok_or_else(|| format!("split round {} is missing roundFile", manifest_round.number))?;
+        let round = read_round(round_file)
+            .map_err(|e| format!("invalid split round {}: {e}", manifest_round.number))?;
+        if round.number != manifest_round.number {
+            return Err(format!(
+                "split round number mismatch: manifest={} payload={}",
+                manifest_round.number, round.number
+            ));
+        }
+        let frame_count = round.frames.as_array().map(Vec::len).unwrap_or_default();
+        let event_count = round.events.as_array().map(Vec::len).unwrap_or_default();
+        if frame_count == 0 {
+            return Err(format!("split round {} has no frames", round.number));
+        }
+        total_frames += frame_count;
+        total_events += event_count;
+    }
+    if total_frames == 0 {
+        return Err("split parser output has no frames".into());
+    }
+    if total_events == 0 {
+        return Err("split parser output has no events".into());
+    }
+    Ok(())
+}
+
 fn split_rounds_dir_for_id(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
     Ok(parsed_dir(app)?.join(id))
+}
+
+fn remove_parsed_output_artifacts(app: &AppHandle, id: &str) {
+    if let Ok(path) = parsed_path(app, id) {
+        let _ = fs::remove_file(path);
+    }
+    if let Ok(dir) = parsed_dir(app) {
+        let split_dir = dir.join(id);
+        let _ = fs::remove_dir_all(split_dir);
+        remove_hidden_parser_temp_artifacts(&dir, id);
+    }
+}
+
+fn remove_hidden_parser_temp_artifacts(dir: &Path, id: &str) {
+    let hidden_prefix = format!(".{id}.");
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            if name.to_string_lossy().starts_with(&hidden_prefix) {
+                let path = entry.path();
+                if path.is_dir() {
+                    let _ = fs::remove_dir_all(path);
+                } else {
+                    let _ = fs::remove_file(path);
+                }
+            }
+        }
+    }
 }
 
 fn dir_size(path: &Path) -> u64 {
@@ -1668,11 +1750,11 @@ async fn parse_demo(
             .map_err(|e| e.to_string())?
             .cancel_requested
         {
-            let _ = fs::remove_file(&out_path);
+            remove_parsed_output_artifacts(&app, &id);
             emit_parse_progress(&app, "cancelled", 0.0, "Parsing cancelled.");
             return Err("Parsing cancelled.".into());
         }
-        let _ = fs::remove_file(&out_path);
+        remove_parsed_output_artifacts(&app, &id);
         if is_parser_oom(&parser_error) {
             emit_parse_progress(
                 &app,
@@ -1690,6 +1772,11 @@ async fn parse_demo(
         return Err("parser finished but produced no output".into());
     }
     emit_parse_progress(&app, "finalizing", 0.997, "Finalizing match metadata…");
+    if let Err(err) = validate_parsed_match_output(&app, &out_path) {
+        remove_parsed_output_artifacts(&app, &id);
+        emit_parse_progress(&app, "failed", 0.0, "Parsing failed: invalid parser output.");
+        return Err(format!("parser produced invalid output: {err}"));
+    }
     eprintln!("parse_demo: parser exited cleanly, reading match name from {out_path:?}");
     let parsed_name = read_match_name(&out_path).unwrap_or_else(|err| {
         eprintln!("parse_demo: read_match_name failed ({err}), falling back to filename");
@@ -2177,6 +2264,81 @@ mod tests {
         assert!(!is_safe_relative_round_file(Path::new(
             "/tmp/round-000.json.gz"
         )));
+    }
+
+    #[test]
+    fn parser_temp_artifact_cleanup_only_removes_matching_hidden_files() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let id = "12345678-1234-1234-1234-123456789abc";
+        let hidden_file = dir.path().join(format!(".{id}.json.gz.tmp-1"));
+        let hidden_dir = dir.path().join(format!(".{id}.tmp-1"));
+        let other_hidden = dir.path().join(".other.tmp-1");
+        let normal_file = dir.path().join(format!("{id}.json.gz"));
+        fs::write(&hidden_file, b"temp").expect("write hidden file");
+        fs::create_dir_all(&hidden_dir).expect("create hidden dir");
+        fs::write(hidden_dir.join("round-000.json.gz"), b"round").expect("write hidden round");
+        fs::write(&other_hidden, b"other").expect("write other hidden");
+        fs::write(&normal_file, b"normal").expect("write normal");
+
+        remove_hidden_parser_temp_artifacts(dir.path(), id);
+
+        assert!(!hidden_file.exists());
+        assert!(!hidden_dir.exists());
+        assert!(other_hidden.exists());
+        assert!(normal_file.exists());
+    }
+
+    #[test]
+    fn validate_match_output_accepts_complete_split_payload() {
+        let mut m = diagnostic_match_file();
+        for round in &mut m.rounds {
+            round.round_file = Some(format!("match/round-{:03}.json.gz", round.number));
+            round.frames = serde_json::json!([]);
+            round.events = serde_json::json!([]);
+            round.effects = serde_json::json!([]);
+            round.weapon_fires = serde_json::json!([]);
+            round.projectile_frames = serde_json::json!([]);
+        }
+        let full_rounds = diagnostic_match_file().rounds;
+        validate_match_output(&m, |round_file| {
+            let number = round_file
+                .trim_end_matches(".json.gz")
+                .rsplit('-')
+                .next()
+                .and_then(|n| n.parse::<i64>().ok())
+                .ok_or_else(|| format!("bad round file: {round_file}"))?;
+            full_rounds
+                .iter()
+                .find(|round| round.number == number)
+                .cloned()
+                .ok_or_else(|| format!("round not found: {number}"))
+        })
+        .expect("valid split output");
+    }
+
+    #[test]
+    fn validate_match_output_rejects_missing_split_round_file() {
+        let mut m = diagnostic_match_file();
+        m.rounds[0].round_file = Some("match/round-000.json.gz".into());
+        m.rounds[0].frames = serde_json::json!([]);
+        m.rounds[0].events = serde_json::json!([]);
+        let err = validate_match_output(&m, |_| Err("open round: missing".into())).unwrap_err();
+        assert!(
+            err.contains("invalid split round 0"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_match_output_rejects_empty_split_round_frames() {
+        let mut m = diagnostic_match_file();
+        m.rounds[0].round_file = Some("match/round-000.json.gz".into());
+        m.rounds[0].frames = serde_json::json!([]);
+        m.rounds[0].events = serde_json::json!([]);
+        let mut empty_round = diagnostic_round(0, 0, 0, 0);
+        empty_round.frames = serde_json::json!([]);
+        let err = validate_match_output(&m, |_| Ok(empty_round.clone())).unwrap_err();
+        assert!(err.contains("has no frames"), "unexpected error: {err}");
     }
 
     #[test]
