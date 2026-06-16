@@ -939,26 +939,49 @@ fn action_pressed(row: &Value) -> bool {
 }
 
 fn parse_args() -> Result<Args> {
+    parse_args_from(std::env::args().skip(1))
+}
+
+fn parse_args_from<I, S>(args: I) -> Result<Args>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
     let mut out = Args {
         quality: "full".into(),
         ..Args::default()
     };
-    let mut it = std::env::args().skip(1);
+    let mut it = args.into_iter();
     while let Some(arg) = it.next() {
-        match arg.as_str() {
-            "-in" => out.input = it.next().ok_or_else(|| anyhow!("-in needs a value"))?,
-            "-out" => out.output = it.next().ok_or_else(|| anyhow!("-out needs a value"))?,
+        match arg.as_ref() {
+            "-in" => out.input = it
+                .next()
+                .ok_or_else(|| anyhow!("-in needs a value"))?
+                .as_ref()
+                .to_string(),
+            "-out" => out.output = it
+                .next()
+                .ok_or_else(|| anyhow!("-out needs a value"))?
+                .as_ref()
+                .to_string(),
             "-quality" => {
-                out.quality = it.next().ok_or_else(|| anyhow!("-quality needs a value"))?
+                out.quality = it
+                    .next()
+                    .ok_or_else(|| anyhow!("-quality needs a value"))?
+                    .as_ref()
+                    .to_ascii_lowercase()
             }
             "-stats" => out.stats = true,
             "-skipProjectiles" => out.skip_projectiles = true,
             "-skipWeaponFires" => out.skip_weapon_fires = true,
-            _ => bail!("unknown argument: {arg}"),
+            _ => bail!("unknown argument: {}", arg.as_ref()),
         }
     }
     if out.input.is_empty() || out.output.is_empty() {
         bail!("usage: parser -in demo.dem[.zst] -out out.json.gz [-quality full|high|medium|low]");
+    }
+    if !matches!(out.quality.as_str(), "full" | "high" | "medium" | "low") {
+        bail!("invalid -quality {}, expected full|high|medium|low", out.quality);
     }
     Ok(out)
 }
@@ -2288,8 +2311,8 @@ fn write_gzip_json_inner<T: Serialize>(
 #[cfg(test)]
 mod tests {
     use super::{
-        commit_split_output, parse_demo_to_output, read_capped, read_demo, write_json_gz, Args,
-        Output, MAX_DEMO_SIZE,
+        commit_split_output, parse_args_from, parse_demo_to_output, read_capped, read_demo,
+        sample_step, write_json_gz, Args, Output, MAX_DEMO_SIZE,
     };
     use flate2::read::GzDecoder;
     use serde_json::Value;
@@ -2356,6 +2379,57 @@ mod tests {
         // cap=256, the very first chunk already trips the check, so out stays
         // empty.
         assert!(out.len() <= 64 * 1024);
+    }
+
+    #[test]
+    fn parse_args_from_accepts_quality_and_skip_flags() {
+        let args = parse_args_from([
+            "-in",
+            "demo.dem.zst",
+            "-out",
+            "out.json.gz",
+            "-quality",
+            "HIGH",
+            "-skipProjectiles",
+            "-skipWeaponFires",
+            "-stats",
+        ])
+        .expect("parse args");
+        assert_eq!(args.input, "demo.dem.zst");
+        assert_eq!(args.output, "out.json.gz");
+        assert_eq!(args.quality, "high");
+        assert!(args.skip_projectiles);
+        assert!(args.skip_weapon_fires);
+        assert!(args.stats);
+    }
+
+    #[test]
+    fn parse_args_from_rejects_invalid_quality() {
+        let err = parse_args_from([
+            "-in",
+            "demo.dem",
+            "-out",
+            "out.json.gz",
+            "-quality",
+            "turbo",
+        ])
+        .unwrap_err();
+        assert!(format!("{err:#}").contains("invalid -quality"));
+    }
+
+    #[test]
+    fn parse_args_from_rejects_unknown_arguments() {
+        let err = parse_args_from(["-in", "demo.dem", "-out", "out.json.gz", "-wat"])
+            .unwrap_err();
+        assert!(format!("{err:#}").contains("unknown argument: -wat"));
+    }
+
+    #[test]
+    fn sample_step_matches_cli_quality_contract() {
+        assert_eq!(sample_step("full"), 1);
+        assert_eq!(sample_step("high"), 16);
+        assert_eq!(sample_step("medium"), 32);
+        assert_eq!(sample_step("low"), 64);
     }
 
     #[test]
