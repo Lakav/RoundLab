@@ -52,7 +52,7 @@ struct Player {
     team: String,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Serialize)]
 struct Frame {
     t: f64,
     players: Vec<PlayerPos>,
@@ -72,7 +72,7 @@ struct BombState {
     carrier: Option<u64>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Serialize)]
 struct ProjectileFrame {
     t: f64,
     projectiles: Vec<ProjectilePos>,
@@ -156,7 +156,7 @@ struct BlindSpan {
     total: f64,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Serialize)]
 struct Event {
     t: f64,
     #[serde(rename = "type")]
@@ -179,7 +179,7 @@ struct Event {
     winner: Option<String>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Round {
     number: usize,
@@ -198,11 +198,9 @@ struct Round {
     weapon_fires: Vec<WeaponFireEvent>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     projectile_frames: Vec<ProjectileFrame>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    round_file: Option<String>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Serialize)]
 struct UtilityEffect {
     #[serde(rename = "type")]
     kind: String,
@@ -217,7 +215,7 @@ struct UtilityEffect {
     team: Option<i64>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WeaponFireEvent {
     t: f64,
@@ -244,7 +242,29 @@ struct Output {
 struct ManifestOutput<'a> {
     meta: &'a Meta,
     players: &'a [Player],
-    rounds: Vec<Round>,
+    rounds: Vec<ManifestRound>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ManifestRound {
+    number: usize,
+    start_tick: i32,
+    freeze_end_tick: i32,
+    end_tick: i32,
+    duration: f64,
+    winner: String,
+    score_a: i32,
+    score_b: i32,
+    frames: Vec<Frame>,
+    events: Vec<Event>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    effects: Vec<UtilityEffect>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    weapon_fires: Vec<WeaponFireEvent>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    projectile_frames: Vec<ProjectileFrame>,
+    round_file: String,
 }
 
 #[derive(Default)]
@@ -743,7 +763,6 @@ fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)>
             effects: round_effects(&events, span, &rows_by_tick),
             weapon_fires: round_weapon_fires(&events, span, &rows_by_tick),
             projectile_frames,
-            round_file: None,
             frames,
         });
 
@@ -1945,22 +1964,28 @@ fn write_json_gz(path: &str, output: &Output) -> Result<WriteStats> {
     for round in &output.rounds {
         let file_name = format!("round-{:03}.json.gz", round.number);
         let relative = format!("{round_dir_name}/{file_name}");
-        let mut full_round = round.clone();
-        full_round.round_file = None;
         let round_path = rounds_dir.join(&file_name);
         add_write_stats(
             &mut stats,
-            write_gzip_json(&round_path, &full_round, "round")?,
+            write_gzip_json(&round_path, round, "round")?,
         );
 
-        let mut header = round.clone();
-        header.frames.clear();
-        header.events.clear();
-        header.effects.clear();
-        header.weapon_fires.clear();
-        header.projectile_frames.clear();
-        header.round_file = Some(relative);
-        manifest_rounds.push(header);
+        manifest_rounds.push(ManifestRound {
+            number: round.number,
+            start_tick: round.start_tick,
+            freeze_end_tick: round.freeze_end_tick,
+            end_tick: round.end_tick,
+            duration: round.duration,
+            winner: round.winner.clone(),
+            score_a: round.score_a,
+            score_b: round.score_b,
+            frames: Vec::new(),
+            events: Vec::new(),
+            effects: Vec::new(),
+            weapon_fires: Vec::new(),
+            projectile_frames: Vec::new(),
+            round_file: relative,
+        });
     }
 
     let manifest = ManifestOutput {
