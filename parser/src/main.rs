@@ -3,7 +3,7 @@ use std::{
     fs,
     io::{BufReader, Read, Write},
     path::{Path, PathBuf},
-    time::Instant,
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use ahash::AHashMap;
@@ -1948,12 +1948,18 @@ fn write_json_gz(path: &str, output: &Output) -> Result<WriteStats> {
     let mut stats = WriteStats::default();
     let output_path = Path::new(path);
     let rounds_dir = split_rounds_dir(output_path)?;
-    if rounds_dir.exists() {
-        fs::remove_dir_all(&rounds_dir)
-            .with_context(|| format!("remove old rounds dir {}", rounds_dir.display()))?;
-    }
-    fs::create_dir_all(&rounds_dir)
-        .with_context(|| format!("create rounds dir {}", rounds_dir.display()))?;
+    let staging_rounds_dir = temp_sibling_path(&rounds_dir, "tmp")?;
+    let backup_rounds_dir = temp_sibling_path(&rounds_dir, "backup")?;
+    let temp_manifest_path = temp_sibling_path(output_path, "tmp")?;
+    let backup_manifest_path = temp_sibling_path(output_path, "backup")?;
+    remove_path_if_exists(&staging_rounds_dir)?;
+    remove_path_if_exists(&backup_rounds_dir)?;
+    remove_path_if_exists(&temp_manifest_path)?;
+    remove_path_if_exists(&backup_manifest_path)?;
+    fs::create_dir_all(&staging_rounds_dir)
+        .with_context(|| format!("create rounds staging dir {}", staging_rounds_dir.display()))?;
+    let mut staging_cleanup = CleanupPath::new(staging_rounds_dir.clone());
+    let mut temp_manifest_cleanup = CleanupPath::new(temp_manifest_path.clone());
 
     emit_progress(0.94, "Serializing split parser JSON...");
     let round_dir_name = rounds_dir
@@ -1968,7 +1974,7 @@ fn write_json_gz(path: &str, output: &Output) -> Result<WriteStats> {
         .map(|(idx, round)| {
             let file_name = format!("round-{:03}.json.gz", round.number);
             let relative = format!("{round_dir_name}/{file_name}");
-            let round_path = rounds_dir.join(&file_name);
+            let round_path = staging_rounds_dir.join(&file_name);
             let write_stats = write_gzip_json_quiet(&round_path, round)?;
             Ok((
                 idx,
@@ -2006,8 +2012,20 @@ fn write_json_gz(path: &str, output: &Output) -> Result<WriteStats> {
     };
     add_write_stats(
         &mut stats,
-        write_gzip_json(output_path, &manifest, "manifest")?,
+        write_gzip_json(&temp_manifest_path, &manifest, "manifest")?,
     );
+    let commit_started = final_step_start("commit_split_output");
+    commit_split_output(
+        output_path,
+        &rounds_dir,
+        &staging_rounds_dir,
+        &temp_manifest_path,
+        &backup_rounds_dir,
+        &backup_manifest_path,
+    )?;
+    staging_cleanup.disarm();
+    temp_manifest_cleanup.disarm();
+    final_step_done("commit_split_output", commit_started);
 
     stats.write_output_ms = elapsed_ms(write_started);
     final_step_done("write_json_gz", write_started);
@@ -2024,6 +2042,133 @@ fn split_rounds_dir(path: &Path) -> Result<PathBuf> {
         .or_else(|| name.strip_suffix(".gz"))
         .unwrap_or(name);
     Ok(path.with_file_name(stem))
+}
+
+fn temp_sibling_path(path: &Path, marker: &str) -> Result<PathBuf> {
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| anyhow!("invalid path"))?;
+    Ok(path.with_file_name(format!(".{name}.{marker}-{}", unique_suffix())))
+}
+
+fn unique_suffix() -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    format!("{}-{nanos}", std::process::id())
+}
+
+fn remove_path_if_exists(path: &Path) -> Result<()> {
+    let Ok(metadata) = fs::metadata(path) else {
+        return Ok(());
+    };
+    if metadata.is_dir() {
+        fs::remove_dir_all(path).with_context(|| format!("remove dir {}", path.display()))?;
+    } else {
+        fs::remove_file(path).with_context(|| format!("remove file {}", path.display()))?;
+    }
+    Ok(())
+}
+
+struct CleanupPath {
+    path: PathBuf,
+    armed: bool,
+}
+
+impl CleanupPath {
+    fn new(path: PathBuf) -> Self {
+        Self { path, armed: true }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for CleanupPath {
+    fn drop(&mut self) {
+        if self.armed {
+            let _ = remove_path_if_exists(&self.path);
+        }
+    }
+}
+
+fn commit_split_output(
+    output_path: &Path,
+    rounds_dir: &Path,
+    staging_rounds_dir: &Path,
+    temp_manifest_path: &Path,
+    backup_rounds_dir: &Path,
+    backup_manifest_path: &Path,
+) -> Result<()> {
+    let had_rounds = rounds_dir.exists();
+    if had_rounds {
+        fs::rename(rounds_dir, backup_rounds_dir).with_context(|| {
+            format!(
+                "backup old rounds dir {} -> {}",
+                rounds_dir.display(),
+                backup_rounds_dir.display()
+            )
+        })?;
+    }
+
+    if let Err(err) = fs::rename(staging_rounds_dir, rounds_dir) {
+        if had_rounds {
+            let _ = fs::rename(backup_rounds_dir, rounds_dir);
+        }
+        return Err(err).with_context(|| {
+            format!(
+                "commit rounds dir {} -> {}",
+                staging_rounds_dir.display(),
+                rounds_dir.display()
+            )
+        });
+    }
+
+    let had_manifest = output_path.exists();
+    if had_manifest {
+        if let Err(err) = fs::rename(output_path, backup_manifest_path) {
+            rollback_rounds_dir(rounds_dir, backup_rounds_dir, had_rounds);
+            return Err(err).with_context(|| {
+                format!(
+                    "backup old manifest {} -> {}",
+                    output_path.display(),
+                    backup_manifest_path.display()
+                )
+            });
+        }
+    }
+
+    if let Err(err) = fs::rename(temp_manifest_path, output_path) {
+        rollback_rounds_dir(rounds_dir, backup_rounds_dir, had_rounds);
+        if had_manifest {
+            let _ = fs::rename(backup_manifest_path, output_path);
+        }
+        return Err(err).with_context(|| {
+            format!(
+                "commit manifest {} -> {}",
+                temp_manifest_path.display(),
+                output_path.display()
+            )
+        });
+    }
+
+    if had_rounds {
+        remove_path_if_exists(backup_rounds_dir)?;
+    }
+    if had_manifest {
+        remove_path_if_exists(backup_manifest_path)?;
+    }
+    Ok(())
+}
+
+fn rollback_rounds_dir(rounds_dir: &Path, backup_rounds_dir: &Path, had_rounds: bool) {
+    let _ = remove_path_if_exists(rounds_dir);
+    if had_rounds {
+        let _ = fs::rename(backup_rounds_dir, rounds_dir);
+    }
 }
 
 fn add_write_stats(total: &mut WriteStats, next: WriteStats) {
@@ -2124,7 +2269,8 @@ fn write_gzip_json_inner<T: Serialize>(
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_demo_to_output, read_capped, read_demo, write_json_gz, Args, Output, MAX_DEMO_SIZE,
+        commit_split_output, parse_demo_to_output, read_capped, read_demo, write_json_gz, Args,
+        Output, MAX_DEMO_SIZE,
     };
     use flate2::read::GzDecoder;
     use serde_json::Value;
@@ -2217,6 +2363,47 @@ mod tests {
         assert!(json["meta"]["tickRate"].as_f64().unwrap_or_default() > 0.0);
         assert!(json["players"].as_array().unwrap().len() >= output.players.len());
         assert_split_output_is_usable(&output_path, &json, &output);
+    }
+
+    #[test]
+    fn commit_split_output_rolls_back_when_manifest_commit_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let output_path = dir.path().join("parsed.json.gz");
+        let rounds_dir = dir.path().join("parsed");
+        let staging_rounds_dir = dir.path().join("staging-rounds");
+        let missing_temp_manifest = dir.path().join("missing-manifest.json.gz");
+        let backup_rounds_dir = dir.path().join("backup-rounds");
+        let backup_manifest_path = dir.path().join("backup-manifest.json.gz");
+
+        std::fs::create_dir_all(&rounds_dir).unwrap();
+        std::fs::write(rounds_dir.join("round-000.json.gz"), b"old-round").unwrap();
+        std::fs::write(&output_path, b"old-manifest").unwrap();
+        std::fs::create_dir_all(&staging_rounds_dir).unwrap();
+        std::fs::write(staging_rounds_dir.join("round-000.json.gz"), b"new-round").unwrap();
+
+        let err = commit_split_output(
+            &output_path,
+            &rounds_dir,
+            &staging_rounds_dir,
+            &missing_temp_manifest,
+            &backup_rounds_dir,
+            &backup_manifest_path,
+        )
+        .unwrap_err();
+        assert!(
+            format!("{err:#}").contains("commit manifest"),
+            "unexpected error: {err:#}"
+        );
+        assert_eq!(std::fs::read(&output_path).unwrap(), b"old-manifest");
+        assert_eq!(
+            std::fs::read(rounds_dir.join("round-000.json.gz")).unwrap(),
+            b"old-round"
+        );
+        assert!(!backup_rounds_dir.exists(), "round backup should be restored");
+        assert!(
+            !backup_manifest_path.exists(),
+            "manifest backup should be restored"
+        );
     }
 
     fn assert_split_output_is_usable(output_path: &Path, manifest: &Value, output: &Output) {
