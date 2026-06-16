@@ -1371,7 +1371,18 @@ fn enter_match_fullscreen(app: AppHandle) -> Result<(), String> {
 /// RAM to afford it.
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-struct ParseOptions {}
+struct ParseOptions {
+    quality: Option<String>,
+    skip_projectiles: Option<bool>,
+    skip_weapon_fires: Option<bool>,
+}
+
+fn sanitize_parse_quality(value: Option<&str>) -> String {
+    match value.unwrap_or("full").to_ascii_lowercase().as_str() {
+        "full" | "high" | "medium" | "low" => value.unwrap_or("full").to_ascii_lowercase(),
+        _ => "full".into(),
+    }
+}
 
 #[derive(Default)]
 struct ParseJob {
@@ -1730,18 +1741,24 @@ async fn parse_demo(
 
     let id = uuid::Uuid::new_v4().to_string();
     let out_path = parsed_path(&app, &id)?;
-    let _opts = options.unwrap_or_default();
-    let quality = "full";
+    let opts = options.unwrap_or_default();
+    let quality = sanitize_parse_quality(opts.quality.as_deref());
 
     // Build the argv. The parser auto-detects zstd by peeking 4 bytes.
-    let argv: Vec<String> = vec![
+    let mut argv: Vec<String> = vec![
         "-in".into(),
         src_path.clone(),
         "-out".into(),
         out_path.to_string_lossy().into_owned(),
         "-quality".into(),
-        quality.into(),
+        quality,
     ];
+    if opts.skip_projectiles.unwrap_or(false) {
+        argv.push("-skipProjectiles".into());
+    }
+    if opts.skip_weapon_fires.unwrap_or(false) {
+        argv.push("-skipWeaponFires".into());
+    }
 
     emit_parse_progress(&app, "starting", 0.04, "Preparing parser…");
     if let Err(parser_error) = run_parser_sidecar(&app, "parser", argv, &out_path, 0.08).await {
@@ -2286,6 +2303,16 @@ mod tests {
         assert!(!hidden_dir.exists());
         assert!(other_hidden.exists());
         assert!(normal_file.exists());
+    }
+
+    #[test]
+    fn parse_quality_is_whitelisted() {
+        assert_eq!(sanitize_parse_quality(Some("full")), "full");
+        assert_eq!(sanitize_parse_quality(Some("HIGH")), "high");
+        assert_eq!(sanitize_parse_quality(Some("medium")), "medium");
+        assert_eq!(sanitize_parse_quality(Some("low")), "low");
+        assert_eq!(sanitize_parse_quality(Some("nonsense")), "full");
+        assert_eq!(sanitize_parse_quality(None), "full");
     }
 
     #[test]

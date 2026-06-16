@@ -29,6 +29,8 @@ struct Args {
     input: String,
     output: String,
     quality: String,
+    skip_projectiles: bool,
+    skip_weapon_fires: bool,
     stats: bool,
 }
 
@@ -514,9 +516,13 @@ fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)>
         Ok(parse_team_rows(&bytes, &huf, team_name_ticks(&spans)).unwrap_or_default())
     })?;
     let (team_a, team_b) = team_names_from_rows(&team_rows);
-    let projectile_rows = timed(&mut stats.parse_projectiles_ms, || {
-        parse_projectiles(&bytes, &huf)
-    })?;
+    let projectile_rows = if args.skip_projectiles {
+        Vec::new()
+    } else {
+        timed(&mut stats.parse_projectiles_ms, || {
+            parse_projectiles(&bytes, &huf)
+        })?
+    };
     stats.projectile_rows = projectile_rows.len();
     let group_projectiles_started = Instant::now();
     let projectiles_by_tick = group_projectile_rows(projectile_rows);
@@ -721,7 +727,11 @@ fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)>
                 t,
                 players,
                 bomb,
-                projectiles: projectiles_by_tick.get(&tick).cloned().unwrap_or_default(),
+                projectiles: if args.skip_projectiles {
+                    Vec::new()
+                } else {
+                    projectiles_by_tick.get(&tick).cloned().unwrap_or_default()
+                },
             });
         }
 
@@ -738,18 +748,22 @@ fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)>
             frames.insert(0, first);
         }
 
-        let projectile_frames = projectiles_by_tick
-            .range(span.start..=span.end)
-            .filter_map(|(tick, projectiles)| {
-                if projectiles.is_empty() {
-                    return None;
-                }
-                Some(ProjectileFrame {
-                    t: seconds_since(span.start, *tick),
-                    projectiles: projectiles.clone(),
+        let projectile_frames = if args.skip_projectiles {
+            Vec::new()
+        } else {
+            projectiles_by_tick
+                .range(span.start..=span.end)
+                .filter_map(|(tick, projectiles)| {
+                    if projectiles.is_empty() {
+                        return None;
+                    }
+                    Some(ProjectileFrame {
+                        t: seconds_since(span.start, *tick),
+                        projectiles: projectiles.clone(),
+                    })
                 })
-            })
-            .collect::<Vec<_>>();
+                .collect::<Vec<_>>()
+        };
 
         rounds.push(Round {
             number: rounds.len(),
@@ -762,7 +776,11 @@ fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)>
             score_b: score_t,
             events: round_events(&events, span),
             effects: round_effects(&events, span, &rows_by_tick),
-            weapon_fires: round_weapon_fires(&events, span, &rows_by_tick),
+            weapon_fires: if args.skip_weapon_fires {
+                Vec::new()
+            } else {
+                round_weapon_fires(&events, span, &rows_by_tick)
+            },
             projectile_frames,
             frames,
         });
@@ -934,7 +952,8 @@ fn parse_args() -> Result<Args> {
                 out.quality = it.next().ok_or_else(|| anyhow!("-quality needs a value"))?
             }
             "-stats" => out.stats = true,
-            "-skipProjectiles" | "-skipWeaponFires" => {}
+            "-skipProjectiles" => out.skip_projectiles = true,
+            "-skipWeaponFires" => out.skip_weapon_fires = true,
             _ => bail!("unknown argument: {arg}"),
         }
     }
@@ -2351,6 +2370,8 @@ mod tests {
             input,
             output: output_path.to_string_lossy().into_owned(),
             quality: "full".into(),
+            skip_projectiles: false,
+            skip_weapon_fires: false,
             stats: true,
         };
 

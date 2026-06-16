@@ -84,10 +84,9 @@ export async function parseDemo(
   srcPath: string,
   options?: ParseOptions,
 ): Promise<string> {
-  void options;
   return invoke<string>("parse_demo", {
     srcPath,
-    options: DEFAULT_PARSE_OPTIONS,
+    options: { ...DEFAULT_PARSE_OPTIONS, ...options },
   });
 }
 
