@@ -70,6 +70,9 @@ state, utility effects, weapon fires, and projectile frames. The medium-quality
 skip test also verifies that lightweight parsing keeps core replay data while
 omitting weapon fires and projectile payloads.
 
+Parser output uses gzip for Tauri compatibility. For benchmarks, set
+`ROUNDLAB_PARSER_GZIP_LEVEL=0..9` to compare compression speed and output size.
+
 ## Releases
 
 The release workflow builds macOS Apple Silicon and Windows x64 installers when a `v*.*.*` tag is pushed.

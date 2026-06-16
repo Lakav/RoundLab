@@ -729,11 +729,7 @@ fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)>
                 t,
                 players,
                 bomb,
-                projectiles: if args.skip_projectiles {
-                    Vec::new()
-                } else {
-                    projectiles_by_tick.get(&tick).cloned().unwrap_or_default()
-                },
+                projectiles: Vec::new(),
             });
         }
 
@@ -2269,7 +2265,7 @@ fn write_gzip_json_inner<T: Serialize>(
     if let (Some(step), Some(started)) = (create_step.as_deref(), create_started) {
         final_step_done(step, started);
     }
-    let mut gz = GzEncoder::new(file, Compression::default());
+    let mut gz = GzEncoder::new(file, parser_gzip_compression());
 
     let serialize_step = label.map(|label| format!("{label}:serde_json::to_writer"));
     let serialize_started = serialize_step.as_deref().map(final_step_start);
@@ -2325,15 +2321,25 @@ fn write_gzip_json_inner<T: Serialize>(
     Ok(stats)
 }
 
+fn parser_gzip_compression() -> Compression {
+    std::env::var("ROUNDLAB_PARSER_GZIP_LEVEL")
+        .ok()
+        .and_then(|value| value.parse::<u32>().ok())
+        .filter(|level| *level <= 9)
+        .map(Compression::new)
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        commit_split_output, parse_args_from, parse_demo_to_output, read_capped, read_demo,
-        sample_step, write_json_gz, Args, Output, MAX_DEMO_SIZE,
+        commit_split_output, parse_args_from, parse_demo_to_output, parser_gzip_compression,
+        read_capped, read_demo, sample_step, write_json_gz, Args, Output, MAX_DEMO_SIZE,
     };
-    use flate2::read::GzDecoder;
+    use flate2::{read::GzDecoder, Compression};
     use serde_json::Value;
     use std::{
+        env,
         io::{Read, Write},
         path::Path,
     };
@@ -2364,6 +2370,41 @@ mod tests {
         score_b: i32,
         metrics: ReplayMetrics,
         medium_skip_metrics: ReplayMetrics,
+    }
+
+    struct EnvVarGuard {
+        key: &'static str,
+        old_value: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let guard = Self {
+                key,
+                old_value: env::var(key).ok(),
+            };
+            env::set_var(key, value);
+            guard
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let guard = Self {
+                key,
+                old_value: env::var(key).ok(),
+            };
+            env::remove_var(key);
+            guard
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            if let Some(value) = &self.old_value {
+                env::set_var(self.key, value);
+            } else {
+                env::remove_var(self.key);
+            }
+        }
     }
 
     /// A small plain (non-zstd) file is read back verbatim.
@@ -2480,6 +2521,27 @@ mod tests {
     }
 
     #[test]
+    fn parser_gzip_compression_defaults_to_standard_and_allows_override() {
+        EnvVarGuard::remove("ROUNDLAB_PARSER_GZIP_LEVEL");
+        assert_eq!(
+            parser_gzip_compression().level(),
+            Compression::default().level()
+        );
+
+        {
+            let _guard = EnvVarGuard::set("ROUNDLAB_PARSER_GZIP_LEVEL", "6");
+            assert_eq!(parser_gzip_compression().level(), 6);
+        }
+        {
+            let _guard = EnvVarGuard::set("ROUNDLAB_PARSER_GZIP_LEVEL", "99");
+            assert_eq!(
+                parser_gzip_compression().level(),
+                Compression::default().level()
+            );
+        }
+    }
+
+    #[test]
     fn roundlab_test_demo_produces_replay_json_when_configured() {
         let Ok(input) = std::env::var("ROUNDLAB_TEST_DEMO") else {
             eprintln!("skipping parser integration test: ROUNDLAB_TEST_DEMO is not set");
@@ -2498,6 +2560,7 @@ mod tests {
 
         let output = parse_demo_to_output(&args).unwrap();
         assert_replay_output_is_usable(&output);
+        assert_projectiles_are_not_duplicated_in_frames(&output);
         if let Some(expected) = expected_floor_for_demo(&args.input) {
             assert_reference_demo_floor(&output, expected);
         }
@@ -2648,6 +2711,7 @@ mod tests {
         let mut split_frames_with_players = 0usize;
         let mut split_frames_with_bomb_state = 0usize;
         let mut split_players_with_weapons = 0usize;
+        let mut split_frames_with_embedded_projectiles = 0usize;
 
         for (idx, manifest_round) in rounds.iter().enumerate() {
             assert_eq!(
@@ -2726,6 +2790,13 @@ mod tests {
                 if frame.get("bomb").is_some_and(|bomb| !bomb.is_null()) {
                     split_frames_with_bomb_state += 1;
                 }
+                if frame
+                    .get("projectiles")
+                    .and_then(Value::as_array)
+                    .is_some_and(|projectiles| !projectiles.is_empty())
+                {
+                    split_frames_with_embedded_projectiles += 1;
+                }
                 split_players_with_weapons += players
                     .iter()
                     .filter(|player| {
@@ -2779,6 +2850,10 @@ mod tests {
         assert!(
             split_total_projectile_frames > 0,
             "split output lost projectile frames"
+        );
+        assert_eq!(
+            split_frames_with_embedded_projectiles, 0,
+            "split output duplicated projectile payloads in frames"
         );
     }
 
@@ -2923,6 +2998,19 @@ mod tests {
         assert_eq!(
             embedded_projectiles, 0,
             "skipProjectiles leaked frame projectiles"
+        );
+    }
+
+    fn assert_projectiles_are_not_duplicated_in_frames(output: &Output) {
+        let embedded_projectiles = output
+            .rounds
+            .iter()
+            .flat_map(|round| &round.frames)
+            .filter(|frame| !frame.projectiles.is_empty())
+            .count();
+        assert_eq!(
+            embedded_projectiles, 0,
+            "projectileFrames should be the only projectile sample payload"
         );
     }
 
