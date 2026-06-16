@@ -17,6 +17,7 @@ use parser::{
         variants::{soa_to_aos, OutputSerdeHelperStruct, Variant},
     },
 };
+use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -1960,32 +1961,42 @@ fn write_json_gz(path: &str, output: &Output) -> Result<WriteStats> {
         .and_then(|name| name.to_str())
         .ok_or_else(|| anyhow!("invalid rounds dir name"))?
         .to_string();
-    let mut manifest_rounds = Vec::with_capacity(output.rounds.len());
-    for round in &output.rounds {
-        let file_name = format!("round-{:03}.json.gz", round.number);
-        let relative = format!("{round_dir_name}/{file_name}");
-        let round_path = rounds_dir.join(&file_name);
-        add_write_stats(
-            &mut stats,
-            write_gzip_json(&round_path, round, "round")?,
-        );
-
-        manifest_rounds.push(ManifestRound {
-            number: round.number,
-            start_tick: round.start_tick,
-            freeze_end_tick: round.freeze_end_tick,
-            end_tick: round.end_tick,
-            duration: round.duration,
-            winner: round.winner.clone(),
-            score_a: round.score_a,
-            score_b: round.score_b,
-            frames: Vec::new(),
-            events: Vec::new(),
-            effects: Vec::new(),
-            weapon_fires: Vec::new(),
-            projectile_frames: Vec::new(),
-            round_file: relative,
-        });
+    let mut round_results: Vec<(usize, ManifestRound, WriteStats)> = output
+        .rounds
+        .par_iter()
+        .enumerate()
+        .map(|(idx, round)| {
+            let file_name = format!("round-{:03}.json.gz", round.number);
+            let relative = format!("{round_dir_name}/{file_name}");
+            let round_path = rounds_dir.join(&file_name);
+            let write_stats = write_gzip_json_quiet(&round_path, round)?;
+            Ok((
+                idx,
+                ManifestRound {
+                    number: round.number,
+                    start_tick: round.start_tick,
+                    freeze_end_tick: round.freeze_end_tick,
+                    end_tick: round.end_tick,
+                    duration: round.duration,
+                    winner: round.winner.clone(),
+                    score_a: round.score_a,
+                    score_b: round.score_b,
+                    frames: Vec::new(),
+                    events: Vec::new(),
+                    effects: Vec::new(),
+                    weapon_fires: Vec::new(),
+                    projectile_frames: Vec::new(),
+                    round_file: relative,
+                },
+                write_stats,
+            ))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    round_results.sort_by_key(|(idx, _, _)| *idx);
+    let mut manifest_rounds = Vec::with_capacity(round_results.len());
+    for (_, manifest_round, write_stats) in round_results {
+        add_parallel_write_stats(&mut stats, write_stats);
+        manifest_rounds.push(manifest_round);
     }
 
     let manifest = ManifestOutput {
@@ -2024,16 +2035,40 @@ fn add_write_stats(total: &mut WriteStats, next: WriteStats) {
     total.output_gzip_bytes += next.output_gzip_bytes;
 }
 
+fn add_parallel_write_stats(total: &mut WriteStats, next: WriteStats) {
+    total.serialize_json_ms = total.serialize_json_ms.max(next.serialize_json_ms);
+    total.raw_json_bytes += next.raw_json_bytes;
+    total.gz_flush_ms = total.gz_flush_ms.max(next.gz_flush_ms);
+    total.gzip_finish_ms = total.gzip_finish_ms.max(next.gzip_finish_ms);
+    total.fsync_ms = total.fsync_ms.max(next.fsync_ms);
+    total.output_gzip_bytes += next.output_gzip_bytes;
+}
+
 fn write_gzip_json<T: Serialize>(path: &Path, value: &T, label: &str) -> Result<WriteStats> {
+    write_gzip_json_inner(path, value, Some(label))
+}
+
+fn write_gzip_json_quiet<T: Serialize>(path: &Path, value: &T) -> Result<WriteStats> {
+    write_gzip_json_inner(path, value, None)
+}
+
+fn write_gzip_json_inner<T: Serialize>(
+    path: &Path,
+    value: &T,
+    label: Option<&str>,
+) -> Result<WriteStats> {
     let mut stats = WriteStats::default();
-    let create_step = format!("{label}:File::create");
-    let create_started = final_step_start(&create_step);
+    let create_step = label.map(|label| format!("{label}:File::create"));
+    let create_started = create_step.as_deref().map(final_step_start);
     let file = fs::File::create(path).with_context(|| format!("create {}", path.display()))?;
-    final_step_done(&create_step, create_started);
+    if let (Some(step), Some(started)) = (create_step.as_deref(), create_started) {
+        final_step_done(step, started);
+    }
     let mut gz = GzEncoder::new(file, Compression::default());
 
-    let serialize_step = format!("{label}:serde_json::to_writer");
-    let serialize_started = final_step_start(&serialize_step);
+    let serialize_step = label.map(|label| format!("{label}:serde_json::to_writer"));
+    let serialize_started = serialize_step.as_deref().map(final_step_start);
+    let serialize_timer = Instant::now();
     {
         let mut counting = CountingWriter {
             inner: &mut gz,
@@ -2042,20 +2077,28 @@ fn write_gzip_json<T: Serialize>(path: &Path, value: &T, label: &str) -> Result<
         serde_json::to_writer(&mut counting, value)?;
         stats.raw_json_bytes = counting.bytes;
     }
-    stats.serialize_json_ms = elapsed_ms(serialize_started);
-    final_step_done(&serialize_step, serialize_started);
+    stats.serialize_json_ms = elapsed_ms(serialize_timer);
+    if let (Some(step), Some(started)) = (serialize_step.as_deref(), serialize_started) {
+        final_step_done(step, started);
+    }
 
-    let flush_step = format!("{label}:gz.flush");
-    let flush_started = final_step_start(&flush_step);
+    let flush_step = label.map(|label| format!("{label}:gz.flush"));
+    let flush_started = flush_step.as_deref().map(final_step_start);
+    let flush_timer = Instant::now();
     gz.flush()?;
-    stats.gz_flush_ms = elapsed_ms(flush_started);
-    final_step_done(&flush_step, flush_started);
+    stats.gz_flush_ms = elapsed_ms(flush_timer);
+    if let (Some(step), Some(started)) = (flush_step.as_deref(), flush_started) {
+        final_step_done(step, started);
+    }
 
-    let finish_step = format!("{label}:gz.finish");
-    let finish_started = final_step_start(&finish_step);
+    let finish_step = label.map(|label| format!("{label}:gz.finish"));
+    let finish_started = finish_step.as_deref().map(final_step_start);
+    let finish_timer = Instant::now();
     let file = gz.finish()?;
-    stats.gzip_finish_ms = elapsed_ms(finish_started);
-    final_step_done(&finish_step, finish_started);
+    stats.gzip_finish_ms = elapsed_ms(finish_timer);
+    if let (Some(step), Some(started)) = (finish_step.as_deref(), finish_started) {
+        final_step_done(step, started);
+    }
 
     if skip_fsync() {
         emit_progress(
@@ -2063,11 +2106,14 @@ fn write_gzip_json<T: Serialize>(path: &Path, value: &T, label: &str) -> Result<
             "Skipping parser disk fsync (ROUNDLAB_PARSER_SKIP_FSYNC).",
         );
     } else {
-        let sync_step = format!("{label}:File::sync_all");
-        let sync_started = final_step_start(&sync_step);
+        let sync_step = label.map(|label| format!("{label}:File::sync_all"));
+        let sync_started = sync_step.as_deref().map(final_step_start);
+        let sync_timer = Instant::now();
         file.sync_all()?;
-        stats.fsync_ms = elapsed_ms(sync_started);
-        final_step_done(&sync_step, sync_started);
+        stats.fsync_ms = elapsed_ms(sync_timer);
+        if let (Some(step), Some(started)) = (sync_step.as_deref(), sync_started) {
+            final_step_done(step, started);
+        }
     }
     drop(file);
     stats.output_gzip_bytes = fs::metadata(path).map(|m| m.len()).unwrap_or_default();
