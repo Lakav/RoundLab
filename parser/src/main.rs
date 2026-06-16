@@ -2207,12 +2207,21 @@ fn commit_split_output(
     }
 
     if had_rounds {
-        remove_path_if_exists(backup_rounds_dir)?;
+        best_effort_remove_path("old rounds backup", backup_rounds_dir);
     }
     if had_manifest {
-        remove_path_if_exists(backup_manifest_path)?;
+        best_effort_remove_path("old manifest backup", backup_manifest_path);
     }
     Ok(())
+}
+
+fn best_effort_remove_path(label: &str, path: &Path) {
+    if let Err(err) = remove_path_if_exists(path) {
+        eprintln!(
+            "ROUNDLAB_WARNING cleanup_failed label={label} path={} error={err:#}",
+            path.display()
+        );
+    }
 }
 
 fn rollback_rounds_dir(rounds_dir: &Path, backup_rounds_dir: &Path, had_rounds: bool) {
@@ -2512,6 +2521,44 @@ mod tests {
             !backup_manifest_path.exists(),
             "manifest backup should be restored"
         );
+    }
+
+    #[test]
+    fn commit_split_output_replaces_existing_output_and_cleans_backups() {
+        let dir = tempfile::tempdir().unwrap();
+        let output_path = dir.path().join("parsed.json.gz");
+        let rounds_dir = dir.path().join("parsed");
+        let staging_rounds_dir = dir.path().join("staging-rounds");
+        let temp_manifest_path = dir.path().join("new-manifest.json.gz");
+        let backup_rounds_dir = dir.path().join("backup-rounds");
+        let backup_manifest_path = dir.path().join("backup-manifest.json.gz");
+
+        std::fs::create_dir_all(&rounds_dir).unwrap();
+        std::fs::write(rounds_dir.join("round-000.json.gz"), b"old-round").unwrap();
+        std::fs::write(&output_path, b"old-manifest").unwrap();
+        std::fs::create_dir_all(&staging_rounds_dir).unwrap();
+        std::fs::write(staging_rounds_dir.join("round-000.json.gz"), b"new-round").unwrap();
+        std::fs::write(&temp_manifest_path, b"new-manifest").unwrap();
+
+        commit_split_output(
+            &output_path,
+            &rounds_dir,
+            &staging_rounds_dir,
+            &temp_manifest_path,
+            &backup_rounds_dir,
+            &backup_manifest_path,
+        )
+        .expect("commit split output");
+
+        assert_eq!(std::fs::read(&output_path).unwrap(), b"new-manifest");
+        assert_eq!(
+            std::fs::read(rounds_dir.join("round-000.json.gz")).unwrap(),
+            b"new-round"
+        );
+        assert!(!staging_rounds_dir.exists());
+        assert!(!temp_manifest_path.exists());
+        assert!(!backup_rounds_dir.exists());
+        assert!(!backup_manifest_path.exists());
     }
 
     fn assert_split_output_is_usable(output_path: &Path, manifest: &Value, output: &Output) {
