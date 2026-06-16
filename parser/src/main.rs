@@ -2363,6 +2363,7 @@ mod tests {
         score_a: i32,
         score_b: i32,
         metrics: ReplayMetrics,
+        medium_skip_metrics: ReplayMetrics,
     }
 
     /// A small plain (non-zstd) file is read back verbatim.
@@ -2513,6 +2514,41 @@ mod tests {
         if let Some(expected) = expected_floor_for_demo(&args.input) {
             assert_split_reference_demo_floor(&json, expected);
         }
+    }
+
+    #[test]
+    fn roundlab_test_demo_honors_quality_and_skip_options_when_configured() {
+        let Ok(input) = std::env::var("ROUNDLAB_TEST_DEMO") else {
+            eprintln!("skipping parser integration test: ROUNDLAB_TEST_DEMO is not set");
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let output_path = dir.path().join("parsed-medium-skip.json.gz");
+        let args = Args {
+            input,
+            output: output_path.to_string_lossy().into_owned(),
+            quality: "medium".into(),
+            skip_projectiles: true,
+            skip_weapon_fires: true,
+            stats: true,
+        };
+
+        let output = parse_demo_to_output(&args).unwrap();
+        assert_core_replay_output_is_usable(&output);
+        assert_eq!(output.meta.sample_rate, 2);
+        assert_skip_options_removed_heavy_payloads(&output);
+        if let Some(expected) = expected_floor_for_demo(&args.input) {
+            assert_reference_demo_identity(&output, &expected);
+            assert_metrics_meet_floor(
+                &collect_replay_metrics(&output),
+                &expected.medium_skip_metrics,
+                expected.label,
+            );
+        }
+
+        write_json_gz(&args.output, &output).unwrap();
+        let json = read_gzip_json(&output_path);
+        assert_split_output_omits_skipped_payloads(&output_path, &json, &output);
     }
 
     #[test]
@@ -2746,7 +2782,94 @@ mod tests {
         );
     }
 
+    fn assert_split_output_omits_skipped_payloads(
+        output_path: &Path,
+        manifest: &Value,
+        output: &Output,
+    ) {
+        let rounds = manifest["rounds"]
+            .as_array()
+            .expect("manifest rounds array");
+        let base_dir = output_path.parent().expect("output path parent");
+        let mut total_frames = 0usize;
+        let mut total_events = 0usize;
+        let mut total_effects = 0usize;
+        let mut frames_with_embedded_projectiles = 0usize;
+        let mut total_weapon_fires = 0usize;
+        let mut total_projectile_frames = 0usize;
+
+        assert_eq!(rounds.len(), output.rounds.len());
+        for (idx, manifest_round) in rounds.iter().enumerate() {
+            let round_file = manifest_round["roundFile"]
+                .as_str()
+                .expect("manifest roundFile");
+            let round_path = base_dir.join(round_file);
+            let round_json = read_gzip_json(&round_path);
+            let frames = round_json["frames"].as_array().expect("round frames array");
+            let events = round_json["events"].as_array().expect("round events array");
+            let effects = round_json
+                .get("effects")
+                .and_then(Value::as_array)
+                .map(Vec::len)
+                .unwrap_or_default();
+            let weapon_fires = round_json
+                .get("weaponFires")
+                .and_then(Value::as_array)
+                .map(Vec::len)
+                .unwrap_or_default();
+            let projectile_frames = round_json
+                .get("projectileFrames")
+                .and_then(Value::as_array)
+                .map(Vec::len)
+                .unwrap_or_default();
+
+            assert_eq!(frames.len(), output.rounds[idx].frames.len());
+            assert_eq!(events.len(), output.rounds[idx].events.len());
+            assert_eq!(effects, output.rounds[idx].effects.len());
+            assert_eq!(weapon_fires, 0, "skipWeaponFires leaked split data");
+            assert_eq!(
+                projectile_frames, 0,
+                "skipProjectiles leaked split projectileFrames"
+            );
+
+            total_frames += frames.len();
+            total_events += events.len();
+            total_effects += effects;
+            total_weapon_fires += weapon_fires;
+            total_projectile_frames += projectile_frames;
+            frames_with_embedded_projectiles += frames
+                .iter()
+                .filter(|frame| {
+                    frame
+                        .get("projectiles")
+                        .and_then(Value::as_array)
+                        .is_some_and(|projectiles| !projectiles.is_empty())
+                })
+                .count();
+        }
+
+        assert!(total_frames > 0, "split skip output lost replay frames");
+        assert!(total_events > 0, "split skip output lost events");
+        assert!(total_effects > 0, "split skip output lost effects");
+        assert_eq!(total_weapon_fires, 0);
+        assert_eq!(total_projectile_frames, 0);
+        assert_eq!(
+            frames_with_embedded_projectiles, 0,
+            "skipProjectiles leaked embedded frame projectiles"
+        );
+    }
+
     fn assert_replay_output_is_usable(output: &Output) {
+        assert_core_replay_output_is_usable(output);
+        let metrics = collect_replay_metrics(output);
+        assert!(metrics.weapon_fires > 0, "expected weapon fire events");
+        assert!(
+            metrics.projectile_frames > 0,
+            "expected projectile trajectory frames"
+        );
+    }
+
+    fn assert_core_replay_output_is_usable(output: &Output) {
         assert!(output.meta.tick_rate > 0.0, "tick rate must be positive");
         assert!(output.meta.sample_rate > 0, "sample rate must be positive");
         assert!(!output.players.is_empty(), "expected parsed players");
@@ -2778,10 +2901,28 @@ mod tests {
         assert!(metrics.kills > 0, "expected kill events");
         assert!(metrics.bomb_events > 0, "expected bomb events");
         assert!(metrics.effects > 0, "expected utility/bomb effects");
-        assert!(metrics.weapon_fires > 0, "expected weapon fire events");
-        assert!(
-            metrics.projectile_frames > 0,
-            "expected projectile trajectory frames"
+    }
+
+    fn assert_skip_options_removed_heavy_payloads(output: &Output) {
+        let metrics = collect_replay_metrics(output);
+        assert_eq!(metrics.weapon_fires, 0, "skipWeaponFires leaked events");
+        assert_eq!(
+            metrics.projectile_frames, 0,
+            "skipProjectiles leaked projectile frames"
+        );
+        assert_eq!(
+            metrics.projectile_samples, 0,
+            "skipProjectiles leaked projectile samples"
+        );
+        let embedded_projectiles = output
+            .rounds
+            .iter()
+            .flat_map(|round| &round.frames)
+            .filter(|frame| !frame.projectiles.is_empty())
+            .count();
+        assert_eq!(
+            embedded_projectiles, 0,
+            "skipProjectiles leaked frame projectiles"
         );
     }
 
@@ -2809,12 +2950,37 @@ mod tests {
                     projectile_frames: 51_000,
                     projectile_samples: 130_000,
                 },
+                medium_skip_metrics: ReplayMetrics {
+                    rounds: 14,
+                    players: 10,
+                    frames: 2_000,
+                    frame_players: 15_000,
+                    frames_with_players: 2_000,
+                    frames_with_bomb_state: 1_700,
+                    players_with_weapons: 9_000,
+                    events: 120,
+                    kills: 100,
+                    bomb_events: 9,
+                    effects: 230,
+                    weapon_fires: 0,
+                    projectile_frames: 0,
+                    projectile_samples: 0,
+                },
             }),
             _ => None,
         }
     }
 
     fn assert_reference_demo_floor(output: &Output, expected: ExpectedReplayFloor) {
+        assert_reference_demo_identity(output, &expected);
+        assert_metrics_meet_floor(
+            &collect_replay_metrics(output),
+            &expected.metrics,
+            expected.label,
+        );
+    }
+
+    fn assert_reference_demo_identity(output: &Output, expected: &ExpectedReplayFloor) {
         assert_eq!(output.meta.map, expected.map, "reference demo map changed");
         assert_eq!(
             output.meta.score_a, expected.score_a,
@@ -2823,11 +2989,6 @@ mod tests {
         assert_eq!(
             output.meta.score_b, expected.score_b,
             "reference demo score B changed"
-        );
-        assert_metrics_meet_floor(
-            &collect_replay_metrics(output),
-            &expected.metrics,
-            expected.label,
         );
     }
 

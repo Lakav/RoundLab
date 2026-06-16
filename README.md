@@ -60,12 +60,15 @@ or `.dem.zst` file. Large demos must stay outside Git.
 ```bash
 cd parser
 ROUNDLAB_TEST_DEMO=/path/to/demo.dem.zst cargo test roundlab_test_demo_produces_replay_json_when_configured -- --nocapture
+ROUNDLAB_TEST_DEMO=/path/to/demo.dem.zst cargo test roundlab_test_demo_honors_quality_and_skip_options_when_configured -- --nocapture
 ```
 
 When the demo is the current reference file
 `1-128af027-81e2-40d5-a0ea-0281f0b5d16e-1-1.dem.zst`, the test enforces
 strong floors for rounds, scores, players, frames, kills, bomb events, bomb
-state, utility effects, weapon fires, and projectile frames.
+state, utility effects, weapon fires, and projectile frames. The medium-quality
+skip test also verifies that lightweight parsing keeps core replay data while
+omitting weapon fires and projectile payloads.
 
 ## Releases
 
