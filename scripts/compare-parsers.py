@@ -207,6 +207,37 @@ def dedupe_flash_effect_signatures(signatures: list[dict[str, Any]]) -> list[dic
     return out
 
 
+def dedupe_near_duplicate_flash_effects(effects: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out = []
+    for effect in effects:
+        if effect.get("type") != "flash":
+            out.append(effect)
+            continue
+        start = effect.get("start")
+        team = effect.get("team")
+        x = float(effect.get("x", 0.0))
+        y = float(effect.get("y", 0.0))
+        z = float(effect.get("z", 0.0))
+        duplicate = False
+        for existing in out:
+            if existing.get("type") != "flash" or existing.get("team") != team:
+                continue
+            existing_start = existing.get("start")
+            if not isinstance(start, (int, float)) or not isinstance(existing_start, (int, float)):
+                continue
+            if abs(float(start) - float(existing_start)) > 0.001:
+                continue
+            dx = x - float(existing.get("x", 0.0))
+            dy = y - float(existing.get("y", 0.0))
+            dz = z - float(existing.get("z", 0.0))
+            if dx * dx + dy * dy + dz * dz <= 1.0:
+                duplicate = True
+                break
+        if not duplicate:
+            out.append(effect)
+    return out
+
+
 def normalize_weapon(value: Any) -> str:
     if not isinstance(value, str):
         return ""
@@ -217,14 +248,29 @@ def normalize_weapon(value: Any) -> str:
         return "glock"
     if normalized in {"usps", "uspsilencer"}:
         return "usp"
+    if normalized in {"hkp2000"}:
+        return "p2000"
     if normalized in {"deserteagle"}:
         return "deagle"
-    if normalized in {"m4a1silencer"}:
-        return "m4a1"
+    if normalized in {"elite"}:
+        return "dualberettas"
+    if normalized in {"m4a1", "m4a1silencer", "m4a4"}:
+        return "m4"
+    if normalized in {"decoygrenade"}:
+        return "decoy"
+    if normalized in {"plantedc4"}:
+        return "c4"
     if normalized in {"incgrenade", "incendiarygrenade"}:
         return "incendiary"
     if normalized.startswith("knife") or normalized in {"bayonet", "karambit"}:
         return "knife"
+    return normalized
+
+
+def normalize_kill_weapon(value: Any) -> str:
+    normalized = normalize_weapon(value)
+    if normalized in {"inferno", "incendiary", "molotov"}:
+        return "fire"
     return normalized
 
 
@@ -259,7 +305,7 @@ def round_audit_summary(round_obj: dict[str, Any]) -> dict[str, Any]:
                     "killer": event.get("killer"),
                     "victim": event.get("victim"),
                     "assist": event.get("assist"),
-                    "weapon": normalize_weapon(event.get("weapon")),
+                    "weapon": normalize_kill_weapon(event.get("weapon")),
                     "hs": bool(event.get("hs", False)),
                 }
             )
@@ -274,11 +320,15 @@ def round_audit_summary(round_obj: dict[str, Any]) -> dict[str, Any]:
 
     effect_counts: dict[str, int] = {}
     effect_signatures = []
-    for effect in round_obj.get("effects", []):
+    effects = round_obj.get("effects", [])
+    for effect in effects:
         kind = effect.get("type", "")
         effect_counts[kind] = effect_counts.get(kind, 0) + 1
         effect_signatures.append(effect_signature(effect))
-    deduped_effect_signatures = dedupe_flash_effect_signatures(effect_signatures)
+    deduped_effect_signatures = [
+        effect_signature(effect) for effect in dedupe_near_duplicate_flash_effects(effects)
+    ]
+    deduped_effect_signatures = dedupe_flash_effect_signatures(deduped_effect_signatures)
     deduped_effect_counts: dict[str, int] = {}
     for signature in deduped_effect_signatures:
         kind = signature.get("type", "")

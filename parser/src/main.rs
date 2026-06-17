@@ -942,6 +942,7 @@ fn build_round_payload(
     };
 
     let mut effects = round_effects(ctx.events, span, ctx.rows_by_tick);
+    adjust_decoy_effects_from_projectiles(&mut effects, &projectile_frames);
     add_missing_terminal_flash_effects(&mut effects, &projectile_frames, span, ctx.rows_by_tick);
 
     Some(Round {
@@ -2310,6 +2311,73 @@ fn round_effects(
     out
 }
 
+fn adjust_decoy_effects_from_projectiles(
+    effects: &mut [UtilityEffect],
+    projectile_frames: &[ProjectileFrame],
+) {
+    let mut decoy_tracks: HashMap<i64, Vec<(f64, f64, f64, f64)>> = HashMap::new();
+    for frame in projectile_frames {
+        for projectile in &frame.projectiles {
+            if !is_decoy_projectile(&projectile.kind) {
+                continue;
+            }
+            decoy_tracks.entry(projectile.id).or_default().push((
+                frame.t,
+                projectile.x,
+                projectile.y,
+                projectile.z,
+            ));
+        }
+    }
+
+    for effect in effects.iter_mut().filter(|effect| effect.kind == "decoy") {
+        let Some(track) = decoy_tracks.values().min_by(|left, right| {
+            let left_distance = final_track_distance(left, effect);
+            let right_distance = final_track_distance(right, effect);
+            left_distance
+                .partial_cmp(&right_distance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        }) else {
+            continue;
+        };
+        if final_track_distance(track, effect) > 100.0 * 100.0 {
+            continue;
+        }
+        let stationary_start = first_stationary_projectile_time(track).unwrap_or(effect.start);
+        if stationary_start < effect.end {
+            effect.start = stationary_start;
+        }
+    }
+}
+
+fn is_decoy_projectile(kind: &ProjectileKind) -> bool {
+    matches!(kind, ProjectileKind::Other(name) if name.contains("Decoy"))
+}
+
+fn final_track_distance(track: &[(f64, f64, f64, f64)], effect: &UtilityEffect) -> f64 {
+    track
+        .last()
+        .map(|(_, x, y, z)| squared_distance(*x, *y, *z, effect.x, effect.y, effect.z))
+        .unwrap_or(f64::MAX)
+}
+
+fn first_stationary_projectile_time(track: &[(f64, f64, f64, f64)]) -> Option<f64> {
+    const WINDOW: usize = 4;
+    const MAX_MOVE_SQUARED: f64 = 0.0001;
+    for idx in 0..track.len() {
+        let window = track.get(idx..idx + WINDOW)?;
+        let (_, x, y, z) = track[idx];
+        let max_distance = window
+            .iter()
+            .map(|(_, wx, wy, wz)| squared_distance(x, y, z, *wx, *wy, *wz))
+            .fold(0.0_f64, f64::max);
+        if max_distance <= MAX_MOVE_SQUARED {
+            return Some(track[idx].0);
+        }
+    }
+    track.last().map(|(t, _, _, _)| *t)
+}
+
 fn add_missing_terminal_flash_effects(
     effects: &mut Vec<UtilityEffect>,
     projectile_frames: &[ProjectileFrame],
@@ -2871,11 +2939,11 @@ fn parser_gzip_compression() -> Compression {
 #[cfg(test)]
 mod tests {
     use super::{
-        add_missing_terminal_flash_effects, commit_split_output, looks_like_knife_round,
-        parse_args_from, parse_demo_to_output, parser_gzip_compression, read_capped, read_demo,
-        round_events, sample_step, seconds_since, write_json_gz, Args, Event, Frame, Output,
-        ProjectileFrame, ProjectileKind, ProjectilePos, Round, RoundSpan, UtilityEffect,
-        MAX_DEMO_SIZE,
+        add_missing_terminal_flash_effects, adjust_decoy_effects_from_projectiles,
+        commit_split_output, looks_like_knife_round, parse_args_from, parse_demo_to_output,
+        parser_gzip_compression, read_capped, read_demo, round_events, sample_step, seconds_since,
+        write_json_gz, Args, Event, Frame, Output, ProjectileFrame, ProjectileKind, ProjectilePos,
+        Round, RoundSpan, UtilityEffect, MAX_DEMO_SIZE,
     };
     use flate2::{read::GzDecoder, Compression};
     use serde::Deserialize;
@@ -3447,6 +3515,41 @@ mod tests {
         );
 
         assert_eq!(effects.len(), 1);
+    }
+
+    #[test]
+    fn decoy_effect_start_uses_projectile_stationary_time() {
+        let mut effects = vec![UtilityEffect {
+            kind: "decoy".into(),
+            variant: None,
+            start: 20.0,
+            end: 35.0,
+            x: 100.0,
+            y: 200.0,
+            z: 10.0,
+            team: Some(2),
+        }];
+        let mut projectile_frames = Vec::new();
+        for idx in 0..20 {
+            let t = idx as f64;
+            let moving = idx < 4;
+            projectile_frames.push(ProjectileFrame {
+                t,
+                projectiles: vec![ProjectilePos {
+                    id: 7,
+                    kind: ProjectileKind::Other("CDecoyProjectile".into()),
+                    x: if moving { idx as f64 * 25.0 } else { 100.0 },
+                    y: 200.0,
+                    z: 10.0,
+                    thrower: None,
+                }],
+            });
+        }
+
+        adjust_decoy_effects_from_projectiles(&mut effects, &projectile_frames);
+
+        assert_eq!(effects[0].start, 4.0);
+        assert_eq!(effects[0].end, 35.0);
     }
 
     #[test]
