@@ -37,13 +37,13 @@ Summary: Rust is much faster in medium skip mode, but uses much more memory.
 
 | demo | expected | Go score | Rust score | Go ms/RSS MB | Rust ms/RSS MB | Rust output delta |
 | --- | --- | --- | --- | ---: | ---: | ---: |
-| ancient4-13 | 4-13 | 4-13 | 4-13 | 15371/221.4 | 23301/5514.0 | -4.92 MB |
-| anubis16-19 | 16-19 | 16-19 | 16-19 | 29626/177.6 | 46638/5738.2 | -11.52 MB |
-| cache11-13 | 11-13 | 11-13 | 11-13 | 21527/190.5 | 35411/5672.8 | -9.65 MB |
-| dust1-13 | 1-13 | 1-13 | 1-13 | 11694/192.0 | 15709/5100.2 | -4.63 MB |
-| inferno8-13 | 8-13 | 8-13 | 8-13 | 20199/199.1 | 30132/5653.5 | -7.61 MB |
+| ancient4-13 | 4-13 | 4-13 | 4-13 | 15371/221.4 | 19157/5526.1 | -4.92 MB |
+| anubis16-19 | 16-19 | 16-19 | 16-19 | 29626/177.6 | 40313/5479.9 | -11.52 MB |
+| cache11-13 | 11-13 | 11-13 | 11-13 | 21527/190.5 | 31291/5374.5 | -9.65 MB |
+| dust1-13 | 1-13 | 1-13 | 1-13 | 11694/192.0 | 13436/4642.8 | -4.63 MB |
+| inferno8-13 | 8-13 | 8-13 | 8-13 | 20199/199.1 | 24224/5369.6 | -7.61 MB |
 
-Summary: Rust full quality outputs are smaller, but Rust is slower than Go and uses roughly 5.1-5.7 GB RSS on these demos. Go stays around 178-221 MB RSS.
+Summary: Rust full quality outputs are smaller, but Rust is still slower than Go and uses roughly 4.6-5.5 GB RSS on these demos. Go stays around 178-221 MB RSS.
 
 ## Functional Findings
 
@@ -62,6 +62,8 @@ Current Rust full-quality cost centers from `ROUNDLAB_STATS`:
 - `parse_projectiles_ms`: second largest parse phase when projectiles are enabled.
 - `serialize_json_ms` / `write_output_ms`: large and repeated across demos.
 - Peak RSS is the biggest problem: current Rust materializes large parser row sets and full replay output in memory before writing split round files.
+
+Typed projectile extraction removed the previous `serde_json::Value` conversion for projectile rows. On the five full-quality demos, Rust total time went from ~151s to ~128s, with identical projectile output counts. This is a real gain, but it does not solve the main memory problem; peak RSS is still dominated by full tick/frame materialization.
 
 A quick test with `ROUNDLAB_PARSER_GZIP_LEVEL=1` on `dust1-13` did not improve full parse time and made output much larger, so gzip level alone is not the right optimization.
 

@@ -14,7 +14,7 @@ use parser::{
     parse_demo::{Parser, ParsingMode},
     second_pass::{
         parser_settings::create_huffman_lookup_table,
-        variants::{soa_to_aos, OutputSerdeHelperStruct, Variant},
+        variants::{soa_to_aos, OutputSerdeHelperStruct, PropColumn, VarVec, Variant},
     },
 };
 use rayon::prelude::*;
@@ -149,6 +149,16 @@ struct C4Pos {
 struct TickData {
     rows: Vec<Value>,
     c4_positions: Vec<C4Pos>,
+}
+
+struct ProjectileRow {
+    tick: i32,
+    entity_id: i64,
+    kind: String,
+    x: f64,
+    y: f64,
+    z: f64,
+    thrower: Option<u64>,
 }
 
 #[derive(Clone, Debug)]
@@ -1287,7 +1297,7 @@ fn parse_team_rows(bytes: &[u8], huf: &Vec<(u8, u8)>, ticks: Vec<i32>) -> Result
         .collect())
 }
 
-fn parse_projectiles(bytes: &[u8], huf: &Vec<(u8, u8)>) -> Result<Vec<Value>> {
+fn parse_projectiles(bytes: &[u8], huf: &Vec<(u8, u8)>) -> Result<Vec<ProjectileRow>> {
     let mut settings = settings(huf, vec![], vec![], vec![], vec![], true)?;
     settings.parse_projectiles = true;
     settings.parse_grenades = true;
@@ -1297,10 +1307,43 @@ fn parse_projectiles(bytes: &[u8], huf: &Vec<(u8, u8)>) -> Result<Vec<Value>> {
         prop_infos: output.prop_controller.prop_infos.clone(),
         inner: output.df.clone().into(),
     };
-    Ok(soa_to_aos(helper)
-        .into_iter()
-        .map(|row| serde_json::to_value(row).unwrap_or(Value::Null))
-        .collect())
+    Ok(projectile_rows_from_helper(&helper))
+}
+
+fn projectile_rows_from_helper(helper: &OutputSerdeHelperStruct) -> Vec<ProjectileRow> {
+    let row_count = helper
+        .inner
+        .values()
+        .next()
+        .map(PropColumn::len)
+        .unwrap_or_default();
+    let mut rows = Vec::with_capacity(row_count);
+    for idx in 0..row_count {
+        let Some(tick) = helper_i64(helper, "tick", idx).map(|tick| tick as i32) else {
+            continue;
+        };
+        let Some(x) = helper_f64(helper, "x", idx) else {
+            continue;
+        };
+        let Some(y) = helper_f64(helper, "y", idx) else {
+            continue;
+        };
+        let Some(z) = helper_f64(helper, "z", idx) else {
+            continue;
+        };
+        rows.push(ProjectileRow {
+            tick,
+            entity_id: helper_i64(helper, "entity_id", idx).unwrap_or(i64::from(tick)),
+            kind: helper_str(helper, "grenade_type", idx)
+                .unwrap_or("grenade")
+                .to_string(),
+            x,
+            y,
+            z,
+            thrower: helper_u64(helper, "steamid", idx),
+        });
+    }
+    rows
 }
 
 fn round_spans(events: &[Value]) -> Vec<RoundSpan> {
@@ -1512,6 +1555,61 @@ fn team_scores_at_tick(
     }
 }
 
+fn helper_column<'a>(helper: &'a OutputSerdeHelperStruct, name: &str) -> Option<&'a PropColumn> {
+    let prop = helper
+        .prop_infos
+        .iter()
+        .find(|prop| prop.prop_friendly_name == name)?;
+    helper.inner.get(&prop.id)
+}
+
+fn helper_i64(helper: &OutputSerdeHelperStruct, name: &str, idx: usize) -> Option<i64> {
+    match helper_column(helper, name)?.data.as_ref()? {
+        VarVec::I32(values) => values.get(idx).copied().flatten().map(i64::from),
+        VarVec::U32(values) => values.get(idx).copied().flatten().map(i64::from),
+        VarVec::U64(values) => values
+            .get(idx)
+            .copied()
+            .flatten()
+            .and_then(|value| i64::try_from(value).ok()),
+        VarVec::F32(values) => values.get(idx).copied().flatten().map(|value| value as i64),
+        VarVec::String(values) => values.get(idx)?.as_deref()?.parse::<i64>().ok(),
+        _ => None,
+    }
+}
+
+fn helper_u64(helper: &OutputSerdeHelperStruct, name: &str, idx: usize) -> Option<u64> {
+    match helper_column(helper, name)?.data.as_ref()? {
+        VarVec::U64(values) => values.get(idx).copied().flatten(),
+        VarVec::U32(values) => values.get(idx).copied().flatten().map(u64::from),
+        VarVec::I32(values) => values
+            .get(idx)
+            .copied()
+            .flatten()
+            .and_then(|value| u64::try_from(value).ok()),
+        VarVec::String(values) => values.get(idx)?.as_deref()?.parse::<u64>().ok(),
+        _ => None,
+    }
+}
+
+fn helper_f64(helper: &OutputSerdeHelperStruct, name: &str, idx: usize) -> Option<f64> {
+    match helper_column(helper, name)?.data.as_ref()? {
+        VarVec::F32(values) => values.get(idx).copied().flatten().map(f64::from),
+        VarVec::I32(values) => values.get(idx).copied().flatten().map(f64::from),
+        VarVec::U32(values) => values.get(idx).copied().flatten().map(f64::from),
+        VarVec::U64(values) => values.get(idx).copied().flatten().map(|value| value as f64),
+        VarVec::String(values) => values.get(idx)?.as_deref()?.parse::<f64>().ok(),
+        _ => None,
+    }
+}
+
+fn helper_str<'a>(helper: &'a OutputSerdeHelperStruct, name: &str, idx: usize) -> Option<&'a str> {
+    match helper_column(helper, name)?.data.as_ref()? {
+        VarVec::String(values) => values.get(idx)?.as_deref(),
+        _ => None,
+    }
+}
+
 fn group_tick_rows(rows: Vec<Value>) -> BTreeMap<i32, Vec<Value>> {
     let mut out: BTreeMap<i32, Vec<Value>> = BTreeMap::new();
     for row in rows {
@@ -1530,7 +1628,7 @@ fn group_c4_positions(records: Vec<C4Pos>) -> BTreeMap<i32, C4Pos> {
     out
 }
 
-fn group_projectile_rows(rows: Vec<Value>) -> BTreeMap<i32, Vec<ProjectilePos>> {
+fn group_projectile_rows(rows: Vec<ProjectileRow>) -> BTreeMap<i32, Vec<ProjectilePos>> {
     #[derive(Clone)]
     struct Track {
         id: i64,
@@ -1551,27 +1649,13 @@ fn group_projectile_rows(rows: Vec<Value>) -> BTreeMap<i32, Vec<ProjectilePos>> 
 
     let mut by_tick: BTreeMap<i32, Vec<ProjectilePos>> = BTreeMap::new();
     for row in rows {
-        let Some(tick) = get_i64(&row, "tick") else {
-            continue;
-        };
-        let Some(x) = get_f64(&row, "x") else {
-            continue;
-        };
-        let Some(y) = get_f64(&row, "y") else {
-            continue;
-        };
-        let Some(z) = get_f64(&row, "z") else {
-            continue;
-        };
-        by_tick.entry(tick as i32).or_default().push(ProjectilePos {
-            id: get_i64(&row, "entity_id").unwrap_or(tick),
-            kind: get_str(&row, "grenade_type")
-                .unwrap_or("grenade")
-                .to_string(),
-            x,
-            y,
-            z,
-            thrower: get_u64(&row, "steamid"),
+        by_tick.entry(row.tick).or_default().push(ProjectilePos {
+            id: row.entity_id,
+            kind: row.kind,
+            x: row.x,
+            y: row.y,
+            z: row.z,
+            thrower: row.thrower,
         });
     }
 
