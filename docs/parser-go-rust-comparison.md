@@ -25,11 +25,11 @@ Use `--keep-outputs` for targeted event-level debugging.
 
 | demo | expected | Go score | Rust score | Go ms/RSS MB | Rust ms/RSS MB |
 | --- | --- | --- | --- | ---: | ---: |
-| ancient4-13 | 4-13 | 4-13 | 4-13 | 7363/66.5 | 1533/430.6 |
-| anubis16-19 | 16-19 | 16-19 | 16-19 | 14095/58.5 | 3172/874.6 |
-| cache11-13 | 11-13 | 11-13 | 11-13 | 9812/63.8 | 2377/576.3 |
-| dust1-13 | 1-13 | 1-13 | 1-13 | 5111/57.2 | 1455/318.1 |
-| inferno8-13 | 8-13 | 8-13 | 8-13 | 9832/65.7 | 2142/665.2 |
+| ancient4-13 | 4-13 | 4-13 | 4-13 | 6924/63.6 | 1374/440.8 |
+| anubis16-19 | 16-19 | 16-19 | 16-19 | 13881/57.4 | 2645/889.7 |
+| cache11-13 | 11-13 | 11-13 | 11-13 | 8987/63.2 | 1975/591.2 |
+| dust1-13 | 1-13 | 1-13 | 1-13 | 5515/52.0 | 1028/322.8 |
+| inferno8-13 | 8-13 | 8-13 | 8-13 | 9584/62.0 | 1937/670.4 |
 
 Summary: Rust is much faster in medium skip mode, but uses much more memory.
 
@@ -37,13 +37,13 @@ Summary: Rust is much faster in medium skip mode, but uses much more memory.
 
 | demo | expected | Go score | Rust score | Go ms/RSS MB | Rust ms/RSS MB | Rust output delta |
 | --- | --- | --- | --- | ---: | ---: | ---: |
-| ancient4-13 | 4-13 | 4-13 | 4-13 | 14330/212.2 | 18036/1841.0 | -4.74 MB |
-| anubis16-19 | 16-19 | 16-19 | 16-19 | 25747/178.3 | 38337/3103.0 | -11.00 MB |
-| cache11-13 | 11-13 | 11-13 | 11-13 | 20776/192.2 | 27739/2526.7 | -9.19 MB |
-| dust1-13 | 1-13 | 1-13 | 1-13 | 11164/191.0 | 14295/1333.4 | -4.40 MB |
-| inferno8-13 | 8-13 | 8-13 | 8-13 | 18787/199.7 | 23760/2266.9 | -7.28 MB |
+| ancient4-13 | 4-13 | 4-13 | 4-13 | 14535/219.3 | 12771/2001.0 | -4.72 MB |
+| anubis16-19 | 16-19 | 16-19 | 16-19 | 27130/176.0 | 25731/3578.0 | -11.00 MB |
+| cache11-13 | 11-13 | 11-13 | 11-13 | 20697/190.6 | 19276/3064.0 | -9.20 MB |
+| dust1-13 | 1-13 | 1-13 | 1-13 | 10940/172.3 | 9281/1375.1 | -4.40 MB |
+| inferno8-13 | 8-13 | 8-13 | 8-13 | 18986/197.7 | 15713/2707.1 | -7.26 MB |
 
-Summary: Rust full quality outputs are smaller, but the current streaming/compaction pass trades time for memory. Rust now uses roughly 1.3-3.1 GB RSS, down from the previous 1.7-3.4 GB, but it is slower than the prior Rust run on these five demos. Go stays around 178-212 MB RSS.
+Summary: Rust full quality outputs are smaller and now faster than Go on all five measured demos. With the current "favor time, keep RAM sane" target, Rust uses roughly 1.4-3.6 GB RSS. On a 16 GB machine, 60% RAM is about 9.8 GB, so the worst measured run stays well below the target ceiling.
 
 ## Functional Findings
 
@@ -67,15 +67,15 @@ Typed projectile extraction removed the previous `serde_json::Value` conversion 
 
 Typed tick row extraction removed the previous `serde_json::Value` conversion for player/tick rows. On the five full-quality demos, Rust total time went from ~128s to ~93s and max RSS went from ~5.5 GB to ~3.4 GB, with stable replay metrics and output sizes.
 
-Round streaming writes each split round file as soon as the round is built instead of keeping the whole `Vec<Round>` until the manifest write. This kept Rust replay metrics stable, but by itself only reduced max RSS from ~3.36 GB to ~3.22 GB and increased total full-quality time from ~93s to ~138s.
+Round streaming writes each split round file as soon as the round is built instead of keeping the whole `Vec<Round>` until the manifest write. This kept Rust replay metrics stable, but by itself only reduced max RSS from ~3.36 GB to ~3.22 GB and increased total full-quality time from ~93s to ~138s. Because the current target favors time as long as RSS stays below roughly 60% of machine RAM, the CLI uses the faster parallel split writer again.
 
-Removing full-column helper clones and interning repeated tick weapon strings plus projectile type strings improved the final streaming run to ~122s total and ~3.10 GB max RSS. This is a real memory improvement, but it did not reach the sub-2 GB target. The remaining peak is almost certainly dominated by parser/vendor column storage, `rows_by_tick`, `projectiles_by_tick`, and per-frame player payloads.
+Removing full-column helper clones and interning repeated tick weapon strings plus projectile type strings improved the fast parallel run to ~82.8s total and ~3.58 GB max RSS. This is currently the better product tradeoff on the local 16 GB machine: faster than the prior ~93s Rust run, stable output metrics, and far below the ~9.8 GB RAM ceiling.
 
 A quick test with `ROUNDLAB_PARSER_GZIP_LEVEL=1` on `dust1-13` did not improve full parse time and made output much larger, so gzip level alone is not the right optimization.
 
 ## Next Targets
 
-1. Add bounded parallel round writing so streaming keeps low retained memory without paying the full serial gzip cost.
-2. Replace `rows_by_tick: BTreeMap<i32, Vec<TickRow>>` with a denser tick-group representation and avoid per-tick `Vec` overhead where possible.
+1. Replace `rows_by_tick: BTreeMap<i32, Vec<TickRow>>` with a denser tick-group representation and avoid per-tick `Vec` overhead where possible.
+2. Add optional bounded parallel round writing only if future demos approach the 60% RAM ceiling.
 3. Keep event/effect divergences under review with `--keep-outputs`; only copy Go behavior when Go is clearly more correct for replay.
 4. Add phase/RSS tracking per parser run to identify whether the remaining peak happens inside vendor parsing, grouping, or replay frame construction.

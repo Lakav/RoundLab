@@ -545,7 +545,17 @@ fn main() {
 
 fn run() -> Result<()> {
     let args = parse_args()?;
-    let (meta, players, rounds, stats) = parse_demo_to_split_output_with_stats(&args)?;
+    let (output, mut stats) = parse_demo_to_output_with_stats(&args)?;
+
+    emit_progress(0.90, "Writing parser output...");
+    let write_stats = write_json_gz(&args.output, &output)?;
+    stats.write_output_ms = write_stats.write_output_ms;
+    stats.serialize_json_ms = write_stats.serialize_json_ms;
+    stats.raw_json_bytes = write_stats.raw_json_bytes;
+    stats.gz_flush_ms = write_stats.gz_flush_ms;
+    stats.gzip_finish_ms = write_stats.gzip_finish_ms;
+    stats.fsync_ms = write_stats.fsync_ms;
+    stats.output_gzip_bytes = write_stats.output_gzip_bytes;
     if args.stats {
         emit_stats(&stats);
     }
@@ -553,7 +563,9 @@ fn run() -> Result<()> {
     let ok_started = final_step_start("emit-ok");
     eprintln!(
         "OK[rust] map={} rounds={} players={}",
-        meta.map, rounds, players
+        output.meta.map,
+        output.rounds.len(),
+        output.players.len()
     );
     final_step_done("emit-ok", ok_started);
     Ok(())
@@ -564,79 +576,6 @@ fn parse_demo_to_output(args: &Args) -> Result<Output> {
     parse_demo_to_output_with_stats(args).map(|(output, _)| output)
 }
 
-fn parse_demo_to_split_output_with_stats(args: &Args) -> Result<(Meta, usize, usize, ParserStats)> {
-    let mut data = parse_demo_data(args)?;
-    let ctx = RoundBuildContext {
-        args,
-        events: &data.events,
-        spans: &data.spans,
-        rows_by_tick: &data.rows_by_tick,
-        c4_by_tick: &data.c4_by_tick,
-        projectiles_by_tick: &data.projectiles_by_tick,
-        weapon_names: &data.weapon_names,
-        round_scores: &data.round_scores,
-        sample_step: data.sample_step,
-    };
-
-    emit_progress(0.90, "Writing parser output...");
-    let mut writer = SplitOutputWriter::new(&args.output)?;
-    let mut last_score = (0, 0);
-    let mut wrote_round = false;
-    for idx in 0..data.spans.len() {
-        let build_started = Instant::now();
-        let round = build_round_payload(&ctx, idx, writer.round_count());
-        data.stats.build_rounds_ms += elapsed_ms(build_started);
-        let Some(mut round) = round else {
-            if idx > 200 {
-                break;
-            }
-            continue;
-        };
-        if !wrote_round && looks_like_knife_round(Some(&round)) {
-            if idx > 200 {
-                break;
-            }
-            continue;
-        }
-        round.number = writer.round_count();
-        last_score = (round.score_a, round.score_b);
-        add_round_stats(&mut data.stats, &round);
-        writer.write_round(&round)?;
-        wrote_round = true;
-        if idx > 200 {
-            break;
-        }
-    }
-
-    if !wrote_round {
-        bail!("parser produced no frames");
-    }
-
-    let meta = Meta {
-        map: data.map,
-        tick_rate: TICK_RATE,
-        sample_rate: data.sample_rate,
-        duration_sec: data.duration_sec,
-        team_a: data.team_a,
-        team_b: data.team_b,
-        score_a: last_score.0,
-        score_b: last_score.1,
-    };
-    data.stats.players = data.players.len();
-    let player_count = data.players.len();
-    let round_count = writer.round_count();
-    let write_stats = writer.finish(&meta, &data.players)?;
-    data.stats.write_output_ms = write_stats.write_output_ms;
-    data.stats.serialize_json_ms = write_stats.serialize_json_ms;
-    data.stats.raw_json_bytes = write_stats.raw_json_bytes;
-    data.stats.gz_flush_ms = write_stats.gz_flush_ms;
-    data.stats.gzip_finish_ms = write_stats.gzip_finish_ms;
-    data.stats.fsync_ms = write_stats.fsync_ms;
-    data.stats.output_gzip_bytes = write_stats.output_gzip_bytes;
-    Ok((meta, player_count, round_count, data.stats))
-}
-
-#[cfg_attr(not(test), allow(dead_code))]
 fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)> {
     let mut data = parse_demo_data(args)?;
     let build_rounds_started = Instant::now();
@@ -2409,106 +2348,6 @@ impl<W: Write> Write for CountingWriter<W> {
     }
 }
 
-struct SplitOutputWriter {
-    output_path: PathBuf,
-    rounds_dir: PathBuf,
-    staging_rounds_dir: PathBuf,
-    backup_rounds_dir: PathBuf,
-    temp_manifest_path: PathBuf,
-    backup_manifest_path: PathBuf,
-    staging_cleanup: CleanupPath,
-    temp_manifest_cleanup: CleanupPath,
-    round_dir_name: String,
-    manifest_rounds: Vec<ManifestRound>,
-    stats: WriteStats,
-    write_started: Instant,
-}
-
-impl SplitOutputWriter {
-    fn new(path: &str) -> Result<Self> {
-        let write_started = final_step_start("write_json_gz_streaming");
-        let output_path = PathBuf::from(path);
-        let rounds_dir = split_rounds_dir(&output_path)?;
-        let staging_rounds_dir = temp_sibling_path(&rounds_dir, "tmp")?;
-        let backup_rounds_dir = temp_sibling_path(&rounds_dir, "backup")?;
-        let temp_manifest_path = temp_sibling_path(&output_path, "tmp")?;
-        let backup_manifest_path = temp_sibling_path(&output_path, "backup")?;
-        remove_path_if_exists(&staging_rounds_dir)?;
-        remove_path_if_exists(&backup_rounds_dir)?;
-        remove_path_if_exists(&temp_manifest_path)?;
-        remove_path_if_exists(&backup_manifest_path)?;
-        fs::create_dir_all(&staging_rounds_dir).with_context(|| {
-            format!("create rounds staging dir {}", staging_rounds_dir.display())
-        })?;
-        let staging_cleanup = CleanupPath::new(staging_rounds_dir.clone());
-        let temp_manifest_cleanup = CleanupPath::new(temp_manifest_path.clone());
-        let round_dir_name = rounds_dir
-            .file_name()
-            .and_then(|name| name.to_str())
-            .ok_or_else(|| anyhow!("invalid rounds dir name"))?
-            .to_string();
-
-        emit_progress(0.94, "Serializing split parser JSON...");
-        Ok(Self {
-            output_path,
-            rounds_dir,
-            staging_rounds_dir,
-            backup_rounds_dir,
-            temp_manifest_path,
-            backup_manifest_path,
-            staging_cleanup,
-            temp_manifest_cleanup,
-            round_dir_name,
-            manifest_rounds: Vec::new(),
-            stats: WriteStats::default(),
-            write_started,
-        })
-    }
-
-    fn round_count(&self) -> usize {
-        self.manifest_rounds.len()
-    }
-
-    fn write_round(&mut self, round: &Round) -> Result<()> {
-        let file_name = format!("round-{:03}.json.gz", round.number);
-        let relative = format!("{}/{file_name}", self.round_dir_name);
-        let round_path = self.staging_rounds_dir.join(&file_name);
-        let write_stats = write_gzip_json_quiet(&round_path, round)?;
-        add_write_stats(&mut self.stats, write_stats);
-        self.manifest_rounds
-            .push(manifest_round_from_round(round, relative));
-        Ok(())
-    }
-
-    fn finish(mut self, meta: &Meta, players: &[Player]) -> Result<WriteStats> {
-        let manifest = ManifestOutput {
-            meta,
-            players,
-            rounds: std::mem::take(&mut self.manifest_rounds),
-        };
-        add_write_stats(
-            &mut self.stats,
-            write_gzip_json(&self.temp_manifest_path, &manifest, "manifest")?,
-        );
-        let commit_started = final_step_start("commit_split_output");
-        commit_split_output(
-            &self.output_path,
-            &self.rounds_dir,
-            &self.staging_rounds_dir,
-            &self.temp_manifest_path,
-            &self.backup_rounds_dir,
-            &self.backup_manifest_path,
-        )?;
-        self.staging_cleanup.disarm();
-        self.temp_manifest_cleanup.disarm();
-        final_step_done("commit_split_output", commit_started);
-
-        self.stats.write_output_ms = elapsed_ms(self.write_started);
-        final_step_done("write_json_gz_streaming", self.write_started);
-        Ok(self.stats)
-    }
-}
-
 fn manifest_round_from_round(round: &Round, round_file: String) -> ManifestRound {
     ManifestRound {
         number: round.number,
@@ -2562,26 +2401,7 @@ fn write_json_gz(path: &str, output: &Output) -> Result<WriteStats> {
             let relative = format!("{round_dir_name}/{file_name}");
             let round_path = staging_rounds_dir.join(&file_name);
             let write_stats = write_gzip_json_quiet(&round_path, round)?;
-            Ok((
-                idx,
-                ManifestRound {
-                    number: round.number,
-                    start_tick: round.start_tick,
-                    freeze_end_tick: round.freeze_end_tick,
-                    end_tick: round.end_tick,
-                    duration: round.duration,
-                    winner: round.winner.clone(),
-                    score_a: round.score_a,
-                    score_b: round.score_b,
-                    frames: Vec::new(),
-                    events: Vec::new(),
-                    effects: Vec::new(),
-                    weapon_fires: Vec::new(),
-                    projectile_frames: Vec::new(),
-                    round_file: relative,
-                },
-                write_stats,
-            ))
+            Ok((idx, manifest_round_from_round(round, relative), write_stats))
         })
         .collect::<Result<Vec<_>>>()?;
     round_results.sort_by_key(|(idx, _, _)| *idx);
