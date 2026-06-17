@@ -771,7 +771,7 @@ fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)>
                 .get(idx)
                 .map(|score| score.1)
                 .unwrap_or_default(),
-            events: round_events(&events, span),
+            events: round_events(&events, span, spans.get(idx + 1)),
             effects: round_effects(&events, span, &rows_by_tick),
             weapon_fires: if args.skip_weapon_fires {
                 Vec::new()
@@ -1694,15 +1694,22 @@ fn player_pos_from_row(
     })
 }
 
-fn round_events(events: &[Value], span: &RoundSpan) -> Vec<Event> {
+fn round_events(events: &[Value], span: &RoundSpan, next_span: Option<&RoundSpan>) -> Vec<Event> {
     let mut out = Vec::new();
+    let post_round_event_end = next_span
+        .map(|next| next.start.saturating_sub(1))
+        .unwrap_or_else(|| span.end + (10 * TICK_RATE as i32))
+        .min(span.end + (10 * TICK_RATE as i32));
     for event in events {
         let tick = get_i64(event, "tick").unwrap_or_default() as i32;
-        if tick < span.start || tick > span.end {
+        let event_name = get_str(event, "event_name").unwrap_or("");
+        let include_post_round_kill =
+            event_name == "player_death" && tick > span.end && tick <= post_round_event_end;
+        if tick < span.start || (tick > span.end && !include_post_round_kill) {
             continue;
         }
         let t = seconds_since(span.start, tick);
-        match get_str(event, "event_name").unwrap_or("") {
+        match event_name {
             "player_death" => out.push(Event {
                 t,
                 kind: "kill".into(),
@@ -2377,11 +2384,12 @@ fn parser_gzip_compression() -> Compression {
 mod tests {
     use super::{
         commit_split_output, parse_args_from, parse_demo_to_output, parser_gzip_compression,
-        read_capped, read_demo, sample_step, write_json_gz, Args, Output, MAX_DEMO_SIZE,
+        read_capped, read_demo, round_events, sample_step, write_json_gz, Args, Output, RoundSpan,
+        MAX_DEMO_SIZE,
     };
     use flate2::{read::GzDecoder, Compression};
     use serde::Deserialize;
-    use serde_json::Value;
+    use serde_json::{json, Value};
     use std::{
         env,
         io::{Read, Write},
@@ -2565,6 +2573,46 @@ mod tests {
         assert_eq!(sample_step("high"), 16);
         assert_eq!(sample_step("medium"), 32);
         assert_eq!(sample_step("low"), 64);
+    }
+
+    #[test]
+    fn round_events_keeps_post_round_kills_before_next_round() {
+        let span = RoundSpan {
+            start: 100,
+            end: 200,
+            round_end: 200,
+            winner: "CT".into(),
+        };
+        let next_span = RoundSpan {
+            start: 250,
+            end: 350,
+            round_end: 350,
+            winner: "T".into(),
+        };
+        let events = vec![
+            json!({
+                "tick": 210,
+                "event_name": "player_death",
+                "attacker_steamid": 1_u64,
+                "user_steamid": 1_u64,
+                "weapon": "world"
+            }),
+            json!({
+                "tick": 260,
+                "event_name": "player_death",
+                "attacker_steamid": 2_u64,
+                "user_steamid": 3_u64,
+                "weapon": "ak47"
+            }),
+        ];
+
+        let parsed = round_events(&events, &span, Some(&next_span));
+
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].kind, "kill");
+        assert_eq!(parsed[0].killer, Some(1));
+        assert_eq!(parsed[0].victim, Some(1));
+        assert_eq!(parsed[0].weapon.as_deref(), Some("world"));
     }
 
     #[test]
