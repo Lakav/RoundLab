@@ -129,13 +129,51 @@ struct ActiveAction {
 #[serde(rename_all = "camelCase")]
 struct ProjectilePos {
     id: i64,
-    #[serde(rename = "type")]
-    kind: String,
+    #[serde(rename = "type", serialize_with = "serialize_projectile_kind")]
+    kind: ProjectileKind,
     x: f64,
     y: f64,
     z: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     thrower: Option<u64>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+enum ProjectileKind {
+    Smoke,
+    He,
+    Flash,
+    Molotov,
+    Other(String),
+}
+
+impl ProjectileKind {
+    fn from_name(name: &str) -> Self {
+        match name {
+            "CSmokeGrenadeProjectile" => Self::Smoke,
+            "CHEGrenadeProjectile" => Self::He,
+            "CFlashbangProjectile" => Self::Flash,
+            "CMolotovProjectile" => Self::Molotov,
+            other => Self::Other(other.to_string()),
+        }
+    }
+
+    fn as_str(&self) -> &str {
+        match self {
+            Self::Smoke => "CSmokeGrenadeProjectile",
+            Self::He => "CHEGrenadeProjectile",
+            Self::Flash => "CFlashbangProjectile",
+            Self::Molotov => "CMolotovProjectile",
+            Self::Other(name) => name,
+        }
+    }
+}
+
+fn serialize_projectile_kind<S>(kind: &ProjectileKind, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(kind.as_str())
 }
 
 #[derive(Clone, Debug)]
@@ -149,6 +187,7 @@ struct C4Pos {
 struct TickData {
     rows: Vec<TickRow>,
     c4_positions: Vec<C4Pos>,
+    weapon_names: Vec<String>,
 }
 
 struct TickRow {
@@ -165,8 +204,8 @@ struct TickRow {
     kit: bool,
     alive: bool,
     team: i64,
-    active: String,
-    weapons: Vec<String>,
+    active: Option<u16>,
+    weapons: Vec<u16>,
     fire: bool,
     right_click: bool,
     use_key: bool,
@@ -175,7 +214,7 @@ struct TickRow {
 struct ProjectileRow {
     tick: i32,
     entity_id: i64,
-    kind: String,
+    kind: ProjectileKind,
     x: f64,
     y: f64,
     z: f64,
@@ -266,6 +305,7 @@ struct WeaponFireEvent {
 }
 
 #[derive(Serialize)]
+#[cfg_attr(not(test), allow(dead_code))]
 struct Output {
     meta: Meta,
     players: Vec<Player>,
@@ -357,6 +397,36 @@ struct RoundSpan {
     end: i32,
     round_end: i32,
     winner: String,
+}
+
+struct RoundBuildContext<'a> {
+    args: &'a Args,
+    events: &'a [Value],
+    spans: &'a [RoundSpan],
+    rows_by_tick: &'a BTreeMap<i32, Vec<TickRow>>,
+    c4_by_tick: &'a BTreeMap<i32, C4Pos>,
+    projectiles_by_tick: &'a BTreeMap<i32, Vec<ProjectilePos>>,
+    weapon_names: &'a [String],
+    round_scores: &'a [(i32, i32)],
+    sample_step: i32,
+}
+
+struct ParsedDemoData {
+    map: String,
+    players: Vec<Player>,
+    events: Vec<Value>,
+    spans: Vec<RoundSpan>,
+    rows_by_tick: BTreeMap<i32, Vec<TickRow>>,
+    c4_by_tick: BTreeMap<i32, C4Pos>,
+    projectiles_by_tick: BTreeMap<i32, Vec<ProjectilePos>>,
+    weapon_names: Vec<String>,
+    team_a: String,
+    team_b: String,
+    round_scores: Vec<(i32, i32)>,
+    sample_rate: i32,
+    sample_step: i32,
+    duration_sec: f64,
+    stats: ParserStats,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -475,17 +545,7 @@ fn main() {
 
 fn run() -> Result<()> {
     let args = parse_args()?;
-    let (output, mut stats) = parse_demo_to_output_with_stats(&args)?;
-
-    emit_progress(0.90, "Writing parser output...");
-    let write_stats = write_json_gz(&args.output, &output)?;
-    stats.write_output_ms = write_stats.write_output_ms;
-    stats.serialize_json_ms = write_stats.serialize_json_ms;
-    stats.raw_json_bytes = write_stats.raw_json_bytes;
-    stats.gz_flush_ms = write_stats.gz_flush_ms;
-    stats.gzip_finish_ms = write_stats.gzip_finish_ms;
-    stats.fsync_ms = write_stats.fsync_ms;
-    stats.output_gzip_bytes = write_stats.output_gzip_bytes;
+    let (meta, players, rounds, stats) = parse_demo_to_split_output_with_stats(&args)?;
     if args.stats {
         emit_stats(&stats);
     }
@@ -493,9 +553,7 @@ fn run() -> Result<()> {
     let ok_started = final_step_start("emit-ok");
     eprintln!(
         "OK[rust] map={} rounds={} players={}",
-        output.meta.map,
-        output.rounds.len(),
-        output.players.len()
+        meta.map, rounds, players
     );
     final_step_done("emit-ok", ok_started);
     Ok(())
@@ -506,7 +564,137 @@ fn parse_demo_to_output(args: &Args) -> Result<Output> {
     parse_demo_to_output_with_stats(args).map(|(output, _)| output)
 }
 
+fn parse_demo_to_split_output_with_stats(args: &Args) -> Result<(Meta, usize, usize, ParserStats)> {
+    let mut data = parse_demo_data(args)?;
+    let ctx = RoundBuildContext {
+        args,
+        events: &data.events,
+        spans: &data.spans,
+        rows_by_tick: &data.rows_by_tick,
+        c4_by_tick: &data.c4_by_tick,
+        projectiles_by_tick: &data.projectiles_by_tick,
+        weapon_names: &data.weapon_names,
+        round_scores: &data.round_scores,
+        sample_step: data.sample_step,
+    };
+
+    emit_progress(0.90, "Writing parser output...");
+    let mut writer = SplitOutputWriter::new(&args.output)?;
+    let mut last_score = (0, 0);
+    let mut wrote_round = false;
+    for idx in 0..data.spans.len() {
+        let build_started = Instant::now();
+        let round = build_round_payload(&ctx, idx, writer.round_count());
+        data.stats.build_rounds_ms += elapsed_ms(build_started);
+        let Some(mut round) = round else {
+            if idx > 200 {
+                break;
+            }
+            continue;
+        };
+        if !wrote_round && looks_like_knife_round(Some(&round)) {
+            if idx > 200 {
+                break;
+            }
+            continue;
+        }
+        round.number = writer.round_count();
+        last_score = (round.score_a, round.score_b);
+        add_round_stats(&mut data.stats, &round);
+        writer.write_round(&round)?;
+        wrote_round = true;
+        if idx > 200 {
+            break;
+        }
+    }
+
+    if !wrote_round {
+        bail!("parser produced no frames");
+    }
+
+    let meta = Meta {
+        map: data.map,
+        tick_rate: TICK_RATE,
+        sample_rate: data.sample_rate,
+        duration_sec: data.duration_sec,
+        team_a: data.team_a,
+        team_b: data.team_b,
+        score_a: last_score.0,
+        score_b: last_score.1,
+    };
+    data.stats.players = data.players.len();
+    let player_count = data.players.len();
+    let round_count = writer.round_count();
+    let write_stats = writer.finish(&meta, &data.players)?;
+    data.stats.write_output_ms = write_stats.write_output_ms;
+    data.stats.serialize_json_ms = write_stats.serialize_json_ms;
+    data.stats.raw_json_bytes = write_stats.raw_json_bytes;
+    data.stats.gz_flush_ms = write_stats.gz_flush_ms;
+    data.stats.gzip_finish_ms = write_stats.gzip_finish_ms;
+    data.stats.fsync_ms = write_stats.fsync_ms;
+    data.stats.output_gzip_bytes = write_stats.output_gzip_bytes;
+    Ok((meta, player_count, round_count, data.stats))
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
 fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)> {
+    let mut data = parse_demo_data(args)?;
+    let build_rounds_started = Instant::now();
+    let ctx = RoundBuildContext {
+        args,
+        events: &data.events,
+        spans: &data.spans,
+        rows_by_tick: &data.rows_by_tick,
+        c4_by_tick: &data.c4_by_tick,
+        projectiles_by_tick: &data.projectiles_by_tick,
+        weapon_names: &data.weapon_names,
+        round_scores: &data.round_scores,
+        sample_step: data.sample_step,
+    };
+    let mut rounds = Vec::with_capacity(data.spans.len());
+    for idx in 0..data.spans.len() {
+        if let Some(round) = build_round_payload(&ctx, idx, rounds.len()) {
+            rounds.push(round);
+        }
+        if idx > 200 {
+            break;
+        }
+    }
+
+    if rounds.is_empty() {
+        bail!("parser produced no frames");
+    }
+    if looks_like_knife_round(rounds.first()) {
+        rounds.remove(0);
+        for (idx, round) in rounds.iter_mut().enumerate() {
+            round.number = idx;
+        }
+    }
+    data.stats.build_rounds_ms = elapsed_ms(build_rounds_started);
+    let (score_a, score_b) = rounds
+        .last()
+        .map(|round| (round.score_a, round.score_b))
+        .unwrap_or_default();
+
+    let output = Output {
+        meta: Meta {
+            map: data.map,
+            tick_rate: TICK_RATE,
+            sample_rate: data.sample_rate,
+            duration_sec: data.duration_sec,
+            team_a: data.team_a,
+            team_b: data.team_b,
+            score_a,
+            score_b,
+        },
+        players: data.players,
+        rounds,
+    };
+    collect_output_stats(&mut data.stats, &output);
+    Ok((output, data.stats))
+}
+
+fn parse_demo_data(args: &Args) -> Result<ParsedDemoData> {
     let mut stats = ParserStats {
         input_bytes: fs::metadata(&args.input)
             .map(|m| m.len())
@@ -562,295 +750,285 @@ fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)>
     let projectiles_by_tick = group_projectile_rows(projectile_rows);
     stats.group_projectiles_ms = elapsed_ms(group_projectiles_started);
 
-    let build_rounds_started = Instant::now();
-    let mut rounds = Vec::with_capacity(spans.len());
-    for (idx, span) in spans.iter().enumerate() {
-        let mut frames = Vec::new();
-        let blind_spans = round_blinds(&events, span);
-        let span_events = events
-            .iter()
-            .filter(|event| {
-                let tick = get_i64(event, "tick").unwrap_or_default() as i32;
-                tick >= span.start && tick <= span.end
-            })
-            .collect::<Vec<_>>();
-        let mut event_idx = 0;
-        let mut bomb_planted = false;
-        let mut last_bomb: Option<BombState> = None;
-        let mut plant_starts: HashMap<u64, i32> = HashMap::new();
-        let mut utility_starts: HashMap<u64, (String, i32)> = HashMap::new();
-        for tick in (span.start..=span.end).step_by(sample_step as usize) {
-            while event_idx < span_events.len() {
-                let event = span_events[event_idx];
-                let event_tick = get_i64(event, "tick").unwrap_or_default() as i32;
-                if event_tick > tick {
-                    break;
-                }
-                match get_str(event, "event_name").unwrap_or("") {
-                    "bomb_beginplant" => {
-                        if let Some(player) = get_u64(event, "user_steamid")
-                            .or_else(|| get_u64(event, "player_steamid"))
-                        {
-                            plant_starts.insert(player, event_tick);
-                        }
-                    }
-                    "player_death" => {
-                        if let Some(player) = get_u64(event, "user_steamid") {
-                            plant_starts.remove(&player);
-                            utility_starts.remove(&player);
-                        }
-                    }
-                    "bomb_planted" => {
-                        bomb_planted = true;
-                        if let Some(player) = get_u64(event, "user_steamid")
-                            .or_else(|| get_u64(event, "player_steamid"))
-                        {
-                            plant_starts.remove(&player);
-                        } else {
-                            plant_starts.clear();
-                        }
-                        let planter_row = get_u64(event, "user_steamid")
-                            .and_then(|id| player_row_at_tick(&rows_by_tick, event_tick, id));
-                        let x = get_f64(event, "x")
-                            .or_else(|| get_f64(event, "X"))
-                            .or_else(|| planter_row.map(|row| row.x))
-                            .or_else(|| last_bomb.as_ref().map(|bomb| bomb.x));
-                        let y = get_f64(event, "y")
-                            .or_else(|| get_f64(event, "Y"))
-                            .or_else(|| planter_row.map(|row| row.y))
-                            .or_else(|| last_bomb.as_ref().map(|bomb| bomb.y));
-                        let z = get_f64(event, "z")
-                            .or_else(|| get_f64(event, "Z"))
-                            .or_else(|| planter_row.map(|row| row.z))
-                            .or_else(|| last_bomb.as_ref().map(|bomb| bomb.z));
-                        if let (Some(x), Some(y), Some(z)) = (x, y, z) {
-                            last_bomb = Some(BombState {
-                                x,
-                                y,
-                                z,
-                                status: "planted".into(),
-                                carrier: None,
-                            });
-                        }
-                    }
-                    "bomb_defused" | "bomb_exploded" => {
-                        bomb_planted = false;
-                        last_bomb = None;
-                        plant_starts.clear();
-                        utility_starts.clear();
-                    }
-                    "round_end" | "round_officially_ended" => {
-                        plant_starts.clear();
-                        utility_starts.clear();
-                    }
-                    _ => {}
-                }
-                event_idx += 1;
-            }
-            let Some(rows) = rows_by_tick.get(&tick) else {
-                continue;
-            };
-            let t = seconds_since(span.start, tick);
-            let mut stale_plants = Vec::new();
-            let mut seen_players = HashSet::new();
-            let mut players = Vec::new();
-            for row in rows {
-                let player_id = row.steamid;
-                seen_players.insert(player_id);
-                let active = row.active.as_str();
-                let alive = row.alive;
-                let pressed = action_pressed(row);
-                let active_action = if let Some(start_tick) = plant_starts.get(&player_id).copied()
-                {
-                    let elapsed = seconds_since(start_tick, tick);
-                    if alive && elapsed <= 3.2 {
-                        Some(ActiveAction {
-                            kind: "plant".into(),
-                            item: "C4".into(),
-                            elapsed,
-                            duration: Some(3.2),
-                        })
-                    } else {
-                        stale_plants.push(player_id);
-                        None
-                    }
-                } else if alive && pressed && is_utility_action_weapon(active) {
-                    let start_tick = match utility_starts.get(&player_id) {
-                        Some((item, start_tick)) if item == active => *start_tick,
-                        _ => {
-                            utility_starts.insert(player_id, (active.to_string(), tick));
-                            tick
-                        }
-                    };
-                    Some(ActiveAction {
-                        kind: "utility".into(),
-                        item: active.to_string(),
-                        elapsed: seconds_since(start_tick, tick),
-                        duration: None,
-                    })
-                } else {
-                    utility_starts.remove(&player_id);
-                    None
-                };
-                if let Some(player) = player_pos_from_row(row, &blind_spans, t, active_action) {
-                    players.push(player);
-                } else {
-                    plant_starts.remove(&player_id);
-                    utility_starts.remove(&player_id);
-                }
-            }
-            for player in stale_plants {
-                plant_starts.remove(&player);
-            }
-            utility_starts.retain(|player, _| seen_players.contains(player));
-            if players.is_empty() {
-                continue;
-            }
-            let exact_c4 = c4_by_tick.get(&tick);
-            let bomb = if bomb_planted {
-                last_bomb
-                    .as_ref()
-                    .filter(|bomb| bomb.status == "planted")
-                    .cloned()
-            } else if let Some(carrier) = players.iter().find(|player| player.has_bomb) {
-                let bomb = BombState {
-                    x: carrier.x,
-                    y: carrier.y,
-                    z: carrier.z,
-                    status: "carried".into(),
-                    carrier: Some(carrier.id),
-                };
-                last_bomb = Some(bomb.clone());
-                Some(bomb)
-            } else if let Some(c4) = exact_c4 {
-                let dropped = BombState {
-                    x: c4.x,
-                    y: c4.y,
-                    z: c4.z,
-                    status: "dropped".into(),
-                    carrier: None,
-                };
-                last_bomb = Some(dropped.clone());
-                Some(dropped)
-            } else if let Some(bomb) = last_bomb.clone() {
-                if bomb.status == "carried" || bomb.status == "dropped" {
-                    let dropped = BombState {
-                        status: "dropped".into(),
-                        carrier: None,
-                        ..bomb
-                    };
-                    last_bomb = Some(dropped.clone());
-                    Some(dropped)
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-            frames.push(Frame {
-                t,
-                players,
-                bomb,
-                projectiles: Vec::new(),
-            });
-        }
-
-        if frames.is_empty() {
-            continue;
-        }
-        if frames[0].t > 0.05 {
-            let first = Frame {
-                t: 0.0,
-                players: frames[0].players.clone(),
-                bomb: frames[0].bomb.clone(),
-                projectiles: Vec::new(),
-            };
-            frames.insert(0, first);
-        }
-
-        let projectile_frames = if args.skip_projectiles {
-            Vec::new()
-        } else {
-            projectiles_by_tick
-                .range(span.start..=span.end)
-                .filter_map(|(tick, projectiles)| {
-                    if projectiles.is_empty() {
-                        return None;
-                    }
-                    Some(ProjectileFrame {
-                        t: seconds_since(span.start, *tick),
-                        projectiles: projectiles.clone(),
-                    })
-                })
-                .collect::<Vec<_>>()
-        };
-
-        rounds.push(Round {
-            number: rounds.len(),
-            start_tick: span.start,
-            freeze_end_tick: span.start,
-            end_tick: span.end,
-            duration: seconds_since(span.start, span.end),
-            winner: span.winner.clone(),
-            score_a: round_scores
-                .get(idx)
-                .map(|score| score.0)
-                .unwrap_or_default(),
-            score_b: round_scores
-                .get(idx)
-                .map(|score| score.1)
-                .unwrap_or_default(),
-            events: round_events(&events, span, spans.get(idx + 1)),
-            effects: round_effects(&events, span, &rows_by_tick),
-            weapon_fires: if args.skip_weapon_fires {
-                Vec::new()
-            } else {
-                round_weapon_fires(&events, span, &rows_by_tick)
-            },
-            projectile_frames,
-            frames,
-        });
-
-        if idx > 200 {
-            break;
-        }
-    }
-
-    if rounds.is_empty() {
-        bail!("parser produced no frames");
-    }
-    if looks_like_knife_round(rounds.first()) {
-        rounds.remove(0);
-        for (idx, round) in rounds.iter_mut().enumerate() {
-            round.number = idx;
-        }
-    }
-    stats.build_rounds_ms = elapsed_ms(build_rounds_started);
-    let (score_a, score_b) = rounds
-        .last()
-        .map(|round| (round.score_a, round.score_b))
-        .unwrap_or_default();
-
     let duration_sec = spans
         .last()
         .map(|r| f64::from(r.end) / TICK_RATE)
         .unwrap_or_default();
-    let output = Output {
-        meta: Meta {
-            map,
-            tick_rate: TICK_RATE,
-            sample_rate,
-            duration_sec,
-            team_a,
-            team_b,
-            score_a,
-            score_b,
-        },
+
+    Ok(ParsedDemoData {
+        map,
         players,
-        rounds,
+        events,
+        spans,
+        rows_by_tick,
+        c4_by_tick,
+        projectiles_by_tick,
+        weapon_names: tick_data.weapon_names,
+        team_a,
+        team_b,
+        round_scores,
+        sample_rate,
+        sample_step,
+        duration_sec,
+        stats,
+    })
+}
+
+fn build_round_payload(
+    ctx: &RoundBuildContext<'_>,
+    span_idx: usize,
+    output_number: usize,
+) -> Option<Round> {
+    let span = &ctx.spans[span_idx];
+    let mut frames = Vec::new();
+    let blind_spans = round_blinds(ctx.events, span);
+    let span_events = ctx
+        .events
+        .iter()
+        .filter(|event| {
+            let tick = get_i64(event, "tick").unwrap_or_default() as i32;
+            tick >= span.start && tick <= span.end
+        })
+        .collect::<Vec<_>>();
+    let mut event_idx = 0;
+    let mut bomb_planted = false;
+    let mut last_bomb: Option<BombState> = None;
+    let mut plant_starts: HashMap<u64, i32> = HashMap::new();
+    let mut utility_starts: HashMap<u64, (String, i32)> = HashMap::new();
+    for tick in (span.start..=span.end).step_by(ctx.sample_step as usize) {
+        while event_idx < span_events.len() {
+            let event = span_events[event_idx];
+            let event_tick = get_i64(event, "tick").unwrap_or_default() as i32;
+            if event_tick > tick {
+                break;
+            }
+            match get_str(event, "event_name").unwrap_or("") {
+                "bomb_beginplant" => {
+                    if let Some(player) =
+                        get_u64(event, "user_steamid").or_else(|| get_u64(event, "player_steamid"))
+                    {
+                        plant_starts.insert(player, event_tick);
+                    }
+                }
+                "player_death" => {
+                    if let Some(player) = get_u64(event, "user_steamid") {
+                        plant_starts.remove(&player);
+                        utility_starts.remove(&player);
+                    }
+                }
+                "bomb_planted" => {
+                    bomb_planted = true;
+                    if let Some(player) =
+                        get_u64(event, "user_steamid").or_else(|| get_u64(event, "player_steamid"))
+                    {
+                        plant_starts.remove(&player);
+                    } else {
+                        plant_starts.clear();
+                    }
+                    let planter_row = get_u64(event, "user_steamid")
+                        .and_then(|id| player_row_at_tick(ctx.rows_by_tick, event_tick, id));
+                    let x = get_f64(event, "x")
+                        .or_else(|| get_f64(event, "X"))
+                        .or_else(|| planter_row.map(|row| row.x))
+                        .or_else(|| last_bomb.as_ref().map(|bomb| bomb.x));
+                    let y = get_f64(event, "y")
+                        .or_else(|| get_f64(event, "Y"))
+                        .or_else(|| planter_row.map(|row| row.y))
+                        .or_else(|| last_bomb.as_ref().map(|bomb| bomb.y));
+                    let z = get_f64(event, "z")
+                        .or_else(|| get_f64(event, "Z"))
+                        .or_else(|| planter_row.map(|row| row.z))
+                        .or_else(|| last_bomb.as_ref().map(|bomb| bomb.z));
+                    if let (Some(x), Some(y), Some(z)) = (x, y, z) {
+                        last_bomb = Some(BombState {
+                            x,
+                            y,
+                            z,
+                            status: "planted".into(),
+                            carrier: None,
+                        });
+                    }
+                }
+                "bomb_defused" | "bomb_exploded" => {
+                    bomb_planted = false;
+                    last_bomb = None;
+                    plant_starts.clear();
+                    utility_starts.clear();
+                }
+                "round_end" | "round_officially_ended" => {
+                    plant_starts.clear();
+                    utility_starts.clear();
+                }
+                _ => {}
+            }
+            event_idx += 1;
+        }
+        let Some(rows) = ctx.rows_by_tick.get(&tick) else {
+            continue;
+        };
+        let t = seconds_since(span.start, tick);
+        let mut stale_plants = Vec::new();
+        let mut seen_players = HashSet::new();
+        let mut players = Vec::new();
+        for row in rows {
+            let player_id = row.steamid;
+            seen_players.insert(player_id);
+            let active = weapon_name(ctx.weapon_names, row.active);
+            let alive = row.alive;
+            let pressed = action_pressed(row);
+            let active_action = if let Some(start_tick) = plant_starts.get(&player_id).copied() {
+                let elapsed = seconds_since(start_tick, tick);
+                if alive && elapsed <= 3.2 {
+                    Some(ActiveAction {
+                        kind: "plant".into(),
+                        item: "C4".into(),
+                        elapsed,
+                        duration: Some(3.2),
+                    })
+                } else {
+                    stale_plants.push(player_id);
+                    None
+                }
+            } else if alive && pressed && is_utility_action_weapon(active) {
+                let start_tick = match utility_starts.get(&player_id) {
+                    Some((item, start_tick)) if item == active => *start_tick,
+                    _ => {
+                        utility_starts.insert(player_id, (active.to_string(), tick));
+                        tick
+                    }
+                };
+                Some(ActiveAction {
+                    kind: "utility".into(),
+                    item: active.to_string(),
+                    elapsed: seconds_since(start_tick, tick),
+                    duration: None,
+                })
+            } else {
+                utility_starts.remove(&player_id);
+                None
+            };
+            if let Some(player) =
+                player_pos_from_row(row, ctx.weapon_names, &blind_spans, t, active_action)
+            {
+                players.push(player);
+            } else {
+                plant_starts.remove(&player_id);
+                utility_starts.remove(&player_id);
+            }
+        }
+        for player in stale_plants {
+            plant_starts.remove(&player);
+        }
+        utility_starts.retain(|player, _| seen_players.contains(player));
+        if players.is_empty() {
+            continue;
+        }
+        let exact_c4 = ctx.c4_by_tick.get(&tick);
+        let bomb = if bomb_planted {
+            last_bomb
+                .as_ref()
+                .filter(|bomb| bomb.status == "planted")
+                .cloned()
+        } else if let Some(carrier) = players.iter().find(|player| player.has_bomb) {
+            let bomb = BombState {
+                x: carrier.x,
+                y: carrier.y,
+                z: carrier.z,
+                status: "carried".into(),
+                carrier: Some(carrier.id),
+            };
+            last_bomb = Some(bomb.clone());
+            Some(bomb)
+        } else if let Some(c4) = exact_c4 {
+            let dropped = BombState {
+                x: c4.x,
+                y: c4.y,
+                z: c4.z,
+                status: "dropped".into(),
+                carrier: None,
+            };
+            last_bomb = Some(dropped.clone());
+            Some(dropped)
+        } else if let Some(bomb) = last_bomb.clone() {
+            if bomb.status == "carried" || bomb.status == "dropped" {
+                let dropped = BombState {
+                    status: "dropped".into(),
+                    carrier: None,
+                    ..bomb
+                };
+                last_bomb = Some(dropped.clone());
+                Some(dropped)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        frames.push(Frame {
+            t,
+            players,
+            bomb,
+            projectiles: Vec::new(),
+        });
+    }
+
+    if frames.is_empty() {
+        return None;
+    }
+    if frames[0].t > 0.05 {
+        let first = Frame {
+            t: 0.0,
+            players: frames[0].players.clone(),
+            bomb: frames[0].bomb.clone(),
+            projectiles: Vec::new(),
+        };
+        frames.insert(0, first);
+    }
+
+    let projectile_frames = if ctx.args.skip_projectiles {
+        Vec::new()
+    } else {
+        ctx.projectiles_by_tick
+            .range(span.start..=span.end)
+            .filter_map(|(tick, projectiles)| {
+                if projectiles.is_empty() {
+                    return None;
+                }
+                Some(ProjectileFrame {
+                    t: seconds_since(span.start, *tick),
+                    projectiles: projectiles.clone(),
+                })
+            })
+            .collect::<Vec<_>>()
     };
-    collect_output_stats(&mut stats, &output);
-    Ok((output, stats))
+
+    Some(Round {
+        number: output_number,
+        start_tick: span.start,
+        freeze_end_tick: span.start,
+        end_tick: span.end,
+        duration: seconds_since(span.start, span.end),
+        winner: span.winner.clone(),
+        score_a: ctx
+            .round_scores
+            .get(span_idx)
+            .map(|score| score.0)
+            .unwrap_or_default(),
+        score_b: ctx
+            .round_scores
+            .get(span_idx)
+            .map(|score| score.1)
+            .unwrap_or_default(),
+        events: round_events(ctx.events, span, ctx.spans.get(span_idx + 1)),
+        effects: round_effects(ctx.events, span, ctx.rows_by_tick),
+        weapon_fires: if ctx.args.skip_weapon_fires {
+            Vec::new()
+        } else {
+            round_weapon_fires(ctx.events, span, ctx.rows_by_tick)
+        },
+        projectile_frames,
+        frames,
+    })
 }
 
 fn playable_span(events: &[Value], span: &RoundSpan) -> RoundSpan {
@@ -1012,28 +1190,33 @@ where
     Ok(out)
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn collect_output_stats(stats: &mut ParserStats, output: &Output) {
-    stats.rounds = output.rounds.len();
     stats.players = output.players.len();
     for round in &output.rounds {
-        stats.frames += round.frames.len();
-        stats.events += round.events.len();
-        stats.effects += round.effects.len();
-        stats.weapon_fires += round.weapon_fires.len();
-        stats.projectile_frames += round.projectile_frames.len();
-        for frame in &round.frames {
-            stats.frame_players += frame.players.len();
-        }
-        for projectile_frame in &round.projectile_frames {
-            stats.projectile_samples += projectile_frame.projectiles.len();
-        }
-        for event in &round.events {
-            match event.kind.as_str() {
-                "kill" => stats.kills += 1,
-                "bomb_planted" | "bomb_defuse_start" | "bomb_defuse_abort" | "bomb_defused"
-                | "bomb_exploded" => stats.bomb_events += 1,
-                _ => {}
-            }
+        add_round_stats(stats, round);
+    }
+}
+
+fn add_round_stats(stats: &mut ParserStats, round: &Round) {
+    stats.rounds += 1;
+    stats.frames += round.frames.len();
+    stats.events += round.events.len();
+    stats.effects += round.effects.len();
+    stats.weapon_fires += round.weapon_fires.len();
+    stats.projectile_frames += round.projectile_frames.len();
+    for frame in &round.frames {
+        stats.frame_players += frame.players.len();
+    }
+    for projectile_frame in &round.projectile_frames {
+        stats.projectile_samples += projectile_frame.projectiles.len();
+    }
+    for event in &round.events {
+        match event.kind.as_str() {
+            "kill" => stats.kills += 1,
+            "bomb_planted" | "bomb_defuse_start" | "bomb_defuse_abort" | "bomb_defused"
+            | "bomb_exploded" => stats.bomb_events += 1,
+            _ => {}
         }
     }
 }
@@ -1280,14 +1463,18 @@ fn parse_ticks(bytes: &[u8], huf: &Vec<(u8, u8)>, ticks: Vec<i32>) -> Result<Tic
         })
         .collect();
     let helper = OutputSerdeHelperStruct {
-        prop_infos: output.prop_controller.prop_infos.clone(),
-        inner: output.df.clone().into(),
+        prop_infos: output.prop_controller.prop_infos,
+        inner: output.df.into_iter().collect(),
     };
-    let rows = tick_rows_from_helper(&helper);
-    Ok(TickData { rows, c4_positions })
+    let (rows, weapon_names) = tick_rows_from_helper(&helper);
+    Ok(TickData {
+        rows,
+        c4_positions,
+        weapon_names,
+    })
 }
 
-fn tick_rows_from_helper(helper: &OutputSerdeHelperStruct) -> Vec<TickRow> {
+fn tick_rows_from_helper(helper: &OutputSerdeHelperStruct) -> (Vec<TickRow>, Vec<String>) {
     let row_count = helper
         .inner
         .values()
@@ -1295,6 +1482,8 @@ fn tick_rows_from_helper(helper: &OutputSerdeHelperStruct) -> Vec<TickRow> {
         .map(PropColumn::len)
         .unwrap_or_default();
     let mut rows = Vec::with_capacity(row_count);
+    let mut weapon_ids = HashMap::new();
+    let mut weapon_names = Vec::new();
     for idx in 0..row_count {
         let Some(tick) = helper_i64(helper, "tick", idx).map(|tick| tick as i32) else {
             continue;
@@ -1302,6 +1491,15 @@ fn tick_rows_from_helper(helper: &OutputSerdeHelperStruct) -> Vec<TickRow> {
         let Some(steamid) = helper_u64(helper, "steamid", idx) else {
             continue;
         };
+        let active = helper_str(helper, "active_weapon_name", idx)
+            .filter(|name| !name.is_empty())
+            .and_then(|name| intern_weapon_name(name, &mut weapon_ids, &mut weapon_names));
+        let weapons = helper_string_vec(helper, "inventory", idx)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|name| !name.is_empty())
+            .filter_map(|name| intern_weapon_name(&name, &mut weapon_ids, &mut weapon_names))
+            .collect();
         rows.push(TickRow {
             tick,
             steamid,
@@ -1316,16 +1514,28 @@ fn tick_rows_from_helper(helper: &OutputSerdeHelperStruct) -> Vec<TickRow> {
             kit: helper_bool(helper, "has_defuser", idx).unwrap_or(false),
             alive: helper_bool(helper, "is_alive", idx).unwrap_or(false),
             team: helper_i64(helper, "team_num", idx).unwrap_or_default(),
-            active: helper_str(helper, "active_weapon_name", idx)
-                .unwrap_or("")
-                .to_string(),
-            weapons: helper_string_vec(helper, "inventory", idx).unwrap_or_default(),
+            active,
+            weapons,
             fire: helper_bool(helper, "FIRE", idx).unwrap_or(false),
             right_click: helper_bool(helper, "RIGHTCLICK", idx).unwrap_or(false),
             use_key: helper_bool(helper, "USE", idx).unwrap_or(false),
         });
     }
-    rows
+    (rows, weapon_names)
+}
+
+fn intern_weapon_name(
+    name: &str,
+    ids: &mut HashMap<String, u16>,
+    names: &mut Vec<String>,
+) -> Option<u16> {
+    if let Some(id) = ids.get(name) {
+        return Some(*id);
+    }
+    let id = u16::try_from(names.len()).ok()?;
+    ids.insert(name.to_string(), id);
+    names.push(name.to_string());
+    Some(id)
 }
 
 fn parse_team_rows(bytes: &[u8], huf: &Vec<(u8, u8)>, ticks: Vec<i32>) -> Result<Vec<Value>> {
@@ -1344,8 +1554,8 @@ fn parse_team_rows(bytes: &[u8], huf: &Vec<(u8, u8)>, ticks: Vec<i32>) -> Result
     let mut parser = Parser::new(settings, ParsingMode::Normal);
     let output = parser.parse_demo(bytes).map_err(|e| anyhow!("{e}"))?;
     let helper = OutputSerdeHelperStruct {
-        prop_infos: output.prop_controller.prop_infos.clone(),
-        inner: output.df.clone().into(),
+        prop_infos: output.prop_controller.prop_infos,
+        inner: output.df.into_iter().collect(),
     };
     Ok(soa_to_aos(helper)
         .into_iter()
@@ -1360,8 +1570,8 @@ fn parse_projectiles(bytes: &[u8], huf: &Vec<(u8, u8)>) -> Result<Vec<Projectile
     let mut parser = Parser::new(settings, ParsingMode::Normal);
     let output = parser.parse_demo(bytes).map_err(|e| anyhow!("{e}"))?;
     let helper = OutputSerdeHelperStruct {
-        prop_infos: output.prop_controller.prop_infos.clone(),
-        inner: output.df.clone().into(),
+        prop_infos: output.prop_controller.prop_infos,
+        inner: output.df.into_iter().collect(),
     };
     Ok(projectile_rows_from_helper(&helper))
 }
@@ -1390,9 +1600,9 @@ fn projectile_rows_from_helper(helper: &OutputSerdeHelperStruct) -> Vec<Projecti
         rows.push(ProjectileRow {
             tick,
             entity_id: helper_i64(helper, "entity_id", idx).unwrap_or(i64::from(tick)),
-            kind: helper_str(helper, "grenade_type", idx)
-                .unwrap_or("grenade")
-                .to_string(),
+            kind: ProjectileKind::from_name(
+                helper_str(helper, "grenade_type", idx).unwrap_or("grenade"),
+            ),
             x,
             y,
             z,
@@ -1708,7 +1918,7 @@ fn group_projectile_rows(rows: Vec<ProjectileRow>) -> BTreeMap<i32, Vec<Projecti
     #[derive(Clone)]
     struct Track {
         id: i64,
-        kind: String,
+        kind: ProjectileKind,
         thrower: Option<u64>,
         x: f64,
         y: f64,
@@ -1818,6 +2028,7 @@ fn group_projectile_rows(rows: Vec<ProjectileRow>) -> BTreeMap<i32, Vec<Projecti
 
 fn player_pos_from_row(
     row: &TickRow,
+    weapon_names: &[String],
     blind_spans: &[BlindSpan],
     t: f64,
     active_action: Option<ActiveAction>,
@@ -1829,8 +2040,13 @@ fn player_pos_from_row(
     let blind = blind_spans
         .iter()
         .find(|b| b.player == id && t >= b.start && t <= b.end);
-    let has_bomb =
-        weapon_is_bomb(&row.active) || row.weapons.iter().any(|weapon| weapon_is_bomb(weapon));
+    let active = weapon_name(weapon_names, row.active);
+    let has_bomb = weapon_is_bomb(active)
+        || row
+            .weapons
+            .iter()
+            .filter_map(|id| weapon_names.get(*id as usize))
+            .any(|weapon| weapon_is_bomb(weapon));
     Some(PlayerPos {
         id,
         x: row.x,
@@ -1844,13 +2060,23 @@ fn player_pos_from_row(
         kit: row.kit,
         has_bomb,
         team: row.team,
-        active: row.active.clone(),
-        weapons: row.weapons.clone(),
+        active: active.to_string(),
+        weapons: row
+            .weapons
+            .iter()
+            .filter_map(|id| weapon_names.get(*id as usize).cloned())
+            .collect(),
         flash_left: blind.map(|b| (b.end - t).max(0.0)),
         flash_total: blind.map(|b| b.total),
         use_key: row.use_key,
         active_action,
     })
+}
+
+fn weapon_name(weapon_names: &[String], id: Option<u16>) -> &str {
+    id.and_then(|id| weapon_names.get(id as usize))
+        .map(String::as_str)
+        .unwrap_or("")
 }
 
 fn round_events(events: &[Value], span: &RoundSpan, next_span: Option<&RoundSpan>) -> Vec<Event> {
@@ -2183,6 +2409,126 @@ impl<W: Write> Write for CountingWriter<W> {
     }
 }
 
+struct SplitOutputWriter {
+    output_path: PathBuf,
+    rounds_dir: PathBuf,
+    staging_rounds_dir: PathBuf,
+    backup_rounds_dir: PathBuf,
+    temp_manifest_path: PathBuf,
+    backup_manifest_path: PathBuf,
+    staging_cleanup: CleanupPath,
+    temp_manifest_cleanup: CleanupPath,
+    round_dir_name: String,
+    manifest_rounds: Vec<ManifestRound>,
+    stats: WriteStats,
+    write_started: Instant,
+}
+
+impl SplitOutputWriter {
+    fn new(path: &str) -> Result<Self> {
+        let write_started = final_step_start("write_json_gz_streaming");
+        let output_path = PathBuf::from(path);
+        let rounds_dir = split_rounds_dir(&output_path)?;
+        let staging_rounds_dir = temp_sibling_path(&rounds_dir, "tmp")?;
+        let backup_rounds_dir = temp_sibling_path(&rounds_dir, "backup")?;
+        let temp_manifest_path = temp_sibling_path(&output_path, "tmp")?;
+        let backup_manifest_path = temp_sibling_path(&output_path, "backup")?;
+        remove_path_if_exists(&staging_rounds_dir)?;
+        remove_path_if_exists(&backup_rounds_dir)?;
+        remove_path_if_exists(&temp_manifest_path)?;
+        remove_path_if_exists(&backup_manifest_path)?;
+        fs::create_dir_all(&staging_rounds_dir).with_context(|| {
+            format!("create rounds staging dir {}", staging_rounds_dir.display())
+        })?;
+        let staging_cleanup = CleanupPath::new(staging_rounds_dir.clone());
+        let temp_manifest_cleanup = CleanupPath::new(temp_manifest_path.clone());
+        let round_dir_name = rounds_dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| anyhow!("invalid rounds dir name"))?
+            .to_string();
+
+        emit_progress(0.94, "Serializing split parser JSON...");
+        Ok(Self {
+            output_path,
+            rounds_dir,
+            staging_rounds_dir,
+            backup_rounds_dir,
+            temp_manifest_path,
+            backup_manifest_path,
+            staging_cleanup,
+            temp_manifest_cleanup,
+            round_dir_name,
+            manifest_rounds: Vec::new(),
+            stats: WriteStats::default(),
+            write_started,
+        })
+    }
+
+    fn round_count(&self) -> usize {
+        self.manifest_rounds.len()
+    }
+
+    fn write_round(&mut self, round: &Round) -> Result<()> {
+        let file_name = format!("round-{:03}.json.gz", round.number);
+        let relative = format!("{}/{file_name}", self.round_dir_name);
+        let round_path = self.staging_rounds_dir.join(&file_name);
+        let write_stats = write_gzip_json_quiet(&round_path, round)?;
+        add_write_stats(&mut self.stats, write_stats);
+        self.manifest_rounds
+            .push(manifest_round_from_round(round, relative));
+        Ok(())
+    }
+
+    fn finish(mut self, meta: &Meta, players: &[Player]) -> Result<WriteStats> {
+        let manifest = ManifestOutput {
+            meta,
+            players,
+            rounds: std::mem::take(&mut self.manifest_rounds),
+        };
+        add_write_stats(
+            &mut self.stats,
+            write_gzip_json(&self.temp_manifest_path, &manifest, "manifest")?,
+        );
+        let commit_started = final_step_start("commit_split_output");
+        commit_split_output(
+            &self.output_path,
+            &self.rounds_dir,
+            &self.staging_rounds_dir,
+            &self.temp_manifest_path,
+            &self.backup_rounds_dir,
+            &self.backup_manifest_path,
+        )?;
+        self.staging_cleanup.disarm();
+        self.temp_manifest_cleanup.disarm();
+        final_step_done("commit_split_output", commit_started);
+
+        self.stats.write_output_ms = elapsed_ms(self.write_started);
+        final_step_done("write_json_gz_streaming", self.write_started);
+        Ok(self.stats)
+    }
+}
+
+fn manifest_round_from_round(round: &Round, round_file: String) -> ManifestRound {
+    ManifestRound {
+        number: round.number,
+        start_tick: round.start_tick,
+        freeze_end_tick: round.freeze_end_tick,
+        end_tick: round.end_tick,
+        duration: round.duration,
+        winner: round.winner.clone(),
+        score_a: round.score_a,
+        score_b: round.score_b,
+        frames: Vec::new(),
+        events: Vec::new(),
+        effects: Vec::new(),
+        weapon_fires: Vec::new(),
+        projectile_frames: Vec::new(),
+        round_file,
+    }
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
 fn write_json_gz(path: &str, output: &Output) -> Result<WriteStats> {
     let write_started = final_step_start("write_json_gz");
     let mut stats = WriteStats::default();
@@ -2429,6 +2775,7 @@ fn add_write_stats(total: &mut WriteStats, next: WriteStats) {
     total.output_gzip_bytes += next.output_gzip_bytes;
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn add_parallel_write_stats(total: &mut WriteStats, next: WriteStats) {
     total.serialize_json_ms = total.serialize_json_ms.max(next.serialize_json_ms);
     total.raw_json_bytes += next.raw_json_bytes;
