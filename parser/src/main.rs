@@ -518,6 +518,7 @@ fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)>
         Ok(parse_team_rows(&bytes, &huf, team_name_ticks(&spans)).unwrap_or_default())
     })?;
     let (team_a, team_b) = team_names_from_rows(&team_rows);
+    let round_scores = round_scores_from_team_rows(&team_rows, &spans, &team_a, &team_b);
     let projectile_rows = if args.skip_projectiles {
         Vec::new()
     } else {
@@ -531,16 +532,8 @@ fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)>
     stats.group_projectiles_ms = elapsed_ms(group_projectiles_started);
 
     let build_rounds_started = Instant::now();
-    let mut score_ct = 0;
-    let mut score_t = 0;
     let mut rounds = Vec::with_capacity(spans.len());
     for (idx, span) in spans.iter().enumerate() {
-        if span.winner == "CT" {
-            score_ct += 1;
-        } else if span.winner == "T" {
-            score_t += 1;
-        }
-
         let mut frames = Vec::new();
         let blind_spans = round_blinds(&events, span);
         let span_events = events
@@ -770,8 +763,14 @@ fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)>
             end_tick: span.end,
             duration: seconds_since(span.start, span.end),
             winner: span.winner.clone(),
-            score_a: score_ct,
-            score_b: score_t,
+            score_a: round_scores
+                .get(idx)
+                .map(|score| score.0)
+                .unwrap_or_default(),
+            score_b: round_scores
+                .get(idx)
+                .map(|score| score.1)
+                .unwrap_or_default(),
             events: round_events(&events, span),
             effects: round_effects(&events, span, &rows_by_tick),
             weapon_fires: if args.skip_weapon_fires {
@@ -793,22 +792,15 @@ fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)>
     }
     if looks_like_knife_round(rounds.first()) {
         rounds.remove(0);
-        let mut ct = 0;
-        let mut t = 0;
         for (idx, round) in rounds.iter_mut().enumerate() {
-            if round.winner == "CT" {
-                ct += 1;
-            } else if round.winner == "T" {
-                t += 1;
-            }
             round.number = idx;
-            round.score_a = ct;
-            round.score_b = t;
         }
-        score_ct = ct;
-        score_t = t;
     }
     stats.build_rounds_ms = elapsed_ms(build_rounds_started);
+    let (score_a, score_b) = rounds
+        .last()
+        .map(|round| (round.score_a, round.score_b))
+        .unwrap_or_default();
 
     let duration_sec = spans
         .last()
@@ -822,8 +814,8 @@ fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)>
             duration_sec,
             team_a,
             team_b,
-            score_a: score_ct,
-            score_b: score_t,
+            score_a,
+            score_b,
         },
         players,
         rounds,
@@ -1275,7 +1267,11 @@ fn parse_team_rows(bytes: &[u8], huf: &Vec<(u8, u8)>, ticks: Vec<i32>) -> Result
         huf,
         vec![],
         vec![],
-        vec!["team_name".into(), "team_clan_name".into()],
+        vec![
+            "team_name".into(),
+            "team_clan_name".into(),
+            "team_rounds_total".into(),
+        ],
         ticks,
         true,
     )?;
@@ -1430,10 +1426,11 @@ fn sample_ticks(spans: &[RoundSpan], step: i32, events: &[Value]) -> Vec<i32> {
 
 fn team_name_ticks(spans: &[RoundSpan]) -> Vec<i32> {
     let mut ticks = Vec::new();
-    for span in spans.iter().take(4) {
+    for span in spans {
         ticks.push(span.start);
         ticks.push(span.start + TICK_RATE as i32);
         ticks.push(span.end);
+        ticks.push(span.round_end);
     }
     if let Some(last) = spans.last() {
         ticks.push(last.end);
@@ -1467,6 +1464,52 @@ fn team_names_from_rows(rows: &[Value]) -> (String, String) {
         ct.unwrap_or_else(|| "CT".into()),
         t.unwrap_or_else(|| "T".into()),
     )
+}
+
+fn round_scores_from_team_rows(
+    rows: &[Value],
+    spans: &[RoundSpan],
+    team_a: &str,
+    team_b: &str,
+) -> Vec<(i32, i32)> {
+    let mut out = Vec::with_capacity(spans.len());
+    let mut last = (0, 0);
+    for span in spans {
+        if let Some(score) = team_scores_at_tick(rows, span.round_end, team_a, team_b) {
+            last = score;
+        }
+        out.push(last);
+    }
+    out
+}
+
+fn team_scores_at_tick(
+    rows: &[Value],
+    target_tick: i32,
+    team_a: &str,
+    team_b: &str,
+) -> Option<(i32, i32)> {
+    let mut score_a = None;
+    let mut score_b = None;
+    for row in rows {
+        let tick = get_i64(row, "tick").unwrap_or_default() as i32;
+        if tick > target_tick {
+            continue;
+        }
+        let clan = get_str(row, "team_clan_name").unwrap_or("").trim();
+        let Some(score) = get_i64(row, "team_rounds_total").map(|score| score as i32) else {
+            continue;
+        };
+        if clan == team_a {
+            score_a = Some(score);
+        } else if clan == team_b {
+            score_b = Some(score);
+        }
+    }
+    match (score_a, score_b) {
+        (Some(a), Some(b)) => Some((a, b)),
+        _ => None,
+    }
 }
 
 fn group_tick_rows(rows: Vec<Value>) -> BTreeMap<i32, Vec<Value>> {
@@ -2337,6 +2380,7 @@ mod tests {
         read_capped, read_demo, sample_step, write_json_gz, Args, Output, MAX_DEMO_SIZE,
     };
     use flate2::{read::GzDecoder, Compression};
+    use serde::Deserialize;
     use serde_json::Value;
     use std::{
         env,
@@ -2344,7 +2388,8 @@ mod tests {
         path::Path,
     };
 
-    #[derive(Debug, Default, PartialEq, Eq)]
+    #[derive(Debug, Default, Deserialize, PartialEq, Eq)]
+    #[serde(rename_all = "camelCase")]
     struct ReplayMetrics {
         rounds: usize,
         players: usize,
@@ -2362,10 +2407,12 @@ mod tests {
         projectile_samples: usize,
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "camelCase")]
     struct ExpectedReplayFloor {
-        label: &'static str,
-        map: &'static str,
+        file_name: String,
+        label: String,
+        map: String,
         score_a: i32,
         score_b: i32,
         metrics: ReplayMetrics,
@@ -2543,75 +2590,87 @@ mod tests {
 
     #[test]
     fn roundlab_test_demo_produces_replay_json_when_configured() {
-        let Ok(input) = std::env::var("ROUNDLAB_TEST_DEMO") else {
-            eprintln!("skipping parser integration test: ROUNDLAB_TEST_DEMO is not set");
+        let inputs = configured_test_demo_paths();
+        if inputs.is_empty() {
+            eprintln!(
+                "skipping parser integration test: ROUNDLAB_TEST_DEMOS/ROUNDLAB_TEST_DEMO is not set"
+            );
             return;
-        };
-        let dir = tempfile::tempdir().unwrap();
-        let output_path = dir.path().join("parsed.json.gz");
-        let args = Args {
-            input,
-            output: output_path.to_string_lossy().into_owned(),
-            quality: "full".into(),
-            skip_projectiles: false,
-            skip_weapon_fires: false,
-            stats: true,
-        };
-
-        let output = parse_demo_to_output(&args).unwrap();
-        assert_replay_output_is_usable(&output);
-        assert_projectiles_are_not_duplicated_in_frames(&output);
-        if let Some(expected) = expected_floor_for_demo(&args.input) {
-            assert_reference_demo_floor(&output, expected);
         }
 
-        write_json_gz(&args.output, &output).unwrap();
-        let json = read_gzip_json(&output_path);
-        assert_eq!(
-            json["rounds"].as_array().unwrap().len(),
-            output.rounds.len()
-        );
-        assert!(json["meta"]["tickRate"].as_f64().unwrap_or_default() > 0.0);
-        assert!(json["players"].as_array().unwrap().len() >= output.players.len());
-        assert_split_output_is_usable(&output_path, &json, &output);
-        if let Some(expected) = expected_floor_for_demo(&args.input) {
-            assert_split_reference_demo_floor(&json, expected);
+        for input in inputs {
+            let dir = tempfile::tempdir().unwrap();
+            let output_path = dir.path().join("parsed.json.gz");
+            let args = Args {
+                input,
+                output: output_path.to_string_lossy().into_owned(),
+                quality: "full".into(),
+                skip_projectiles: false,
+                skip_weapon_fires: false,
+                stats: true,
+            };
+
+            let output = parse_demo_to_output(&args).unwrap();
+            assert_replay_output_is_usable(&output);
+            assert_projectiles_are_not_duplicated_in_frames(&output);
+            if let Some(expected) = expected_floor_for_demo(&args.input) {
+                assert_reference_demo_floor(&output, &expected);
+            }
+
+            write_json_gz(&args.output, &output).unwrap();
+            let json = read_gzip_json(&output_path);
+            assert_eq!(
+                json["rounds"].as_array().unwrap().len(),
+                output.rounds.len()
+            );
+            assert!(json["meta"]["tickRate"].as_f64().unwrap_or_default() > 0.0);
+            assert!(json["players"].as_array().unwrap().len() >= output.players.len());
+            assert_split_output_is_usable(&output_path, &json, &output);
+            if let Some(expected) = expected_floor_for_demo(&args.input) {
+                assert_split_reference_demo_floor(&json, &expected);
+            }
         }
     }
 
     #[test]
     fn roundlab_test_demo_honors_quality_and_skip_options_when_configured() {
-        let Ok(input) = std::env::var("ROUNDLAB_TEST_DEMO") else {
-            eprintln!("skipping parser integration test: ROUNDLAB_TEST_DEMO is not set");
-            return;
-        };
-        let dir = tempfile::tempdir().unwrap();
-        let output_path = dir.path().join("parsed-medium-skip.json.gz");
-        let args = Args {
-            input,
-            output: output_path.to_string_lossy().into_owned(),
-            quality: "medium".into(),
-            skip_projectiles: true,
-            skip_weapon_fires: true,
-            stats: true,
-        };
-
-        let output = parse_demo_to_output(&args).unwrap();
-        assert_core_replay_output_is_usable(&output);
-        assert_eq!(output.meta.sample_rate, 2);
-        assert_skip_options_removed_heavy_payloads(&output);
-        if let Some(expected) = expected_floor_for_demo(&args.input) {
-            assert_reference_demo_identity(&output, &expected);
-            assert_metrics_meet_floor(
-                &collect_replay_metrics(&output),
-                &expected.medium_skip_metrics,
-                expected.label,
+        let inputs = configured_test_demo_paths();
+        if inputs.is_empty() {
+            eprintln!(
+                "skipping parser integration test: ROUNDLAB_TEST_DEMOS/ROUNDLAB_TEST_DEMO is not set"
             );
+            return;
         }
 
-        write_json_gz(&args.output, &output).unwrap();
-        let json = read_gzip_json(&output_path);
-        assert_split_output_omits_skipped_payloads(&output_path, &json, &output);
+        for input in inputs {
+            let dir = tempfile::tempdir().unwrap();
+            let output_path = dir.path().join("parsed-medium-skip.json.gz");
+            let args = Args {
+                input,
+                output: output_path.to_string_lossy().into_owned(),
+                quality: "medium".into(),
+                skip_projectiles: true,
+                skip_weapon_fires: true,
+                stats: true,
+            };
+
+            let output = parse_demo_to_output(&args).unwrap();
+            assert_core_replay_output_is_usable(&output);
+            assert_eq!(output.meta.sample_rate, 2);
+            assert_skip_options_removed_heavy_payloads(&output);
+            if let Some(expected) = expected_floor_for_demo(&args.input) {
+                assert_reference_demo_identity(&output, &expected);
+                assert_metrics_meet_floor(
+                    &collect_replay_metrics(&output),
+                    &expected.medium_skip_metrics,
+                    &expected.label,
+                );
+            }
+
+            write_json_gz(&args.output, &output).unwrap();
+            let json = read_gzip_json(&output_path);
+            assert_split_output_omits_skipped_payloads(&output_path, &json, &output);
+        }
     }
 
     #[test]
@@ -3014,84 +3073,74 @@ mod tests {
         );
     }
 
-    fn expected_floor_for_demo(input: &str) -> Option<ExpectedReplayFloor> {
-        let file_name = Path::new(input).file_name()?.to_str()?;
-        match file_name {
-            "1-128af027-81e2-40d5-a0ea-0281f0b5d16e-1-1.dem.zst" => Some(ExpectedReplayFloor {
-                label: "small de_dust2 reference demo",
-                map: "de_dust2",
-                score_a: 11,
-                score_b: 3,
-                metrics: ReplayMetrics {
-                    rounds: 14,
-                    players: 10,
-                    frames: 67_000,
-                    frame_players: 480_000,
-                    frames_with_players: 67_000,
-                    frames_with_bomb_state: 55_000,
-                    players_with_weapons: 300_000,
-                    events: 120,
-                    kills: 100,
-                    bomb_events: 9,
-                    effects: 230,
-                    weapon_fires: 1_950,
-                    projectile_frames: 51_000,
-                    projectile_samples: 130_000,
-                },
-                medium_skip_metrics: ReplayMetrics {
-                    rounds: 14,
-                    players: 10,
-                    frames: 2_000,
-                    frame_players: 15_000,
-                    frames_with_players: 2_000,
-                    frames_with_bomb_state: 1_700,
-                    players_with_weapons: 9_000,
-                    events: 120,
-                    kills: 100,
-                    bomb_events: 9,
-                    effects: 230,
-                    weapon_fires: 0,
-                    projectile_frames: 0,
-                    projectile_samples: 0,
-                },
-            }),
-            _ => None,
+    fn configured_test_demo_paths() -> Vec<String> {
+        if let Ok(raw) = env::var("ROUNDLAB_TEST_DEMOS") {
+            return env::split_paths(&raw)
+                .filter(|path| !path.as_os_str().is_empty())
+                .map(|path| path.to_string_lossy().into_owned())
+                .collect();
         }
+
+        env::var("ROUNDLAB_TEST_DEMO")
+            .ok()
+            .filter(|path| !path.is_empty())
+            .map(|path| vec![path])
+            .unwrap_or_default()
     }
 
-    fn assert_reference_demo_floor(output: &Output, expected: ExpectedReplayFloor) {
-        assert_reference_demo_identity(output, &expected);
+    fn expected_floor_for_demo(input: &str) -> Option<ExpectedReplayFloor> {
+        let file_name = Path::new(input).file_name()?.to_str()?;
+        let floors: Vec<ExpectedReplayFloor> =
+            serde_json::from_str(include_str!("../reference_demos.json"))
+                .expect("valid parser/reference_demos.json");
+        floors.into_iter().find(|demo| demo.file_name == file_name)
+    }
+
+    fn assert_reference_demo_floor(output: &Output, expected: &ExpectedReplayFloor) {
+        assert_reference_demo_identity(output, expected);
         assert_metrics_meet_floor(
             &collect_replay_metrics(output),
             &expected.metrics,
-            expected.label,
+            &expected.label,
         );
     }
 
     fn assert_reference_demo_identity(output: &Output, expected: &ExpectedReplayFloor) {
-        assert_eq!(output.meta.map, expected.map, "reference demo map changed");
+        assert_eq!(
+            output.meta.map, expected.map,
+            "reference demo map changed for {}",
+            expected.label
+        );
         assert_eq!(
             output.meta.score_a, expected.score_a,
-            "reference demo score A changed"
+            "reference demo score A changed for {}",
+            expected.label
         );
         assert_eq!(
             output.meta.score_b, expected.score_b,
-            "reference demo score B changed"
+            "reference demo score B changed for {}",
+            expected.label
         );
     }
 
-    fn assert_split_reference_demo_floor(manifest: &Value, expected: ExpectedReplayFloor) {
+    fn assert_split_reference_demo_floor(manifest: &Value, expected: &ExpectedReplayFloor) {
         assert_eq!(
             manifest["meta"]["map"].as_str().unwrap_or_default(),
-            expected.map
+            expected.map,
+            "split manifest map changed for {}",
+            expected.label
         );
         assert_eq!(
             manifest["meta"]["scoreA"].as_i64().unwrap_or_default(),
-            expected.score_a as i64
+            expected.score_a as i64,
+            "split manifest score A changed for {}",
+            expected.label
         );
         assert_eq!(
             manifest["meta"]["scoreB"].as_i64().unwrap_or_default(),
-            expected.score_b as i64
+            expected.score_b as i64,
+            "split manifest score B changed for {}",
+            expected.label
         );
         let metrics = collect_manifest_metrics(manifest);
         assert_eq!(

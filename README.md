@@ -54,21 +54,29 @@ cd parser
 cargo test
 ```
 
-For real replay-integrity coverage, point `ROUNDLAB_TEST_DEMO` at a local `.dem`
-or `.dem.zst` file. Large demos must stay outside Git.
+For real replay-integrity coverage, point `ROUNDLAB_TEST_DEMOS` at local `.dem`
+or `.dem.zst` files. Use the platform path separator (`:` on macOS/Linux, `;`
+on Windows). Large demos must stay outside Git.
 
 ```bash
 cd parser
-ROUNDLAB_TEST_DEMO=/path/to/demo.dem.zst cargo test roundlab_test_demo_produces_replay_json_when_configured -- --nocapture
-ROUNDLAB_TEST_DEMO=/path/to/demo.dem.zst cargo test roundlab_test_demo_honors_quality_and_skip_options_when_configured -- --nocapture
+ROUNDLAB_TEST_DEMOS="/path/to/ancient4-13.dem.zst:/path/to/anubis16-19.dem.zst" cargo test roundlab_test_demo_produces_replay_json_when_configured -- --nocapture
+ROUNDLAB_TEST_DEMOS="/path/to/ancient4-13.dem.zst:/path/to/anubis16-19.dem.zst" cargo test roundlab_test_demo_honors_quality_and_skip_options_when_configured -- --nocapture
 ```
 
-When the demo is the current reference file
-`1-128af027-81e2-40d5-a0ea-0281f0b5d16e-1-1.dem.zst`, the test enforces
-strong floors for rounds, scores, players, frames, kills, bomb events, bomb
-state, utility effects, weapon fires, and projectile frames. The medium-quality
-skip test also verifies that lightweight parsing keeps core replay data while
+`ROUNDLAB_TEST_DEMO=/path/to/demo.dem.zst` still works for one-off local runs.
+
+Known reference demos are listed in `parser/reference_demos.json`. For those
+files, the tests enforce exact map and score identity plus floors for rounds,
+players, frames, kills, bomb events, bomb state, utility effects, weapon fires,
+and projectile frames. The score in the demo filename is the expected truth
+(`dust1-13.dem.zst` means `scoreA=1`, `scoreB=13`). The medium-quality skip
+test also verifies that lightweight parsing keeps core replay data while
 omitting weapon fires and projectile payloads.
+
+To add a reference demo, keep the `.dem`/`.dem.zst` outside Git, rename it as
+`<map><scoreA>-<scoreB>.dem.zst`, run both parser integration tests, then add
+only the lightweight floors to `parser/reference_demos.json`.
 
 Parser output uses gzip for Tauri compatibility. For benchmarks, set
 `ROUNDLAB_PARSER_GZIP_LEVEL=0..9` to compare compression speed and output size.
