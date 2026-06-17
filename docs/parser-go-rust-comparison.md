@@ -25,11 +25,11 @@ Use `--keep-outputs` for targeted event-level debugging.
 
 | demo | expected | Go score | Rust score | Go ms/RSS MB | Rust ms/RSS MB |
 | --- | --- | --- | --- | ---: | ---: |
-| ancient4-13 | 4-13 | 4-13 | 4-13 | 6761/63.5 | 1735/703.9 |
-| anubis16-19 | 16-19 | 16-19 | 16-19 | 14512/58.2 | 3191/1403.7 |
-| cache11-13 | 11-13 | 11-13 | 11-13 | 11253/63.6 | 2330/952.8 |
-| dust1-13 | 1-13 | 1-13 | 1-13 | 5954/57.3 | 1294/511.4 |
-| inferno8-13 | 8-13 | 8-13 | 8-13 | 10438/64.5 | 2324/993.3 |
+| ancient4-13 | 4-13 | 4-13 | 4-13 | 6761/63.5 | 1567/459.9 |
+| anubis16-19 | 16-19 | 16-19 | 16-19 | 14512/58.2 | 2514/934.4 |
+| cache11-13 | 11-13 | 11-13 | 11-13 | 11253/63.6 | 1792/600.9 |
+| dust1-13 | 1-13 | 1-13 | 1-13 | 5954/57.3 | 1103/328.3 |
+| inferno8-13 | 8-13 | 8-13 | 8-13 | 10438/64.5 | 1902/666.1 |
 
 Summary: Rust is much faster in medium skip mode, but uses much more memory.
 
@@ -37,13 +37,13 @@ Summary: Rust is much faster in medium skip mode, but uses much more memory.
 
 | demo | expected | Go score | Rust score | Go ms/RSS MB | Rust ms/RSS MB | Rust output delta |
 | --- | --- | --- | --- | ---: | ---: | ---: |
-| ancient4-13 | 4-13 | 4-13 | 4-13 | 15371/221.4 | 19157/5526.1 | -4.92 MB |
-| anubis16-19 | 16-19 | 16-19 | 16-19 | 29626/177.6 | 40313/5479.9 | -11.52 MB |
-| cache11-13 | 11-13 | 11-13 | 11-13 | 21527/190.5 | 31291/5374.5 | -9.65 MB |
-| dust1-13 | 1-13 | 1-13 | 1-13 | 11694/192.0 | 13436/4642.8 | -4.63 MB |
-| inferno8-13 | 8-13 | 8-13 | 8-13 | 20199/199.1 | 24224/5369.6 | -7.61 MB |
+| ancient4-13 | 4-13 | 4-13 | 4-13 | 15371/221.4 | 14285/1947.2 | -4.92 MB |
+| anubis16-19 | 16-19 | 16-19 | 16-19 | 29626/177.6 | 28307/3362.2 | -11.52 MB |
+| cache11-13 | 11-13 | 11-13 | 11-13 | 21527/190.5 | 21490/3089.5 | -9.65 MB |
+| dust1-13 | 1-13 | 1-13 | 1-13 | 11694/192.0 | 10783/1698.0 | -4.63 MB |
+| inferno8-13 | 8-13 | 8-13 | 8-13 | 20199/199.1 | 18157/2734.5 | -7.61 MB |
 
-Summary: Rust full quality outputs are smaller, but Rust is still slower than Go and uses roughly 4.6-5.5 GB RSS on these demos. Go stays around 178-221 MB RSS.
+Summary: Rust full quality outputs are smaller and now close to or faster than Go on several demos, but Rust still uses roughly 1.7-3.4 GB RSS. Go stays around 178-221 MB RSS.
 
 ## Functional Findings
 
@@ -58,18 +58,20 @@ Summary: Rust full quality outputs are smaller, but Rust is still slower than Go
 
 Current Rust full-quality cost centers from `ROUNDLAB_STATS`:
 
-- `parse_ticks_ms`: largest parse phase.
-- `parse_projectiles_ms`: second largest parse phase when projectiles are enabled.
+- `parse_ticks_ms`: still the largest parse phase, but typed tick row extraction substantially reduced it.
+- `parse_projectiles_ms`: reduced by typed projectile extraction.
 - `serialize_json_ms` / `write_output_ms`: large and repeated across demos.
-- Peak RSS is the biggest problem: current Rust materializes large parser row sets and full replay output in memory before writing split round files.
+- Peak RSS is still the biggest problem: current Rust materializes full replay output in memory before writing split round files.
 
 Typed projectile extraction removed the previous `serde_json::Value` conversion for projectile rows. On the five full-quality demos, Rust total time went from ~151s to ~128s, with identical projectile output counts. This is a real gain, but it does not solve the main memory problem; peak RSS is still dominated by full tick/frame materialization.
+
+Typed tick row extraction removed the previous `serde_json::Value` conversion for player/tick rows. On the five full-quality demos, Rust total time went from ~128s to ~93s and max RSS went from ~5.5 GB to ~3.4 GB, with stable replay metrics and output sizes.
 
 A quick test with `ROUNDLAB_PARSER_GZIP_LEVEL=1` on `dust1-13` did not improve full parse time and made output much larger, so gzip level alone is not the right optimization.
 
 ## Next Targets
 
-1. Reduce Rust peak memory by avoiding `serde_json::Value` rows for full tick/projectile data where typed structs are enough.
-2. Move toward round streaming/spooling so full replay output does not remain entirely resident before split writing.
+1. Move toward round streaming/spooling so full replay output does not remain entirely resident before split writing.
+2. Reduce frame/player clone pressure while building `Round` payloads.
 3. Keep event/effect divergences under review with `--keep-outputs`; only copy Go behavior when Go is clearly more correct for replay.
 4. Add phase/RSS tracking per parser run to keep perf regressions visible.

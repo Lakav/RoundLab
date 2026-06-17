@@ -147,8 +147,29 @@ struct C4Pos {
 }
 
 struct TickData {
-    rows: Vec<Value>,
+    rows: Vec<TickRow>,
     c4_positions: Vec<C4Pos>,
+}
+
+struct TickRow {
+    tick: i32,
+    steamid: u64,
+    x: f64,
+    y: f64,
+    z: f64,
+    yaw: f64,
+    hp: i64,
+    armor: i64,
+    money: Option<i64>,
+    helmet: bool,
+    kit: bool,
+    alive: bool,
+    team: i64,
+    active: String,
+    weapons: Vec<String>,
+    fire: bool,
+    right_click: bool,
+    use_key: bool,
 }
 
 struct ProjectileRow {
@@ -592,15 +613,15 @@ fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)>
                             .and_then(|id| player_row_at_tick(&rows_by_tick, event_tick, id));
                         let x = get_f64(event, "x")
                             .or_else(|| get_f64(event, "X"))
-                            .or_else(|| planter_row.and_then(|row| get_f64(row, "X")))
+                            .or_else(|| planter_row.map(|row| row.x))
                             .or_else(|| last_bomb.as_ref().map(|bomb| bomb.x));
                         let y = get_f64(event, "y")
                             .or_else(|| get_f64(event, "Y"))
-                            .or_else(|| planter_row.and_then(|row| get_f64(row, "Y")))
+                            .or_else(|| planter_row.map(|row| row.y))
                             .or_else(|| last_bomb.as_ref().map(|bomb| bomb.y));
                         let z = get_f64(event, "z")
                             .or_else(|| get_f64(event, "Z"))
-                            .or_else(|| planter_row.and_then(|row| get_f64(row, "Z")))
+                            .or_else(|| planter_row.map(|row| row.z))
                             .or_else(|| last_bomb.as_ref().map(|bomb| bomb.z));
                         if let (Some(x), Some(y), Some(z)) = (x, y, z) {
                             last_bomb = Some(BombState {
@@ -634,12 +655,10 @@ fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)>
             let mut seen_players = HashSet::new();
             let mut players = Vec::new();
             for row in rows {
-                let Some(player_id) = get_u64(row, "steamid") else {
-                    continue;
-                };
+                let player_id = row.steamid;
                 seen_players.insert(player_id);
-                let active = get_str(row, "active_weapon_name").unwrap_or("");
-                let alive = get_bool(row, "is_alive").unwrap_or(false);
+                let active = row.active.as_str();
+                let alive = row.alive;
                 let pressed = action_pressed(row);
                 let active_action = if let Some(start_tick) = plant_starts.get(&player_id).copied()
                 {
@@ -934,8 +953,8 @@ fn is_utility_action_weapon(weapon: &str) -> bool {
         || lower.contains("decoy")
 }
 
-fn action_pressed(row: &Value) -> bool {
-    get_bool(row, "FIRE").unwrap_or(false) || get_bool(row, "RIGHTCLICK").unwrap_or(false)
+fn action_pressed(row: &TickRow) -> bool {
+    row.fire || row.right_click
 }
 
 fn parse_args() -> Result<Args> {
@@ -1238,7 +1257,6 @@ fn parse_ticks(bytes: &[u8], huf: &Vec<(u8, u8)>, ticks: Vec<i32>) -> Result<Tic
             "team_num".into(),
             "active_weapon_name".into(),
             "inventory".into(),
-            "flash_duration".into(),
             "FIRE".into(),
             "RIGHTCLICK".into(),
             "USE".into(),
@@ -1265,11 +1283,49 @@ fn parse_ticks(bytes: &[u8], huf: &Vec<(u8, u8)>, ticks: Vec<i32>) -> Result<Tic
         prop_infos: output.prop_controller.prop_infos.clone(),
         inner: output.df.clone().into(),
     };
-    let rows = soa_to_aos(helper)
-        .into_iter()
-        .map(|row| serde_json::to_value(row).unwrap_or(Value::Null))
-        .collect();
+    let rows = tick_rows_from_helper(&helper);
     Ok(TickData { rows, c4_positions })
+}
+
+fn tick_rows_from_helper(helper: &OutputSerdeHelperStruct) -> Vec<TickRow> {
+    let row_count = helper
+        .inner
+        .values()
+        .next()
+        .map(PropColumn::len)
+        .unwrap_or_default();
+    let mut rows = Vec::with_capacity(row_count);
+    for idx in 0..row_count {
+        let Some(tick) = helper_i64(helper, "tick", idx).map(|tick| tick as i32) else {
+            continue;
+        };
+        let Some(steamid) = helper_u64(helper, "steamid", idx) else {
+            continue;
+        };
+        rows.push(TickRow {
+            tick,
+            steamid,
+            x: helper_f64(helper, "X", idx).unwrap_or_default(),
+            y: helper_f64(helper, "Y", idx).unwrap_or_default(),
+            z: helper_f64(helper, "Z", idx).unwrap_or_default(),
+            yaw: helper_f64(helper, "yaw", idx).unwrap_or_default(),
+            hp: helper_i64(helper, "health", idx).unwrap_or_default(),
+            armor: helper_i64(helper, "armor_value", idx).unwrap_or_default(),
+            money: helper_i64(helper, "balance", idx),
+            helmet: helper_bool(helper, "has_helmet", idx).unwrap_or(false),
+            kit: helper_bool(helper, "has_defuser", idx).unwrap_or(false),
+            alive: helper_bool(helper, "is_alive", idx).unwrap_or(false),
+            team: helper_i64(helper, "team_num", idx).unwrap_or_default(),
+            active: helper_str(helper, "active_weapon_name", idx)
+                .unwrap_or("")
+                .to_string(),
+            weapons: helper_string_vec(helper, "inventory", idx).unwrap_or_default(),
+            fire: helper_bool(helper, "FIRE", idx).unwrap_or(false),
+            right_click: helper_bool(helper, "RIGHTCLICK", idx).unwrap_or(false),
+            use_key: helper_bool(helper, "USE", idx).unwrap_or(false),
+        });
+    }
+    rows
 }
 
 fn parse_team_rows(bytes: &[u8], huf: &Vec<(u8, u8)>, ticks: Vec<i32>) -> Result<Vec<Value>> {
@@ -1603,6 +1659,17 @@ fn helper_f64(helper: &OutputSerdeHelperStruct, name: &str, idx: usize) -> Optio
     }
 }
 
+fn helper_bool(helper: &OutputSerdeHelperStruct, name: &str, idx: usize) -> Option<bool> {
+    match helper_column(helper, name)?.data.as_ref()? {
+        VarVec::Bool(values) => values.get(idx).copied().flatten(),
+        VarVec::I32(values) => values.get(idx).copied().flatten().map(|value| value != 0),
+        VarVec::U32(values) => values.get(idx).copied().flatten().map(|value| value != 0),
+        VarVec::U64(values) => values.get(idx).copied().flatten().map(|value| value != 0),
+        VarVec::String(values) => values.get(idx)?.as_deref()?.parse::<bool>().ok(),
+        _ => None,
+    }
+}
+
 fn helper_str<'a>(helper: &'a OutputSerdeHelperStruct, name: &str, idx: usize) -> Option<&'a str> {
     match helper_column(helper, name)?.data.as_ref()? {
         VarVec::String(values) => values.get(idx)?.as_deref(),
@@ -1610,12 +1677,21 @@ fn helper_str<'a>(helper: &'a OutputSerdeHelperStruct, name: &str, idx: usize) -
     }
 }
 
-fn group_tick_rows(rows: Vec<Value>) -> BTreeMap<i32, Vec<Value>> {
-    let mut out: BTreeMap<i32, Vec<Value>> = BTreeMap::new();
+fn helper_string_vec(
+    helper: &OutputSerdeHelperStruct,
+    name: &str,
+    idx: usize,
+) -> Option<Vec<String>> {
+    match helper_column(helper, name)?.data.as_ref()? {
+        VarVec::StringVec(values) => values.get(idx).cloned(),
+        _ => None,
+    }
+}
+
+fn group_tick_rows(rows: Vec<TickRow>) -> BTreeMap<i32, Vec<TickRow>> {
+    let mut out: BTreeMap<i32, Vec<TickRow>> = BTreeMap::new();
     for row in rows {
-        if let Some(tick) = get_i64(&row, "tick") {
-            out.entry(tick as i32).or_default().push(row);
-        }
+        out.entry(row.tick).or_default().push(row);
     }
     out
 }
@@ -1741,39 +1817,38 @@ fn group_projectile_rows(rows: Vec<ProjectileRow>) -> BTreeMap<i32, Vec<Projecti
 }
 
 fn player_pos_from_row(
-    row: &Value,
+    row: &TickRow,
     blind_spans: &[BlindSpan],
     t: f64,
     active_action: Option<ActiveAction>,
 ) -> Option<PlayerPos> {
-    if !get_bool(row, "is_alive").unwrap_or(false) {
+    if !row.alive {
         return None;
     }
-    let id = get_u64(row, "steamid")?;
+    let id = row.steamid;
     let blind = blind_spans
         .iter()
         .find(|b| b.player == id && t >= b.start && t <= b.end);
-    let active = get_str(row, "active_weapon_name").unwrap_or("").to_string();
-    let weapons = get_string_array(row, "inventory");
-    let has_bomb = weapon_is_bomb(&active) || weapons.iter().any(|weapon| weapon_is_bomb(weapon));
+    let has_bomb =
+        weapon_is_bomb(&row.active) || row.weapons.iter().any(|weapon| weapon_is_bomb(weapon));
     Some(PlayerPos {
         id,
-        x: get_f64(row, "X").unwrap_or_default(),
-        y: get_f64(row, "Y").unwrap_or_default(),
-        z: get_f64(row, "Z").unwrap_or_default(),
-        yaw: get_f64(row, "yaw").unwrap_or_default(),
-        hp: get_i64(row, "health").unwrap_or_default(),
-        armor: get_i64(row, "armor_value").unwrap_or_default(),
-        money: get_i64(row, "balance"),
-        helmet: get_bool(row, "has_helmet").unwrap_or(false),
-        kit: get_bool(row, "has_defuser").unwrap_or(false),
+        x: row.x,
+        y: row.y,
+        z: row.z,
+        yaw: row.yaw,
+        hp: row.hp,
+        armor: row.armor,
+        money: row.money,
+        helmet: row.helmet,
+        kit: row.kit,
         has_bomb,
-        team: get_i64(row, "team_num").unwrap_or_default(),
-        active,
-        weapons,
+        team: row.team,
+        active: row.active.clone(),
+        weapons: row.weapons.clone(),
         flash_left: blind.map(|b| (b.end - t).max(0.0)),
         flash_total: blind.map(|b| b.total),
-        use_key: get_bool(row, "USE").unwrap_or(false),
+        use_key: row.use_key,
         active_action,
     })
 }
@@ -1897,7 +1972,7 @@ fn round_blinds(events: &[Value], span: &RoundSpan) -> Vec<BlindSpan> {
 fn round_effects(
     events: &[Value],
     span: &RoundSpan,
-    rows_by_tick: &BTreeMap<i32, Vec<Value>>,
+    rows_by_tick: &BTreeMap<i32, Vec<TickRow>>,
 ) -> Vec<UtilityEffect> {
     let mut out = Vec::new();
     for event in events {
@@ -1915,15 +1990,15 @@ fn round_effects(
         };
         let x = get_f64(event, "x")
             .or_else(|| get_f64(event, "X"))
-            .or_else(|| planter_row.and_then(|row| get_f64(row, "X")))
+            .or_else(|| planter_row.map(|row| row.x))
             .unwrap_or_default();
         let y = get_f64(event, "y")
             .or_else(|| get_f64(event, "Y"))
-            .or_else(|| planter_row.and_then(|row| get_f64(row, "Y")))
+            .or_else(|| planter_row.map(|row| row.y))
             .unwrap_or_default();
         let z = get_f64(event, "z")
             .or_else(|| get_f64(event, "Z"))
-            .or_else(|| planter_row.and_then(|row| get_f64(row, "Z")))
+            .or_else(|| planter_row.map(|row| row.z))
             .unwrap_or_default();
         if x == 0.0 && y == 0.0 && z == 0.0 {
             continue;
@@ -1981,7 +2056,7 @@ fn effect_variant(event_name: &str) -> Option<&'static str> {
 fn round_weapon_fires(
     events: &[Value],
     span: &RoundSpan,
-    rows_by_tick: &BTreeMap<i32, Vec<Value>>,
+    rows_by_tick: &BTreeMap<i32, Vec<TickRow>>,
 ) -> Vec<WeaponFireEvent> {
     let mut out = Vec::new();
     for event in events {
@@ -2000,29 +2075,28 @@ fn round_weapon_fires(
             t: seconds_since(span.start, tick),
             shooter,
             weapon: get_str(event, "weapon").map(str::to_string),
-            x: row.and_then(|r| get_f64(r, "X")).unwrap_or_default(),
-            y: row.and_then(|r| get_f64(r, "Y")).unwrap_or_default(),
-            z: row.and_then(|r| get_f64(r, "Z")).unwrap_or_default(),
-            yaw: row.and_then(|r| get_f64(r, "yaw")).unwrap_or_default(),
-            team: row.and_then(|r| get_i64(r, "team_num")),
+            x: row.map(|r| r.x).unwrap_or_default(),
+            y: row.map(|r| r.y).unwrap_or_default(),
+            z: row.map(|r| r.z).unwrap_or_default(),
+            yaw: row.map(|r| r.yaw).unwrap_or_default(),
+            team: row.map(|r| r.team),
         });
     }
     out
 }
 
 fn player_row_at_tick(
-    rows_by_tick: &BTreeMap<i32, Vec<Value>>,
+    rows_by_tick: &BTreeMap<i32, Vec<TickRow>>,
     tick: i32,
     steam_id: u64,
-) -> Option<&Value> {
+) -> Option<&TickRow> {
     let rows = rows_by_tick.get(&tick).or_else(|| {
         rows_by_tick
             .range(..=tick)
             .next_back()
             .map(|(_, rows)| rows)
     })?;
-    rows.iter()
-        .find(|row| get_u64(row, "steamid") == Some(steam_id))
+    rows.iter().find(|row| row.steamid == steam_id)
 }
 
 fn seconds_since(start: i32, tick: i32) -> f64 {
@@ -2090,21 +2164,6 @@ fn get_bool(v: &Value, key: &str) -> Option<bool> {
     value
         .as_bool()
         .or_else(|| value.as_object()?.get("Bool")?.as_bool())
-}
-
-fn get_string_array(v: &Value, key: &str) -> Vec<String> {
-    let Some(value) = get_field(v, key) else {
-        return vec![];
-    };
-    let array = value
-        .as_array()
-        .or_else(|| value.as_object()?.get("StringVec")?.as_array());
-    array
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .map(str::to_string)
-        .collect()
 }
 
 struct CountingWriter<W> {
