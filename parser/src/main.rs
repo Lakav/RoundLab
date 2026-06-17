@@ -941,6 +941,9 @@ fn build_round_payload(
             .collect::<Vec<_>>()
     };
 
+    let mut effects = round_effects(ctx.events, span, ctx.rows_by_tick);
+    add_missing_terminal_flash_effects(&mut effects, &projectile_frames, span, ctx.rows_by_tick);
+
     Some(Round {
         number: output_number,
         start_tick: span.start,
@@ -959,7 +962,7 @@ fn build_round_payload(
             .map(|score| score.1)
             .unwrap_or_default(),
         events: round_events(ctx.events, span, ctx.spans.get(span_idx + 1)),
-        effects: round_effects(ctx.events, span, ctx.rows_by_tick),
+        effects,
         weapon_fires: if ctx.args.skip_weapon_fires {
             Vec::new()
         } else {
@@ -2307,6 +2310,73 @@ fn round_effects(
     out
 }
 
+fn add_missing_terminal_flash_effects(
+    effects: &mut Vec<UtilityEffect>,
+    projectile_frames: &[ProjectileFrame],
+    span: &RoundSpan,
+    rows_by_tick: &BTreeMap<i32, Vec<TickRow>>,
+) {
+    let duration = seconds_since(span.start, span.end);
+    let mut last_flash_by_id: HashMap<i64, &ProjectilePos> = HashMap::new();
+    let mut last_t_by_id: HashMap<i64, f64> = HashMap::new();
+    for frame in projectile_frames {
+        for projectile in &frame.projectiles {
+            if projectile.kind != ProjectileKind::Flash {
+                continue;
+            }
+            last_flash_by_id.insert(projectile.id, projectile);
+            last_t_by_id.insert(projectile.id, frame.t);
+        }
+    }
+
+    for (id, projectile) in last_flash_by_id {
+        let Some(last_t) = last_t_by_id.get(&id).copied() else {
+            continue;
+        };
+        if duration - last_t > 0.25 {
+            continue;
+        }
+        let start = (last_t + 1.0 / TICK_RATE).min(duration);
+        if has_nearby_flash_effect(effects, start, projectile.x, projectile.y, projectile.z) {
+            continue;
+        }
+        let team = projectile
+            .thrower
+            .and_then(|id| player_row_at_tick(rows_by_tick, span.end, id))
+            .map(|row| row.team);
+        effects.push(UtilityEffect {
+            kind: "flash".into(),
+            variant: None,
+            start,
+            end: start + 0.8,
+            x: projectile.x,
+            y: projectile.y,
+            z: projectile.z,
+            team,
+        });
+    }
+    effects.sort_by(|a, b| {
+        a.start
+            .partial_cmp(&b.start)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+}
+
+fn has_nearby_flash_effect(effects: &[UtilityEffect], start: f64, x: f64, y: f64, z: f64) -> bool {
+    effects.iter().any(|effect| {
+        effect.kind == "flash"
+            && (effect.start - start).abs() <= 0.25
+            && squared_distance(effect.x, effect.y, effect.z, x, y, z) <= 100.0 * 100.0
+    })
+}
+
+fn squared_distance(ax: f64, ay: f64, az: f64, bx: f64, by: f64, bz: f64) -> f64 {
+    let dx = ax - bx;
+    let dy = ay - by;
+    let dz = az - bz;
+    dx * dx + dy * dy + dz * dz
+}
+
 fn effect_kind(event_name: &str) -> Option<&'static str> {
     match event_name {
         "smokegrenade_detonate" => Some("smoke"),
@@ -2801,14 +2871,17 @@ fn parser_gzip_compression() -> Compression {
 #[cfg(test)]
 mod tests {
     use super::{
-        commit_split_output, looks_like_knife_round, parse_args_from, parse_demo_to_output,
-        parser_gzip_compression, read_capped, read_demo, round_events, sample_step, seconds_since,
-        write_json_gz, Args, Event, Frame, Output, Round, RoundSpan, MAX_DEMO_SIZE,
+        add_missing_terminal_flash_effects, commit_split_output, looks_like_knife_round,
+        parse_args_from, parse_demo_to_output, parser_gzip_compression, read_capped, read_demo,
+        round_events, sample_step, seconds_since, write_json_gz, Args, Event, Frame, Output,
+        ProjectileFrame, ProjectileKind, ProjectilePos, Round, RoundSpan, UtilityEffect,
+        MAX_DEMO_SIZE,
     };
     use flate2::{read::GzDecoder, Compression};
     use serde::Deserialize;
     use serde_json::{json, Value};
     use std::{
+        collections::BTreeMap,
         env,
         io::{Read, Write},
         path::Path,
@@ -3300,6 +3373,80 @@ mod tests {
         assert_eq!(parsed[1].kind, "bomb_defuse_abort");
         assert_eq!(parsed[1].player, Some(7));
         assert_eq!(parsed[2].kind, "bomb_exploded");
+    }
+
+    #[test]
+    fn terminal_flash_effects_are_synthesized_from_projectiles() {
+        let span = RoundSpan {
+            start: 100,
+            end: 200,
+            round_end: 200,
+            winner: "T".into(),
+        };
+        let projectile_frames = vec![ProjectileFrame {
+            t: seconds_since(span.start, 199),
+            projectiles: vec![ProjectilePos {
+                id: 42,
+                kind: ProjectileKind::Flash,
+                x: 10.0,
+                y: 20.0,
+                z: 30.0,
+                thrower: None,
+            }],
+        }];
+        let mut effects = Vec::new();
+
+        add_missing_terminal_flash_effects(
+            &mut effects,
+            &projectile_frames,
+            &span,
+            &BTreeMap::new(),
+        );
+
+        assert_eq!(effects.len(), 1);
+        assert_eq!(effects[0].kind, "flash");
+        assert_eq!(effects[0].start, seconds_since(span.start, 200));
+        assert_eq!(effects[0].x, 10.0);
+    }
+
+    #[test]
+    fn terminal_flash_effects_do_not_duplicate_existing_effects() {
+        let span = RoundSpan {
+            start: 100,
+            end: 200,
+            round_end: 200,
+            winner: "T".into(),
+        };
+        let projectile_frames = vec![ProjectileFrame {
+            t: seconds_since(span.start, 199),
+            projectiles: vec![ProjectilePos {
+                id: 42,
+                kind: ProjectileKind::Flash,
+                x: 10.0,
+                y: 20.0,
+                z: 30.0,
+                thrower: None,
+            }],
+        }];
+        let mut effects = vec![UtilityEffect {
+            kind: "flash".into(),
+            variant: None,
+            start: seconds_since(span.start, 200),
+            end: seconds_since(span.start, 200) + 0.8,
+            x: 10.0,
+            y: 20.0,
+            z: 30.0,
+            team: None,
+        }];
+
+        add_missing_terminal_flash_effects(
+            &mut effects,
+            &projectile_frames,
+            &span,
+            &BTreeMap::new(),
+        );
+
+        assert_eq!(effects.len(), 1);
     }
 
     #[test]

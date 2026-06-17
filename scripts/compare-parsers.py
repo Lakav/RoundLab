@@ -112,6 +112,7 @@ def iter_round_payloads(output_path: Path, manifest: dict[str, Any]):
 
 def collect_metrics(output_path: Path) -> dict[str, Any]:
     manifest = read_gzip_json(output_path)
+    effect_counts: dict[str, int] = {}
     metrics: dict[str, Any] = {
         "map": manifest.get("meta", {}).get("map", ""),
         "scoreA": manifest.get("meta", {}).get("scoreA", 0),
@@ -129,6 +130,7 @@ def collect_metrics(output_path: Path) -> dict[str, Any]:
         "projectileFrames": 0,
         "projectileSamples": 0,
         "outputBytes": output_disk_bytes(output_path),
+        "effectCounts": effect_counts,
     }
     for round_obj in iter_round_payloads(output_path, manifest):
         frames = round_obj.get("frames", [])
@@ -141,6 +143,9 @@ def collect_metrics(output_path: Path) -> dict[str, Any]:
         metrics["effects"] += len(effects)
         metrics["weaponFires"] += len(weapon_fires)
         metrics["projectileFrames"] += len(projectile_frames)
+        for effect in effects:
+            kind = effect.get("type", "")
+            effect_counts[kind] = effect_counts.get(kind, 0) + 1
         for frame in frames:
             players = frame.get("players", [])
             metrics["framePlayers"] += len(players)
@@ -168,6 +173,38 @@ def bucket_time(value: Any, precision: float = 0.25) -> float:
     if not isinstance(value, (int, float)):
         return 0.0
     return round(round(float(value) / precision) * precision, 3)
+
+
+def effect_signature(effect: dict[str, Any]) -> dict[str, Any]:
+    kind = effect.get("type", "")
+    return {
+        "t": bucket_time(effect.get("start"), 0.25),
+        "type": kind,
+        "variant": None if kind == "fire" else effect.get("variant"),
+        "team": None if kind == "bomb_planted" else effect.get("team"),
+        "x": round(float(effect.get("x", 0.0)) / 50.0) * 50,
+        "y": round(float(effect.get("y", 0.0)) / 50.0) * 50,
+    }
+
+
+def dedupe_flash_effect_signatures(signatures: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen_flash = set()
+    out = []
+    for signature in signatures:
+        if signature.get("type") != "flash":
+            out.append(signature)
+            continue
+        key = (
+            signature.get("t"),
+            signature.get("team"),
+            signature.get("x"),
+            signature.get("y"),
+        )
+        if key in seen_flash:
+            continue
+        seen_flash.add(key)
+        out.append(signature)
+    return out
 
 
 def normalize_weapon(value: Any) -> str:
@@ -240,16 +277,12 @@ def round_audit_summary(round_obj: dict[str, Any]) -> dict[str, Any]:
     for effect in round_obj.get("effects", []):
         kind = effect.get("type", "")
         effect_counts[kind] = effect_counts.get(kind, 0) + 1
-        effect_signatures.append(
-            {
-                "t": bucket_time(effect.get("start"), 0.25),
-                "type": kind,
-                "variant": effect.get("variant"),
-                "team": effect.get("team"),
-                "x": round(float(effect.get("x", 0.0)) / 50.0) * 50,
-                "y": round(float(effect.get("y", 0.0)) / 50.0) * 50,
-            }
-        )
+        effect_signatures.append(effect_signature(effect))
+    deduped_effect_signatures = dedupe_flash_effect_signatures(effect_signatures)
+    deduped_effect_counts: dict[str, int] = {}
+    for signature in deduped_effect_signatures:
+        kind = signature.get("type", "")
+        deduped_effect_counts[kind] = deduped_effect_counts.get(kind, 0) + 1
 
     fire_counts_by_weapon: dict[str, int] = {}
     fire_signatures = []
@@ -321,8 +354,14 @@ def round_audit_summary(round_obj: dict[str, Any]) -> dict[str, Any]:
         "killSignatures": sorted(kill_signatures, key=lambda item: (item["t"], item["victim"] or 0)),
         "bombSignatures": sorted(bomb_signatures, key=lambda item: (item["t"], item["type"])),
         "effects": len(round_obj.get("effects", [])),
+        "dedupedEffects": len(deduped_effect_signatures),
         "effectCounts": effect_counts,
+        "dedupedEffectCounts": deduped_effect_counts,
         "effectSignatures": sorted(effect_signatures, key=lambda item: (item["t"], item["type"], item["x"], item["y"])),
+        "dedupedEffectSignatures": sorted(
+            deduped_effect_signatures,
+            key=lambda item: (item["t"], item["type"], item["x"], item["y"]),
+        ),
         "weaponFires": len(round_obj.get("weaponFires", [])),
         "fireCountsByWeapon": fire_counts_by_weapon,
         "fireSignatures": sorted(fire_signatures, key=lambda item: (item["t"], item["shooter"] or 0, item["weapon"])),
@@ -382,6 +421,7 @@ def round_audit(go_output: Path, rust_output: Path) -> dict[str, Any]:
                 "embeddedProjectileFrames",
                 "events",
                 "effects",
+                "dedupedEffects",
                 "weaponFires",
                 "projectileFrames",
                 "projectileSamples",
@@ -390,6 +430,7 @@ def round_audit(go_output: Path, rust_output: Path) -> dict[str, Any]:
                 "bombStateCounts",
                 "eventCounts",
                 "effectCounts",
+                "dedupedEffectCounts",
                 "fireCountsByWeapon",
                 "projectileTypeCounts",
             ]
@@ -407,6 +448,7 @@ def round_audit(go_output: Path, rust_output: Path) -> dict[str, Any]:
                 "killSignatures",
                 "bombSignatures",
                 "effectSignatures",
+                "dedupedEffectSignatures",
                 "fireSignatures",
                 "projectileSignatures",
             ]:
@@ -589,11 +631,25 @@ def classify_diff(
             return "rust_wrong_filename_truth"
         if not go_ok and not rust_ok:
             return "both_wrong_filename_truth"
+    if field == "effects" and is_go_duplicate_flash_effect_difference(go_metrics, rust_metrics):
+        return "mostly_go_duplicate_flash_effects_check_round_audit"
     if field == "projectileSamples":
         return "model_difference_possible_projectiles_split_vs_embedded"
     if field == "outputBytes":
         return "performance_size_difference"
     return "needs_review"
+
+
+def is_go_duplicate_flash_effect_difference(
+    go_metrics: dict[str, Any], rust_metrics: dict[str, Any]
+) -> bool:
+    go_counts = dict(go_metrics.get("effectCounts") or {})
+    rust_counts = dict(rust_metrics.get("effectCounts") or {})
+    go_flash = go_counts.pop("flash", 0)
+    rust_flash = rust_counts.pop("flash", 0)
+    if go_counts != rust_counts:
+        return False
+    return rust_flash > 0 and rust_flash < go_flash <= rust_flash * 2
 
 
 def write_markdown(report: dict[str, Any], path: Path) -> None:
