@@ -187,6 +187,13 @@ def effect_signature(effect: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def bucket_yaw(value: Any, precision: float = 15.0) -> float:
+    if not isinstance(value, (int, float)):
+        return 0.0
+    yaw = float(value) % 360.0
+    return round(round(yaw / precision) * precision, 3) % 360.0
+
+
 def dedupe_flash_effect_signatures(signatures: list[dict[str, Any]]) -> list[dict[str, Any]]:
     seen_flash = set()
     out = []
@@ -449,6 +456,93 @@ def signature_diff(go_items: list[dict[str, Any]], rust_items: list[dict[str, An
     }
 
 
+def fire_pose_summary(fires: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out = []
+    for fire in fires:
+        out.append(
+            {
+                "t": float(fire.get("t", 0.0) or 0.0),
+                "shooter": fire.get("shooter"),
+                "weapon": normalize_weapon(fire.get("weapon")),
+                "team": fire.get("team"),
+                "x": float(fire.get("x", 0.0) or 0.0),
+                "y": float(fire.get("y", 0.0) or 0.0),
+                "z": float(fire.get("z", 0.0) or 0.0),
+                "yaw": float(fire.get("yaw", 0.0) or 0.0),
+            }
+        )
+    return out
+
+
+def yaw_delta(left: float, right: float) -> float:
+    delta = abs((left - right) % 360.0)
+    return min(delta, 360.0 - delta)
+
+
+def fire_pose_distance(left: dict[str, Any], right: dict[str, Any]) -> float:
+    position_delta = (
+        (left["x"] - right["x"]) ** 2
+        + (left["y"] - right["y"]) ** 2
+        + (left["z"] - right["z"]) ** 2
+    ) ** 0.5
+    return abs(left["t"] - right["t"]) / 0.35 + position_delta / 160.0 + yaw_delta(left["yaw"], right["yaw"]) / 45.0
+
+
+def fire_pose_sample(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **item,
+        "t": bucket_time(item["t"], 0.25),
+        "x": round(item["x"] / 50.0) * 50,
+        "y": round(item["y"] / 50.0) * 50,
+        "yaw": bucket_yaw(item["yaw"], 15.0),
+    }
+
+
+def compare_fire_poses(go_round: dict[str, Any], rust_round: dict[str, Any], limit: int = 10) -> dict[str, Any]:
+    go_fires = fire_pose_summary(go_round.get("weaponFires", []))
+    rust_fires = fire_pose_summary(rust_round.get("weaponFires", []))
+    unmatched_rust = set(range(len(rust_fires)))
+    missing = []
+    mismatched = []
+    for go_fire in go_fires:
+        candidates = [
+            (idx, rust_fires[idx])
+            for idx in unmatched_rust
+            if rust_fires[idx]["shooter"] == go_fire["shooter"]
+            and rust_fires[idx]["weapon"] == go_fire["weapon"]
+            and abs(rust_fires[idx]["t"] - go_fire["t"]) <= 0.35
+        ]
+        if not candidates:
+            missing.append(go_fire)
+            continue
+        idx, rust_fire = min(candidates, key=lambda item: fire_pose_distance(go_fire, item[1]))
+        unmatched_rust.remove(idx)
+        position_delta = (
+            (go_fire["x"] - rust_fire["x"]) ** 2
+            + (go_fire["y"] - rust_fire["y"]) ** 2
+            + (go_fire["z"] - rust_fire["z"]) ** 2
+        ) ** 0.5
+        yaw = yaw_delta(go_fire["yaw"], rust_fire["yaw"])
+        if position_delta > 160.0 or yaw > 45.0 or go_fire["team"] != rust_fire["team"]:
+            mismatched.append(
+                {
+                    "go": fire_pose_sample(go_fire),
+                    "rust": fire_pose_sample(rust_fire),
+                    "positionDelta": round(position_delta, 1),
+                    "yawDelta": round(yaw, 1),
+                }
+            )
+    extra = [rust_fires[idx] for idx in sorted(unmatched_rust)]
+    return {
+        "missingInRustCount": len(missing),
+        "missingInRustSample": [fire_pose_sample(item) for item in missing[:limit]],
+        "extraInRustCount": len(extra),
+        "extraInRustSample": [fire_pose_sample(item) for item in extra[:limit]],
+        "poseMismatchCount": len(mismatched),
+        "poseMismatchSample": mismatched[:limit],
+    }
+
+
 def round_audit(go_output: Path, rust_output: Path) -> dict[str, Any]:
     go_manifest, go_rounds = load_round_payloads(go_output)
     rust_manifest, rust_rounds = load_round_payloads(rust_output)
@@ -505,6 +599,13 @@ def round_audit(go_output: Path, rust_output: Path) -> dict[str, Any]:
                 diff = signature_diff(go_summary[field], rust_summary[field])
                 if diff["missingInRustCount"] or diff["extraInRustCount"]:
                     diffs.append({"field": field, **diff})
+            fire_pose_diff = compare_fire_poses(go_rounds[idx], rust_rounds[idx])
+            if (
+                fire_pose_diff["missingInRustCount"]
+                or fire_pose_diff["extraInRustCount"]
+                or fire_pose_diff["poseMismatchCount"]
+            ):
+                diffs.append({"field": "firePoseTolerance", **fire_pose_diff})
         rounds.append({"index": idx, "go": go_summary, "rust": rust_summary, "diffs": diffs})
     return {
         "goMeta": go_manifest.get("meta", {}),

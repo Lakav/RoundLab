@@ -59,7 +59,7 @@ Summary: Rust full quality outputs are smaller and now faster than Go on most me
 - Utility effects are now better classified: Go emits duplicate flash effects for the same flashbang on every reference demo, while Rust emits one visual effect. The harness dedupes near-identical raw flash effects before bucketed signature comparison so boundary-rounding artifacts do not look like missing Rust flashes.
 - Rust reconstructs terminal flash detonations from projectile frames when demoparser Rust misses a `flashbang_detonate` at round end. This fixes the Anubis round 18 missing unique flash. Dust 7 and Inferno 13 were confirmed as Go duplicate/bucket artifacts, not missing Rust flashes.
 - Decoy timing now uses the projectile's first stationary tick instead of `decoy_detonate - 15s`. Ancient 12/16 now match deduped effect signatures. One deduped utility effect signature still differs: Inferno round 2 decoy is `29.25s` in Rust vs `29.5s` bucketed in Go, with matching team and position.
-- Weapon fire and projectile frame counts are close in full quality, but not identical. After weapon alias normalization, remaining weapon-fire count deltas are small and round-local. Projectile deltas are also persistent, usually a few samples/frames per round, and need targeted review before claiming full parity.
+- Weapon fire and projectile frame counts are close in full quality, but not identical. After weapon alias normalization, remaining weapon-fire count deltas are small and round-local. The harness now also performs tolerant fire-pose matching on `shooter`, weapon, time, `x/y/z`, `yaw`, and `team`; the latest five-demo full audit reports zero pose mismatches for matched fires. Remaining unmatched weapon fires are rare across the full set: 26 extra Rust fires and 3 missing Rust fires, still requiring targeted review before claiming full parity.
 - Bomb state frame counts still differ frequently. Many differences are one-frame boundary shifts or Go's post-explosion dropped-bomb residue, but some dropped-state windows still need targeted replay/UI inspection before claiming full parity.
 
 ## Optimization Findings
@@ -86,5 +86,5 @@ A quick test with `ROUNDLAB_PARSER_GZIP_LEVEL=1` on `dust1-13` did not improve f
 1. Inspect remaining bomb-state frame deltas in the replay UI, excluding confirmed Go post-explosion dropped-bomb residue.
 2. Tighten remaining bomb-event signature timing/order if replay UI needs exact Go parity instead of matching event presence and counts.
 3. Investigate the remaining Inferno round 2 decoy timing difference and decide whether Rust's stationary-projectile timing is preferable to Go's later event timing.
-4. Review the remaining small weapon-fire and projectile-frame deltas case-by-case with raw round outputs.
+4. Review the remaining unmatched weapon-fire deltas case-by-case, especially whether extra Rust fires without matching projectile/effect evidence are useful replay events or demoparser noise.
 5. Add phase/RSS tracking per parser run to identify whether the remaining peak happens inside vendor parsing, grouping, or replay frame construction.
