@@ -721,6 +721,15 @@ fn build_round_payload(
     let span = &ctx.spans[span_idx];
     let mut frames = Vec::new();
     let blind_spans = round_blinds(ctx.events, span);
+    let next_span = ctx.spans.get(span_idx + 1);
+    let post_round_event_end = post_round_event_end_tick(span, next_span);
+    let has_explicit_bomb_exploded =
+        has_explicit_bomb_exploded(ctx.events, span, post_round_event_end);
+    let has_bomb_planted = has_bomb_planted(ctx.events, span, post_round_event_end);
+    let has_post_round_world_kill =
+        has_post_round_world_kill(ctx.events, span, post_round_event_end);
+    let has_long_post_round_window =
+        span.end.saturating_sub(span.round_end) >= TICK_RATE as i32 * 8;
     let span_events = ctx
         .events
         .iter()
@@ -731,6 +740,7 @@ fn build_round_payload(
         .collect::<Vec<_>>();
     let mut event_idx = 0;
     let mut bomb_planted = false;
+    let mut bomb_resolved = false;
     let mut last_bomb: Option<BombState> = None;
     let mut plant_starts: HashMap<u64, i32> = HashMap::new();
     let mut utility_starts: HashMap<u64, (String, i32)> = HashMap::new();
@@ -757,6 +767,7 @@ fn build_round_payload(
                 }
                 "bomb_planted" => {
                     bomb_planted = true;
+                    bomb_resolved = false;
                     if let Some(player) =
                         get_u64(event, "user_steamid").or_else(|| get_u64(event, "player_steamid"))
                     {
@@ -790,11 +801,27 @@ fn build_round_payload(
                 }
                 "bomb_defused" | "bomb_exploded" => {
                     bomb_planted = false;
+                    bomb_resolved = true;
                     last_bomb = None;
                     plant_starts.clear();
                     utility_starts.clear();
                 }
                 "round_end" | "round_officially_ended" => {
+                    if get_str(event, "event_name") == Some("round_end")
+                        && should_synthesize_bomb_explosion_from_round_end(
+                            event,
+                            span,
+                            has_bomb_planted,
+                            has_long_post_round_window,
+                            has_post_round_world_kill,
+                            next_span.is_none(),
+                            has_explicit_bomb_exploded,
+                        )
+                    {
+                        bomb_planted = false;
+                        bomb_resolved = true;
+                        last_bomb = None;
+                    }
                     plant_starts.clear();
                     utility_starts.clear();
                 }
@@ -863,7 +890,9 @@ fn build_round_payload(
             continue;
         }
         let exact_c4 = ctx.c4_by_tick.get(&tick);
-        let bomb = if bomb_planted {
+        let bomb = if bomb_resolved {
+            None
+        } else if bomb_planted {
             last_bomb
                 .as_ref()
                 .filter(|bomb| bomb.status == "planted")
@@ -2029,27 +2058,10 @@ fn weapon_name(weapon_names: &[String], id: Option<u16>) -> &str {
 
 fn round_events(events: &[Value], span: &RoundSpan, next_span: Option<&RoundSpan>) -> Vec<Event> {
     let mut out = Vec::new();
-    let post_round_event_end = next_span
-        .map(|next| next.start.saturating_sub(1))
-        .unwrap_or_else(|| span.end + (10 * TICK_RATE as i32))
-        .min(span.end + (10 * TICK_RATE as i32));
-    let has_explicit_bomb_exploded = events.iter().any(|event| {
-        let tick = get_i64(event, "tick").unwrap_or_default() as i32;
-        get_str(event, "event_name") == Some("bomb_exploded")
-            && event_tick_in_round_window(tick, "bomb_exploded", span, post_round_event_end)
-    });
-    let has_bomb_planted = events.iter().any(|event| {
-        let tick = get_i64(event, "tick").unwrap_or_default() as i32;
-        get_str(event, "event_name") == Some("bomb_planted")
-            && event_tick_in_round_window(tick, "bomb_planted", span, post_round_event_end)
-    });
-    let has_post_round_world_kill = events.iter().any(|event| {
-        let tick = get_i64(event, "tick").unwrap_or_default() as i32;
-        get_str(event, "event_name") == Some("player_death")
-            && tick > span.round_end
-            && event_tick_in_round_window(tick, "player_death", span, post_round_event_end)
-            && get_str(event, "weapon").is_some_and(is_world_weapon)
-    });
+    let post_round_event_end = post_round_event_end_tick(span, next_span);
+    let has_explicit_bomb_exploded = has_explicit_bomb_exploded(events, span, post_round_event_end);
+    let has_bomb_planted = has_bomb_planted(events, span, post_round_event_end);
+    let has_post_round_world_kill = has_post_round_world_kill(events, span, post_round_event_end);
     let has_long_post_round_window =
         span.end.saturating_sub(span.round_end) >= TICK_RATE as i32 * 8;
     let mut active_defuser = None;
@@ -2123,16 +2135,15 @@ fn round_events(events: &[Value], span: &RoundSpan, next_span: Option<&RoundSpan
             _ => {}
         }
         if event_name == "round_end"
-            && !has_explicit_bomb_exploded
-            && (round_end_reason_is_bomb_exploded(event)
-                || should_synthesize_ct_killed_bomb_explosion(
-                    event,
-                    span,
-                    has_bomb_planted,
-                    has_long_post_round_window,
-                    has_post_round_world_kill,
-                    next_span.is_none(),
-                ))
+            && should_synthesize_bomb_explosion_from_round_end(
+                event,
+                span,
+                has_bomb_planted,
+                has_long_post_round_window,
+                has_post_round_world_kill,
+                next_span.is_none(),
+                has_explicit_bomb_exploded,
+            )
         {
             if let Some(player) = active_defuser.take() {
                 out.push(bomb_defuse_abort_event(t, Some(player)));
@@ -2160,6 +2171,68 @@ fn event_tick_in_round_window(
                 | "bomb_exploded"
         );
     tick >= span.start && (tick <= span.end || include_post_round_event)
+}
+
+fn post_round_event_end_tick(span: &RoundSpan, next_span: Option<&RoundSpan>) -> i32 {
+    next_span
+        .map(|next| next.start.saturating_sub(1))
+        .unwrap_or_else(|| span.end + (10 * TICK_RATE as i32))
+        .min(span.end + (10 * TICK_RATE as i32))
+}
+
+fn has_explicit_bomb_exploded(
+    events: &[Value],
+    span: &RoundSpan,
+    post_round_event_end: i32,
+) -> bool {
+    events.iter().any(|event| {
+        let tick = get_i64(event, "tick").unwrap_or_default() as i32;
+        get_str(event, "event_name") == Some("bomb_exploded")
+            && event_tick_in_round_window(tick, "bomb_exploded", span, post_round_event_end)
+    })
+}
+
+fn has_bomb_planted(events: &[Value], span: &RoundSpan, post_round_event_end: i32) -> bool {
+    events.iter().any(|event| {
+        let tick = get_i64(event, "tick").unwrap_or_default() as i32;
+        get_str(event, "event_name") == Some("bomb_planted")
+            && event_tick_in_round_window(tick, "bomb_planted", span, post_round_event_end)
+    })
+}
+
+fn has_post_round_world_kill(
+    events: &[Value],
+    span: &RoundSpan,
+    post_round_event_end: i32,
+) -> bool {
+    events.iter().any(|event| {
+        let tick = get_i64(event, "tick").unwrap_or_default() as i32;
+        get_str(event, "event_name") == Some("player_death")
+            && tick > span.round_end
+            && event_tick_in_round_window(tick, "player_death", span, post_round_event_end)
+            && get_str(event, "weapon").is_some_and(is_world_weapon)
+    })
+}
+
+fn should_synthesize_bomb_explosion_from_round_end(
+    event: &Value,
+    span: &RoundSpan,
+    has_bomb_planted: bool,
+    has_long_post_round_window: bool,
+    has_post_round_world_kill: bool,
+    is_final_round: bool,
+    has_explicit_bomb_exploded: bool,
+) -> bool {
+    !has_explicit_bomb_exploded
+        && (round_end_reason_is_bomb_exploded(event)
+            || should_synthesize_ct_killed_bomb_explosion(
+                event,
+                span,
+                has_bomb_planted,
+                has_long_post_round_window,
+                has_post_round_world_kill,
+                is_final_round,
+            ))
 }
 
 fn round_end_reason_is_bomb_exploded(event: &Value) -> bool {
@@ -2940,10 +3013,11 @@ fn parser_gzip_compression() -> Compression {
 mod tests {
     use super::{
         add_missing_terminal_flash_effects, adjust_decoy_effects_from_projectiles,
-        commit_split_output, looks_like_knife_round, parse_args_from, parse_demo_to_output,
-        parser_gzip_compression, read_capped, read_demo, round_events, sample_step, seconds_since,
-        write_json_gz, Args, Event, Frame, Output, ProjectileFrame, ProjectileKind, ProjectilePos,
-        Round, RoundSpan, UtilityEffect, MAX_DEMO_SIZE,
+        build_round_payload, commit_split_output, looks_like_knife_round, parse_args_from,
+        parse_demo_to_output, parser_gzip_compression, read_capped, read_demo, round_events,
+        sample_step, seconds_since, write_json_gz, Args, Event, Frame, Output, ProjectileFrame,
+        ProjectileKind, ProjectilePos, Round, RoundBuildContext, RoundSpan, TickRow, UtilityEffect,
+        MAX_DEMO_SIZE,
     };
     use flate2::{read::GzDecoder, Compression};
     use serde::Deserialize;
@@ -3226,6 +3300,102 @@ mod tests {
         assert_eq!(parsed[0].kind, "round_end");
         assert_eq!(parsed[1].kind, "bomb_exploded");
         assert_eq!(parsed[1].t, seconds_since(span.start, 200));
+    }
+
+    #[test]
+    fn round_frames_clear_bomb_after_synthesized_explosion() {
+        let args = Args {
+            input: "demo.dem".into(),
+            output: "out.json.gz".into(),
+            quality: "full".into(),
+            skip_projectiles: false,
+            skip_weapon_fires: false,
+            stats: false,
+        };
+        let events = vec![
+            json!({
+                "event_name": "bomb_planted",
+                "tick": 5,
+                "user_steamid": 7_u64,
+                "x": 10.0,
+                "y": 20.0,
+                "z": 0.0
+            }),
+            json!({
+                "event_name": "round_end",
+                "tick": 10,
+                "reason": "bomb_exploded"
+            }),
+        ];
+        let spans = vec![RoundSpan {
+            start: 0,
+            end: 20,
+            round_end: 10,
+            winner: "T".into(),
+        }];
+        let weapon_names = vec!["weapon_c4".to_string()];
+        let mut rows_by_tick = BTreeMap::new();
+        for tick in 0..=20 {
+            rows_by_tick.insert(
+                tick,
+                vec![TickRow {
+                    tick,
+                    steamid: 7,
+                    x: tick as f64,
+                    y: 0.0,
+                    z: 0.0,
+                    yaw: 0.0,
+                    hp: 100,
+                    armor: 0,
+                    money: None,
+                    helmet: false,
+                    kit: false,
+                    alive: true,
+                    team: 2,
+                    active: Some(0),
+                    weapons: vec![0],
+                    fire: false,
+                    right_click: false,
+                    use_key: false,
+                }],
+            );
+        }
+        let c4_by_tick = BTreeMap::new();
+        let projectiles_by_tick = BTreeMap::new();
+        let round_scores = vec![(0, 1)];
+        let ctx = RoundBuildContext {
+            args: &args,
+            events: &events,
+            spans: &spans,
+            rows_by_tick: &rows_by_tick,
+            c4_by_tick: &c4_by_tick,
+            projectiles_by_tick: &projectiles_by_tick,
+            weapon_names: &weapon_names,
+            round_scores: &round_scores,
+            sample_step: 1,
+        };
+
+        let round = build_round_payload(&ctx, 0, 0).expect("round payload");
+        let planted_at = seconds_since(0, 5);
+        let exploded_at = seconds_since(0, 10);
+
+        assert!(
+            round.frames.iter().any(|frame| frame.t >= planted_at
+                && frame.t < exploded_at
+                && frame
+                    .bomb
+                    .as_ref()
+                    .is_some_and(|bomb| bomb.status == "planted")),
+            "expected planted bomb before synthesized explosion"
+        );
+        assert!(
+            round
+                .frames
+                .iter()
+                .filter(|frame| frame.t >= exploded_at)
+                .all(|frame| frame.bomb.is_none()),
+            "bomb must not remain visible after synthesized explosion"
+        );
     }
 
     #[test]

@@ -25,11 +25,11 @@ Use `--keep-outputs` for targeted event-level debugging.
 
 | demo | expected | Go score | Rust score | Go ms/RSS MB | Rust ms/RSS MB |
 | --- | --- | --- | --- | ---: | ---: |
-| ancient4-13 | 4-13 | 4-13 | 4-13 | 7568/61.4 | 2093/441.5 |
-| anubis16-19 | 16-19 | 16-19 | 16-19 | 13507/58.2 | 2775/899.8 |
-| cache11-13 | 11-13 | 11-13 | 11-13 | 9856/63.6 | 2124/597.0 |
-| dust1-13 | 1-13 | 1-13 | 1-13 | 5539/55.7 | 1257/325.2 |
-| inferno8-13 | 8-13 | 8-13 | 8-13 | 10241/63.8 | 1920/652.5 |
+| ancient4-13 | 4-13 | 4-13 | 4-13 | 7240/67.7 | 1486/443.7 |
+| anubis16-19 | 16-19 | 16-19 | 16-19 | 17013/57.2 | 2814/897.6 |
+| cache11-13 | 11-13 | 11-13 | 11-13 | 10274/61.7 | 2198/593.0 |
+| dust1-13 | 1-13 | 1-13 | 1-13 | 5962/51.8 | 1257/327.8 |
+| inferno8-13 | 8-13 | 8-13 | 8-13 | 10017/62.1 | 2142/651.6 |
 
 Summary: Rust is much faster in medium skip mode, but uses much more memory.
 
@@ -37,13 +37,13 @@ Summary: Rust is much faster in medium skip mode, but uses much more memory.
 
 | demo | expected | Go score | Rust score | Go ms/RSS MB | Rust ms/RSS MB | Rust output delta |
 | --- | --- | --- | --- | ---: | ---: | ---: |
-| ancient4-13 | 4-13 | 4-13 | 4-13 | 14956/220.8 | 13973/2036.9 | -5.69 MB |
-| anubis16-19 | 16-19 | 16-19 | 16-19 | 27913/178.2 | 28337/2912.7 | -11.00 MB |
-| cache11-13 | 11-13 | 11-13 | 11-13 | 21830/183.7 | 22222/2451.8 | -9.22 MB |
-| dust1-13 | 1-13 | 1-13 | 1-13 | 11499/176.3 | 10960/1389.2 | -4.40 MB |
-| inferno8-13 | 8-13 | 8-13 | 8-13 | 19609/199.7 | 18975/2193.6 | -7.25 MB |
+| ancient4-13 | 4-13 | 4-13 | 4-13 | 14238/220.5 | 14545/2136.4 | -5.71 MB |
+| anubis16-19 | 16-19 | 16-19 | 16-19 | 27707/178.0 | 27956/3149.0 | -11.00 MB |
+| cache11-13 | 11-13 | 11-13 | 11-13 | 21808/189.4 | 22267/2338.2 | -9.20 MB |
+| dust1-13 | 1-13 | 1-13 | 1-13 | 11333/170.3 | 11136/1409.2 | -4.41 MB |
+| inferno8-13 | 8-13 | 8-13 | 8-13 | 19537/201.1 | 19306/2479.9 | -7.24 MB |
 
-Summary: Rust full quality outputs are smaller and now faster than Go on most measured demos. With the current "favor time, keep RAM sane" target, Rust uses roughly 1.4-2.9 GB RSS on the current five-demo run. On a 16 GB machine, 60% RAM is about 9.8 GB, so the worst measured run stays well below the target ceiling.
+Summary: Rust full quality outputs are smaller and now faster than Go on most measured demos. With the current "favor time, keep RAM sane" target, Rust uses roughly 1.4-3.1 GB RSS on the current five-demo run. On a 16 GB machine, 60% RAM is about 9.8 GB, so the worst measured run stays well below the target ceiling.
 
 ## Functional Findings
 
@@ -55,11 +55,12 @@ Summary: Rust full quality outputs are smaller and now faster than Go on most me
 - The round audit currently shows Rust kill signatures matching Go on every audited round across the five reference demos after weapon-name normalization. The audit normalizes engine aliases such as M4 family names, `elite`/`dualberettas`, `hkp2000`/`p2000`, and fire kills reported as `inferno` vs `molotov`/`incendiary`.
 - Rust now matches Go aggregate `events`, `kills`, and `bombEvents` on all five full-quality reference demos. The fixes keep `round_win_reason`, synthesize missing post-round `bomb_exploded` events for bounded `ct_killed` after-plant cases, and synthesize missing `bomb_defuse_abort` events when defuse starts are repeated or the bomb explodes during an active defuse.
 - Bomb event signatures still have timing/order differences on six audited rounds: Ancient 9/14, Anubis 23, Cache 11, Inferno 2/11/20. The counts and event types now match, but exact timestamps are not fully identical to Go.
+- Frame bomb state now consumes the same synthesized `bomb_exploded` decisions as round events. Rust no longer leaves a planted/carried bomb visible after synthetic explosions. Some `framesWithBombState` deltas got larger because Go keeps a `dropped` bomb after explosion on inspected rounds such as Anubis 23/26/29; that is treated as a Go artifact unless the UI proves otherwise.
 - Utility effects are now better classified: Go emits duplicate flash effects for the same flashbang on every reference demo, while Rust emits one visual effect. The harness dedupes near-identical raw flash effects before bucketed signature comparison so boundary-rounding artifacts do not look like missing Rust flashes.
 - Rust reconstructs terminal flash detonations from projectile frames when demoparser Rust misses a `flashbang_detonate` at round end. This fixes the Anubis round 18 missing unique flash. Dust 7 and Inferno 13 were confirmed as Go duplicate/bucket artifacts, not missing Rust flashes.
 - Decoy timing now uses the projectile's first stationary tick instead of `decoy_detonate - 15s`. Ancient 12/16 now match deduped effect signatures. One deduped utility effect signature still differs: Inferno round 2 decoy is `29.25s` in Rust vs `29.5s` bucketed in Go, with matching team and position.
 - Weapon fire and projectile frame counts are close in full quality, but not identical. After weapon alias normalization, remaining weapon-fire count deltas are small and round-local. Projectile deltas are also persistent, usually a few samples/frames per round, and need targeted review before claiming full parity.
-- Bomb state frame counts still differ frequently. Many differences are one-frame boundary shifts, but some dropped-state windows differ by hundreds of frames and need targeted replay/UI inspection rather than assuming Go is the truth.
+- Bomb state frame counts still differ frequently. Many differences are one-frame boundary shifts or Go's post-explosion dropped-bomb residue, but some dropped-state windows still need targeted replay/UI inspection before claiming full parity.
 
 ## Optimization Findings
 
@@ -82,7 +83,7 @@ A quick test with `ROUNDLAB_PARSER_GZIP_LEVEL=1` on `dust1-13` did not improve f
 
 ## Next Targets
 
-1. Inspect bomb-state frame deltas in the replay UI, especially dropped-state windows where Rust and Go differ by hundreds of frames.
+1. Inspect remaining bomb-state frame deltas in the replay UI, excluding confirmed Go post-explosion dropped-bomb residue.
 2. Tighten remaining bomb-event signature timing/order if replay UI needs exact Go parity instead of matching event presence and counts.
 3. Investigate the remaining Inferno round 2 decoy timing difference and decide whether Rust's stationary-projectile timing is preferable to Go's later event timing.
 4. Review the remaining small weapon-fire and projectile-frame deltas case-by-case with raw round outputs.
