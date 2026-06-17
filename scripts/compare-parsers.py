@@ -34,6 +34,15 @@ BOMB_EVENTS = {
     "bomb_defused",
     "bomb_exploded",
 }
+EVENT_TYPES_TO_AUDIT = {
+    "kill",
+    "bomb_planted",
+    "bomb_defuse_start",
+    "bomb_defuse_abort",
+    "bomb_defused",
+    "bomb_exploded",
+    "round_end",
+}
 
 
 def run_checked(cmd: list[str], cwd: Path = ROOT) -> None:
@@ -148,6 +157,268 @@ def collect_metrics(output_path: Path) -> dict[str, Any]:
             elif kind in BOMB_EVENTS:
                 metrics["bombEvents"] += 1
     return metrics
+
+
+def load_round_payloads(output_path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    manifest = read_gzip_json(output_path)
+    return manifest, list(iter_round_payloads(output_path, manifest))
+
+
+def bucket_time(value: Any, precision: float = 0.25) -> float:
+    if not isinstance(value, (int, float)):
+        return 0.0
+    return round(round(float(value) / precision) * precision, 3)
+
+
+def normalize_weapon(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    raw = value.strip().lower()
+    raw = raw.removeprefix("weapon_")
+    normalized = re.sub(r"[^a-z0-9]+", "", raw)
+    if normalized in {"glock18"}:
+        return "glock"
+    if normalized in {"usps", "uspsilencer"}:
+        return "usp"
+    if normalized in {"deserteagle"}:
+        return "deagle"
+    if normalized in {"m4a1silencer"}:
+        return "m4a1"
+    if normalized in {"incgrenade", "incendiarygrenade"}:
+        return "incendiary"
+    if normalized.startswith("knife") or normalized in {"bayonet", "karambit"}:
+        return "knife"
+    return normalized
+
+
+def normalize_projectile_type(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    raw = value.strip().lower()
+    if "smoke" in raw:
+        return "smoke"
+    if "flash" in raw:
+        return "flash"
+    if "molotov" in raw or "incendiary" in raw or "inferno" in raw:
+        return "fire"
+    if "hegrenade" in raw or raw in {"he", "he grenade"}:
+        return "he"
+    if "decoy" in raw:
+        return "decoy"
+    return re.sub(r"[^a-z0-9]+", "", raw)
+
+
+def round_audit_summary(round_obj: dict[str, Any]) -> dict[str, Any]:
+    event_counts: dict[str, int] = {}
+    kill_signatures = []
+    bomb_signatures = []
+    for event in round_obj.get("events", []):
+        kind = event.get("type", "")
+        event_counts[kind] = event_counts.get(kind, 0) + 1
+        if kind == "kill":
+            kill_signatures.append(
+                {
+                    "t": bucket_time(event.get("t"), 0.25),
+                    "killer": event.get("killer"),
+                    "victim": event.get("victim"),
+                    "assist": event.get("assist"),
+                    "weapon": normalize_weapon(event.get("weapon")),
+                    "hs": bool(event.get("hs", False)),
+                }
+            )
+        elif kind in BOMB_EVENTS:
+            bomb_signatures.append(
+                {
+                    "t": bucket_time(event.get("t"), 0.25),
+                    "type": kind,
+                    "player": event.get("player"),
+                }
+            )
+
+    effect_counts: dict[str, int] = {}
+    effect_signatures = []
+    for effect in round_obj.get("effects", []):
+        kind = effect.get("type", "")
+        effect_counts[kind] = effect_counts.get(kind, 0) + 1
+        effect_signatures.append(
+            {
+                "t": bucket_time(effect.get("start"), 0.25),
+                "type": kind,
+                "variant": effect.get("variant"),
+                "team": effect.get("team"),
+                "x": round(float(effect.get("x", 0.0)) / 50.0) * 50,
+                "y": round(float(effect.get("y", 0.0)) / 50.0) * 50,
+            }
+        )
+
+    fire_counts_by_weapon: dict[str, int] = {}
+    fire_signatures = []
+    for fire in round_obj.get("weaponFires", []):
+        weapon = normalize_weapon(fire.get("weapon"))
+        fire_counts_by_weapon[weapon] = fire_counts_by_weapon.get(weapon, 0) + 1
+        fire_signatures.append(
+            {
+                "t": bucket_time(fire.get("t"), 0.25),
+                "shooter": fire.get("shooter"),
+                "weapon": weapon,
+                "team": fire.get("team"),
+            }
+        )
+
+    projectile_type_counts: dict[str, int] = {}
+    projectile_samples = 0
+    projectile_frames = round_obj.get("projectileFrames", [])
+    projectile_signatures = []
+    for projectile_frame in projectile_frames:
+        frame_t = projectile_frame.get("t")
+        for projectile in projectile_frame.get("projectiles", []):
+            projectile_samples += 1
+            kind = normalize_projectile_type(projectile.get("type"))
+            projectile_type_counts[kind] = projectile_type_counts.get(kind, 0) + 1
+            projectile_signatures.append(
+                {
+                    "t": bucket_time(frame_t, 0.25),
+                    "type": kind,
+                    "thrower": projectile.get("thrower"),
+                }
+            )
+
+    bomb_state_counts: dict[str, int] = {}
+    frames = round_obj.get("frames", [])
+    frames_with_players = 0
+    frames_with_bomb_state = 0
+    players_with_weapons = 0
+    embedded_projectile_frames = 0
+    for frame in frames:
+        players = frame.get("players", [])
+        if players:
+            frames_with_players += 1
+        for player in players:
+            if player.get("active") or player.get("weapons"):
+                players_with_weapons += 1
+        if frame.get("projectiles"):
+            embedded_projectile_frames += 1
+        bomb = frame.get("bomb")
+        if bomb is not None:
+            frames_with_bomb_state += 1
+            status = bomb.get("status", "")
+            bomb_state_counts[status] = bomb_state_counts.get(status, 0) + 1
+
+    return {
+        "number": round_obj.get("number"),
+        "scoreA": round_obj.get("scoreA"),
+        "scoreB": round_obj.get("scoreB"),
+        "startTick": round_obj.get("startTick"),
+        "endTick": round_obj.get("endTick"),
+        "frames": len(frames),
+        "framesWithPlayers": frames_with_players,
+        "framesWithBombState": frames_with_bomb_state,
+        "playersWithWeapons": players_with_weapons,
+        "embeddedProjectileFrames": embedded_projectile_frames,
+        "bombStateCounts": bomb_state_counts,
+        "events": len(round_obj.get("events", [])),
+        "eventCounts": event_counts,
+        "killSignatures": sorted(kill_signatures, key=lambda item: (item["t"], item["victim"] or 0)),
+        "bombSignatures": sorted(bomb_signatures, key=lambda item: (item["t"], item["type"])),
+        "effects": len(round_obj.get("effects", [])),
+        "effectCounts": effect_counts,
+        "effectSignatures": sorted(effect_signatures, key=lambda item: (item["t"], item["type"], item["x"], item["y"])),
+        "weaponFires": len(round_obj.get("weaponFires", [])),
+        "fireCountsByWeapon": fire_counts_by_weapon,
+        "fireSignatures": sorted(fire_signatures, key=lambda item: (item["t"], item["shooter"] or 0, item["weapon"])),
+        "projectileFrames": len(projectile_frames),
+        "projectileSamples": projectile_samples,
+        "projectileTypeCounts": projectile_type_counts,
+        "projectileSignatures": sorted(projectile_signatures, key=lambda item: (item["t"], item["thrower"] or 0, item["type"])),
+    }
+
+
+def signature_diff(go_items: list[dict[str, Any]], rust_items: list[dict[str, Any]], limit: int = 10) -> dict[str, Any]:
+    go_keys = [json.dumps(item, sort_keys=True, separators=(",", ":")) for item in go_items]
+    rust_keys = [json.dumps(item, sort_keys=True, separators=(",", ":")) for item in rust_items]
+    go_counts: dict[str, int] = {}
+    rust_counts: dict[str, int] = {}
+    for key in go_keys:
+        go_counts[key] = go_counts.get(key, 0) + 1
+    for key in rust_keys:
+        rust_counts[key] = rust_counts.get(key, 0) + 1
+    missing = []
+    extra = []
+    for key, count in go_counts.items():
+        delta = count - rust_counts.get(key, 0)
+        if delta > 0:
+            missing.extend([json.loads(key)] * delta)
+    for key, count in rust_counts.items():
+        delta = count - go_counts.get(key, 0)
+        if delta > 0:
+            extra.extend([json.loads(key)] * delta)
+    return {
+        "missingInRustCount": len(missing),
+        "extraInRustCount": len(extra),
+        "missingInRustSample": missing[:limit],
+        "extraInRustSample": extra[:limit],
+    }
+
+
+def round_audit(go_output: Path, rust_output: Path) -> dict[str, Any]:
+    go_manifest, go_rounds = load_round_payloads(go_output)
+    rust_manifest, rust_rounds = load_round_payloads(rust_output)
+    round_count = max(len(go_rounds), len(rust_rounds))
+    rounds = []
+    for idx in range(round_count):
+        go_summary = round_audit_summary(go_rounds[idx]) if idx < len(go_rounds) else None
+        rust_summary = round_audit_summary(rust_rounds[idx]) if idx < len(rust_rounds) else None
+        diffs = []
+        if go_summary is None or rust_summary is None:
+            diffs.append({"field": "roundPresent", "go": go_summary is not None, "rust": rust_summary is not None})
+        else:
+            scalar_fields = [
+                "scoreA",
+                "scoreB",
+                "frames",
+                "framesWithPlayers",
+                "framesWithBombState",
+                "playersWithWeapons",
+                "embeddedProjectileFrames",
+                "events",
+                "effects",
+                "weaponFires",
+                "projectileFrames",
+                "projectileSamples",
+            ]
+            map_fields = [
+                "bombStateCounts",
+                "eventCounts",
+                "effectCounts",
+                "fireCountsByWeapon",
+                "projectileTypeCounts",
+            ]
+            for field in scalar_fields + map_fields:
+                if go_summary.get(field) != rust_summary.get(field):
+                    diffs.append(
+                        {
+                            "field": field,
+                            "go": go_summary.get(field),
+                            "rust": rust_summary.get(field),
+                            "delta": numeric_delta(go_summary.get(field), rust_summary.get(field)),
+                        }
+                    )
+            for field in [
+                "killSignatures",
+                "bombSignatures",
+                "effectSignatures",
+                "fireSignatures",
+                "projectileSignatures",
+            ]:
+                diff = signature_diff(go_summary[field], rust_summary[field])
+                if diff["missingInRustCount"] or diff["extraInRustCount"]:
+                    diffs.append({"field": field, **diff})
+        rounds.append({"index": idx, "go": go_summary, "rust": rust_summary, "diffs": diffs})
+    return {
+        "goMeta": go_manifest.get("meta", {}),
+        "rustMeta": rust_manifest.get("meta", {}),
+        "rounds": rounds,
+    }
 
 
 def expected_score_from_name(path: Path) -> tuple[int, int] | None:
@@ -365,6 +636,55 @@ def write_markdown(report: dict[str, Any], path: Path) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def write_round_audit_markdown(report: dict[str, Any], path: Path) -> None:
+    lines = [
+        "# Parser Round Audit",
+        "",
+        f"- quality: `{report['quality']}`",
+        f"- skipHeavy: `{report['skipHeavy']}`",
+        f"- demos: {len(report['results'])}",
+        "",
+    ]
+    for item in report["results"]:
+        audit = item.get("roundAudit")
+        if not audit:
+            continue
+        lines.extend([f"## {item['demo']}", ""])
+        lines.append("| round | score | frames | kills | bomb | effects | fires | projectile frames/samples | notable |")
+        lines.append("| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |")
+        for round_item in audit["rounds"]:
+            go = round_item.get("go") or {}
+            rust = round_item.get("rust") or {}
+            diffs = round_item.get("diffs", [])
+            notable = ", ".join(diff["field"] for diff in diffs[:6]) or "none"
+            lines.append(
+                "| {idx} | {go_score}->{rust_score} | {go_frames}->{rust_frames} | "
+                "{go_kills}->{rust_kills} | {go_bomb}->{rust_bomb} | {go_effects}->{rust_effects} | "
+                "{go_fires}->{rust_fires} | {go_pf}/{go_ps}->{rust_pf}/{rust_ps} | {notable} |".format(
+                    idx=round_item["index"],
+                    go_score=f"{go.get('scoreA', '?')}-{go.get('scoreB', '?')}",
+                    rust_score=f"{rust.get('scoreA', '?')}-{rust.get('scoreB', '?')}",
+                    go_frames=go.get("frames", "?"),
+                    rust_frames=rust.get("frames", "?"),
+                    go_kills=go.get("eventCounts", {}).get("kill", 0),
+                    rust_kills=rust.get("eventCounts", {}).get("kill", 0),
+                    go_bomb=sum(go.get("eventCounts", {}).get(kind, 0) for kind in BOMB_EVENTS),
+                    rust_bomb=sum(rust.get("eventCounts", {}).get(kind, 0) for kind in BOMB_EVENTS),
+                    go_effects=go.get("effects", "?"),
+                    rust_effects=rust.get("effects", "?"),
+                    go_fires=go.get("weaponFires", "?"),
+                    rust_fires=rust.get("weaponFires", "?"),
+                    go_pf=go.get("projectileFrames", "?"),
+                    go_ps=go.get("projectileSamples", "?"),
+                    rust_pf=rust.get("projectileFrames", "?"),
+                    rust_ps=rust.get("projectileSamples", "?"),
+                    notable=notable,
+                )
+            )
+        lines.append("")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--prepare-go", action="store_true")
@@ -375,6 +695,7 @@ def main() -> int:
     parser.add_argument("--limit", type=int)
     parser.add_argument("--timeout-sec", type=int, default=600)
     parser.add_argument("--keep-outputs", action="store_true")
+    parser.add_argument("--round-audit", action="store_true")
     parser.add_argument("--out", type=Path, default=REPORT_DIR / "report.json")
     args = parser.parse_args()
 
@@ -423,7 +744,10 @@ def main() -> int:
             rust_result = run_parser(
                 "rust", demo, rust_output, args.quality, args.skip_heavy, args.timeout_sec
             )
-            results.append(compare_metrics(demo, go_result, rust_result))
+            item = compare_metrics(demo, go_result, rust_result)
+            if args.round_audit and go_output.exists() and rust_output.exists():
+                item["roundAudit"] = round_audit(go_output, rust_output)
+            results.append(item)
 
     report = {
         "quality": args.quality,
@@ -433,8 +757,14 @@ def main() -> int:
     }
     args.out.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
     write_markdown(report, args.out.with_suffix(".md"))
+    if args.round_audit:
+        write_round_audit_markdown(
+            report, args.out.with_name(f"{args.out.stem}-round-audit.md")
+        )
     print(f"wrote {args.out}")
     print(f"wrote {args.out.with_suffix('.md')}")
+    if args.round_audit:
+        print(f"wrote {args.out.with_name(f'{args.out.stem}-round-audit.md')}")
     return 0
 
 

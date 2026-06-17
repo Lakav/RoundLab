@@ -1013,7 +1013,7 @@ fn looks_like_knife_round(round: Option<&Round>) -> bool {
     let Some(round) = round else {
         return false;
     };
-    if round.duration > 75.0 {
+    if round.duration > 95.0 {
         return false;
     }
     let weapons = round
@@ -1030,9 +1030,14 @@ fn looks_like_knife_round(round: Option<&Round>) -> bool {
                         .chain(player.weapons.iter().map(String::as_str))
                 }),
         );
-    weapons
-        .filter(|weapon| !weapon.is_empty())
-        .all(is_knife_or_bomb)
+    let mut seen_weapon = false;
+    for weapon in weapons.filter(|weapon| !weapon.is_empty()) {
+        seen_weapon = true;
+        if !is_knife_or_bomb(weapon) {
+            return false;
+        }
+    }
+    seen_weapon
 }
 
 fn is_knife_or_bomb(weapon: &str) -> bool {
@@ -2027,9 +2032,17 @@ fn round_events(events: &[Value], span: &RoundSpan, next_span: Option<&RoundSpan
     for event in events {
         let tick = get_i64(event, "tick").unwrap_or_default() as i32;
         let event_name = get_str(event, "event_name").unwrap_or("");
-        let include_post_round_kill =
-            event_name == "player_death" && tick > span.end && tick <= post_round_event_end;
-        if tick < span.start || (tick > span.end && !include_post_round_kill) {
+        let include_post_round_event = tick > span.end
+            && tick <= post_round_event_end
+            && matches!(
+                event_name,
+                "player_death"
+                    | "bomb_begindefuse"
+                    | "bomb_abortdefuse"
+                    | "bomb_defused"
+                    | "bomb_exploded"
+            );
+        if tick < span.start || (tick > span.end && !include_post_round_event) {
             continue;
         }
         let t = seconds_since(span.start, tick);
@@ -2693,9 +2706,9 @@ fn parser_gzip_compression() -> Compression {
 #[cfg(test)]
 mod tests {
     use super::{
-        commit_split_output, parse_args_from, parse_demo_to_output, parser_gzip_compression,
-        read_capped, read_demo, round_events, sample_step, write_json_gz, Args, Output, RoundSpan,
-        MAX_DEMO_SIZE,
+        commit_split_output, looks_like_knife_round, parse_args_from, parse_demo_to_output,
+        parser_gzip_compression, read_capped, read_demo, round_events, sample_step, seconds_since,
+        write_json_gz, Args, Event, Frame, Output, Round, RoundSpan, MAX_DEMO_SIZE,
     };
     use flate2::{read::GzDecoder, Compression};
     use serde::Deserialize;
@@ -2923,6 +2936,107 @@ mod tests {
         assert_eq!(parsed[0].killer, Some(1));
         assert_eq!(parsed[0].victim, Some(1));
         assert_eq!(parsed[0].weapon.as_deref(), Some("world"));
+    }
+
+    #[test]
+    fn round_events_keeps_post_round_bomb_events_before_next_round() {
+        let span = RoundSpan {
+            start: 100,
+            end: 200,
+            round_end: 200,
+            winner: "T".into(),
+        };
+        let next_span = RoundSpan {
+            start: 250,
+            end: 350,
+            round_end: 350,
+            winner: "CT".into(),
+        };
+        let events = vec![
+            json!({
+                "tick": 210,
+                "event_name": "bomb_exploded"
+            }),
+            json!({
+                "tick": 260,
+                "event_name": "bomb_exploded"
+            }),
+        ];
+
+        let parsed = round_events(&events, &span, Some(&next_span));
+
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].kind, "bomb_exploded");
+        assert_eq!(parsed[0].t, seconds_since(span.start, 210));
+    }
+
+    #[test]
+    fn knife_round_detection_allows_long_pregame_duels() {
+        let round = Round {
+            number: 0,
+            start_tick: 0,
+            freeze_end_tick: 0,
+            end_tick: 5_000,
+            duration: 80.0,
+            winner: "T".into(),
+            score_a: 1,
+            score_b: 0,
+            frames: vec![Frame {
+                t: 0.0,
+                players: Vec::new(),
+                bomb: None,
+                projectiles: Vec::new(),
+            }],
+            events: vec![Event {
+                t: 10.0,
+                kind: "kill".into(),
+                player: None,
+                has_kit: false,
+                killer: Some(1),
+                victim: Some(2),
+                assist: None,
+                weapon: Some("knife_m9_bayonet".into()),
+                hs: false,
+                winner: None,
+            }],
+            effects: Vec::new(),
+            weapon_fires: Vec::new(),
+            projectile_frames: Vec::new(),
+        };
+
+        assert!(looks_like_knife_round(Some(&round)));
+    }
+
+    #[test]
+    fn knife_round_detection_rejects_real_weapon_rounds() {
+        let round = Round {
+            number: 0,
+            start_tick: 0,
+            freeze_end_tick: 0,
+            end_tick: 5_000,
+            duration: 80.0,
+            winner: "CT".into(),
+            score_a: 0,
+            score_b: 1,
+            frames: Vec::new(),
+            events: vec![Event {
+                t: 10.0,
+                kind: "kill".into(),
+                player: None,
+                has_kit: false,
+                killer: Some(1),
+                victim: Some(2),
+                assist: None,
+                weapon: Some("ak47".into()),
+                hs: false,
+                winner: None,
+            }],
+            effects: Vec::new(),
+            weapon_fires: Vec::new(),
+            projectile_frames: Vec::new(),
+        };
+
+        assert!(!looks_like_knife_round(Some(&round)));
     }
 
     #[test]
