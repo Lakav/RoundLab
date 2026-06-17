@@ -25,11 +25,11 @@ Use `--keep-outputs` for targeted event-level debugging.
 
 | demo | expected | Go score | Rust score | Go ms/RSS MB | Rust ms/RSS MB |
 | --- | --- | --- | --- | ---: | ---: |
-| ancient4-13 | 4-13 | 4-13 | 4-13 | 7786/67.1 | 1504/443.4 |
-| anubis16-19 | 16-19 | 16-19 | 16-19 | 13881/57.4 | 2645/889.7 |
-| cache11-13 | 11-13 | 11-13 | 11-13 | 8987/63.2 | 1975/591.2 |
-| dust1-13 | 1-13 | 1-13 | 1-13 | 5515/52.0 | 1028/322.8 |
-| inferno8-13 | 8-13 | 8-13 | 8-13 | 9584/62.0 | 1937/670.4 |
+| ancient4-13 | 4-13 | 4-13 | 4-13 | 7568/61.4 | 2093/441.5 |
+| anubis16-19 | 16-19 | 16-19 | 16-19 | 13507/58.2 | 2775/899.8 |
+| cache11-13 | 11-13 | 11-13 | 11-13 | 9856/63.6 | 2124/597.0 |
+| dust1-13 | 1-13 | 1-13 | 1-13 | 5539/55.7 | 1257/325.2 |
+| inferno8-13 | 8-13 | 8-13 | 8-13 | 10241/63.8 | 1920/652.5 |
 
 Summary: Rust is much faster in medium skip mode, but uses much more memory.
 
@@ -37,24 +37,24 @@ Summary: Rust is much faster in medium skip mode, but uses much more memory.
 
 | demo | expected | Go score | Rust score | Go ms/RSS MB | Rust ms/RSS MB | Rust output delta |
 | --- | --- | --- | --- | ---: | ---: | ---: |
-| ancient4-13 | 4-13 | 4-13 | 4-13 | 15401/195.1 | 13948/2111.7 | -5.72 MB |
-| anubis16-19 | 16-19 | 16-19 | 16-19 | 28622/174.2 | 27741/3354.6 | -11.01 MB |
-| cache11-13 | 11-13 | 11-13 | 11-13 | 21218/191.9 | 22120/2448.6 | -9.22 MB |
-| dust1-13 | 1-13 | 1-13 | 1-13 | 11684/190.0 | 10635/1391.8 | -4.41 MB |
-| inferno8-13 | 8-13 | 8-13 | 8-13 | 20037/197.8 | 17894/2321.0 | -7.25 MB |
+| ancient4-13 | 4-13 | 4-13 | 4-13 | 15394/188.0 | 14275/2145.0 | -5.72 MB |
+| anubis16-19 | 16-19 | 16-19 | 16-19 | 29164/176.4 | 28370/3600.0 | -11.04 MB |
+| cache11-13 | 11-13 | 11-13 | 11-13 | 22249/191.6 | 22819/2416.2 | -9.23 MB |
+| dust1-13 | 1-13 | 1-13 | 1-13 | 11675/175.3 | 10856/1395.2 | -4.40 MB |
+| inferno8-13 | 8-13 | 8-13 | 8-13 | 20442/199.7 | 18632/2246.4 | -7.25 MB |
 
 Summary: Rust full quality outputs are smaller and now faster than Go on most measured demos. With the current "favor time, keep RAM sane" target, Rust uses roughly 1.4-3.4 GB RSS. On a 16 GB machine, 60% RAM is about 9.8 GB, so the worst measured run stays well below the target ceiling.
 
 ## Functional Findings
 
 - Scores match filename truth for both Go and Rust across all five demos.
-- Rust and Go still disagree on some event/effect counts. These need field-by-field review, not blind copying from Go.
+- Rust and Go still disagree on frame/effect/weapon-fire/projectile counts. These need field-by-field review, not blind copying from Go.
 - Product rule update: replay events must include all kills, including post-round, bomb/explosion cleanup, and suicides. Rust now keeps post-round kills for the owning round within a bounded post-round window.
 - On `dust1-13`, Rust now matches Go at 104 kills. The three previously missing kills were `World` self-kills after the useful round end in the final round.
 - On `ancient4-13`, Rust previously kept an initial knife round, which shifted round-by-round comparisons and inflated kills/round count. The knife-round detector now accepts longer knife duels, and Ancient now reports 17 real rounds / 123 kills instead of 18 rounds / 132 kills.
 - The round audit currently shows Rust kill counts matching Go on every audited round across the five reference demos after weapon-name normalization.
-- Bomb events match exactly on `dust1-13` after event-level inspection.
-- Remaining audited bomb-event gaps are concentrated in missing `bomb_exploded` and `bomb_defuse_abort` events on some non-Dust rounds; these are now explicit follow-up targets instead of hidden aggregate diffs.
+- Rust now matches Go aggregate `events`, `kills`, and `bombEvents` on all five full-quality reference demos. The fixes keep `round_win_reason`, synthesize missing post-round `bomb_exploded` events for bounded `ct_killed` after-plant cases, and synthesize missing `bomb_defuse_abort` events when defuse starts are repeated or the bomb explodes during an active defuse.
+- Bomb event signatures still have timing/order differences on six audited rounds: Ancient 9/14, Anubis 23, Cache 11, Inferno 2/11/20. The counts and event types now match, but exact timestamps are not fully identical to Go.
 - Weapon fire and projectile frame counts are close in full quality, but not identical. Differences are small enough to inspect case-by-case.
 
 ## Optimization Findings
@@ -78,7 +78,7 @@ A quick test with `ROUNDLAB_PARSER_GZIP_LEVEL=1` on `dust1-13` did not improve f
 
 ## Next Targets
 
-1. Investigate why Rust misses some `bomb_exploded` and `bomb_defuse_abort` events that Go attributes to rounds.
+1. Tighten remaining bomb-event signature timing/order if replay UI needs exact Go parity instead of matching event presence and counts.
 2. Classify utility effect divergences, especially flash counts, as either Rust bugs or intentional model differences.
 3. Keep projectile frame deltas under review; current differences are small but persistent.
 4. Add phase/RSS tracking per parser run to identify whether the remaining peak happens inside vendor parsing, grouping, or replay frame construction.

@@ -1352,7 +1352,7 @@ fn parse_events(bytes: &[u8], huf: &Vec<(u8, u8)>) -> Result<Vec<Value>> {
             "decoy_detonate".into(),
         ],
         vec!["X".into(), "Y".into(), "team_num".into()],
-        vec!["total_rounds_played".into()],
+        vec!["total_rounds_played".into(), "round_win_reason".into()],
         vec![],
         true,
     )?;
@@ -2029,20 +2029,30 @@ fn round_events(events: &[Value], span: &RoundSpan, next_span: Option<&RoundSpan
         .map(|next| next.start.saturating_sub(1))
         .unwrap_or_else(|| span.end + (10 * TICK_RATE as i32))
         .min(span.end + (10 * TICK_RATE as i32));
+    let has_explicit_bomb_exploded = events.iter().any(|event| {
+        let tick = get_i64(event, "tick").unwrap_or_default() as i32;
+        get_str(event, "event_name") == Some("bomb_exploded")
+            && event_tick_in_round_window(tick, "bomb_exploded", span, post_round_event_end)
+    });
+    let has_bomb_planted = events.iter().any(|event| {
+        let tick = get_i64(event, "tick").unwrap_or_default() as i32;
+        get_str(event, "event_name") == Some("bomb_planted")
+            && event_tick_in_round_window(tick, "bomb_planted", span, post_round_event_end)
+    });
+    let has_post_round_world_kill = events.iter().any(|event| {
+        let tick = get_i64(event, "tick").unwrap_or_default() as i32;
+        get_str(event, "event_name") == Some("player_death")
+            && tick > span.round_end
+            && event_tick_in_round_window(tick, "player_death", span, post_round_event_end)
+            && get_str(event, "weapon").is_some_and(is_world_weapon)
+    });
+    let has_long_post_round_window =
+        span.end.saturating_sub(span.round_end) >= TICK_RATE as i32 * 8;
+    let mut active_defuser = None;
     for event in events {
         let tick = get_i64(event, "tick").unwrap_or_default() as i32;
         let event_name = get_str(event, "event_name").unwrap_or("");
-        let include_post_round_event = tick > span.end
-            && tick <= post_round_event_end
-            && matches!(
-                event_name,
-                "player_death"
-                    | "bomb_begindefuse"
-                    | "bomb_abortdefuse"
-                    | "bomb_defused"
-                    | "bomb_exploded"
-            );
-        if tick < span.start || (tick > span.end && !include_post_round_event) {
+        if !event_tick_in_round_window(tick, event_name, span, post_round_event_end) {
             continue;
         }
         let t = seconds_since(span.start, tick);
@@ -2060,32 +2070,40 @@ fn round_events(events: &[Value], span: &RoundSpan, next_span: Option<&RoundSpan
                 winner: None,
             }),
             "bomb_planted" => out.push(simple_event(t, "bomb_planted")),
-            "bomb_begindefuse" => out.push(Event {
-                t,
-                kind: "bomb_defuse_start".into(),
-                player: get_u64(event, "user_steamid"),
-                has_kit: get_bool(event, "haskit").unwrap_or(false),
-                killer: None,
-                victim: None,
-                assist: None,
-                weapon: None,
-                hs: false,
-                winner: None,
-            }),
-            "bomb_abortdefuse" => out.push(Event {
-                t,
-                kind: "bomb_defuse_abort".into(),
-                player: get_u64(event, "user_steamid"),
-                has_kit: false,
-                killer: None,
-                victim: None,
-                assist: None,
-                weapon: None,
-                hs: false,
-                winner: None,
-            }),
-            "bomb_defused" => out.push(simple_event(t, "bomb_defused")),
-            "bomb_exploded" => out.push(simple_event(t, "bomb_exploded")),
+            "bomb_begindefuse" => {
+                if let Some(player) = active_defuser {
+                    out.push(bomb_defuse_abort_event(t, Some(player)));
+                }
+                let player = get_u64(event, "user_steamid");
+                out.push(Event {
+                    t,
+                    kind: "bomb_defuse_start".into(),
+                    player,
+                    has_kit: get_bool(event, "haskit").unwrap_or(false),
+                    killer: None,
+                    victim: None,
+                    assist: None,
+                    weapon: None,
+                    hs: false,
+                    winner: None,
+                });
+                active_defuser = player;
+            }
+            "bomb_abortdefuse" => {
+                let player = get_u64(event, "user_steamid");
+                out.push(bomb_defuse_abort_event(t, player));
+                active_defuser = None;
+            }
+            "bomb_defused" => {
+                out.push(simple_event(t, "bomb_defused"));
+                active_defuser = None;
+            }
+            "bomb_exploded" => {
+                if let Some(player) = active_defuser.take() {
+                    out.push(bomb_defuse_abort_event(t, Some(player)));
+                }
+                out.push(simple_event(t, "bomb_exploded"));
+            }
             "round_end" => out.push(Event {
                 t,
                 kind: "round_end".into(),
@@ -2100,8 +2118,85 @@ fn round_events(events: &[Value], span: &RoundSpan, next_span: Option<&RoundSpan
             }),
             _ => {}
         }
+        if event_name == "round_end"
+            && !has_explicit_bomb_exploded
+            && (round_end_reason_is_bomb_exploded(event)
+                || should_synthesize_ct_killed_bomb_explosion(
+                    event,
+                    span,
+                    has_bomb_planted,
+                    has_long_post_round_window,
+                    has_post_round_world_kill,
+                    next_span.is_none(),
+                ))
+        {
+            if let Some(player) = active_defuser.take() {
+                out.push(bomb_defuse_abort_event(t, Some(player)));
+            }
+            out.push(simple_event(t, "bomb_exploded"));
+        }
     }
     out
+}
+
+fn event_tick_in_round_window(
+    tick: i32,
+    event_name: &str,
+    span: &RoundSpan,
+    post_round_event_end: i32,
+) -> bool {
+    let include_post_round_event = tick > span.end
+        && tick <= post_round_event_end
+        && matches!(
+            event_name,
+            "player_death"
+                | "bomb_begindefuse"
+                | "bomb_abortdefuse"
+                | "bomb_defused"
+                | "bomb_exploded"
+        );
+    tick >= span.start && (tick <= span.end || include_post_round_event)
+}
+
+fn round_end_reason_is_bomb_exploded(event: &Value) -> bool {
+    get_str(event, "reason") == Some("bomb_exploded") || get_i64(event, "reason") == Some(1)
+}
+
+fn round_end_reason_is_ct_killed(event: &Value) -> bool {
+    get_str(event, "reason") == Some("ct_killed") || get_i64(event, "round_win_reason") == Some(9)
+}
+
+fn should_synthesize_ct_killed_bomb_explosion(
+    event: &Value,
+    span: &RoundSpan,
+    has_bomb_planted: bool,
+    has_long_post_round_window: bool,
+    has_post_round_world_kill: bool,
+    is_final_round: bool,
+) -> bool {
+    span.winner == "T"
+        && has_bomb_planted
+        && round_end_reason_is_ct_killed(event)
+        && (has_long_post_round_window || has_post_round_world_kill || is_final_round)
+}
+
+fn is_world_weapon(weapon: &str) -> bool {
+    weapon.eq_ignore_ascii_case("world")
+}
+
+fn bomb_defuse_abort_event(t: f64, player: Option<u64>) -> Event {
+    Event {
+        t,
+        kind: "bomb_defuse_abort".into(),
+        player,
+        has_kit: false,
+        killer: None,
+        victim: None,
+        assist: None,
+        weapon: None,
+        hs: false,
+        winner: None,
+    }
 }
 
 fn simple_event(t: f64, kind: &str) -> Event {
@@ -2968,6 +3063,243 @@ mod tests {
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].kind, "bomb_exploded");
         assert_eq!(parsed[0].t, seconds_since(span.start, 210));
+    }
+
+    #[test]
+    fn round_events_synthesizes_bomb_exploded_from_round_end_reason() {
+        let span = RoundSpan {
+            start: 100,
+            end: 200,
+            round_end: 200,
+            winner: "T".into(),
+        };
+        let events = vec![json!({
+            "tick": 200,
+            "event_name": "round_end",
+            "reason": "bomb_exploded"
+        })];
+
+        let parsed = round_events(&events, &span, None);
+
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].kind, "round_end");
+        assert_eq!(parsed[1].kind, "bomb_exploded");
+        assert_eq!(parsed[1].t, seconds_since(span.start, 200));
+    }
+
+    #[test]
+    fn round_events_does_not_duplicate_explicit_bomb_exploded() {
+        let span = RoundSpan {
+            start: 100,
+            end: 200,
+            round_end: 200,
+            winner: "T".into(),
+        };
+        let events = vec![
+            json!({
+                "tick": 200,
+                "event_name": "round_end",
+                "reason": "bomb_exploded"
+            }),
+            json!({
+                "tick": 205,
+                "event_name": "bomb_exploded"
+            }),
+        ];
+
+        let parsed = round_events(&events, &span, None);
+        let bomb_exploded: Vec<_> = parsed
+            .iter()
+            .filter(|event| event.kind == "bomb_exploded")
+            .collect();
+
+        assert_eq!(bomb_exploded.len(), 1);
+        assert_eq!(bomb_exploded[0].t, seconds_since(span.start, 205));
+    }
+
+    #[test]
+    fn round_events_synthesizes_ct_killed_bomb_explosion_after_long_post_round() {
+        let span = RoundSpan {
+            start: 100,
+            end: 720,
+            round_end: 200,
+            winner: "T".into(),
+        };
+        let events = vec![
+            json!({
+                "tick": 150,
+                "event_name": "bomb_planted"
+            }),
+            json!({
+                "tick": 200,
+                "event_name": "round_end",
+                "reason": "ct_killed"
+            }),
+        ];
+
+        let parsed = round_events(&events, &span, None);
+
+        assert_eq!(parsed.len(), 3);
+        assert_eq!(parsed[0].kind, "bomb_planted");
+        assert_eq!(parsed[1].kind, "round_end");
+        assert_eq!(parsed[2].kind, "bomb_exploded");
+        assert_eq!(parsed[2].t, seconds_since(span.start, 200));
+    }
+
+    #[test]
+    fn round_events_does_not_synthesize_ct_killed_bomb_explosion_too_broadly() {
+        let span = RoundSpan {
+            start: 100,
+            end: 300,
+            round_end: 200,
+            winner: "T".into(),
+        };
+        let next_span = RoundSpan {
+            start: 400,
+            end: 500,
+            round_end: 500,
+            winner: "CT".into(),
+        };
+        let events = vec![
+            json!({
+                "tick": 150,
+                "event_name": "bomb_planted"
+            }),
+            json!({
+                "tick": 200,
+                "event_name": "round_end",
+                "reason": "ct_killed"
+            }),
+        ];
+
+        let parsed = round_events(&events, &span, Some(&next_span));
+
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].kind, "bomb_planted");
+        assert_eq!(parsed[1].kind, "round_end");
+    }
+
+    #[test]
+    fn round_events_synthesizes_ct_killed_bomb_explosion_before_world_kills() {
+        let span = RoundSpan {
+            start: 100,
+            end: 300,
+            round_end: 200,
+            winner: "T".into(),
+        };
+        let events = vec![
+            json!({
+                "tick": 150,
+                "event_name": "bomb_planted"
+            }),
+            json!({
+                "tick": 200,
+                "event_name": "round_end",
+                "reason": "ct_killed"
+            }),
+            json!({
+                "tick": 260,
+                "event_name": "player_death",
+                "attacker_steamid": 1_u64,
+                "user_steamid": 1_u64,
+                "weapon": "world"
+            }),
+        ];
+
+        let parsed = round_events(&events, &span, None);
+
+        assert_eq!(parsed.len(), 4);
+        assert_eq!(parsed[1].kind, "round_end");
+        assert_eq!(parsed[2].kind, "bomb_exploded");
+        assert_eq!(parsed[3].kind, "kill");
+    }
+
+    #[test]
+    fn round_events_synthesizes_ct_killed_bomb_explosion_on_final_round() {
+        let span = RoundSpan {
+            start: 100,
+            end: 200,
+            round_end: 200,
+            winner: "T".into(),
+        };
+        let events = vec![
+            json!({
+                "tick": 150,
+                "event_name": "bomb_planted"
+            }),
+            json!({
+                "tick": 200,
+                "event_name": "round_end",
+                "reason": "ct_killed"
+            }),
+        ];
+
+        let parsed = round_events(&events, &span, None);
+
+        assert_eq!(parsed.len(), 3);
+        assert_eq!(parsed[0].kind, "bomb_planted");
+        assert_eq!(parsed[1].kind, "round_end");
+        assert_eq!(parsed[2].kind, "bomb_exploded");
+    }
+
+    #[test]
+    fn round_events_synthesizes_abort_between_repeated_defuse_starts() {
+        let span = RoundSpan {
+            start: 100,
+            end: 300,
+            round_end: 300,
+            winner: "CT".into(),
+        };
+        let events = vec![
+            json!({
+                "tick": 150,
+                "event_name": "bomb_begindefuse",
+                "user_steamid": 7_u64
+            }),
+            json!({
+                "tick": 170,
+                "event_name": "bomb_begindefuse",
+                "user_steamid": 7_u64
+            }),
+        ];
+
+        let parsed = round_events(&events, &span, None);
+
+        assert_eq!(parsed.len(), 3);
+        assert_eq!(parsed[0].kind, "bomb_defuse_start");
+        assert_eq!(parsed[1].kind, "bomb_defuse_abort");
+        assert_eq!(parsed[1].player, Some(7));
+        assert_eq!(parsed[1].t, seconds_since(span.start, 170));
+        assert_eq!(parsed[2].kind, "bomb_defuse_start");
+    }
+
+    #[test]
+    fn round_events_synthesizes_abort_when_bomb_explodes_during_defuse() {
+        let span = RoundSpan {
+            start: 100,
+            end: 300,
+            round_end: 300,
+            winner: "T".into(),
+        };
+        let events = vec![
+            json!({
+                "tick": 150,
+                "event_name": "bomb_begindefuse",
+                "user_steamid": 7_u64
+            }),
+            json!({
+                "tick": 220,
+                "event_name": "bomb_exploded"
+            }),
+        ];
+
+        let parsed = round_events(&events, &span, None);
+
+        assert_eq!(parsed.len(), 3);
+        assert_eq!(parsed[0].kind, "bomb_defuse_start");
+        assert_eq!(parsed[1].kind, "bomb_defuse_abort");
+        assert_eq!(parsed[1].player, Some(7));
+        assert_eq!(parsed[2].kind, "bomb_exploded");
     }
 
     #[test]
