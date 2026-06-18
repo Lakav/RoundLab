@@ -106,6 +106,13 @@ def reference_int(value: Any, label: str, field: str) -> int:
     return value
 
 
+def reference_non_negative_int(value: Any, label: str, field: str) -> int:
+    value = reference_int(value, label, field)
+    if value < 0:
+        raise AssertionError(f"{label} reference {field} must be non-negative: {value!r}")
+    return value
+
+
 def expect_list_field(label: str, item: dict[str, Any], field: str) -> None:
     if not isinstance(item.get(field), list):
         raise AssertionError(f"{label} {field} is missing or not a list")
@@ -133,7 +140,7 @@ def assert_reference_round_payload_shape(
                 "projectileFrames",
                 "projectileSamples",
             ]:
-                reference_int(item.get(metric), item_label, metric)
+                reference_non_negative_int(item.get(metric), item_label, metric)
         case "roundEventSignatures":
             expect_list_field(item_label, item, "kills")
             expect_list_field(item_label, item, "bombEvents")
@@ -234,6 +241,19 @@ def assert_reference_snapshot_shape(snapshot: dict[str, Any]) -> str:
         expect_equal(label, f"metrics.{field}", metrics.get(field), total)
 
     if round_metrics:
+        previous_score = (0, 0)
+        for idx, round_obj in enumerate(round_metrics):
+            round_label = f"{label} roundMetrics[{idx}]"
+            expect_equal(label, f"roundMetrics[{idx}].number", round_obj.get("number"), idx)
+            score = (
+                reference_non_negative_int(round_obj.get("scoreA"), round_label, "scoreA"),
+                reference_non_negative_int(round_obj.get("scoreB"), round_label, "scoreB"),
+            )
+            if score[0] < previous_score[0] or score[1] < previous_score[1]:
+                raise AssertionError(
+                    f"{round_label} score regressed: previous={previous_score!r} current={score!r}"
+                )
+            previous_score = score
         final_round = round_metrics[-1]
         expect_equal(label, "final scoreA", final_round.get("scoreA"), snapshot.get("scoreA"))
         expect_equal(label, "final scoreB", final_round.get("scoreB"), snapshot.get("scoreB"))
