@@ -53,7 +53,11 @@ kind, team, and position, so smoke/flash/HE/fire/decoy/bomb-plant regressions
 cannot hide behind unchanged effect counts. Weapon fires are also locked with
 compact per-round signatures for bucketed timing, shooter, normalized weapon,
 team, position, and yaw, so wrong shooter/weapon/pose regressions cannot hide
-behind unchanged fire counts. Projectile tracks are locked with compact
+behind unchanged fire counts. Targeted unit coverage also locks exact-tick
+shooter pose lookup, previous-tick pose fallback, and event retention when no
+shooter pose is available; pose lookup is bounded to the current round so stale
+positions from earlier rounds cannot leak into weapon fires, planted bomb
+effects, or synthesized flash ownership. Projectile tracks are locked with compact
 per-round signatures for id, normalized type, thrower, bucketed timing, sample
 count, and bucketed start/end position, so grouping or identity regressions
 cannot hide behind unchanged projectile-frame counts. The full-quality test also

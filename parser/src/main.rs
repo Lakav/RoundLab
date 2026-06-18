@@ -769,8 +769,9 @@ fn build_round_payload(
                     } else {
                         plant_starts.clear();
                     }
-                    let planter_row = get_u64(event, "user_steamid")
-                        .and_then(|id| player_row_at_tick(ctx.rows_by_tick, event_tick, id));
+                    let planter_row = get_u64(event, "user_steamid").and_then(|id| {
+                        player_row_at_tick(ctx.rows_by_tick, event_tick, id, span.start)
+                    });
                     let x = get_f64(event, "x")
                         .or_else(|| get_f64(event, "X"))
                         .or_else(|| planter_row.map(|row| row.x))
@@ -2328,7 +2329,8 @@ fn round_effects(
             continue;
         };
         let planter_row = if kind == "bomb_planted" {
-            get_u64(event, "user_steamid").and_then(|id| player_row_at_tick(rows_by_tick, tick, id))
+            get_u64(event, "user_steamid")
+                .and_then(|id| player_row_at_tick(rows_by_tick, tick, id, span.start))
         } else {
             None
         };
@@ -2477,7 +2479,7 @@ fn add_missing_terminal_flash_effects(
         }
         let team = projectile
             .thrower
-            .and_then(|id| player_row_at_tick(rows_by_tick, span.end, id))
+            .and_then(|id| player_row_at_tick(rows_by_tick, span.end, id, span.start))
             .map(|row| row.team);
         effects.push(UtilityEffect {
             kind: "flash".into(),
@@ -2548,7 +2550,7 @@ fn round_weapon_fires(
         let shooter = get_u64(event, "user_steamid")
             .or_else(|| get_u64(event, "attacker_steamid"))
             .or_else(|| get_u64(event, "steamid"));
-        let row = shooter.and_then(|id| player_row_at_tick(rows_by_tick, tick, id));
+        let row = shooter.and_then(|id| player_row_at_tick(rows_by_tick, tick, id, span.start));
         out.push(WeaponFireEvent {
             t: seconds_since(span.start, tick),
             shooter,
@@ -2567,14 +2569,12 @@ fn player_row_at_tick(
     rows_by_tick: &BTreeMap<i32, Vec<TickRow>>,
     tick: i32,
     steam_id: u64,
+    earliest_tick: i32,
 ) -> Option<&TickRow> {
-    let rows = rows_by_tick.get(&tick).or_else(|| {
-        rows_by_tick
-            .range(..=tick)
-            .next_back()
-            .map(|(_, rows)| rows)
-    })?;
-    rows.iter().find(|row| row.steamid == steam_id)
+    rows_by_tick
+        .range(earliest_tick..=tick)
+        .rev()
+        .find_map(|(_, rows)| rows.iter().find(|row| row.steamid == steam_id))
 }
 
 fn seconds_since(start: i32, tick: i32) -> f64 {
@@ -3009,9 +3009,10 @@ mod tests {
         add_missing_terminal_flash_effects, adjust_decoy_effects_from_projectiles,
         build_round_payload, commit_split_output, group_projectile_rows, looks_like_knife_round,
         parse_args_from, parse_demo_to_output, parser_gzip_compression, read_capped, read_demo,
-        round_events, sample_step, seconds_since, write_json_gz, ActiveAction, Args, BombState,
-        Event, Frame, Output, ProjectileFrame, ProjectileKind, ProjectilePos, ProjectileRow, Round,
-        RoundBuildContext, RoundSpan, TickRow, UtilityEffect, WeaponFireEvent, MAX_DEMO_SIZE,
+        round_events, round_weapon_fires, sample_step, seconds_since, write_json_gz, ActiveAction,
+        Args, BombState, Event, Frame, Output, ProjectileFrame, ProjectileKind, ProjectilePos,
+        ProjectileRow, Round, RoundBuildContext, RoundSpan, TickRow, UtilityEffect,
+        WeaponFireEvent, MAX_DEMO_SIZE,
     };
     use flate2::{read::GzDecoder, Compression};
     use serde::Deserialize;
@@ -4269,6 +4270,213 @@ mod tests {
     }
 
     #[test]
+    fn round_weapon_fires_use_exact_shooter_pose_when_available() {
+        let span = RoundSpan {
+            start: 100,
+            end: 120,
+            round_end: 120,
+            winner: "T".into(),
+        };
+        let events = vec![json!({
+            "tick": 110,
+            "event_name": "weapon_fire",
+            "user_steamid": 7_u64,
+            "weapon": "ak47"
+        })];
+        let mut rows_by_tick = BTreeMap::new();
+        rows_by_tick.insert(
+            110,
+            vec![TickRow {
+                tick: 110,
+                steamid: 7,
+                x: 123.0,
+                y: 456.0,
+                z: 78.0,
+                yaw: 270.0,
+                hp: 100,
+                armor: 100,
+                money: None,
+                helmet: true,
+                kit: false,
+                alive: true,
+                team: 2,
+                active: None,
+                weapons: Vec::new(),
+                fire: false,
+                right_click: false,
+                use_key: false,
+            }],
+        );
+
+        let fires = round_weapon_fires(&events, &span, &rows_by_tick);
+
+        assert_eq!(fires.len(), 1);
+        assert_eq!(fires[0].t, seconds_since(span.start, 110));
+        assert_eq!(fires[0].shooter, Some(7));
+        assert_eq!(fires[0].weapon.as_deref(), Some("ak47"));
+        assert_eq!((fires[0].x, fires[0].y, fires[0].z), (123.0, 456.0, 78.0));
+        assert_eq!(fires[0].yaw, 270.0);
+        assert_eq!(fires[0].team, Some(2));
+    }
+
+    #[test]
+    fn round_weapon_fires_use_previous_shooter_pose_when_exact_tick_is_missing() {
+        let span = RoundSpan {
+            start: 100,
+            end: 120,
+            round_end: 120,
+            winner: "CT".into(),
+        };
+        let events = vec![json!({
+            "tick": 110,
+            "event_name": "weapon_fire",
+            "user_steamid": 7_u64,
+            "weapon": "m4a1_silencer"
+        })];
+        let mut rows_by_tick = BTreeMap::new();
+        rows_by_tick.insert(
+            110,
+            vec![TickRow {
+                tick: 110,
+                steamid: 8,
+                x: 1.0,
+                y: 2.0,
+                z: 3.0,
+                yaw: 4.0,
+                hp: 100,
+                armor: 100,
+                money: None,
+                helmet: true,
+                kit: true,
+                alive: true,
+                team: 3,
+                active: None,
+                weapons: Vec::new(),
+                fire: false,
+                right_click: false,
+                use_key: false,
+            }],
+        );
+        rows_by_tick.insert(
+            109,
+            vec![TickRow {
+                tick: 109,
+                steamid: 8,
+                x: 10.0,
+                y: 20.0,
+                z: 30.0,
+                yaw: 40.0,
+                hp: 100,
+                armor: 100,
+                money: None,
+                helmet: true,
+                kit: true,
+                alive: true,
+                team: 3,
+                active: None,
+                weapons: Vec::new(),
+                fire: false,
+                right_click: false,
+                use_key: false,
+            }],
+        );
+        rows_by_tick.insert(
+            108,
+            vec![TickRow {
+                tick: 108,
+                steamid: 7,
+                x: -321.0,
+                y: 654.0,
+                z: 12.0,
+                yaw: 91.0,
+                hp: 87,
+                armor: 50,
+                money: None,
+                helmet: true,
+                kit: true,
+                alive: true,
+                team: 3,
+                active: None,
+                weapons: Vec::new(),
+                fire: false,
+                right_click: false,
+                use_key: false,
+            }],
+        );
+
+        let fires = round_weapon_fires(&events, &span, &rows_by_tick);
+
+        assert_eq!(fires.len(), 1);
+        assert_eq!(fires[0].t, seconds_since(span.start, 110));
+        assert_eq!(fires[0].shooter, Some(7));
+        assert_eq!(fires[0].weapon.as_deref(), Some("m4a1_silencer"));
+        assert_eq!((fires[0].x, fires[0].y, fires[0].z), (-321.0, 654.0, 12.0));
+        assert_eq!(fires[0].yaw, 91.0);
+        assert_eq!(fires[0].team, Some(3));
+    }
+
+    #[test]
+    fn round_weapon_fires_keep_event_when_shooter_pose_is_unavailable() {
+        let span = RoundSpan {
+            start: 100,
+            end: 120,
+            round_end: 120,
+            winner: "T".into(),
+        };
+        let events = vec![
+            json!({
+                "tick": 110,
+                "event_name": "weapon_fire",
+                "user_steamid": 7_u64,
+                "weapon": "deagle"
+            }),
+            json!({
+                "tick": 111,
+                "event_name": "weapon_fire",
+                "weapon": "flashbang"
+            }),
+        ];
+        let mut rows_by_tick = BTreeMap::new();
+        rows_by_tick.insert(
+            99,
+            vec![TickRow {
+                tick: 99,
+                steamid: 7,
+                x: 999.0,
+                y: 999.0,
+                z: 999.0,
+                yaw: 180.0,
+                hp: 100,
+                armor: 100,
+                money: None,
+                helmet: true,
+                kit: false,
+                alive: true,
+                team: 2,
+                active: None,
+                weapons: Vec::new(),
+                fire: false,
+                right_click: false,
+                use_key: false,
+            }],
+        );
+
+        let fires = round_weapon_fires(&events, &span, &rows_by_tick);
+
+        assert_eq!(fires.len(), 2);
+        assert_eq!(fires[0].shooter, Some(7));
+        assert_eq!(fires[0].weapon.as_deref(), Some("deagle"));
+        assert_eq!((fires[0].x, fires[0].y, fires[0].z), (0.0, 0.0, 0.0));
+        assert_eq!(fires[0].yaw, 0.0);
+        assert_eq!(fires[0].team, None);
+        assert_eq!(fires[1].shooter, None);
+        assert_eq!(fires[1].weapon.as_deref(), Some("flashbang"));
+        assert_eq!((fires[1].x, fires[1].y, fires[1].z), (0.0, 0.0, 0.0));
+        assert_eq!(fires[1].yaw, 0.0);
+        assert_eq!(fires[1].team, None);
+    }
+
+    #[test]
     fn knife_round_detection_allows_long_pregame_duels() {
         let round = Round {
             number: 0,
@@ -5149,16 +5357,18 @@ mod tests {
                     && fire.yaw.is_finite(),
                 "{label} weapon fire has invalid pose"
             );
+            if let Some(team) = fire.team {
+                assert!(
+                    matches!(team, 2 | 3),
+                    "{label} weapon fire has invalid team {team}"
+                );
+            }
             if fire.shooter.is_some() {
                 assert!(
                     fire.weapon
                         .as_deref()
                         .is_some_and(|weapon| !weapon.is_empty()),
                     "{label} shooter weapon fire missing weapon"
-                );
-                assert!(
-                    fire.team.is_some_and(|team| matches!(team, 2 | 3)),
-                    "{label} shooter weapon fire missing valid team"
                 );
             }
         }
