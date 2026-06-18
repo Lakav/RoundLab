@@ -1093,6 +1093,7 @@ def run_parser(
     if output.exists():
         result["metrics"] = collect_metrics(output)
         result["stats"] = parse_roundlab_stats(stderr)
+        result["phaseSummary"] = phase_summary(result["stats"])
     return result
 
 
@@ -1108,6 +1109,41 @@ def parse_roundlab_stats(stderr: str) -> dict[str, int]:
             if value.isdigit():
                 stats[key] = int(value)
     return stats
+
+
+def phase_summary(stats: dict[str, int]) -> dict[str, int]:
+    vendor_parse_ms = sum(
+        stats.get(key, 0)
+        for key in [
+            "create_huffman_ms",
+            "parse_header_ms",
+            "parse_players_ms",
+            "parse_events_ms",
+            "sample_ticks_ms",
+            "parse_ticks_ms",
+            "parse_teams_ms",
+            "parse_projectiles_ms",
+        ]
+    )
+    grouping_ms = stats.get("group_ticks_ms", 0) + stats.get("group_projectiles_ms", 0)
+    return {
+        "readMs": stats.get("read_demo_ms", 0),
+        "vendorParseMs": vendor_parse_ms,
+        "groupingMs": grouping_ms,
+        "buildRoundsMs": stats.get("build_rounds_ms", 0),
+        "writeOutputMs": stats.get("write_output_ms", 0),
+        "serializeJsonMs": stats.get("serialize_json_ms", 0),
+        "gzipFinishMs": stats.get("gzip_finish_ms", 0),
+        "fsyncMs": stats.get("fsync_ms", 0),
+    }
+
+
+def sum_phase(results: list[dict[str, Any]], key: str) -> int:
+    return sum(int(item.get("rust", {}).get("phaseSummary", {}).get(key, 0)) for item in results)
+
+
+def format_seconds(ms: int | float) -> str:
+    return f"{ms / 1000:.1f}s"
 
 
 def compare_metrics(demo: Path, go: dict[str, Any], rust: dict[str, Any]) -> dict[str, Any]:
@@ -1234,6 +1270,48 @@ def write_markdown(report: dict[str, Any], path: Path) -> None:
                 rust_rss=rust.get("maxRssKb", 0) / 1024,
                 notable=notable or "none",
             )
+        )
+    if any(item.get("rust", {}).get("phaseSummary") for item in report["results"]):
+        lines.extend(
+            [
+                "",
+                "## Rust Phase Timings",
+                "",
+                "| demo | read | vendor parse | grouping | build rounds | write output | serialize JSON | max RSS MB |",
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for item in report["results"]:
+            rust = item["rust"]
+            phases = rust.get("phaseSummary", {})
+            lines.append(
+                "| {demo} | {read} | {vendor} | {grouping} | {build} | {write} | {serialize} | {rss:.1f} |".format(
+                    demo=item["demo"],
+                    read=format_seconds(phases.get("readMs", 0)),
+                    vendor=format_seconds(phases.get("vendorParseMs", 0)),
+                    grouping=format_seconds(phases.get("groupingMs", 0)),
+                    build=format_seconds(phases.get("buildRoundsMs", 0)),
+                    write=format_seconds(phases.get("writeOutputMs", 0)),
+                    serialize=format_seconds(phases.get("serializeJsonMs", 0)),
+                    rss=rust.get("maxRssKb", 0) / 1024,
+                )
+            )
+        lines.extend(
+            [
+                "",
+                "| total read | total vendor parse | total grouping | total build rounds | total write output | total serialize JSON | peak RSS MB |",
+                "| ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+                "| {read} | {vendor} | {grouping} | {build} | {write} | {serialize} | {rss:.1f} |".format(
+                    read=format_seconds(sum_phase(report["results"], "readMs")),
+                    vendor=format_seconds(sum_phase(report["results"], "vendorParseMs")),
+                    grouping=format_seconds(sum_phase(report["results"], "groupingMs")),
+                    build=format_seconds(sum_phase(report["results"], "buildRoundsMs")),
+                    write=format_seconds(sum_phase(report["results"], "writeOutputMs")),
+                    serialize=format_seconds(sum_phase(report["results"], "serializeJsonMs")),
+                    rss=max((item.get("rust", {}).get("maxRssKb", 0) for item in report["results"]), default=0)
+                    / 1024,
+                ),
+            ]
         )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 

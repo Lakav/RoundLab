@@ -19,6 +19,9 @@ python3 scripts/compare-parsers.py --build-rust --quality full --round-audit --o
 ```
 
 Use `--keep-outputs` for targeted event-level debugging.
+The generated Markdown report now includes a `Rust Phase Timings` section from
+`ROUNDLAB_STATS`, with read, vendor parse, grouping, round build, write output,
+JSON serialization, and max RSS per demo.
 
 The Rust integration tests can also validate the local reference demos directly
 without committing demo files:
@@ -80,12 +83,22 @@ Summary: Rust full quality outputs are smaller and faster than Go on most demos 
 
 ## Optimization Findings
 
-Current Rust full-quality cost centers from `ROUNDLAB_STATS`:
+Current Rust full-quality cost centers from `ROUNDLAB_STATS` are now visible in
+the generated comparison Markdown. On the latest five-demo full run, Rust took
+~88.0s total wall time with ~3.04 GB peak RSS. Aggregated Rust phase timings:
 
-- `parse_ticks_ms`: still the largest parse phase, but typed tick row extraction substantially reduced it.
-- `parse_projectiles_ms`: reduced by typed projectile extraction.
-- `serialize_json_ms` / `write_output_ms`: still large. Round streaming reduces retained output memory but currently serializes round files, so it costs wall time.
-- Peak RSS is still the biggest problem: current Rust no longer needs to retain every built `Round` before split writing, but the dominant peak is still tick/projectile parsing and grouped replay rows.
+- `write_output_ms`: ~53.2s total, currently the largest measured phase.
+- `serialize_json_ms`: ~34.1s inside write output, so JSON serialization is the biggest confirmed write cost.
+- vendor parse phase (`create_huffman` + header/players/events/ticks/teams/projectiles): ~28.0s total.
+- `build_rounds_ms`: ~3.1s total.
+- grouping: ~0.5s total.
+- read/decompress: ~1.8s total.
+
+This changes the performance diagnosis: after the typed extraction work, replay
+fidelity work should not assume `build_rounds` is the main remaining cost. The
+next meaningful optimization target is split-output serialization/write cost,
+followed by vendor tick/projectile parsing. Any optimization still has to keep
+the full replay invariants and Go/Rust audit classifications stable.
 
 Typed projectile extraction removed the previous `serde_json::Value` conversion for projectile rows. On the five full-quality demos, Rust total time went from ~151s to ~128s, with identical projectile output counts. This is a real gain, but it does not solve the main memory problem; peak RSS is still dominated by full tick/frame materialization.
 
@@ -101,4 +114,4 @@ A quick test with `ROUNDLAB_PARSER_GZIP_LEVEL=1` on `dust1-13` did not improve f
 
 1. Inspect the remaining bomb-event timing/order deltas in the replay UI only if exact event timestamp parity is required; event counts and visible bomb resolution are currently coherent.
 2. Decide how strict weapon-fire parity really needs to be. The remaining missing Rust cases appear to come from demoparser-rust event extraction, and tick-row `FIRE` is too noisy to use directly.
-3. Add phase/RSS tracking per parser run to identify whether the remaining peak happens inside vendor parsing, grouping, or replay frame construction.
+3. If performance work resumes, target `write_output_ms` / `serialize_json_ms` first, then vendor parsing. Do not trade away replay fidelity for smaller micro-gains.
