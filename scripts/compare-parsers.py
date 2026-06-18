@@ -686,6 +686,166 @@ def compare_bomb_events(go_round: dict[str, Any], rust_round: dict[str, Any], li
     }
 
 
+def bomb_resolution_time(round_obj: dict[str, Any]) -> float:
+    times = [
+        float(event["t"])
+        for event in round_obj.get("events", [])
+        if event.get("type") in {"bomb_defused", "bomb_exploded"}
+        and isinstance(event.get("t"), (int, float))
+    ]
+    return min(times) if times else 0.0
+
+
+def bomb_state_windows(round_obj: dict[str, Any]) -> list[dict[str, Any]]:
+    windows = []
+    current_status = None
+    current_start = None
+    current_end = None
+    for frame in round_obj.get("frames", []):
+        t = frame.get("t")
+        if not isinstance(t, (int, float)):
+            continue
+        bomb = frame.get("bomb")
+        status = bomb.get("status") if isinstance(bomb, dict) else None
+        if status != current_status:
+            if current_status is not None:
+                windows.append(
+                    {
+                        "status": current_status,
+                        "start": float(current_start),
+                        "end": float(current_end),
+                    }
+                )
+            current_status = status
+            current_start = t
+        current_end = t
+    if current_status is not None:
+        windows.append(
+            {
+                "status": current_status,
+                "start": float(current_start),
+                "end": float(current_end),
+            }
+        )
+    return windows
+
+
+def bomb_window_sample(window: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status": window["status"],
+        "start": round(window["start"], 3),
+        "end": round(window["end"], 3),
+        "duration": round(window["end"] - window["start"], 3),
+    }
+
+
+def classify_bomb_state_window(
+    window: dict[str, Any],
+    side: str,
+    other_windows: list[dict[str, Any]],
+    go_resolution: float,
+    rust_resolution: float,
+    go_round_end: float,
+    rust_round_end: float,
+) -> str:
+    resolution = go_resolution if side == "go" else rust_resolution
+    round_end = go_round_end if side == "go" else rust_round_end
+    if (
+        side == "go"
+        and window["status"] == "dropped"
+        and resolution
+        and window["start"] >= resolution - 0.25
+    ):
+        return "go_post_resolution_dropped_residue"
+    if side == "go" and round_end and window["start"] >= round_end - 0.25:
+        return "go_post_round_bomb_residue"
+    if side == "go" and round_end and window["end"] > round_end + 0.25:
+        for other in other_windows:
+            if other["status"] != window["status"]:
+                continue
+            if abs(other["start"] - window["start"]) <= 0.05 and abs(other["end"] - rust_round_end) <= 0.05:
+                return "go_post_round_bomb_residue"
+    if window["end"] - window["start"] <= 0.05:
+        return "single_frame_boundary_shift"
+    for other in other_windows:
+        if other["status"] != window["status"]:
+            continue
+        overlap = min(window["end"], other["end"]) - max(window["start"], other["start"])
+        if overlap >= 0.0 and (
+            abs(window["start"] - other["start"]) <= 0.05
+            or abs(window["end"] - other["end"]) <= 0.05
+        ):
+            return "boundary_shift"
+    return "unclassified"
+
+
+def compare_bomb_state_windows(go_round: dict[str, Any], rust_round: dict[str, Any], limit: int = 10) -> dict[str, Any]:
+    go_windows = bomb_state_windows(go_round)
+    rust_windows = bomb_state_windows(rust_round)
+    unmatched_go = set(range(len(go_windows)))
+    unmatched_rust = set(range(len(rust_windows)))
+
+    for go_idx, go_window in enumerate(go_windows):
+        candidates = []
+        for rust_idx in sorted(unmatched_rust):
+            rust_window = rust_windows[rust_idx]
+            if rust_window["status"] != go_window["status"]:
+                continue
+            overlap = min(go_window["end"], rust_window["end"]) - max(go_window["start"], rust_window["start"])
+            start_delta = abs(go_window["start"] - rust_window["start"])
+            end_delta = abs(go_window["end"] - rust_window["end"])
+            if overlap >= -0.05 and start_delta <= 0.25 and end_delta <= 0.25:
+                candidates.append((start_delta + end_delta, rust_idx))
+        if candidates:
+            _, rust_idx = min(candidates, key=lambda item: item[0])
+            unmatched_go.remove(go_idx)
+            unmatched_rust.remove(rust_idx)
+
+    go_resolution = bomb_resolution_time(go_round)
+    rust_resolution = bomb_resolution_time(rust_round)
+    go_round_end = round_end_time(go_round)
+    rust_round_end = round_end_time(rust_round)
+    missing = [go_windows[idx] for idx in sorted(unmatched_go)]
+    extra = [rust_windows[idx] for idx in sorted(unmatched_rust)]
+    missing_samples = []
+    extra_samples = []
+    classification_counts: dict[str, int] = {}
+    for window in missing:
+        classification = classify_bomb_state_window(
+            window,
+            "go",
+            rust_windows,
+            go_resolution,
+            rust_resolution,
+            go_round_end,
+            rust_round_end,
+        )
+        classification_counts[classification] = classification_counts.get(classification, 0) + 1
+        if len(missing_samples) < limit:
+            missing_samples.append({**bomb_window_sample(window), "classification": classification})
+    for window in extra:
+        classification = classify_bomb_state_window(
+            window,
+            "rust",
+            go_windows,
+            go_resolution,
+            rust_resolution,
+            go_round_end,
+            rust_round_end,
+        )
+        classification_counts[classification] = classification_counts.get(classification, 0) + 1
+        if len(extra_samples) < limit:
+            extra_samples.append({**bomb_window_sample(window), "classification": classification})
+    return {
+        "missingInRustCount": len(missing),
+        "missingInRustSample": missing_samples,
+        "extraInRustCount": len(extra),
+        "extraInRustSample": extra_samples,
+        "windowMismatchClassifications": classification_counts,
+        "unclassifiedMismatchCount": classification_counts.get("unclassified", 0),
+    }
+
+
 def compare_deduped_effects(go_round: dict[str, Any], rust_round: dict[str, Any], limit: int = 10) -> dict[str, Any]:
     go_effects = sorted(
         [effect_summary(effect) for effect in dedupe_near_duplicate_flash_effects(go_round.get("effects", []))],
@@ -1145,6 +1305,12 @@ def round_audit(go_output: Path, rust_output: Path) -> dict[str, Any]:
                 or bomb_event_diff["eventMismatchCount"]
             ):
                 diffs.append({"field": "bombEventTolerance", **bomb_event_diff})
+            bomb_state_window_diff = compare_bomb_state_windows(go_rounds[idx], rust_rounds[idx])
+            if (
+                bomb_state_window_diff["missingInRustCount"]
+                or bomb_state_window_diff["extraInRustCount"]
+            ):
+                diffs.append({"field": "bombStateWindows", **bomb_state_window_diff})
             deduped_effect_diff = compare_deduped_effects(go_rounds[idx], rust_rounds[idx])
             if (
                 deduped_effect_diff["missingInRustCount"]
