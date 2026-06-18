@@ -3051,7 +3051,24 @@ mod tests {
         score_a: i32,
         score_b: i32,
         metrics: ReplayMetrics,
+        round_metrics: Vec<RoundReplayMetrics>,
         medium_skip_metrics: ReplayMetrics,
+    }
+
+    #[derive(Debug, Deserialize, PartialEq, Eq)]
+    #[serde(rename_all = "camelCase")]
+    struct RoundReplayMetrics {
+        number: usize,
+        score_a: i32,
+        score_b: i32,
+        frames: usize,
+        events: usize,
+        kills: usize,
+        bomb_events: usize,
+        effects: usize,
+        weapon_fires: usize,
+        projectile_frames: usize,
+        projectile_samples: usize,
     }
 
     struct EnvVarGuard {
@@ -4764,6 +4781,11 @@ mod tests {
             &expected.metrics,
             &expected.label,
         );
+        assert_round_metrics_match_reference(
+            &collect_round_metrics(output),
+            &expected.round_metrics,
+            &expected.label,
+        );
     }
 
     fn assert_reference_demo_identity(output: &Output, expected: &ExpectedReplaySnapshot) {
@@ -4851,6 +4873,24 @@ mod tests {
         exact!(projectile_samples);
     }
 
+    fn assert_round_metrics_match_reference(
+        actual: &[RoundReplayMetrics],
+        expected: &[RoundReplayMetrics],
+        label: &str,
+    ) {
+        assert_eq!(
+            actual.len(),
+            expected.len(),
+            "{label} round metric count changed"
+        );
+        for (idx, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+            assert_eq!(
+                actual, expected,
+                "{label} round {idx} metrics changed: actual={actual:?} expected={expected:?}"
+            );
+        }
+    }
+
     fn collect_replay_metrics(output: &Output) -> ReplayMetrics {
         let mut metrics = ReplayMetrics {
             rounds: output.rounds.len(),
@@ -4893,6 +4933,52 @@ mod tests {
         }
 
         metrics
+    }
+
+    fn collect_round_metrics(output: &Output) -> Vec<RoundReplayMetrics> {
+        output
+            .rounds
+            .iter()
+            .map(|round| {
+                let kills = round
+                    .events
+                    .iter()
+                    .filter(|event| event.kind == "kill")
+                    .count();
+                let bomb_events = round
+                    .events
+                    .iter()
+                    .filter(|event| {
+                        matches!(
+                            event.kind.as_str(),
+                            "bomb_planted"
+                                | "bomb_defuse_start"
+                                | "bomb_defuse_abort"
+                                | "bomb_defused"
+                                | "bomb_exploded"
+                        )
+                    })
+                    .count();
+                let projectile_samples = round
+                    .projectile_frames
+                    .iter()
+                    .map(|frame| frame.projectiles.len())
+                    .sum();
+                RoundReplayMetrics {
+                    number: round.number,
+                    score_a: round.score_a,
+                    score_b: round.score_b,
+                    frames: round.frames.len(),
+                    events: round.events.len(),
+                    kills,
+                    bomb_events,
+                    effects: round.effects.len(),
+                    weapon_fires: round.weapon_fires.len(),
+                    projectile_frames: round.projectile_frames.len(),
+                    projectile_samples,
+                }
+            })
+            .collect()
     }
 
     fn collect_manifest_metrics(manifest: &Value) -> ReplayMetrics {

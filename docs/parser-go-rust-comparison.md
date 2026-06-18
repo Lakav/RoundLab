@@ -29,11 +29,14 @@ unclassified mismatches across all demos.
 The Rust integration tests can also validate the local reference demos directly
 without committing demo files. These tests use `parser/reference_demos.json` as
 strict lightweight metric snapshots, not loose lower bounds, so intentional
-parser output changes must update the snapshot deliberately. The full-quality
-test also locks the split JSON contract expected by Tauri: manifest rounds keep
-empty `frames`, `events`, `effects`, `weaponFires`, and `projectileFrames`
-arrays plus `roundFile`, while split round files contain the full replay arrays
-without a recursive `roundFile`.
+parser output changes must update the snapshot deliberately. The snapshots now
+include both aggregate demo metrics and compact per-round metrics for scores,
+frames, events, kills, bomb events, utility effects, weapon fires, projectile
+frames, and projectile samples. The full-quality test also locks the split JSON
+contract expected by Tauri: manifest rounds keep empty `frames`, `events`,
+`effects`, `weaponFires`, and `projectileFrames` arrays plus `roundFile`, while
+split round files contain the full replay arrays without a recursive
+`roundFile`.
 
 ```bash
 cd parser
@@ -82,14 +85,14 @@ Summary: Rust full quality outputs are smaller and faster than Go on most demos 
 - Rust reconstructs terminal flash detonations from projectile frames when demoparser Rust misses a `flashbang_detonate` at round end. This fixes the Anubis round 18 missing unique flash. Dust 7 and Inferno 13 were confirmed as Go duplicate/bucket artifacts, not missing Rust flashes.
 - Decoy timing now uses the projectile's first stationary tick instead of `decoy_detonate - 15s`. Ancient 12/16 now match deduped effect signatures. The harness now compares deduped effects with tolerance and classifies the only remaining deduped utility mismatch: Inferno round 2 decoy is `29.25s` in Rust vs `29.406s` in Go, same team and position, classified as `decoy_stationary_vs_event_timing`. Projectile frames show the decoy reaches its final position at `29.25s`, so this is not treated as a missing replay feature.
 - Weapon fire and projectile frame counts are close in full quality, but not identical. After weapon alias normalization, remaining weapon-fire count deltas are small and round-local. The harness now uses ordered dynamic matching by `shooter` + normalized weapon, using a stricter firearm tolerance and a wider grenade tolerance. This avoids shifting an entire AK/M4 burst when one shot is missing, while grenade throw timestamp offsets still do not look like missing events. It also classifies unmatched fire deltas.
-- The latest five-demo full audit reports zero pose mismatches for matched weapon fires. Remaining unmatched weapon fires are 26 extra Rust fires and 3 missing Rust fires. The 26 extra Rust fires are classified as 21 `near_related_kill` and 5 `grenade_weapon_fire`. The 3 missing Rust fires are 2 `near_related_kill` and 1 unclassified Cache round 11 AK-47 shot. The corrected matcher shows the Cache misses are two simultaneous AK-47 shots at `t=46.328`; Rust has the surrounding `46.406+` shots, so the previous sequential matcher was reporting the wrong sample after the gap.
+- The latest five-demo full audit reports zero pose mismatches for matched weapon fires. Remaining unmatched weapon fires are 26 extra Rust fires and 3 missing Rust fires. The 26 extra Rust fires are classified as 21 `near_related_kill` and 5 `grenade_weapon_fire`. The 3 missing Rust fires are classified as 2 `near_related_kill` and 1 `adjacent_same_shooter_burst_gap`. The Cache round 11 gap is an AK-47 shot at `t=46.328`; Rust has the same shooter/weapon burst continuing at `46.406+`, but the underlying Rust event stream does not expose a safe missing `weapon_fire` source at the skipped tick.
 - A Rust-side attempt to synthesize missing firearm `weaponFires` from tick-row `FIRE` state was rejected. Raw `FIRE` is held across many ticks and generated thousands of false extra shots even when restricted to rising edges, so it is not a safe source for weapon-fire reconstruction without deeper shot-cadence/recoil modeling.
 - `demoparser-rust` also exposes a custom `fire_bullets` message, but it does not solve the remaining weapon-fire gap. On Cache, `fire_bullets` exists globally (`2635` events in the demo), but neither `weapon_fire` nor `fire_bullets` is emitted around the confirmed missing tick `81163` for the two simultaneous AK-47 shots. Adding `fire_bullets` as a fallback left the five-demo weapon-fire audit unchanged, so the fallback was rejected as dead complexity.
 - Projectile frame auditing now checks track count, duplicate projectiles per frame, frame monotonicity, track breaks, teleport-like jumps, and tolerant track matching by normalized type, thrower, time, and start/end position. Rust now keeps IDs through small terminal grenade snaps by using a conservative 128-unit continuity floor instead of 90 units. This fixed confirmed smoke splits on Cache round 8 and Anubis round 29 without reintroducing the previous overmerge bug.
 - On the latest five-demo full audit, Rust and Go both have 1870 projectile tracks. Rust has zero duplicate projectiles, zero non-monotonic projectile frames, zero track breaks, and zero teleport-like jumps. Go has zero duplicates but 101 non-monotonic projectile frames and 280 track breaks, so exact Go projectile continuity is not a clean oracle.
 - Remaining projectile track tolerance deltas are limited and now classified: 3 rounds differ, with 0 missing Rust tracks, 0 extra Rust tracks, 6 tolerant mismatches, and 0 unclassified mismatches. Four are `post_round_smoke_duration` cases where Rust stops projectile samples at `round_end` while Go keeps stationary smoke projectile samples after the round; the smoke visual duration is already represented by `effects`. Two are `overlapping_same_thrower_projectile` cases on Inferno round 17 where the same player throws repeated HE grenades on nearly identical paths, making ID attribution ambiguous even though type, thrower, and positions remain coherent.
 - Bomb state raw frame counts still differ frequently, but the window audit now classifies the five-demo differences. The remaining deltas are not treated as missing Rust replay state unless exact Go residue emulation becomes a requirement.
-- `ROUNDLAB_TEST_DEMOS` integration coverage is stricter now. Full-quality local tests enforce structural replay invariants in addition to reference-demo metric floors: monotonic round scores, sorted events and frames, bounded post-round events, no bomb state after bomb defuse/explosion, valid utility effects, valid weapon-fire pose fields, monotonic projectile frames, and no duplicate projectile identity inside a frame. The full five-demo release test passed locally; the debug test binary is intentionally not used for the full set because it is much slower.
+- `ROUNDLAB_TEST_DEMOS` integration coverage is stricter now. Full-quality local tests enforce structural replay invariants in addition to strict reference-demo snapshots: aggregate metrics, per-round scores/counts, monotonic round scores, sorted events and frames, bounded post-round events, no bomb state after bomb defuse/explosion, valid utility effects, valid weapon-fire pose fields, monotonic projectile frames, and no duplicate projectile identity inside a frame. The full five-demo release test passed locally; the debug test binary is intentionally not used for the full set because it is much slower.
 
 ## Optimization Findings
 
@@ -122,6 +125,6 @@ A quick test with `ROUNDLAB_PARSER_GZIP_LEVEL=1` on `dust1-13` did not improve f
 
 ## Next Targets
 
-1. Decide how strict weapon-fire parity really needs to be. The remaining missing Rust cases appear to come from demoparser-rust event extraction; tick-row `FIRE` is too noisy and `fire_bullets` does not cover the confirmed Cache gap.
+1. Decide how strict weapon-fire parity really needs to be. The remaining missing Rust cases appear to come from demoparser-rust event extraction; tick-row `FIRE` is too noisy and `fire_bullets` does not cover the confirmed Cache gap. The current audit has 0 unclassified mismatches, but exact Go weapon-fire parity is still not proven.
 2. Inspect the remaining bomb-event timing/order deltas in the replay UI only if exact event timestamp parity becomes required; event counts and visible bomb resolution are currently coherent.
 3. If performance work resumes, target `write_output_ms` / `serialize_json_ms` first, then vendor parsing. Do not trade away replay fidelity for smaller micro-gains.

@@ -544,7 +544,32 @@ def actor_matches(left: Any, right: Any) -> bool:
     return str(left or "") == str(right or "")
 
 
-def classify_fire_mismatch(fire: dict[str, Any], round_obj: dict[str, Any]) -> str:
+def has_adjacent_same_shooter_fire(
+    fire: dict[str, Any],
+    counterpart_round: dict[str, Any] | None,
+    tolerance: float = 0.12,
+) -> bool:
+    if not counterpart_round:
+        return False
+    weapon = normalize_weapon(fire.get("weapon"))
+    if weapon in GRENADE_FIRE_WEAPONS:
+        return False
+    shooter = fire.get("shooter")
+    fire_t = float(fire.get("t", 0.0) or 0.0)
+    for other in fire_pose_summary(counterpart_round.get("weaponFires", [])):
+        if other.get("shooter") != shooter or normalize_weapon(other.get("weapon")) != weapon:
+            continue
+        delta = abs(float(other.get("t", 0.0) or 0.0) - fire_t)
+        if 0.0 < delta <= tolerance:
+            return True
+    return False
+
+
+def classify_fire_mismatch(
+    fire: dict[str, Any],
+    round_obj: dict[str, Any],
+    counterpart_round: dict[str, Any] | None = None,
+) -> str:
     weapon = normalize_weapon(fire.get("weapon"))
     if weapon in GRENADE_FIRE_WEAPONS:
         return "grenade_weapon_fire"
@@ -560,6 +585,9 @@ def classify_fire_mismatch(fire: dict[str, Any], round_obj: dict[str, Any]) -> s
         if actor_matches(shooter, event.get("killer")) or actor_matches(shooter, event.get("victim")):
             return "near_related_kill"
 
+    if has_adjacent_same_shooter_fire(fire, counterpart_round):
+        return "adjacent_same_shooter_burst_gap"
+
     end_t = round_end_time(round_obj)
     if end_t and abs(fire_t - end_t) <= 0.75:
         return "near_round_end"
@@ -571,11 +599,12 @@ def classify_fire_samples(
     items: list[dict[str, Any]],
     round_obj: dict[str, Any],
     limit: int,
+    counterpart_round: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     counts: dict[str, int] = {}
     classified = []
     for idx, item in enumerate(items):
-        classification = classify_fire_mismatch(item, round_obj)
+        classification = classify_fire_mismatch(item, round_obj, counterpart_round)
         counts[classification] = counts.get(classification, 0) + 1
         if idx < limit:
             classified.append({**fire_pose_sample(item), "classification": classification})
@@ -1032,8 +1061,12 @@ def compare_fire_poses(go_round: dict[str, Any], rust_round: dict[str, Any], lim
             )
     missing = [go_fires[idx] for idx in sorted(unmatched_go)]
     extra = [rust_fires[idx] for idx in sorted(unmatched_rust)]
-    missing_sample, missing_classifications = classify_fire_samples(missing, go_round, limit)
-    extra_sample, extra_classifications = classify_fire_samples(extra, rust_round, limit)
+    missing_sample, missing_classifications = classify_fire_samples(
+        missing, go_round, limit, rust_round
+    )
+    extra_sample, extra_classifications = classify_fire_samples(
+        extra, rust_round, limit, go_round
+    )
     return {
         "missingInRustCount": len(missing),
         "missingInRustClassifications": missing_classifications,
