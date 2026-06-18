@@ -3009,9 +3009,9 @@ mod tests {
         add_missing_terminal_flash_effects, adjust_decoy_effects_from_projectiles,
         build_round_payload, commit_split_output, group_projectile_rows, looks_like_knife_round,
         parse_args_from, parse_demo_to_output, parser_gzip_compression, read_capped, read_demo,
-        round_events, sample_step, seconds_since, write_json_gz, Args, Event, Frame, Output,
-        ProjectileFrame, ProjectileKind, ProjectilePos, ProjectileRow, Round, RoundBuildContext,
-        RoundSpan, TickRow, UtilityEffect, WeaponFireEvent, MAX_DEMO_SIZE,
+        round_events, sample_step, seconds_since, write_json_gz, Args, BombState, Event, Frame,
+        Output, ProjectileFrame, ProjectileKind, ProjectilePos, ProjectileRow, Round,
+        RoundBuildContext, RoundSpan, TickRow, UtilityEffect, WeaponFireEvent, MAX_DEMO_SIZE,
     };
     use flate2::{read::GzDecoder, Compression};
     use serde::Deserialize;
@@ -3055,6 +3055,7 @@ mod tests {
         round_event_signatures: Vec<RoundEventSignatures>,
         round_effect_signatures: Vec<RoundEffectSignatures>,
         round_weapon_fire_signatures: Vec<RoundWeaponFireSignatures>,
+        round_bomb_state_signatures: Vec<RoundBombStateSignatures>,
         medium_skip_metrics: ReplayMetrics,
     }
 
@@ -3094,6 +3095,22 @@ mod tests {
     struct RoundWeaponFireSignatures {
         number: usize,
         weapon_fires: Vec<String>,
+    }
+
+    #[derive(Debug, Deserialize, PartialEq, Eq)]
+    #[serde(rename_all = "camelCase")]
+    struct RoundBombStateSignatures {
+        number: usize,
+        bomb_states: Vec<String>,
+    }
+
+    struct BombStateWindow<'a> {
+        start_t: f64,
+        end_t: f64,
+        samples: usize,
+        end_cause: String,
+        start_bomb: &'a BombState,
+        end_bomb: &'a BombState,
     }
 
     struct EnvVarGuard {
@@ -4864,6 +4881,11 @@ mod tests {
             &expected.round_weapon_fire_signatures,
             &expected.label,
         );
+        assert_round_bomb_state_signatures_match_reference(
+            &collect_round_bomb_state_signatures(output),
+            &expected.round_bomb_state_signatures,
+            &expected.label,
+        );
     }
 
     fn assert_reference_demo_identity(output: &Output, expected: &ExpectedReplaySnapshot) {
@@ -5019,6 +5041,24 @@ mod tests {
             assert_eq!(
                 actual, expected,
                 "{label} round {idx} weapon fire signatures changed: actual={actual:?} expected={expected:?}"
+            );
+        }
+    }
+
+    fn assert_round_bomb_state_signatures_match_reference(
+        actual: &[RoundBombStateSignatures],
+        expected: &[RoundBombStateSignatures],
+        label: &str,
+    ) {
+        assert_eq!(
+            actual.len(),
+            expected.len(),
+            "{label} round bomb-state signature count changed"
+        );
+        for (idx, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+            assert_eq!(
+                actual, expected,
+                "{label} round {idx} bomb-state signatures changed: actual={actual:?} expected={expected:?}"
             );
         }
     }
@@ -5182,6 +5222,104 @@ mod tests {
             .collect()
     }
 
+    fn collect_round_bomb_state_signatures(output: &Output) -> Vec<RoundBombStateSignatures> {
+        output
+            .rounds
+            .iter()
+            .map(|round| RoundBombStateSignatures {
+                number: round.number,
+                bomb_states: bomb_state_windows(round)
+                    .iter()
+                    .map(bomb_state_signature)
+                    .collect(),
+            })
+            .collect()
+    }
+
+    fn bomb_state_windows(round: &Round) -> Vec<BombStateWindow<'_>> {
+        let mut windows = Vec::new();
+        let mut current: Option<BombStateWindow<'_>> = None;
+
+        for frame in &round.frames {
+            let Some(bomb) = frame.bomb.as_ref() else {
+                close_bomb_state_window(round, &mut current, &mut windows, None);
+                continue;
+            };
+
+            match current.as_mut() {
+                Some(window)
+                    if window.end_bomb.status == bomb.status
+                        && window.end_bomb.carrier == bomb.carrier =>
+                {
+                    window.end_t = frame.t;
+                    window.samples += 1;
+                    window.end_bomb = bomb;
+                }
+                Some(_) => {
+                    close_bomb_state_window(
+                        round,
+                        &mut current,
+                        &mut windows,
+                        Some(bomb.status.as_str()),
+                    );
+                    current = Some(BombStateWindow {
+                        start_t: frame.t,
+                        end_t: frame.t,
+                        samples: 1,
+                        end_cause: String::new(),
+                        start_bomb: bomb,
+                        end_bomb: bomb,
+                    });
+                }
+                None => {
+                    current = Some(BombStateWindow {
+                        start_t: frame.t,
+                        end_t: frame.t,
+                        samples: 1,
+                        end_cause: String::new(),
+                        start_bomb: bomb,
+                        end_bomb: bomb,
+                    });
+                }
+            }
+        }
+
+        close_bomb_state_window(round, &mut current, &mut windows, None);
+        windows
+    }
+
+    fn close_bomb_state_window<'a>(
+        round: &Round,
+        current: &mut Option<BombStateWindow<'a>>,
+        windows: &mut Vec<BombStateWindow<'a>>,
+        next_status: Option<&str>,
+    ) {
+        if let Some(mut window) = current.take() {
+            window.end_cause = bomb_state_window_end_cause(round, window.end_t, next_status);
+            windows.push(window);
+        }
+    }
+
+    fn bomb_state_window_end_cause(round: &Round, end_t: f64, next_status: Option<&str>) -> String {
+        if let Some(status) = next_status {
+            return format!("to={status}");
+        }
+        if let Some(event) = round
+            .events
+            .iter()
+            .filter(|event| matches!(event.kind.as_str(), "bomb_defused" | "bomb_exploded"))
+            .filter(|event| event.t + 0.25 >= end_t && event.t <= end_t + 1.0)
+            .min_by(|left, right| left.t.total_cmp(&right.t))
+        {
+            return format!("to={}@{:.3}", event.kind, bucket_signature_time(event.t));
+        }
+        if end_t + 0.25 >= round.duration {
+            "to=round_end".into()
+        } else {
+            "to=none".into()
+        }
+    }
+
     fn kill_signature(event: &Event) -> String {
         format!(
             "{:.3}|{}|{}|{}|{}|{}",
@@ -5246,6 +5384,24 @@ mod tests {
             bucket_signature_coord(fire.y),
             bucket_signature_coord(fire.z),
             bucket_signature_yaw(fire.yaw)
+        )
+    }
+
+    fn bomb_state_signature(window: &BombStateWindow<'_>) -> String {
+        format!(
+            "{}|{:.3}|{:.3}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+            window.end_bomb.status,
+            bucket_signature_time(window.start_t),
+            bucket_signature_time(window.end_t),
+            window.samples,
+            window.end_cause,
+            optional_u64_signature(window.end_bomb.carrier),
+            bucket_signature_coord(window.start_bomb.x),
+            bucket_signature_coord(window.start_bomb.y),
+            bucket_signature_coord(window.start_bomb.z),
+            bucket_signature_coord(window.end_bomb.x),
+            bucket_signature_coord(window.end_bomb.y),
+            bucket_signature_coord(window.end_bomb.z)
         )
     }
 

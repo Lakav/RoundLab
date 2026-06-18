@@ -73,7 +73,9 @@ Known reference demos are listed in `parser/reference_demos.json`. For those
 files, the tests enforce exact map and score identity plus snapshots for rounds,
 players, frames, kills, bomb events, bomb state, utility effects, weapon fires,
 and projectile frames. The snapshots also lock compact per-round kill,
-bomb-event, utility-effect, and weapon-fire signatures. Weapon-fire signatures
+bomb-event, bomb-state, utility-effect, and weapon-fire signatures. Bomb-state
+signatures summarize carried/dropped/planted windows with timing, sample count,
+end cause, carrier, and bucketed start/end position. Weapon-fire signatures
 include bucketed timing, shooter, weapon, team, position, and yaw. The score in
 the demo filename is the expected truth (`dust1-13.dem.zst` means `scoreA=1`,
 `scoreB=13`). The medium-quality skip test also verifies that lightweight
