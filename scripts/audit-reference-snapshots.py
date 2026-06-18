@@ -43,6 +43,15 @@ BOMB_EVENTS = {
     "bomb_exploded",
 }
 
+SNAPSHOT_SIGNATURE_FIELDS = [
+    "roundEventSignatures",
+    "roundEffectSignatures",
+    "roundWeaponFireSignatures",
+    "roundBombStateSignatures",
+    "roundActiveActionSignatures",
+    "roundProjectileTrackSignatures",
+]
+
 
 def load_json(path: Path) -> Any:
     with path.open("r", encoding="utf-8") as f:
@@ -122,6 +131,20 @@ def assert_round_metrics_match(
         )
 
 
+def assert_snapshot_signatures_match(
+    label: str,
+    round_audit: dict[str, Any],
+    reference: dict[str, Any],
+) -> None:
+    rust_signatures = round_audit.get("rustSnapshotSignatures")
+    if not isinstance(rust_signatures, dict):
+        raise AssertionError(
+            f"{label} report is missing rustSnapshotSignatures; rerun compare-parsers.py with --round-audit"
+        )
+    for field in SNAPSHOT_SIGNATURE_FIELDS:
+        expect_equal(label, field, rust_signatures.get(field), reference.get(field))
+
+
 def assert_no_unclassified_mismatches(report: dict[str, Any]) -> None:
     summary = report.get("roundAuditSummary")
     if not isinstance(summary, dict):
@@ -198,6 +221,7 @@ def audit(reference_path: Path, report_path: Path) -> list[str]:
             report_rounds,
             snapshot.get("roundMetrics", []),
         )
+        assert_snapshot_signatures_match(label, round_audit, snapshot)
         checked.append(file_name)
 
     extra = sorted(set(results) - set(checked))

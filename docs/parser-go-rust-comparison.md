@@ -29,9 +29,13 @@ unclassified mismatches across all demos.
 `scripts/audit-reference-snapshots.py` is a read-only guard for saved reports:
 it checks that `parser/reference_demos.json` still matches the Rust side of a
 full-quality Go/Rust round audit, that filename/Go/Rust scores agree, and that
-the report has no unclassified or critical kill/bomb signature deltas. It needs
-the JSON report, not only the Markdown summary. It intentionally does not
-regenerate snapshots and does not claim exact tick-by-tick parity.
+the report has no unclassified or critical kill/bomb signature deltas. The
+round-audit JSON now carries the same compact Rust snapshot signatures used by
+the integration tests, so the read-only audit also verifies per-round
+kill/bomb, utility-effect, weapon-fire, bomb-state, active-action, and
+projectile-track signatures. It needs the JSON report, not only the Markdown
+summary. It intentionally does not regenerate snapshots and does not claim exact
+tick-by-tick parity.
 
 The Rust integration tests can also validate the local reference demos directly
 without committing demo files. These tests use `parser/reference_demos.json` as

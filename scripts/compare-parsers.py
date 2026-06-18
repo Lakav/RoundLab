@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import json
+import math
 import os
 import re
 import shutil
@@ -344,6 +345,414 @@ def normalize_projectile_type(value: Any) -> str:
     if "decoy" in raw:
         return "decoy"
     return re.sub(r"[^a-z0-9]+", "", raw)
+
+
+def snapshot_optional(value: Any) -> str:
+    return "" if value is None else str(value)
+
+
+def snapshot_number(value: Any) -> float:
+    return float(value) if isinstance(value, (int, float)) else 0.0
+
+
+def rust_round(value: float) -> int:
+    return math.floor(value + 0.5) if value >= 0.0 else math.ceil(value - 0.5)
+
+
+def snapshot_bucket_time(value: Any) -> float:
+    return rust_round(snapshot_number(value) / 0.25) * 0.25
+
+
+def snapshot_bucket_duration(value: Any) -> float:
+    return rust_round(snapshot_number(value) / 0.1) * 0.1
+
+
+def snapshot_bucket_coord(value: Any) -> int:
+    return rust_round(snapshot_number(value) / 50.0) * 50
+
+
+def snapshot_bucket_projectile_coord(value: Any) -> int:
+    return rust_round(snapshot_number(value) / 100.0) * 100
+
+
+def snapshot_bucket_yaw(value: Any) -> int:
+    yaw = snapshot_number(value) % 360.0
+    return (rust_round(yaw / 15.0) * 15) % 360
+
+
+def snapshot_time(value: Any) -> str:
+    return f"{snapshot_bucket_time(value):.3f}"
+
+
+def snapshot_duration(value: Any) -> str:
+    return f"{snapshot_bucket_duration(value):.1f}"
+
+
+def snapshot_optional_duration(value: Any) -> str:
+    if not isinstance(value, (int, float)):
+        return ""
+    return snapshot_duration(value)
+
+
+def snapshot_effect_signature(effect: dict[str, Any]) -> str:
+    kind = str(effect.get("type", ""))
+    duration = max(0.0, snapshot_number(effect.get("end")) - snapshot_number(effect.get("start")))
+    variant = "" if kind == "fire" else str(effect.get("variant") or "")
+    team = "" if kind == "bomb_planted" else snapshot_optional(effect.get("team"))
+    return "|".join(
+        [
+            snapshot_time(effect.get("start")),
+            snapshot_duration(duration),
+            kind,
+            variant,
+            team,
+            str(snapshot_bucket_coord(effect.get("x"))),
+            str(snapshot_bucket_coord(effect.get("y"))),
+            str(snapshot_bucket_coord(effect.get("z"))),
+        ]
+    )
+
+
+def snapshot_kill_signature(event: dict[str, Any]) -> str:
+    return "|".join(
+        [
+            snapshot_time(event.get("t")),
+            snapshot_optional(event.get("killer")),
+            snapshot_optional(event.get("victim")),
+            snapshot_optional(event.get("assist")),
+            normalize_kill_weapon(event.get("weapon")),
+            str(bool(event.get("hs", False))).lower(),
+        ]
+    )
+
+
+def snapshot_bomb_event_signature(event: dict[str, Any]) -> str:
+    return "|".join(
+        [
+            snapshot_time(event.get("t")),
+            str(event.get("type", "")),
+            snapshot_optional(event.get("player")),
+        ]
+    )
+
+
+def snapshot_weapon_fire_signature(fire: dict[str, Any]) -> str:
+    return "|".join(
+        [
+            snapshot_time(fire.get("t")),
+            snapshot_optional(fire.get("shooter")),
+            normalize_weapon(fire.get("weapon")),
+            snapshot_optional(fire.get("team")),
+            str(snapshot_bucket_coord(fire.get("x"))),
+            str(snapshot_bucket_coord(fire.get("y"))),
+            str(snapshot_bucket_coord(fire.get("z"))),
+            str(snapshot_bucket_yaw(fire.get("yaw"))),
+        ]
+    )
+
+
+def snapshot_projectile_type(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    trimmed = value.strip()
+    raw = trimmed.lower()
+    if "smoke" in raw:
+        return "smoke"
+    if "flash" in raw:
+        return "flash"
+    if "molotov" in raw or "incendiary" in raw or "inferno" in raw:
+        return "molotov"
+    if "hegrenade" in raw or raw in {"he", "he grenade"}:
+        return "he"
+    return trimmed
+
+
+def snapshot_bomb_state_windows(round_obj: dict[str, Any]) -> list[dict[str, Any]]:
+    windows = []
+    current = None
+    for frame in round_obj.get("frames", []):
+        bomb = frame.get("bomb")
+        if bomb is None:
+            current = snapshot_close_bomb_state_window(round_obj, current, windows, None)
+            continue
+        if (
+            current is not None
+            and current["endBomb"].get("status") == bomb.get("status")
+            and current["endBomb"].get("carrier") == bomb.get("carrier")
+        ):
+            current["endT"] = snapshot_number(frame.get("t"))
+            current["samples"] += 1
+            current["endBomb"] = bomb
+            continue
+        current = snapshot_close_bomb_state_window(
+            round_obj,
+            current,
+            windows,
+            bomb.get("status") if current is not None else None,
+        )
+        current = {
+            "startT": snapshot_number(frame.get("t")),
+            "endT": snapshot_number(frame.get("t")),
+            "samples": 1,
+            "startBomb": bomb,
+            "endBomb": bomb,
+        }
+    snapshot_close_bomb_state_window(round_obj, current, windows, None)
+    return windows
+
+
+def snapshot_close_bomb_state_window(
+    round_obj: dict[str, Any],
+    current: dict[str, Any] | None,
+    windows: list[dict[str, Any]],
+    next_status: Any,
+) -> None:
+    if current is None:
+        return None
+    current["endCause"] = snapshot_bomb_state_window_end_cause(
+        round_obj,
+        snapshot_number(current.get("endT")),
+        str(next_status) if next_status else None,
+    )
+    windows.append(current)
+    return None
+
+
+def snapshot_bomb_state_window_end_cause(
+    round_obj: dict[str, Any],
+    end_t: float,
+    next_status: str | None,
+) -> str:
+    if next_status:
+        return f"to={next_status}"
+    candidates = []
+    for event in round_obj.get("events", []):
+        if event.get("type") not in {"bomb_defused", "bomb_exploded"}:
+            continue
+        event_t = snapshot_number(event.get("t"))
+        if event_t + 0.25 >= end_t and event_t <= end_t + 1.0:
+            candidates.append((event_t, str(event.get("type", ""))))
+    if candidates:
+        event_t, kind = min(candidates, key=lambda item: item[0])
+        return f"to={kind}@{snapshot_time(event_t)}"
+    if end_t + 0.25 >= snapshot_number(round_obj.get("duration")):
+        return "to=round_end"
+    return "to=none"
+
+
+def snapshot_bomb_state_signature(window: dict[str, Any]) -> str:
+    start_bomb = window["startBomb"]
+    end_bomb = window["endBomb"]
+    return "|".join(
+        [
+            str(end_bomb.get("status", "")),
+            snapshot_time(window.get("startT")),
+            snapshot_time(window.get("endT")),
+            str(window.get("samples", 0)),
+            str(window.get("endCause", "")),
+            snapshot_optional(end_bomb.get("carrier")),
+            str(snapshot_bucket_coord(start_bomb.get("x"))),
+            str(snapshot_bucket_coord(start_bomb.get("y"))),
+            str(snapshot_bucket_coord(start_bomb.get("z"))),
+            str(snapshot_bucket_coord(end_bomb.get("x"))),
+            str(snapshot_bucket_coord(end_bomb.get("y"))),
+            str(snapshot_bucket_coord(end_bomb.get("z"))),
+        ]
+    )
+
+
+def snapshot_active_action_windows(round_obj: dict[str, Any]) -> list[dict[str, Any]]:
+    windows = []
+    current: dict[Any, dict[str, Any]] = {}
+    for frame in round_obj.get("frames", []):
+        seen = set()
+        frame_t = snapshot_number(frame.get("t"))
+        for player in frame.get("players", []):
+            player_id = player.get("id")
+            action = player.get("activeAction")
+            if not action:
+                window = current.pop(player_id, None)
+                if window is not None:
+                    windows.append(window)
+                continue
+            seen.add(player_id)
+            existing = current.get(player_id)
+            if existing is not None and snapshot_active_action_matches(existing["action"], action):
+                existing["endT"] = frame_t
+                existing["samples"] += 1
+                existing["endElapsed"] = snapshot_number(action.get("elapsed"))
+                existing["action"] = action
+            else:
+                if existing is not None:
+                    windows.append(existing)
+                current[player_id] = {
+                    "player": player_id,
+                    "startT": frame_t,
+                    "endT": frame_t,
+                    "samples": 1,
+                    "startElapsed": snapshot_number(action.get("elapsed")),
+                    "endElapsed": snapshot_number(action.get("elapsed")),
+                    "action": action,
+                }
+        for player_id in list(current):
+            if player_id not in seen:
+                windows.append(current.pop(player_id))
+    windows.extend(current.values())
+    return windows
+
+
+def snapshot_active_action_matches(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    return (
+        left.get("type") == right.get("type")
+        and left.get("item") == right.get("item")
+        and left.get("duration") == right.get("duration")
+    )
+
+
+def normalize_active_action_item(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    if value.strip().lower() == "c4":
+        return "c4"
+    return normalize_weapon(value)
+
+
+def snapshot_active_action_signature(window: dict[str, Any]) -> str:
+    action = window["action"]
+    return "|".join(
+        [
+            snapshot_time(window.get("startT")),
+            snapshot_time(window.get("endT")),
+            snapshot_optional(window.get("player")),
+            str(action.get("type", "")),
+            normalize_active_action_item(action.get("item")),
+            str(window.get("samples", 0)),
+            snapshot_time(window.get("startElapsed")),
+            snapshot_time(window.get("endElapsed")),
+            snapshot_optional_duration(action.get("duration")),
+        ]
+    )
+
+
+def snapshot_projectile_track_signatures(round_obj: dict[str, Any]) -> list[str]:
+    tracks: dict[tuple[Any, str, Any], list[dict[str, float]]] = {}
+    for frame in round_obj.get("projectileFrames", []):
+        frame_t = snapshot_number(frame.get("t"))
+        for projectile in frame.get("projectiles", []):
+            key = (
+                projectile.get("id"),
+                snapshot_projectile_type(projectile.get("type")),
+                projectile.get("thrower"),
+            )
+            tracks.setdefault(key, []).append(
+                {
+                    "t": frame_t,
+                    "x": snapshot_number(projectile.get("x")),
+                    "y": snapshot_number(projectile.get("y")),
+                    "z": snapshot_number(projectile.get("z")),
+                }
+            )
+    signatures = []
+    for key, points in tracks.items():
+        points = sorted(points, key=lambda item: item["t"])
+        first = points[0]
+        last = points[-1]
+        signatures.append(
+            "|".join(
+                [
+                    snapshot_optional(key[0]),
+                    key[1],
+                    snapshot_optional(key[2]),
+                    snapshot_time(first["t"]),
+                    snapshot_time(last["t"]),
+                    str(len(points)),
+                    str(snapshot_bucket_projectile_coord(first["x"])),
+                    str(snapshot_bucket_projectile_coord(first["y"])),
+                    str(snapshot_bucket_projectile_coord(first["z"])),
+                    str(snapshot_bucket_projectile_coord(last["x"])),
+                    str(snapshot_bucket_projectile_coord(last["y"])),
+                    str(snapshot_bucket_projectile_coord(last["z"])),
+                ]
+            )
+        )
+    return sorted(signatures)
+
+
+def reference_snapshot_signatures(rounds: list[dict[str, Any]]) -> dict[str, Any]:
+    round_event_signatures = []
+    round_effect_signatures = []
+    round_weapon_fire_signatures = []
+    round_bomb_state_signatures = []
+    round_active_action_signatures = []
+    round_projectile_track_signatures = []
+    for round_obj in rounds:
+        number = round_obj.get("number")
+        events = round_obj.get("events", [])
+        round_event_signatures.append(
+            {
+                "number": number,
+                "kills": [
+                    snapshot_kill_signature(event)
+                    for event in events
+                    if event.get("type") == "kill"
+                ],
+                "bombEvents": [
+                    snapshot_bomb_event_signature(event)
+                    for event in events
+                    if event.get("type") in BOMB_EVENTS
+                ],
+            }
+        )
+        round_effect_signatures.append(
+            {
+                "number": number,
+                "effects": sorted(
+                    snapshot_effect_signature(effect)
+                    for effect in round_obj.get("effects", [])
+                ),
+            }
+        )
+        round_weapon_fire_signatures.append(
+            {
+                "number": number,
+                "weaponFires": sorted(
+                    snapshot_weapon_fire_signature(fire)
+                    for fire in round_obj.get("weaponFires", [])
+                ),
+            }
+        )
+        round_bomb_state_signatures.append(
+            {
+                "number": number,
+                "bombStates": [
+                    snapshot_bomb_state_signature(window)
+                    for window in snapshot_bomb_state_windows(round_obj)
+                ],
+            }
+        )
+        round_active_action_signatures.append(
+            {
+                "number": number,
+                "activeActions": sorted(
+                    snapshot_active_action_signature(window)
+                    for window in snapshot_active_action_windows(round_obj)
+                ),
+            }
+        )
+        round_projectile_track_signatures.append(
+            {
+                "number": number,
+                "projectileTracks": snapshot_projectile_track_signatures(round_obj),
+            }
+        )
+    return {
+        "roundEventSignatures": round_event_signatures,
+        "roundEffectSignatures": round_effect_signatures,
+        "roundWeaponFireSignatures": round_weapon_fire_signatures,
+        "roundBombStateSignatures": round_bomb_state_signatures,
+        "roundActiveActionSignatures": round_active_action_signatures,
+        "roundProjectileTrackSignatures": round_projectile_track_signatures,
+    }
 
 
 def round_audit_summary(round_obj: dict[str, Any]) -> dict[str, Any]:
@@ -1403,6 +1812,7 @@ def round_audit(go_output: Path, rust_output: Path) -> dict[str, Any]:
     return {
         "goMeta": go_manifest.get("meta", {}),
         "rustMeta": rust_manifest.get("meta", {}),
+        "rustSnapshotSignatures": reference_snapshot_signatures(rust_rounds),
         "rounds": rounds,
     }
 
