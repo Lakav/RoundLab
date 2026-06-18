@@ -22,6 +22,9 @@ Use `--keep-outputs` for targeted event-level debugging.
 The generated Markdown report now includes a `Rust Phase Timings` section from
 `ROUNDLAB_STATS`, with read, vendor parse, grouping, round build, write output,
 JSON serialization, and max RSS per demo.
+Round-audit Markdown also includes an `Audit Summary` section that aggregates
+diff fields, missing/extra Rust counts, classification totals, and any remaining
+unclassified mismatches across all demos.
 
 The Rust integration tests can also validate the local reference demos directly
 without committing demo files:

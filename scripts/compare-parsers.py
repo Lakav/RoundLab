@@ -1647,15 +1647,104 @@ def write_markdown(report: dict[str, Any], path: Path) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def increment_counter(counter: dict[str, int], key: str, amount: int = 1) -> None:
+    counter[key] = counter.get(key, 0) + amount
+
+
+def aggregate_round_audit(report: dict[str, Any]) -> dict[str, Any]:
+    field_counts: dict[str, int] = {}
+    missing_counts: dict[str, int] = {}
+    extra_counts: dict[str, int] = {}
+    unclassified_counts: dict[str, int] = {}
+    classification_counts: dict[str, dict[str, int]] = {}
+    rounds_with_diffs = 0
+    total_rounds = 0
+
+    classification_keys = [
+        "eventMismatchClassifications",
+        "windowMismatchClassifications",
+        "effectMismatchClassifications",
+        "missingInRustClassifications",
+        "extraInRustClassifications",
+        "trackMismatchClassifications",
+    ]
+    for item in report.get("results", []):
+        audit = item.get("roundAudit") or {}
+        for round_item in audit.get("rounds", []):
+            total_rounds += 1
+            diffs = round_item.get("diffs", [])
+            if diffs:
+                rounds_with_diffs += 1
+            for diff in diffs:
+                field = diff.get("field", "unknown")
+                increment_counter(field_counts, field)
+                missing = int(diff.get("missingInRustCount") or 0)
+                extra = int(diff.get("extraInRustCount") or 0)
+                unclassified = int(diff.get("unclassifiedMismatchCount") or 0)
+                if missing:
+                    increment_counter(missing_counts, field, missing)
+                if extra:
+                    increment_counter(extra_counts, field, extra)
+                if unclassified:
+                    increment_counter(unclassified_counts, field, unclassified)
+                for key in classification_keys:
+                    values = diff.get(key) or {}
+                    if not isinstance(values, dict) or not values:
+                        continue
+                    namespace = f"{field}.{key}"
+                    bucket = classification_counts.setdefault(namespace, {})
+                    for classification, count in values.items():
+                        amount = int(count or 0)
+                        increment_counter(bucket, str(classification), amount)
+                        if classification == "unclassified" and amount:
+                            increment_counter(unclassified_counts, namespace, amount)
+
+    return {
+        "totalRounds": total_rounds,
+        "roundsWithDiffs": rounds_with_diffs,
+        "fieldCounts": field_counts,
+        "missingInRustCounts": missing_counts,
+        "extraInRustCounts": extra_counts,
+        "unclassifiedMismatchCounts": unclassified_counts,
+        "classificationCounts": classification_counts,
+    }
+
+
+def format_counter(counter: dict[str, int]) -> str:
+    if not counter:
+        return "none"
+    return ", ".join(f"{key}:{value}" for key, value in sorted(counter.items()))
+
+
 def write_round_audit_markdown(report: dict[str, Any], path: Path) -> None:
+    summary = report.get("roundAuditSummary") or aggregate_round_audit(report)
     lines = [
         "# Parser Round Audit",
         "",
         f"- quality: `{report['quality']}`",
         f"- skipHeavy: `{report['skipHeavy']}`",
         f"- demos: {len(report['results'])}",
+        f"- rounds with diffs: {summary.get('roundsWithDiffs', 0)}/{summary.get('totalRounds', 0)}",
+        f"- unclassified mismatches: {format_counter(summary.get('unclassifiedMismatchCounts', {}))}",
         "",
     ]
+    lines.extend(
+        [
+            "## Audit Summary",
+            "",
+            f"- diff fields: {format_counter(summary.get('fieldCounts', {}))}",
+            f"- missing in Rust: {format_counter(summary.get('missingInRustCounts', {}))}",
+            f"- extra in Rust: {format_counter(summary.get('extraInRustCounts', {}))}",
+            "",
+        ]
+    )
+    classification_counts = summary.get("classificationCounts", {})
+    if classification_counts:
+        lines.extend(["| classifier | counts |", "| --- | --- |"])
+        for classifier, counts in sorted(classification_counts.items()):
+            lines.append(f"| `{classifier}` | {format_counter(counts)} |")
+        lines.append("")
+
     for item in report["results"]:
         audit = item.get("roundAudit")
         if not audit:
@@ -1766,6 +1855,8 @@ def main() -> int:
         "goCommit": GO_COMMIT,
         "results": results,
     }
+    if args.round_audit:
+        report["roundAuditSummary"] = aggregate_round_audit(report)
     args.out.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
     write_markdown(report, args.out.with_suffix(".md"))
     if args.round_audit:
