@@ -757,6 +757,64 @@ def fire_time_tolerance(weapon: str) -> float:
     return 0.08
 
 
+def match_time_ordered(
+    go_indexes: list[int],
+    rust_indexes: list[int],
+    go_items: list[dict[str, Any]],
+    rust_items: list[dict[str, Any]],
+    tolerance: float,
+) -> list[tuple[int, int]]:
+    """Match ordered timestamp series while avoiding one missing item shifting a burst."""
+    m = len(go_indexes)
+    n = len(rust_indexes)
+    dp: list[list[tuple[int, float]]] = [[(0, 0.0)] * (n + 1) for _ in range(m + 1)]
+    action: list[list[str | None]] = [[None] * (n + 1) for _ in range(m + 1)]
+
+    for i in range(m - 1, -1, -1):
+        dp[i][n] = (dp[i + 1][n][0] + 1, dp[i + 1][n][1])
+        action[i][n] = "skip_go"
+    for j in range(n - 1, -1, -1):
+        dp[m][j] = (dp[m][j + 1][0] + 1, dp[m][j + 1][1])
+        action[m][j] = "skip_rust"
+
+    for i in range(m - 1, -1, -1):
+        for j in range(n - 1, -1, -1):
+            best = (dp[i + 1][j][0] + 1, dp[i + 1][j][1])
+            best_action = "skip_go"
+
+            skip_rust = (dp[i][j + 1][0] + 1, dp[i][j + 1][1])
+            if skip_rust < best:
+                best = skip_rust
+                best_action = "skip_rust"
+
+            go_idx = go_indexes[i]
+            rust_idx = rust_indexes[j]
+            delta = abs(rust_items[rust_idx]["t"] - go_items[go_idx]["t"])
+            if delta <= tolerance:
+                matched = (dp[i + 1][j + 1][0], dp[i + 1][j + 1][1] + delta)
+                if matched < best:
+                    best = matched
+                    best_action = "match"
+
+            dp[i][j] = best
+            action[i][j] = best_action
+
+    pairs = []
+    i = 0
+    j = 0
+    while i < m and j < n:
+        step = action[i][j]
+        if step == "match":
+            pairs.append((go_indexes[i], rust_indexes[j]))
+            i += 1
+            j += 1
+        elif step == "skip_go":
+            i += 1
+        else:
+            j += 1
+    return pairs
+
+
 def compare_fire_poses(go_round: dict[str, Any], rust_round: dict[str, Any], limit: int = 10) -> dict[str, Any]:
     go_fires = sorted(fire_pose_summary(go_round.get("weaponFires", [])), key=lambda item: item["t"])
     rust_fires = sorted(fire_pose_summary(rust_round.get("weaponFires", [])), key=lambda item: item["t"])
@@ -781,24 +839,16 @@ def compare_fire_poses(go_round: dict[str, Any], rust_round: dict[str, Any], lim
     for key in group_keys:
         go_indexes = go_groups.get(key, [])
         rust_indexes = rust_groups.get(key, [])
-        go_pos = 0
-        rust_pos = 0
-        while go_pos < len(go_indexes) and rust_pos < len(rust_indexes):
-            go_idx = go_indexes[go_pos]
-            rust_idx = rust_indexes[rust_pos]
-            go_fire = go_fires[go_idx]
-            rust_fire = rust_fires[rust_idx]
-            time_delta = rust_fire["t"] - go_fire["t"]
-            if abs(time_delta) <= fire_time_tolerance(key[1]):
-                unmatched_go.remove(go_idx)
-                unmatched_rust.remove(rust_idx)
-                matched_pairs.append((go_idx, rust_idx))
-                go_pos += 1
-                rust_pos += 1
-            elif time_delta < 0:
-                rust_pos += 1
-            else:
-                go_pos += 1
+        for go_idx, rust_idx in match_time_ordered(
+            go_indexes,
+            rust_indexes,
+            go_fires,
+            rust_fires,
+            fire_time_tolerance(key[1]),
+        ):
+            unmatched_go.remove(go_idx)
+            unmatched_rust.remove(rust_idx)
+            matched_pairs.append((go_idx, rust_idx))
 
     for go_idx, rust_idx in matched_pairs:
         go_fire = go_fires[go_idx]
