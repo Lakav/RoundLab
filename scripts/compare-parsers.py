@@ -436,6 +436,44 @@ def snapshot_bomb_event_signature(event: dict[str, Any]) -> str:
     )
 
 
+def snapshot_round_end_time(round_obj: dict[str, Any]) -> float:
+    for event in round_obj.get("events", []):
+        if event.get("type") == "round_end":
+            return snapshot_number(event.get("t"))
+    return snapshot_number(round_obj.get("duration"))
+
+
+def snapshot_is_terminal_event(event: dict[str, Any], round_end_t: float) -> bool:
+    kind = event.get("type", "")
+    if kind in {"round_end", "bomb_exploded"}:
+        return True
+    if kind != "kill":
+        return False
+    weapon = normalize_kill_weapon(event.get("weapon"))
+    return (
+        snapshot_number(event.get("t")) + 0.001 >= round_end_t
+        or weapon in {"world", "c4"}
+        or (event.get("killer") is not None and event.get("killer") == event.get("victim"))
+    )
+
+
+def snapshot_terminal_event_signature(event: dict[str, Any]) -> str:
+    kind = str(event.get("type", ""))
+    if kind == "kill":
+        return "|".join(
+            [
+                snapshot_time(event.get("t")),
+                kind,
+                snapshot_optional(event.get("killer")),
+                snapshot_optional(event.get("victim")),
+                snapshot_optional(event.get("assist")),
+                normalize_kill_weapon(event.get("weapon")),
+                str(bool(event.get("hs", False))).lower(),
+            ]
+        )
+    return "|".join([snapshot_time(event.get("t")), kind, "", "", "", "", ""])
+
+
 def snapshot_weapon_fire_signature(fire: dict[str, Any]) -> str:
     return "|".join(
         [
@@ -680,6 +718,7 @@ def snapshot_projectile_track_signatures(round_obj: dict[str, Any]) -> list[str]
 
 def reference_snapshot_signatures(rounds: list[dict[str, Any]]) -> dict[str, Any]:
     round_event_signatures = []
+    round_terminal_event_signatures = []
     round_effect_signatures = []
     round_weapon_fire_signatures = []
     round_bomb_state_signatures = []
@@ -700,6 +739,17 @@ def reference_snapshot_signatures(rounds: list[dict[str, Any]]) -> dict[str, Any
                     snapshot_bomb_event_signature(event)
                     for event in events
                     if event.get("type") in BOMB_EVENTS
+                ],
+            }
+        )
+        round_end_t = snapshot_round_end_time(round_obj)
+        round_terminal_event_signatures.append(
+            {
+                "number": number,
+                "terminalEvents": [
+                    snapshot_terminal_event_signature(event)
+                    for event in events
+                    if snapshot_is_terminal_event(event, round_end_t)
                 ],
             }
         )
@@ -747,6 +797,7 @@ def reference_snapshot_signatures(rounds: list[dict[str, Any]]) -> dict[str, Any
         )
     return {
         "roundEventSignatures": round_event_signatures,
+        "roundTerminalEventSignatures": round_terminal_event_signatures,
         "roundEffectSignatures": round_effect_signatures,
         "roundWeaponFireSignatures": round_weapon_fire_signatures,
         "roundBombStateSignatures": round_bomb_state_signatures,

@@ -32,8 +32,8 @@ full-quality Go/Rust round audit, that filename/Go/Rust scores agree, and that
 the report has no unclassified or critical kill/bomb signature deltas. The
 round-audit JSON now carries the same compact Rust snapshot signatures used by
 the integration tests, so the read-only audit also verifies per-round
-kill/bomb, utility-effect, weapon-fire, bomb-state, active-action, and
-projectile-track signatures. It needs the JSON report, not only the Markdown
+kill/bomb, terminal-event, utility-effect, weapon-fire, bomb-state,
+active-action, and projectile-track signatures. It needs the JSON report, not only the Markdown
 summary. It intentionally does not regenerate snapshots and does not claim exact
 tick-by-tick parity.
 
@@ -45,7 +45,10 @@ include both aggregate demo metrics and compact per-round metrics for scores,
 frames, events, kills, bomb events, utility effects, weapon fires, projectile
 frames, and projectile samples. They also include compact per-round kill and
 bomb-event signatures, so changes to killer/victim/assist/weapon/headshot or
-bomb event type/player/timing fail deliberately. Bomb frame state is locked with
+bomb event type/player/timing fail deliberately. Terminal event signatures also
+lock the ordered replay context around `round_end`, `bomb_exploded`, post-round
+kills, suicides, world kills, and C4 kills, so those special kill cases cannot
+hide behind separate kill and bomb-event lists. Bomb frame state is locked with
 compact carried/dropped/planted windows including bucketed timing, frame sample
 count, end cause, carrier, and bucketed start/end position, so bomb visibility
 or ownership regressions cannot hide behind unchanged frame counts. Active

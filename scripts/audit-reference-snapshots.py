@@ -45,11 +45,20 @@ BOMB_EVENTS = {
 
 SNAPSHOT_SIGNATURE_FIELDS = [
     "roundEventSignatures",
+    "roundTerminalEventSignatures",
     "roundEffectSignatures",
     "roundWeaponFireSignatures",
     "roundBombStateSignatures",
     "roundActiveActionSignatures",
     "roundProjectileTrackSignatures",
+]
+
+RUST_ZERO_INTEGRITY_FIELDS = [
+    "duplicateProjectiles",
+    "physicallyDuplicateProjectiles",
+    "nonMonotonicProjectileFrames",
+    "projectileTrackBreaks",
+    "projectileTeleportCount",
 ]
 
 
@@ -175,6 +184,36 @@ def assert_no_critical_signature_diffs(report: dict[str, Any]) -> None:
         raise AssertionError(f"critical Go/Rust signature diffs remain: {offenders[:10]}")
 
 
+def assert_rust_replay_integrity(label: str, report_rounds: list[dict[str, Any]]) -> None:
+    offenders = []
+    pose_offenders = []
+    for round_obj in report_rounds:
+        round_index = round_obj.get("index")
+        rust = round_obj.get("rust")
+        if not isinstance(rust, dict):
+            raise AssertionError(f"{label} round {round_index} is missing Rust round audit summary")
+        for field in RUST_ZERO_INTEGRITY_FIELDS:
+            value = rust.get(field)
+            if value != 0:
+                offenders.append({"round": round_index, "field": field, "rust": value})
+        for diff in round_obj.get("diffs", []):
+            if diff.get("field") != "firePoseTolerance":
+                continue
+            pose_mismatch_count = int(diff.get("poseMismatchCount") or 0)
+            if pose_mismatch_count:
+                pose_offenders.append(
+                    {
+                        "round": round_index,
+                        "poseMismatchCount": pose_mismatch_count,
+                        "sample": diff.get("poseMismatchSample", [])[:3],
+                    }
+                )
+    if offenders:
+        raise AssertionError(f"{label} Rust replay integrity regressions: {offenders[:10]}")
+    if pose_offenders:
+        raise AssertionError(f"{label} Rust weapon-fire pose mismatches: {pose_offenders[:10]}")
+
+
 def audit(reference_path: Path, report_path: Path) -> list[str]:
     snapshots = load_json(reference_path)
     report = load_json(report_path)
@@ -221,6 +260,7 @@ def audit(reference_path: Path, report_path: Path) -> list[str]:
             report_rounds,
             snapshot.get("roundMetrics", []),
         )
+        assert_rust_replay_integrity(label, report_rounds)
         assert_snapshot_signatures_match(label, round_audit, snapshot)
         checked.append(file_name)
 

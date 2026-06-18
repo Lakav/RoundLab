@@ -3054,6 +3054,7 @@ mod tests {
         metrics: ReplayMetrics,
         round_metrics: Vec<RoundReplayMetrics>,
         round_event_signatures: Vec<RoundEventSignatures>,
+        round_terminal_event_signatures: Vec<RoundTerminalEventSignatures>,
         round_effect_signatures: Vec<RoundEffectSignatures>,
         round_weapon_fire_signatures: Vec<RoundWeaponFireSignatures>,
         round_bomb_state_signatures: Vec<RoundBombStateSignatures>,
@@ -3084,6 +3085,13 @@ mod tests {
         number: usize,
         kills: Vec<String>,
         bomb_events: Vec<String>,
+    }
+
+    #[derive(Debug, Deserialize, PartialEq, Eq)]
+    #[serde(rename_all = "camelCase")]
+    struct RoundTerminalEventSignatures {
+        number: usize,
+        terminal_events: Vec<String>,
     }
 
     #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -5564,6 +5572,11 @@ mod tests {
             &expected.round_event_signatures,
             &expected.label,
         );
+        assert_round_terminal_event_signatures_match_reference(
+            &collect_round_terminal_event_signatures(output),
+            &expected.round_terminal_event_signatures,
+            &expected.label,
+        );
         assert_round_effect_signatures_match_reference(
             &collect_round_effect_signatures(output),
             &expected.round_effect_signatures,
@@ -5708,6 +5721,24 @@ mod tests {
             assert_eq!(
                 actual, expected,
                 "{label} round {idx} event signatures changed: actual={actual:?} expected={expected:?}"
+            );
+        }
+    }
+
+    fn assert_round_terminal_event_signatures_match_reference(
+        actual: &[RoundTerminalEventSignatures],
+        expected: &[RoundTerminalEventSignatures],
+        label: &str,
+    ) {
+        assert_eq!(
+            actual.len(),
+            expected.len(),
+            "{label} round terminal event signature count changed"
+        );
+        for (idx, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+            assert_eq!(
+                actual, expected,
+                "{label} round {idx} terminal event signatures changed: actual={actual:?} expected={expected:?}"
             );
         }
     }
@@ -5919,6 +5950,27 @@ mod tests {
                     })
                     .map(bomb_event_signature)
                     .collect(),
+            })
+            .collect()
+    }
+
+    fn collect_round_terminal_event_signatures(
+        output: &Output,
+    ) -> Vec<RoundTerminalEventSignatures> {
+        output
+            .rounds
+            .iter()
+            .map(|round| {
+                let round_end_t = round_end_time(round);
+                RoundTerminalEventSignatures {
+                    number: round.number,
+                    terminal_events: round
+                        .events
+                        .iter()
+                        .filter(|event| is_terminal_event(event, round_end_t))
+                        .map(terminal_event_signature)
+                        .collect(),
+                }
             })
             .collect()
     }
@@ -6202,6 +6254,54 @@ mod tests {
             "to=round_end".into()
         } else {
             "to=none".into()
+        }
+    }
+
+    fn round_end_time(round: &Round) -> f64 {
+        round
+            .events
+            .iter()
+            .find(|event| event.kind == "round_end")
+            .map(|event| event.t)
+            .unwrap_or(round.duration)
+    }
+
+    fn is_terminal_event(event: &Event, round_end_t: f64) -> bool {
+        match event.kind.as_str() {
+            "round_end" | "bomb_exploded" => true,
+            "kill" => {
+                let weapon = event
+                    .weapon
+                    .as_deref()
+                    .map(normalized_signature_weapon)
+                    .unwrap_or_default();
+                event.t + 0.001 >= round_end_t
+                    || weapon == "world"
+                    || weapon == "c4"
+                    || event.killer.is_some() && event.killer == event.victim
+            }
+            _ => false,
+        }
+    }
+
+    fn terminal_event_signature(event: &Event) -> String {
+        if event.kind == "kill" {
+            format!(
+                "{:.3}|{}|{}|{}|{}|{}|{}",
+                bucket_signature_time(event.t),
+                event.kind,
+                optional_u64_signature(event.killer),
+                optional_u64_signature(event.victim),
+                optional_u64_signature(event.assist),
+                event
+                    .weapon
+                    .as_deref()
+                    .map(normalized_signature_weapon)
+                    .unwrap_or_default(),
+                event.hs
+            )
+        } else {
+            format!("{:.3}|{}|||||", bucket_signature_time(event.t), event.kind)
         }
     }
 
