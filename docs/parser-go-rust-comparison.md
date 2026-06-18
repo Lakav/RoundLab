@@ -129,7 +129,10 @@ Summary: Rust full quality outputs are smaller and faster than Go on most demos 
   `decoy_stationary_vs_event_timing`, and `post_round_smoke_duration` from
   silently accepting a different replay divergence.
 - Weapon fire and projectile frame counts are close in full quality, but not identical. After weapon alias normalization, remaining weapon-fire count deltas are small and round-local. The harness now uses ordered dynamic matching by `shooter` + normalized weapon, using a stricter firearm tolerance and a wider grenade tolerance. This avoids shifting an entire AK/M4 burst when one shot is missing, while grenade throw timestamp offsets still do not look like missing events. It also classifies unmatched fire deltas.
-- The latest five-demo full audit reports zero pose mismatches for matched weapon fires. Remaining unmatched weapon fires are 26 extra Rust fires and 3 missing Rust fires. The 26 extra Rust fires are classified as 21 `near_related_kill` and 5 `grenade_weapon_fire`. The 3 missing Rust fires are classified as 2 `near_related_kill` and 1 `adjacent_same_shooter_burst_gap`. The Cache round 11 gap is an AK-47 shot at `t=46.328`; Rust has the same shooter/weapon burst continuing at `46.406+`, but the underlying Rust event stream does not expose a safe missing `weapon_fire` source at the skipped tick.
+- The latest five-demo full audit reports zero pose mismatches for matched weapon fires. Remaining unmatched weapon fires are 26 extra Rust fires and 3 missing Rust fires. The 26 extra Rust fires are classified as 21 `near_related_kill` and 5 `grenade_weapon_fire`. The 3 missing Rust fires are classified as 2 `near_related_kill` and 1 `adjacent_same_shooter_burst_gap`. The missing Rust fires are now individually inspected:
+  - Anubis round 5: Go has an M4A4 fire at `t=15.906`, demo tick `35024`, shooter `76561199247537101`. Rust has the same shooter pose, active weapon, and nearby burst frames at the exact timestamp, but no `weapon_fire` event for that shot.
+  - Cache round 11: Go has two simultaneous AK-47 fires at `t=46.328`, demo tick `81163`, shooters `76561198054701233` and `76561198024550733`. Rust has both shooter poses and active AK-47 state at the exact timestamp, plus both bursts continue at `46.406+`, but the underlying Rust event stream does not expose a safe missing `weapon_fire` source at the skipped tick.
+  These are real Go/Rust event-source gaps, not pose reconstruction bugs.
 - Those remaining weapon-fire tolerances are now snapshotted by exact compact
   signatures in `parser/reference_demos.json`, including classification,
   timestamp, shooter, weapon, team, bucketed position, and yaw. This does not
@@ -175,6 +178,6 @@ A quick test with `ROUNDLAB_PARSER_GZIP_LEVEL=1` on `dust1-13` did not improve f
 
 ## Next Targets
 
-1. Decide how strict weapon-fire parity really needs to be. The remaining missing Rust cases appear to come from demoparser-rust event extraction; tick-row `FIRE` is too noisy and `fire_bullets` does not cover the confirmed Cache gap. The current audit has 0 unclassified mismatches, but exact Go weapon-fire parity is still not proven.
+1. Do not synthesize the remaining three missing firearm `weaponFires` unless a new reliable event source is found. The targeted Anubis/Cache inspection confirms Rust has correct shooter poses at the missing timestamps, but the missing signal is the event source itself. Tick-row `FIRE` is too noisy and `fire_bullets` does not cover the confirmed Cache gap. The current audit has 0 unclassified mismatches, but exact Go weapon-fire parity is still not proven.
 2. Inspect the remaining bomb-event timing/order deltas in the replay UI only if exact event timestamp parity becomes required; event counts and visible bomb resolution are currently coherent.
 3. If performance work resumes, target `write_output_ms` / `serialize_json_ms` first, then vendor parsing. Do not trade away replay fidelity for smaller micro-gains.
