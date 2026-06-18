@@ -64,6 +64,9 @@ ROUNDLAB_TEST_DEMOS="/path/to/ancient4-13.dem.zst:/path/to/anubis16-19.dem.zst" 
 ROUNDLAB_TEST_DEMOS="/path/to/ancient4-13.dem.zst:/path/to/anubis16-19.dem.zst" cargo test roundlab_test_demo_honors_quality_and_skip_options_when_configured -- --nocapture
 ```
 
+For the full five-demo local set, prefer `cargo test --release ... -- --nocapture`.
+The debug test binary is correct but much slower on full-quality replay output.
+
 `ROUNDLAB_TEST_DEMO=/path/to/demo.dem.zst` still works for one-off local runs.
 
 Known reference demos are listed in `parser/reference_demos.json`. For those
@@ -72,7 +75,11 @@ players, frames, kills, bomb events, bomb state, utility effects, weapon fires,
 and projectile frames. The score in the demo filename is the expected truth
 (`dust1-13.dem.zst` means `scoreA=1`, `scoreB=13`). The medium-quality skip
 test also verifies that lightweight parsing keeps core replay data while
-omitting weapon fires and projectile payloads.
+omitting weapon fires and projectile payloads. Full-quality integration tests
+also enforce structural replay invariants: monotonic round scores, sorted events
+and frames, bounded post-round events, no bomb state after bomb resolution, valid
+utility effects, valid weapon-fire poses, and no duplicate projectile identity
+inside a projectile frame.
 
 To add a reference demo, keep the `.dem`/`.dem.zst` outside Git, rename it as
 `<map><scoreA>-<scoreB>.dem.zst`, run both parser integration tests, then add

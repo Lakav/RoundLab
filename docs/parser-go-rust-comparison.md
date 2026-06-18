@@ -20,6 +20,15 @@ python3 scripts/compare-parsers.py --build-rust --quality full --round-audit --o
 
 Use `--keep-outputs` for targeted event-level debugging.
 
+The Rust integration tests can also validate the local reference demos directly
+without committing demo files:
+
+```bash
+cd parser
+ROUNDLAB_TEST_DEMOS="/abs/path/ancient4-13.dem.zst:/abs/path/anubis16-19.dem.zst:/abs/path/cache11-13.dem.zst:/abs/path/dust1-13.dem.zst:/abs/path/inferno8-13.dem.zst" cargo test --release roundlab_test_demo_produces_replay_json_when_configured -- --nocapture
+ROUNDLAB_TEST_DEMOS="/abs/path/ancient4-13.dem.zst:/abs/path/anubis16-19.dem.zst:/abs/path/cache11-13.dem.zst:/abs/path/dust1-13.dem.zst:/abs/path/inferno8-13.dem.zst" cargo test --release roundlab_test_demo_honors_quality_and_skip_options_when_configured -- --nocapture
+```
+
 ## Results
 
 ### Medium + skipProjectiles + skipWeaponFires
@@ -67,6 +76,7 @@ Summary: Rust full quality outputs are smaller and faster than Go on most demos 
 - On the latest five-demo full audit, Rust and Go both have 1870 projectile tracks. Rust has zero duplicate projectiles, zero non-monotonic projectile frames, zero track breaks, and zero teleport-like jumps. Go has zero duplicates but 101 non-monotonic projectile frames and 280 track breaks, so exact Go projectile continuity is not a clean oracle.
 - Remaining projectile track tolerance deltas are limited and now classified: 3 rounds differ, with 0 missing Rust tracks, 0 extra Rust tracks, 6 tolerant mismatches, and 0 unclassified mismatches. Four are `post_round_smoke_duration` cases where Rust stops projectile samples at `round_end` while Go keeps stationary smoke projectile samples after the round; the smoke visual duration is already represented by `effects`. Two are `overlapping_same_thrower_projectile` cases on Inferno round 17 where the same player throws repeated HE grenades on nearly identical paths, making ID attribution ambiguous even though type, thrower, and positions remain coherent.
 - Bomb state frame counts still differ frequently. Many differences are one-frame boundary shifts or Go's post-explosion dropped-bomb residue, but some dropped-state windows still need targeted replay/UI inspection before claiming full parity.
+- `ROUNDLAB_TEST_DEMOS` integration coverage is stricter now. Full-quality local tests enforce structural replay invariants in addition to reference-demo metric floors: monotonic round scores, sorted events and frames, bounded post-round events, no bomb state after bomb defuse/explosion, valid utility effects, valid weapon-fire pose fields, monotonic projectile frames, and no duplicate projectile identity inside a frame. The full five-demo release test passed locally; the debug test binary is intentionally not used for the full set because it is much slower.
 
 ## Optimization Findings
 

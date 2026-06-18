@@ -3017,13 +3017,13 @@ mod tests {
         parse_args_from, parse_demo_to_output, parser_gzip_compression, read_capped, read_demo,
         round_events, sample_step, seconds_since, write_json_gz, Args, Event, Frame, Output,
         ProjectileFrame, ProjectileKind, ProjectilePos, ProjectileRow, Round, RoundBuildContext,
-        RoundSpan, TickRow, UtilityEffect, MAX_DEMO_SIZE,
+        RoundSpan, TickRow, UtilityEffect, WeaponFireEvent, MAX_DEMO_SIZE,
     };
     use flate2::{read::GzDecoder, Compression};
     use serde::Deserialize;
     use serde_json::{json, Value};
     use std::{
-        collections::BTreeMap,
+        collections::{BTreeMap, HashSet},
         env,
         io::{Read, Write},
         path::Path,
@@ -3877,6 +3877,7 @@ mod tests {
 
             let output = parse_demo_to_output(&args).unwrap();
             assert_replay_output_is_usable(&output);
+            assert_round_level_replay_integrity(&output);
             assert_projectiles_are_not_duplicated_in_frames(&output);
             if let Some(expected) = expected_floor_for_demo(&args.input) {
                 assert_reference_demo_floor(&output, &expected);
@@ -3921,6 +3922,7 @@ mod tests {
 
             let output = parse_demo_to_output(&args).unwrap();
             assert_core_replay_output_is_usable(&output);
+            assert_round_level_core_integrity(&output);
             assert_eq!(output.meta.sample_rate, 2);
             assert_skip_options_removed_heavy_payloads(&output);
             if let Some(expected) = expected_floor_for_demo(&args.input) {
@@ -4300,6 +4302,231 @@ mod tests {
         assert!(metrics.kills > 0, "expected kill events");
         assert!(metrics.bomb_events > 0, "expected bomb events");
         assert!(metrics.effects > 0, "expected utility/bomb effects");
+    }
+
+    fn assert_round_level_replay_integrity(output: &Output) {
+        assert_round_level_core_integrity(output);
+
+        for round in &output.rounds {
+            let label = format!("round {}", round.number);
+            assert_weapon_fires_are_structurally_valid(&round.weapon_fires, &label);
+            assert_projectile_frames_are_structurally_valid(&round.projectile_frames, &label);
+        }
+    }
+
+    fn assert_round_level_core_integrity(output: &Output) {
+        let mut previous_score = (0, 0);
+        for round in &output.rounds {
+            let label = format!("round {}", round.number);
+            assert!(
+                round.score_a >= previous_score.0 && round.score_b >= previous_score.1,
+                "{label} score regressed: previous={previous_score:?} current=({}, {})",
+                round.score_a,
+                round.score_b
+            );
+            previous_score = (round.score_a, round.score_b);
+            assert_events_are_structurally_valid(&round.events, round.duration, &label);
+            assert_effects_are_structurally_valid(&round.effects, round.duration, &label);
+            assert_frames_are_structurally_valid(&round.frames, &round.events, &label);
+        }
+
+        assert_eq!(
+            previous_score.0, output.meta.score_a,
+            "final round score A must match meta score"
+        );
+        assert_eq!(
+            previous_score.1, output.meta.score_b,
+            "final round score B must match meta score"
+        );
+    }
+
+    fn assert_events_are_structurally_valid(events: &[Event], duration: f64, label: &str) {
+        let mut previous_t = 0.0;
+        for event in events {
+            assert!(event.t.is_finite(), "{label} event has invalid time");
+            assert!(
+                event.t + 0.001 >= previous_t,
+                "{label} events are not time sorted"
+            );
+            assert!(
+                event.t <= duration + 20.0,
+                "{label} event extends too far past round duration: t={} duration={duration}",
+                event.t
+            );
+            previous_t = event.t;
+
+            match event.kind.as_str() {
+                "kill" => {
+                    assert!(event.victim.is_some(), "{label} kill missing victim");
+                    assert!(
+                        event
+                            .weapon
+                            .as_deref()
+                            .is_some_and(|weapon| !weapon.is_empty()),
+                        "{label} kill missing weapon"
+                    );
+                }
+                "bomb_planted" | "bomb_defuse_start" | "bomb_defuse_abort" | "bomb_defused"
+                | "bomb_exploded" | "round_end" => {}
+                other => panic!("{label} unexpected event type: {other}"),
+            }
+        }
+    }
+
+    fn assert_effects_are_structurally_valid(
+        effects: &[UtilityEffect],
+        duration: f64,
+        label: &str,
+    ) {
+        for effect in effects {
+            assert!(
+                effect.start.is_finite()
+                    && effect.end.is_finite()
+                    && effect.x.is_finite()
+                    && effect.y.is_finite()
+                    && effect.z.is_finite(),
+                "{label} effect has invalid numeric fields"
+            );
+            assert!(
+                effect.end + 0.001 >= effect.start,
+                "{label} effect ends before it starts"
+            );
+            assert!(
+                effect.start <= duration + 0.001,
+                "{label} effect starts past round duration"
+            );
+            match effect.kind.as_str() {
+                "smoke" | "flash" | "he" | "fire" | "decoy" | "bomb_planted" => {}
+                other => panic!("{label} unexpected effect type: {other}"),
+            }
+        }
+    }
+
+    fn assert_frames_are_structurally_valid(frames: &[Frame], events: &[Event], label: &str) {
+        let bomb_resolved_at = events
+            .iter()
+            .filter(|event| matches!(event.kind.as_str(), "bomb_defused" | "bomb_exploded"))
+            .map(|event| event.t)
+            .min_by(|left, right| left.total_cmp(right));
+        let mut previous_t = 0.0;
+        for frame in frames {
+            assert!(frame.t.is_finite(), "{label} frame has invalid time");
+            assert!(
+                frame.t + 0.001 >= previous_t,
+                "{label} frames are not time sorted"
+            );
+            previous_t = frame.t;
+            if let Some(bomb) = &frame.bomb {
+                assert!(
+                    bomb.x.is_finite() && bomb.y.is_finite() && bomb.z.is_finite(),
+                    "{label} bomb has invalid coordinates"
+                );
+                match bomb.status.as_str() {
+                    "carried" => assert!(
+                        bomb.carrier.is_some(),
+                        "{label} carried bomb missing carrier"
+                    ),
+                    "dropped" | "planted" => {
+                        assert!(bomb.carrier.is_none(), "{label} static bomb has carrier")
+                    }
+                    other => panic!("{label} unexpected bomb status: {other}"),
+                }
+                if let Some(resolved_at) = bomb_resolved_at {
+                    assert!(
+                        frame.t + 0.001 < resolved_at,
+                        "{label} bomb remains visible after resolution at {resolved_at}"
+                    );
+                }
+            }
+            for player in &frame.players {
+                assert!(
+                    player.x.is_finite()
+                        && player.y.is_finite()
+                        && player.z.is_finite()
+                        && player.yaw.is_finite(),
+                    "{label} player has invalid coordinates/yaw"
+                );
+                assert!(
+                    matches!(player.team, 2 | 3),
+                    "{label} player has unexpected team {}",
+                    player.team
+                );
+            }
+        }
+    }
+
+    fn assert_weapon_fires_are_structurally_valid(fires: &[WeaponFireEvent], label: &str) {
+        let mut previous_t = 0.0;
+        for fire in fires {
+            assert!(fire.t.is_finite(), "{label} weapon fire has invalid time");
+            assert!(
+                fire.t + 0.001 >= previous_t,
+                "{label} weapon fires are not time sorted"
+            );
+            previous_t = fire.t;
+            assert!(
+                fire.x.is_finite()
+                    && fire.y.is_finite()
+                    && fire.z.is_finite()
+                    && fire.yaw.is_finite(),
+                "{label} weapon fire has invalid pose"
+            );
+            if fire.shooter.is_some() {
+                assert!(
+                    fire.weapon
+                        .as_deref()
+                        .is_some_and(|weapon| !weapon.is_empty()),
+                    "{label} shooter weapon fire missing weapon"
+                );
+                assert!(
+                    fire.team.is_some_and(|team| matches!(team, 2 | 3)),
+                    "{label} shooter weapon fire missing valid team"
+                );
+            }
+        }
+    }
+
+    fn assert_projectile_frames_are_structurally_valid(frames: &[ProjectileFrame], label: &str) {
+        let mut previous_t = 0.0;
+        for frame in frames {
+            assert!(
+                frame.t.is_finite(),
+                "{label} projectile frame has invalid time"
+            );
+            assert!(
+                frame.t + 0.001 >= previous_t,
+                "{label} projectile frames are not time sorted"
+            );
+            previous_t = frame.t;
+            let mut seen = HashSet::new();
+            for projectile in &frame.projectiles {
+                assert!(
+                    projectile.x.is_finite()
+                        && projectile.y.is_finite()
+                        && projectile.z.is_finite(),
+                    "{label} projectile has invalid coordinates"
+                );
+                let key = (
+                    projectile.id,
+                    projectile_kind_label(&projectile.kind),
+                    projectile.thrower,
+                );
+                assert!(
+                    seen.insert(key),
+                    "{label} duplicate projectile in one frame"
+                );
+            }
+        }
+    }
+
+    fn projectile_kind_label(kind: &ProjectileKind) -> &str {
+        match kind {
+            ProjectileKind::Smoke => "smoke",
+            ProjectileKind::He => "he",
+            ProjectileKind::Flash => "flash",
+            ProjectileKind::Molotov => "molotov",
+            ProjectileKind::Other(name) => name.as_str(),
+        }
     }
 
     fn assert_skip_options_removed_heavy_payloads(output: &Output) {
