@@ -3667,6 +3667,80 @@
           "38.000|kill|76561199169073198|76561199169073198||world|false"
         ]
       }
+    ],
+    "roundWeaponFireToleranceSignatures": [
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 0
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 1
+      },
+      {
+        "extraInRust": [
+          "grenade_weapon_fire|80.531|76561198810661425|flashbang|3|-50|1450|0|60"
+        ],
+        "missingInRust": [],
+        "number": 2
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 3
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 4
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 5
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 6
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 7
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 8
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 9
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 10
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 11
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 12
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 13
+      }
     ]
   },
   {
@@ -8500,6 +8574,103 @@
           "111.500|kill|76561199530056325|76561199530056325||world|false",
           "114.750|kill|76561199566894045|76561199566894045|76561197991151294|world|false"
         ]
+      }
+    ],
+    "roundWeaponFireToleranceSignatures": [
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 0
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 1
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 2
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 3
+      },
+      {
+        "extraInRust": [
+          "near_related_kill|16.125|76561198089762164|m4|3|-100|-700|150|180"
+        ],
+        "missingInRust": [],
+        "number": 4
+      },
+      {
+        "extraInRust": [
+          "near_related_kill|24.469|76561197991151294|mp9|3|950|-200|100|345"
+        ],
+        "missingInRust": [],
+        "number": 5
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 6
+      },
+      {
+        "extraInRust": [
+          "near_related_kill|47.109|76561197991151294|ak47|3|600|-300|150|15"
+        ],
+        "missingInRust": [],
+        "number": 7
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 8
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 9
+      },
+      {
+        "extraInRust": [
+          "near_related_kill|20.922|76561199021288884|ak47|2|-900|-650|50|345"
+        ],
+        "missingInRust": [],
+        "number": 10
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 11
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 12
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 13
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 14
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 15
+      },
+      {
+        "extraInRust": [
+          "near_related_kill|102.969|76561197991151294|ak47|2|-1400|200|100|60"
+        ],
+        "missingInRust": [],
+        "number": 16
       }
     ]
   },
@@ -18899,6 +19070,195 @@
           "51.250|kill|76561198116380183|76561198116380183||world|false"
         ]
       }
+    ],
+    "roundWeaponFireToleranceSignatures": [
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 0
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 1
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 2
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 3
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 4
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [
+          "near_related_kill|15.906|76561199247537101|m4|3|1550|900|-150|180"
+        ],
+        "number": 5
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 6
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 7
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 8
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 9
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 10
+      },
+      {
+        "extraInRust": [
+          "near_related_kill|19.672|76561199030058795|ak47|2|-50|450|0|15"
+        ],
+        "missingInRust": [],
+        "number": 11
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 12
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 13
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 14
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 15
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 16
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 17
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 18
+      },
+      {
+        "extraInRust": [
+          "grenade_weapon_fire|16.938|76561198116380183|flashbang|2|-400|-350|0|60"
+        ],
+        "missingInRust": [],
+        "number": 19
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 20
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 21
+      },
+      {
+        "extraInRust": [
+          "near_related_kill|47.484|76561199247537101|ak47|2|-1600|350|0|45"
+        ],
+        "missingInRust": [],
+        "number": 22
+      },
+      {
+        "extraInRust": [
+          "near_related_kill|65.891|76561198033877958|ak47|3|-250|100|-150|165"
+        ],
+        "missingInRust": [],
+        "number": 23
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 24
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 25
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 26
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 27
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 28
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 29
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 30
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 31
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 32
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 33
+      },
+      {
+        "extraInRust": [
+          "grenade_weapon_fire|2.688|76561198116380183|smokegrenade|2|0|-1750|0|105"
+        ],
+        "missingInRust": [],
+        "number": 34
+      }
     ]
   },
   {
@@ -25068,6 +25428,149 @@
           "112.000|bomb_exploded|||||"
         ]
       }
+    ],
+    "roundWeaponFireToleranceSignatures": [
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 0
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 1
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 2
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 3
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 4
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 5
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 6
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 7
+      },
+      {
+        "extraInRust": [
+          "grenade_weapon_fire|38.109|76561198030232869|smokegrenade|3|-450|2050|1700|345",
+          "near_related_kill|17.844|76561198044293569|ak47|2|950|550|1750|195"
+        ],
+        "missingInRust": [],
+        "number": 8
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 9
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 10
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [
+          "adjacent_same_shooter_burst_gap|46.328|76561198024550733|ak47|2|50|-350|1600|165",
+          "near_related_kill|46.328|76561198054701233|ak47|3|-50|1050|1700|165"
+        ],
+        "number": 11
+      },
+      {
+        "extraInRust": [
+          "near_related_kill|45.406|76561198089762164|glock|2|-150|-400|1600|240"
+        ],
+        "missingInRust": [],
+        "number": 12
+      },
+      {
+        "extraInRust": [
+          "near_related_kill|91.750|76561198272259565|mac10|2|200|1900|1700|180"
+        ],
+        "missingInRust": [],
+        "number": 13
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 14
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 15
+      },
+      {
+        "extraInRust": [
+          "grenade_weapon_fire|1.047|76561198054701233|smokegrenade|2|2700|50|1600|180"
+        ],
+        "missingInRust": [],
+        "number": 16
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 17
+      },
+      {
+        "extraInRust": [
+          "near_related_kill|65.312|76561198030232869|ak47|2|400|1450|1700|120"
+        ],
+        "missingInRust": [],
+        "number": 18
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 19
+      },
+      {
+        "extraInRust": [
+          "near_related_kill|28.641|76561198272259565|ak47|2|950|-450|1600|75",
+          "near_related_kill|57.578|76561198054701233|ak47|2|50|2100|1700|240"
+        ],
+        "missingInRust": [],
+        "number": 20
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 21
+      },
+      {
+        "extraInRust": [
+          "near_related_kill|63.297|76561198054701233|ak47|2|50|1800|1700|255"
+        ],
+        "missingInRust": [],
+        "number": 22
+      },
+      {
+        "extraInRust": [
+          "near_related_kill|78.688|76561198024550733|ak47|3|250|450|1600|345"
+        ],
+        "missingInRust": [],
+        "number": 23
+      }
     ]
   },
   {
@@ -31114,6 +31617,123 @@
           "105.250|kill||76561198419437076||c4|false",
           "105.250|round_end|||||"
         ]
+      }
+    ],
+    "roundWeaponFireToleranceSignatures": [
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 0
+      },
+      {
+        "extraInRust": [
+          "near_related_kill|30.938|76561198812265527|deagle|2|1200|0|250|90"
+        ],
+        "missingInRust": [],
+        "number": 1
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 2
+      },
+      {
+        "extraInRust": [
+          "near_related_kill|49.484|76561198203688088|mac10|2|1200|0|250|90"
+        ],
+        "missingInRust": [],
+        "number": 3
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 4
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 5
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 6
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 7
+      },
+      {
+        "extraInRust": [
+          "near_related_kill|55.250|76561198419437076|ak47|2|2100|-350|250|315"
+        ],
+        "missingInRust": [],
+        "number": 8
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 9
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 10
+      },
+      {
+        "extraInRust": [
+          "near_related_kill|51.828|76561198203688088|ak47|2|1350|300|150|285"
+        ],
+        "missingInRust": [],
+        "number": 11
+      },
+      {
+        "extraInRust": [
+          "near_related_kill|22.594|76561198313784874|usp|3|2050|-200|250|135"
+        ],
+        "missingInRust": [],
+        "number": 12
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 13
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 14
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 15
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 16
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 17
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 18
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 19
+      },
+      {
+        "extraInRust": [],
+        "missingInRust": [],
+        "number": 20
       }
     ]
   }

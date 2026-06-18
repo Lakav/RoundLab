@@ -1060,15 +1060,33 @@ def classify_fire_samples(
     round_obj: dict[str, Any],
     limit: int,
     counterpart_round: dict[str, Any] | None = None,
-) -> tuple[list[dict[str, Any]], dict[str, int]]:
+) -> tuple[list[dict[str, Any]], dict[str, int], list[str]]:
     counts: dict[str, int] = {}
     classified = []
+    signatures = []
     for idx, item in enumerate(items):
         classification = classify_fire_mismatch(item, round_obj, counterpart_round)
         counts[classification] = counts.get(classification, 0) + 1
+        signatures.append(fire_tolerance_signature(item, classification))
         if idx < limit:
             classified.append({**fire_pose_sample(item), "classification": classification})
-    return classified, counts
+    return classified, counts, sorted(signatures)
+
+
+def fire_tolerance_signature(item: dict[str, Any], classification: str) -> str:
+    return "|".join(
+        [
+            classification,
+            f"{float(item.get('t', 0.0) or 0.0):.3f}",
+            snapshot_optional(item.get("shooter")),
+            normalize_weapon(item.get("weapon")),
+            snapshot_optional(item.get("team")),
+            str(snapshot_bucket_coord(item.get("x"))),
+            str(snapshot_bucket_coord(item.get("y"))),
+            str(snapshot_bucket_coord(item.get("z"))),
+            str(snapshot_bucket_yaw(item.get("yaw"))),
+        ]
+    )
 
 
 def effect_position_delta(left: dict[str, Any], right: dict[str, Any]) -> float:
@@ -1521,19 +1539,21 @@ def compare_fire_poses(go_round: dict[str, Any], rust_round: dict[str, Any], lim
             )
     missing = [go_fires[idx] for idx in sorted(unmatched_go)]
     extra = [rust_fires[idx] for idx in sorted(unmatched_rust)]
-    missing_sample, missing_classifications = classify_fire_samples(
+    missing_sample, missing_classifications, missing_signatures = classify_fire_samples(
         missing, go_round, limit, rust_round
     )
-    extra_sample, extra_classifications = classify_fire_samples(
+    extra_sample, extra_classifications, extra_signatures = classify_fire_samples(
         extra, rust_round, limit, go_round
     )
     return {
         "missingInRustCount": len(missing),
         "missingInRustClassifications": missing_classifications,
         "missingInRustSample": missing_sample,
+        "missingInRustSignatures": missing_signatures,
         "extraInRustCount": len(extra),
         "extraInRustClassifications": extra_classifications,
         "extraInRustSample": extra_sample,
+        "extraInRustSignatures": extra_signatures,
         "poseMismatchCount": len(mismatched),
         "poseMismatchSample": mismatched[:limit],
         "firearmTimeToleranceSec": fire_time_tolerance("ak47"),
@@ -1765,6 +1785,27 @@ def compare_projectile_tracks(go_round: dict[str, Any], rust_round: dict[str, An
     }
 
 
+def weapon_fire_tolerance_signatures(rounds: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out = []
+    for round_obj in rounds:
+        number = None
+        rust = round_obj.get("rust")
+        if isinstance(rust, dict):
+            number = rust.get("number")
+        if number is None:
+            number = round_obj.get("index")
+        missing: list[str] = []
+        extra: list[str] = []
+        for diff in round_obj.get("diffs", []):
+            if diff.get("field") != "firePoseTolerance":
+                continue
+            missing = list(diff.get("missingInRustSignatures", []))
+            extra = list(diff.get("extraInRustSignatures", []))
+            break
+        out.append({"number": number, "missingInRust": missing, "extraInRust": extra})
+    return out
+
+
 def round_audit(go_output: Path, rust_output: Path) -> dict[str, Any]:
     go_manifest, go_rounds = load_round_payloads(go_output)
     rust_manifest, rust_rounds = load_round_payloads(rust_output)
@@ -1864,6 +1905,7 @@ def round_audit(go_output: Path, rust_output: Path) -> dict[str, Any]:
         "goMeta": go_manifest.get("meta", {}),
         "rustMeta": rust_manifest.get("meta", {}),
         "rustSnapshotSignatures": reference_snapshot_signatures(rust_rounds),
+        "roundWeaponFireToleranceSignatures": weapon_fire_tolerance_signatures(rounds),
         "rounds": rounds,
     }
 
