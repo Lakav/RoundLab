@@ -145,6 +145,14 @@ Summary: Rust full quality outputs are smaller and faster than Go on most demos 
   `wrong_order_events`. The remaining gap therefore looks more like an event
   source/exposure limitation than an ordering cleanup bug in RoundLab's
   post-processing.
+- The vendor event decoder now uses the exact `CMsgSource1LegacyGameEvent`
+  protobuf for `GE_Source1LegacyGameEvent` instead of the wire-compatible
+  `CsvcMsgGameEvent` shape. A targeted Cache full audit stayed byte-contract
+  stable at the replay-metric/signature level: metrics, weapon-fire tolerance
+  signatures, and classified tolerance signatures still match the committed
+  Cache snapshot. This cleanup does not recover the two missing Cache AK-47
+  fires, which confirms that the remaining gap is not caused by that protobuf
+  type alias alone.
 - Those remaining weapon-fire tolerances are now snapshotted by exact compact
   signatures in `parser/reference_demos.json`, including classification,
   timestamp, shooter, weapon, team, bucketed position, and yaw. This does not
