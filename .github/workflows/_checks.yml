@@ -51,6 +51,9 @@ jobs:
         with:
           workspaces: parser -> target
 
+      - name: Validate reference parser snapshots
+        run: python3 scripts/audit-reference-snapshots.py --reference-only
+
       - name: Format Rust parser
         working-directory: parser
         run: cargo fmt --check
