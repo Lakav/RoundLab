@@ -3616,6 +3616,73 @@ mod tests {
     }
 
     #[test]
+    fn round_events_keeps_all_post_round_kill_shapes_after_bomb_explosion() {
+        let span = RoundSpan {
+            start: 100,
+            end: 220,
+            round_end: 200,
+            winner: "T".into(),
+        };
+        let next_span = RoundSpan {
+            start: 360,
+            end: 500,
+            round_end: 500,
+            winner: "CT".into(),
+        };
+        let events = vec![
+            json!({
+                "tick": 180,
+                "event_name": "bomb_planted"
+            }),
+            json!({
+                "tick": 205,
+                "event_name": "bomb_exploded"
+            }),
+            json!({
+                "tick": 206,
+                "event_name": "player_death",
+                "attacker_steamid": 10_u64,
+                "user_steamid": 20_u64,
+                "assister_steamid": 30_u64,
+                "weapon": "ak47",
+                "headshot": true
+            }),
+            json!({
+                "tick": 207,
+                "event_name": "player_death",
+                "attacker_steamid": 40_u64,
+                "user_steamid": 40_u64,
+                "weapon": "molotov"
+            }),
+            json!({
+                "tick": 208,
+                "event_name": "player_death",
+                "user_steamid": 50_u64,
+                "weapon": "world"
+            }),
+        ];
+
+        let parsed = round_events(&events, &span, Some(&next_span));
+        let kills = parsed
+            .iter()
+            .filter(|event| event.kind == "kill")
+            .collect::<Vec<_>>();
+
+        assert_eq!(kills.len(), 3, "post-round kills after explosion were lost");
+        assert_eq!(kills[0].killer, Some(10));
+        assert_eq!(kills[0].victim, Some(20));
+        assert_eq!(kills[0].assist, Some(30));
+        assert_eq!(kills[0].weapon.as_deref(), Some("ak47"));
+        assert!(kills[0].hs);
+        assert_eq!(kills[1].killer, Some(40));
+        assert_eq!(kills[1].victim, Some(40));
+        assert_eq!(kills[1].weapon.as_deref(), Some("molotov"));
+        assert_eq!(kills[2].killer, None);
+        assert_eq!(kills[2].victim, Some(50));
+        assert_eq!(kills[2].weapon.as_deref(), Some("world"));
+    }
+
+    #[test]
     fn round_events_synthesizes_ct_killed_bomb_explosion_on_final_round() {
         let span = RoundSpan {
             start: 100,

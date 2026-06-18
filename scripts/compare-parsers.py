@@ -1163,15 +1163,18 @@ def projectile_track_signature(key: tuple[Any, str, Any], points: list[dict[str,
         "samples": len(points),
         "startX": round(first["x"] / 100.0) * 100,
         "startY": round(first["y"] / 100.0) * 100,
+        "startZ": round(first["z"] / 100.0) * 100,
         "endX": round(last["x"] / 100.0) * 100,
         "endY": round(last["y"] / 100.0) * 100,
+        "endZ": round(last["z"] / 100.0) * 100,
     }
 
 
 def projectile_position_delta(left: dict[str, Any], right: dict[str, Any], prefix: str) -> float:
     dx = float(left[f"{prefix}X"] or 0.0) - float(right[f"{prefix}X"] or 0.0)
     dy = float(left[f"{prefix}Y"] or 0.0) - float(right[f"{prefix}Y"] or 0.0)
-    return (dx * dx + dy * dy) ** 0.5
+    dz = float(left[f"{prefix}Z"] or 0.0) - float(right[f"{prefix}Z"] or 0.0)
+    return (dx * dx + dy * dy + dz * dz) ** 0.5
 
 
 def round_end_time(round_obj: dict[str, Any]) -> float:

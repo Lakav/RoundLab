@@ -80,13 +80,13 @@ Summary: Rust is much faster in medium skip mode, but uses much more memory.
 
 | demo | expected | Go score | Rust score | Go ms/RSS MB | Rust ms/RSS MB | Rust output delta |
 | --- | --- | --- | --- | ---: | ---: | ---: |
-| ancient4-13 | 4-13 | 4-13 | 4-13 | 14958/219.8 | 14450/1974.9 | -5.69 MB |
-| anubis16-19 | 16-19 | 16-19 | 16-19 | 27020/186.0 | 26765/2711.6 | -11.05 MB |
-| cache11-13 | 11-13 | 11-13 | 11-13 | 20956/184.2 | 21396/2334.0 | -9.22 MB |
-| dust1-13 | 1-13 | 1-13 | 1-13 | 10600/189.5 | 10468/1315.6 | -4.39 MB |
-| inferno8-13 | 8-13 | 8-13 | 8-13 | 18911/198.0 | 18072/2555.4 | -7.28 MB |
+| ancient4-13 | 4-13 | 4-13 | 4-13 | 14843/187.8 | 13822/2075.2 | -5.70 MB |
+| anubis16-19 | 16-19 | 16-19 | 16-19 | 27149/184.3 | 26598/2616.5 | -11.03 MB |
+| cache11-13 | 11-13 | 11-13 | 11-13 | 19963/190.9 | 21470/2605.4 | -9.18 MB |
+| dust1-13 | 1-13 | 1-13 | 1-13 | 10906/175.0 | 11029/1414.3 | -4.38 MB |
+| inferno8-13 | 8-13 | 8-13 | 8-13 | 18639/198.2 | 19013/2517.0 | -7.26 MB |
 
-Summary: Rust full quality outputs are smaller and faster than Go on most demos in this run. With the current "favor time, keep RAM sane" target, Rust uses roughly 1.3-2.7 GB RSS on the current five-demo run. On a 16 GB machine, 60% RAM is about 9.8 GB, so the worst measured run stays well below the target ceiling.
+Summary: Rust full quality outputs are smaller and faster than Go on most demos in this run. With the current "favor time, keep RAM sane" target, Rust uses roughly 1.4-2.6 GB RSS on the current five-demo run. On a 16 GB machine, 60% RAM is about 9.8 GB, so the worst measured run stays well below the target ceiling.
 
 ## Functional Findings
 
@@ -106,7 +106,7 @@ Summary: Rust full quality outputs are smaller and faster than Go on most demos 
 - The latest five-demo full audit reports zero pose mismatches for matched weapon fires. Remaining unmatched weapon fires are 26 extra Rust fires and 3 missing Rust fires. The 26 extra Rust fires are classified as 21 `near_related_kill` and 5 `grenade_weapon_fire`. The 3 missing Rust fires are classified as 2 `near_related_kill` and 1 `adjacent_same_shooter_burst_gap`. The Cache round 11 gap is an AK-47 shot at `t=46.328`; Rust has the same shooter/weapon burst continuing at `46.406+`, but the underlying Rust event stream does not expose a safe missing `weapon_fire` source at the skipped tick.
 - A Rust-side attempt to synthesize missing firearm `weaponFires` from tick-row `FIRE` state was rejected. Raw `FIRE` is held across many ticks and generated thousands of false extra shots even when restricted to rising edges, so it is not a safe source for weapon-fire reconstruction without deeper shot-cadence/recoil modeling.
 - `demoparser-rust` also exposes a custom `fire_bullets` message, but it does not solve the remaining weapon-fire gap. On Cache, `fire_bullets` exists globally (`2635` events in the demo), but neither `weapon_fire` nor `fire_bullets` is emitted around the confirmed missing tick `81163` for the two simultaneous AK-47 shots. Adding `fire_bullets` as a fallback left the five-demo weapon-fire audit unchanged, so the fallback was rejected as dead complexity.
-- Projectile frame auditing now checks track count, duplicate projectiles per frame, frame monotonicity, track breaks, teleport-like jumps, and tolerant track matching by normalized type, thrower, time, and start/end position. Rust now keeps IDs through small terminal grenade snaps by using a conservative 128-unit continuity floor instead of 90 units. This fixed confirmed smoke splits on Cache round 8 and Anubis round 29 without reintroducing the previous overmerge bug.
+- Projectile frame auditing now checks track count, duplicate projectiles per frame, frame monotonicity, track breaks, teleport-like jumps, and tolerant track matching by normalized type, thrower, time, and 3D start/end position. Rust now keeps IDs through small terminal grenade snaps by using a conservative 128-unit continuity floor instead of 90 units. This fixed confirmed smoke splits on Cache round 8 and Anubis round 29 without reintroducing the previous overmerge bug.
 - On the latest five-demo full audit, Rust and Go both have 1870 projectile tracks. Rust has zero duplicate projectiles, zero non-monotonic projectile frames, zero track breaks, and zero teleport-like jumps. Go has zero duplicates but 101 non-monotonic projectile frames and 280 track breaks, so exact Go projectile continuity is not a clean oracle.
 - Remaining projectile track tolerance deltas are limited and now classified: 3 rounds differ, with 0 missing Rust tracks, 0 extra Rust tracks, 6 tolerant mismatches, and 0 unclassified mismatches. Four are `post_round_smoke_duration` cases where Rust stops projectile samples at `round_end` while Go keeps stationary smoke projectile samples after the round; the smoke visual duration is already represented by `effects`. Two are `overlapping_same_thrower_projectile` cases on Inferno round 17 where the same player throws repeated HE grenades on nearly identical paths, making ID attribution ambiguous even though type, thrower, and positions remain coherent.
 - Bomb state raw frame counts still differ frequently, but the window audit now classifies the five-demo differences. The remaining deltas are not treated as missing Rust replay state unless exact Go residue emulation becomes a requirement.
@@ -116,12 +116,12 @@ Summary: Rust full quality outputs are smaller and faster than Go on most demos 
 
 Current Rust full-quality cost centers from `ROUNDLAB_STATS` are now visible in
 the generated comparison Markdown. On the latest five-demo full run, Rust took
-~88.0s total wall time with ~3.04 GB peak RSS. Aggregated Rust phase timings:
+~91.9s total wall time with ~2.62 GB peak RSS. Aggregated Rust phase timings:
 
-- `write_output_ms`: ~53.2s total, currently the largest measured phase.
-- `serialize_json_ms`: ~34.1s inside write output, so JSON serialization is the biggest confirmed write cost.
+- `write_output_ms`: ~56.9s total, currently the largest measured phase.
+- `serialize_json_ms`: ~36.4s inside write output, so JSON serialization is the biggest confirmed write cost.
 - vendor parse phase (`create_huffman` + header/players/events/ticks/teams/projectiles): ~28.0s total.
-- `build_rounds_ms`: ~3.1s total.
+- `build_rounds_ms`: ~3.2s total.
 - grouping: ~0.5s total.
 - read/decompress: ~1.8s total.
 
