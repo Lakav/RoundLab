@@ -3053,6 +3053,7 @@ mod tests {
         metrics: ReplayMetrics,
         round_metrics: Vec<RoundReplayMetrics>,
         round_event_signatures: Vec<RoundEventSignatures>,
+        round_effect_signatures: Vec<RoundEffectSignatures>,
         medium_skip_metrics: ReplayMetrics,
     }
 
@@ -3078,6 +3079,13 @@ mod tests {
         number: usize,
         kills: Vec<String>,
         bomb_events: Vec<String>,
+    }
+
+    #[derive(Debug, Deserialize, PartialEq, Eq)]
+    #[serde(rename_all = "camelCase")]
+    struct RoundEffectSignatures {
+        number: usize,
+        effects: Vec<String>,
     }
 
     struct EnvVarGuard {
@@ -4838,6 +4846,11 @@ mod tests {
             &expected.round_event_signatures,
             &expected.label,
         );
+        assert_round_effect_signatures_match_reference(
+            &collect_round_effect_signatures(output),
+            &expected.round_effect_signatures,
+            &expected.label,
+        );
     }
 
     fn assert_reference_demo_identity(output: &Output, expected: &ExpectedReplaySnapshot) {
@@ -4957,6 +4970,24 @@ mod tests {
             assert_eq!(
                 actual, expected,
                 "{label} round {idx} event signatures changed: actual={actual:?} expected={expected:?}"
+            );
+        }
+    }
+
+    fn assert_round_effect_signatures_match_reference(
+        actual: &[RoundEffectSignatures],
+        expected: &[RoundEffectSignatures],
+        label: &str,
+    ) {
+        assert_eq!(
+            actual.len(),
+            expected.len(),
+            "{label} round effect signature count changed"
+        );
+        for (idx, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+            assert_eq!(
+                actual, expected,
+                "{label} round {idx} effect signatures changed: actual={actual:?} expected={expected:?}"
             );
         }
     }
@@ -5082,6 +5113,25 @@ mod tests {
             .collect()
     }
 
+    fn collect_round_effect_signatures(output: &Output) -> Vec<RoundEffectSignatures> {
+        output
+            .rounds
+            .iter()
+            .map(|round| {
+                let mut effects = round
+                    .effects
+                    .iter()
+                    .map(effect_signature)
+                    .collect::<Vec<_>>();
+                effects.sort();
+                RoundEffectSignatures {
+                    number: round.number,
+                    effects,
+                }
+            })
+            .collect()
+    }
+
     fn kill_signature(event: &Event) -> String {
         format!(
             "{:.3}|{}|{}|{}|{}|{}",
@@ -5098,6 +5148,40 @@ mod tests {
         )
     }
 
+    fn effect_signature(effect: &UtilityEffect) -> String {
+        let duration = (effect.end - effect.start).max(0.0);
+        format!(
+            "{:.3}|{:.1}|{}|{}|{}|{}|{}|{}",
+            bucket_signature_time(effect.start),
+            bucket_signature_duration(duration),
+            effect.kind,
+            effect_signature_variant(effect),
+            effect_signature_team(effect),
+            bucket_signature_coord(effect.x),
+            bucket_signature_coord(effect.y),
+            bucket_signature_coord(effect.z)
+        )
+    }
+
+    fn effect_signature_variant(effect: &UtilityEffect) -> &str {
+        if effect.kind == "fire" {
+            ""
+        } else {
+            effect.variant.as_deref().unwrap_or_default()
+        }
+    }
+
+    fn effect_signature_team(effect: &UtilityEffect) -> String {
+        if effect.kind == "bomb_planted" {
+            String::new()
+        } else {
+            effect
+                .team
+                .map(|value| value.to_string())
+                .unwrap_or_default()
+        }
+    }
+
     fn bomb_event_signature(event: &Event) -> String {
         format!(
             "{:.3}|{}|{}",
@@ -5109,6 +5193,14 @@ mod tests {
 
     fn bucket_signature_time(value: f64) -> f64 {
         (value / 0.25).round() * 0.25
+    }
+
+    fn bucket_signature_duration(value: f64) -> f64 {
+        (value / 0.1).round() * 0.1
+    }
+
+    fn bucket_signature_coord(value: f64) -> i64 {
+        ((value / 50.0).round() * 50.0) as i64
     }
 
     fn optional_u64_signature(value: Option<u64>) -> String {
