@@ -106,6 +106,81 @@ def reference_int(value: Any, label: str, field: str) -> int:
     return value
 
 
+def expect_list_field(label: str, item: dict[str, Any], field: str) -> None:
+    if not isinstance(item.get(field), list):
+        raise AssertionError(f"{label} {field} is missing or not a list")
+
+
+def assert_reference_round_payload_shape(
+    label: str,
+    field: str,
+    idx: int,
+    item: dict[str, Any],
+) -> None:
+    item_label = f"{label} {field}[{idx}]"
+    match field:
+        case "roundMetrics":
+            for metric in [
+                "number",
+                "scoreA",
+                "scoreB",
+                "frames",
+                "events",
+                "kills",
+                "bombEvents",
+                "effects",
+                "weaponFires",
+                "projectileFrames",
+                "projectileSamples",
+            ]:
+                reference_int(item.get(metric), item_label, metric)
+        case "roundEventSignatures":
+            expect_list_field(item_label, item, "kills")
+            expect_list_field(item_label, item, "bombEvents")
+        case "roundTerminalEventSignatures":
+            expect_list_field(item_label, item, "terminalEvents")
+        case "roundEffectSignatures":
+            expect_list_field(item_label, item, "effects")
+        case "roundWeaponFireSignatures":
+            expect_list_field(item_label, item, "weaponFires")
+        case "roundBombStateSignatures":
+            expect_list_field(item_label, item, "bombStates")
+        case "roundActiveActionSignatures":
+            expect_list_field(item_label, item, "activeActions")
+        case "roundProjectileTrackSignatures":
+            expect_list_field(item_label, item, "projectileTracks")
+        case "roundWeaponFireToleranceSignatures":
+            expect_list_field(item_label, item, "missingInRust")
+            expect_list_field(item_label, item, "extraInRust")
+        case "roundClassifiedToleranceSignatures":
+            for group, keys in {
+                "bombEvents": [
+                    "missingInRustSignatures",
+                    "extraInRustSignatures",
+                    "eventMismatchSignatures",
+                ],
+                "bombStateWindows": [
+                    "missingInRustSignatures",
+                    "extraInRustSignatures",
+                ],
+                "dedupedEffects": [
+                    "missingInRustSignatures",
+                    "extraInRustSignatures",
+                    "effectMismatchSignatures",
+                ],
+                "projectileTracks": [
+                    "missingInRustSignatures",
+                    "extraInRustSignatures",
+                    "trackMismatchSignatures",
+                ],
+            }.items():
+                value = item.get(group)
+                if not isinstance(value, dict):
+                    raise AssertionError(f"{item_label} {group} is missing or not an object")
+                for key in keys:
+                    expect_list_field(f"{item_label} {group}", value, key)
+
+
 def assert_reference_snapshot_shape(snapshot: dict[str, Any]) -> str:
     file_name = snapshot.get("fileName")
     if not isinstance(file_name, str):
@@ -139,6 +214,7 @@ def assert_reference_snapshot_shape(snapshot: dict[str, Any]) -> str:
                 raise AssertionError(f"{label} {field}[{idx}] is not an object")
             expected_number = round_metrics[idx].get("number")
             expect_equal(label, f"{field}[{idx}].number", item.get("number"), expected_number)
+            assert_reference_round_payload_shape(label, field, idx, item)
 
     sum_fields = [
         "frames",
