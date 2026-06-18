@@ -3057,6 +3057,7 @@ mod tests {
         round_weapon_fire_signatures: Vec<RoundWeaponFireSignatures>,
         round_bomb_state_signatures: Vec<RoundBombStateSignatures>,
         round_active_action_signatures: Vec<RoundActiveActionSignatures>,
+        round_projectile_track_signatures: Vec<RoundProjectileTrackSignatures>,
         medium_skip_metrics: ReplayMetrics,
     }
 
@@ -3110,6 +3111,24 @@ mod tests {
     struct RoundActiveActionSignatures {
         number: usize,
         active_actions: Vec<String>,
+    }
+
+    #[derive(Debug, Deserialize, PartialEq, Eq)]
+    #[serde(rename_all = "camelCase")]
+    struct RoundProjectileTrackSignatures {
+        number: usize,
+        projectile_tracks: Vec<String>,
+    }
+
+    struct ProjectileTrackSummary<'a> {
+        id: i64,
+        kind: &'a ProjectileKind,
+        thrower: Option<u64>,
+        start_t: f64,
+        end_t: f64,
+        samples: usize,
+        start: &'a ProjectilePos,
+        end: &'a ProjectilePos,
     }
 
     struct BombStateWindow<'a> {
@@ -4909,6 +4928,11 @@ mod tests {
             &expected.round_active_action_signatures,
             &expected.label,
         );
+        assert_round_projectile_track_signatures_match_reference(
+            &collect_round_projectile_track_signatures(output),
+            &expected.round_projectile_track_signatures,
+            &expected.label,
+        );
     }
 
     fn assert_reference_demo_identity(output: &Output, expected: &ExpectedReplaySnapshot) {
@@ -5104,6 +5128,24 @@ mod tests {
         }
     }
 
+    fn assert_round_projectile_track_signatures_match_reference(
+        actual: &[RoundProjectileTrackSignatures],
+        expected: &[RoundProjectileTrackSignatures],
+        label: &str,
+    ) {
+        assert_eq!(
+            actual.len(),
+            expected.len(),
+            "{label} round projectile-track signature count changed"
+        );
+        for (idx, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+            assert_eq!(
+                actual, expected,
+                "{label} round {idx} projectile-track signatures changed: actual={actual:?} expected={expected:?}"
+            );
+        }
+    }
+
     fn collect_replay_metrics(output: &Output) -> ReplayMetrics {
         let mut metrics = ReplayMetrics {
             rounds: output.rounds.len(),
@@ -5293,6 +5335,59 @@ mod tests {
                 }
             })
             .collect()
+    }
+
+    fn collect_round_projectile_track_signatures(
+        output: &Output,
+    ) -> Vec<RoundProjectileTrackSignatures> {
+        output
+            .rounds
+            .iter()
+            .map(|round| {
+                let mut projectile_tracks = projectile_track_summaries(round)
+                    .iter()
+                    .map(projectile_track_signature)
+                    .collect::<Vec<_>>();
+                projectile_tracks.sort();
+                RoundProjectileTrackSignatures {
+                    number: round.number,
+                    projectile_tracks,
+                }
+            })
+            .collect()
+    }
+
+    fn projectile_track_summaries(round: &Round) -> Vec<ProjectileTrackSummary<'_>> {
+        type ProjectileTrackKey = (i64, String, Option<u64>);
+
+        let mut tracks: HashMap<ProjectileTrackKey, ProjectileTrackSummary<'_>> = HashMap::new();
+        for frame in &round.projectile_frames {
+            for projectile in &frame.projectiles {
+                let key = (
+                    projectile.id,
+                    projectile_kind_label(&projectile.kind).to_string(),
+                    projectile.thrower,
+                );
+                tracks
+                    .entry(key)
+                    .and_modify(|summary| {
+                        summary.end_t = frame.t;
+                        summary.samples += 1;
+                        summary.end = projectile;
+                    })
+                    .or_insert_with(|| ProjectileTrackSummary {
+                        id: projectile.id,
+                        kind: &projectile.kind,
+                        thrower: projectile.thrower,
+                        start_t: frame.t,
+                        end_t: frame.t,
+                        samples: 1,
+                        start: projectile,
+                        end: projectile,
+                    });
+            }
+        }
+        tracks.into_values().collect()
     }
 
     fn active_action_windows(round: &Round) -> Vec<ActiveActionWindow<'_>> {
@@ -5554,6 +5649,24 @@ mod tests {
         )
     }
 
+    fn projectile_track_signature(track: &ProjectileTrackSummary<'_>) -> String {
+        format!(
+            "{}|{}|{}|{:.3}|{:.3}|{}|{}|{}|{}|{}|{}|{}",
+            track.id,
+            projectile_kind_label(track.kind),
+            optional_u64_signature(track.thrower),
+            bucket_signature_time(track.start_t),
+            bucket_signature_time(track.end_t),
+            track.samples,
+            bucket_signature_projectile_coord(track.start.x),
+            bucket_signature_projectile_coord(track.start.y),
+            bucket_signature_projectile_coord(track.start.z),
+            bucket_signature_projectile_coord(track.end.x),
+            bucket_signature_projectile_coord(track.end.y),
+            bucket_signature_projectile_coord(track.end.z)
+        )
+    }
+
     fn normalized_active_action_item(value: &str) -> String {
         let trimmed = value.trim();
         if trimmed.eq_ignore_ascii_case("c4") {
@@ -5582,6 +5695,10 @@ mod tests {
 
     fn bucket_signature_coord(value: f64) -> i64 {
         ((value / 50.0).round() * 50.0) as i64
+    }
+
+    fn bucket_signature_projectile_coord(value: f64) -> i64 {
+        ((value / 100.0).round() * 100.0) as i64
     }
 
     fn bucket_signature_yaw(value: f64) -> i64 {
