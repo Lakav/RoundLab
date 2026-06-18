@@ -1958,7 +1958,7 @@ fn group_projectile_rows(rows: Vec<ProjectileRow>) -> BTreeMap<i32, Vec<Projecti
                 if tick_gap <= 0 || tick_gap > 24 {
                     continue;
                 }
-                let max_dist = (f64::from(tick_gap) / TICK_RATE * 2400.0).max(90.0);
+                let max_dist = (f64::from(tick_gap) / TICK_RATE * 2400.0).max(128.0);
                 let d = dist2(&projectile, track);
                 if d <= max_dist * max_dist && d < best_dist {
                     best_dist = d;
@@ -3013,11 +3013,11 @@ fn parser_gzip_compression() -> Compression {
 mod tests {
     use super::{
         add_missing_terminal_flash_effects, adjust_decoy_effects_from_projectiles,
-        build_round_payload, commit_split_output, looks_like_knife_round, parse_args_from,
-        parse_demo_to_output, parser_gzip_compression, read_capped, read_demo, round_events,
-        sample_step, seconds_since, write_json_gz, Args, Event, Frame, Output, ProjectileFrame,
-        ProjectileKind, ProjectilePos, Round, RoundBuildContext, RoundSpan, TickRow, UtilityEffect,
-        MAX_DEMO_SIZE,
+        build_round_payload, commit_split_output, group_projectile_rows, looks_like_knife_round,
+        parse_args_from, parse_demo_to_output, parser_gzip_compression, read_capped, read_demo,
+        round_events, sample_step, seconds_since, write_json_gz, Args, Event, Frame, Output,
+        ProjectileFrame, ProjectileKind, ProjectilePos, ProjectileRow, Round, RoundBuildContext,
+        RoundSpan, TickRow, UtilityEffect, MAX_DEMO_SIZE,
     };
     use flate2::{read::GzDecoder, Compression};
     use serde::Deserialize;
@@ -3720,6 +3720,47 @@ mod tests {
 
         assert_eq!(effects[0].start, 4.0);
         assert_eq!(effects[0].end, 35.0);
+    }
+
+    #[test]
+    fn projectile_grouping_keeps_id_across_small_terminal_snap() {
+        let rows = vec![
+            ProjectileRow {
+                tick: 100,
+                entity_id: 10,
+                kind: ProjectileKind::Smoke,
+                x: 257.1,
+                y: -567.7,
+                z: 1704.4,
+                thrower: Some(76561198089762164),
+            },
+            ProjectileRow {
+                tick: 101,
+                entity_id: 11,
+                kind: ProjectileKind::Smoke,
+                x: 254.6,
+                y: -606.8,
+                z: 1613.9,
+                thrower: Some(76561198089762164),
+            },
+            ProjectileRow {
+                tick: 102,
+                entity_id: 11,
+                kind: ProjectileKind::Smoke,
+                x: 254.6,
+                y: -606.8,
+                z: 1613.9,
+                thrower: Some(76561198089762164),
+            },
+        ];
+
+        let grouped = group_projectile_rows(rows);
+        let ids = grouped
+            .values()
+            .flat_map(|projectiles| projectiles.iter().map(|projectile| projectile.id))
+            .collect::<Vec<_>>();
+
+        assert_eq!(ids, vec![1_000_000_000, 1_000_000_000, 1_000_000_000]);
     }
 
     #[test]
