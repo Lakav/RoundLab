@@ -188,6 +188,29 @@ def effect_signature(effect: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def effect_summary(effect: dict[str, Any]) -> dict[str, Any]:
+    kind = effect.get("type", "")
+    return {
+        "t": float(effect.get("start", 0.0) or 0.0),
+        "type": kind,
+        "variant": None if kind == "fire" else effect.get("variant"),
+        "team": None if kind == "bomb_planted" else effect.get("team"),
+        "x": float(effect.get("x", 0.0) or 0.0),
+        "y": float(effect.get("y", 0.0) or 0.0),
+        "z": float(effect.get("z", 0.0) or 0.0),
+    }
+
+
+def effect_sample(effect: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **effect,
+        "tRaw": round(effect["t"], 3),
+        "t": bucket_time(effect["t"], 0.25),
+        "x": round(effect["x"] / 50.0) * 50,
+        "y": round(effect["y"] / 50.0) * 50,
+    }
+
+
 def bucket_yaw(value: Any, precision: float = 15.0) -> float:
     if not isinstance(value, (int, float)):
         return 0.0
@@ -535,6 +558,90 @@ def classify_fire_samples(
     return classified, counts
 
 
+def effect_position_delta(left: dict[str, Any], right: dict[str, Any]) -> float:
+    dx = left["x"] - right["x"]
+    dy = left["y"] - right["y"]
+    dz = left["z"] - right["z"]
+    return (dx * dx + dy * dy + dz * dz) ** 0.5
+
+
+def classify_effect_mismatch(go_effect: dict[str, Any], rust_effect: dict[str, Any]) -> str:
+    if (
+        go_effect["type"] == "decoy"
+        and rust_effect["type"] == "decoy"
+        and go_effect["team"] == rust_effect["team"]
+        and effect_position_delta(go_effect, rust_effect) <= 50.0
+        and abs(go_effect["t"] - rust_effect["t"]) <= 0.5
+    ):
+        return "decoy_stationary_vs_event_timing"
+    return "unclassified"
+
+
+def compare_deduped_effects(go_round: dict[str, Any], rust_round: dict[str, Any], limit: int = 10) -> dict[str, Any]:
+    go_effects = sorted(
+        [effect_summary(effect) for effect in dedupe_near_duplicate_flash_effects(go_round.get("effects", []))],
+        key=lambda item: (item["type"], str(item["team"]), item["t"], item["x"], item["y"]),
+    )
+    rust_effects = sorted(
+        [effect_summary(effect) for effect in dedupe_near_duplicate_flash_effects(rust_round.get("effects", []))],
+        key=lambda item: (item["type"], str(item["team"]), item["t"], item["x"], item["y"]),
+    )
+    unmatched_go = set(range(len(go_effects)))
+    unmatched_rust = set(range(len(rust_effects)))
+    mismatched = []
+
+    for go_idx, go_effect in enumerate(go_effects):
+        candidates = []
+        for rust_idx in unmatched_rust:
+            rust_effect = rust_effects[rust_idx]
+            if (
+                rust_effect["type"] != go_effect["type"]
+                or rust_effect["variant"] != go_effect["variant"]
+                or rust_effect["team"] != go_effect["team"]
+            ):
+                continue
+            position_delta = effect_position_delta(go_effect, rust_effect)
+            time_delta = abs(go_effect["t"] - rust_effect["t"])
+            if position_delta > 100.0 or time_delta > 0.5:
+                continue
+            candidates.append(
+                (time_delta + position_delta / 500.0, rust_idx, rust_effect, position_delta, time_delta)
+            )
+        if not candidates:
+            continue
+        _, rust_idx, rust_effect, position_delta, time_delta = min(candidates, key=lambda item: item[0])
+        unmatched_go.remove(go_idx)
+        unmatched_rust.remove(rust_idx)
+        if time_delta > 0.125 or position_delta > 50.0:
+            classification = classify_effect_mismatch(go_effect, rust_effect)
+            mismatched.append(
+                {
+                    "go": effect_sample(go_effect),
+                    "rust": effect_sample(rust_effect),
+                    "timeDelta": round(time_delta, 3),
+                    "positionDelta": round(position_delta, 1),
+                    "classification": classification,
+                }
+            )
+
+    missing = [go_effects[idx] for idx in sorted(unmatched_go)]
+    extra = [rust_effects[idx] for idx in sorted(unmatched_rust)]
+    classification_counts: dict[str, int] = {}
+    for mismatch in mismatched:
+        classification = mismatch["classification"]
+        classification_counts[classification] = classification_counts.get(classification, 0) + 1
+    return {
+        "missingInRustCount": len(missing),
+        "missingInRustSample": [effect_sample(item) for item in missing[:limit]],
+        "extraInRustCount": len(extra),
+        "extraInRustSample": [effect_sample(item) for item in extra[:limit]],
+        "effectMismatchCount": len(mismatched),
+        "effectMismatchClassifications": classification_counts,
+        "unclassifiedMismatchCount": classification_counts.get("unclassified", 0),
+        "effectMismatchSample": mismatched[:limit],
+    }
+
+
 def fire_time_tolerance(weapon: str) -> float:
     if weapon in GRENADE_FIRE_WEAPONS:
         return 0.35
@@ -867,13 +974,19 @@ def round_audit(go_output: Path, rust_output: Path) -> dict[str, Any]:
                 "killSignatures",
                 "bombSignatures",
                 "effectSignatures",
-                "dedupedEffectSignatures",
                 "fireSignatures",
                 "projectileSignatures",
             ]:
                 diff = signature_diff(go_summary[field], rust_summary[field])
                 if diff["missingInRustCount"] or diff["extraInRustCount"]:
                     diffs.append({"field": field, **diff})
+            deduped_effect_diff = compare_deduped_effects(go_rounds[idx], rust_rounds[idx])
+            if (
+                deduped_effect_diff["missingInRustCount"]
+                or deduped_effect_diff["extraInRustCount"]
+                or deduped_effect_diff["effectMismatchCount"]
+            ):
+                diffs.append({"field": "dedupedEffectTolerance", **deduped_effect_diff})
             fire_pose_diff = compare_fire_poses(go_rounds[idx], rust_rounds[idx])
             if (
                 fire_pose_diff["missingInRustCount"]
