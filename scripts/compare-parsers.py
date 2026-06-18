@@ -211,6 +211,30 @@ def effect_sample(effect: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def bomb_event_summary(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out = []
+    for event in events:
+        kind = event.get("type", "")
+        if kind not in BOMB_EVENTS:
+            continue
+        out.append(
+            {
+                "t": float(event.get("t", 0.0) or 0.0),
+                "type": kind,
+                "player": event.get("player"),
+            }
+        )
+    return sorted(out, key=lambda item: (item["type"], str(item["player"]), item["t"]))
+
+
+def bomb_event_sample(event: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **event,
+        "tRaw": round(event["t"], 3),
+        "t": bucket_time(event["t"], 0.25),
+    }
+
+
 def bucket_yaw(value: Any, precision: float = 15.0) -> float:
     if not isinstance(value, (int, float)):
         return 0.0
@@ -575,6 +599,91 @@ def classify_effect_mismatch(go_effect: dict[str, Any], rust_effect: dict[str, A
     ):
         return "decoy_stationary_vs_event_timing"
     return "unclassified"
+
+
+def bomb_event_time_tolerance(kind: str) -> float:
+    if kind == "bomb_defuse_abort":
+        return 8.0
+    if kind == "bomb_exploded":
+        return 0.5
+    return 0.25
+
+
+def classify_bomb_event_mismatch(go_event: dict[str, Any], rust_event: dict[str, Any]) -> str:
+    if go_event["type"] == "bomb_exploded" and abs(go_event["t"] - rust_event["t"]) <= 0.5:
+        return "small_explosion_timing_offset"
+    if go_event["type"] == "bomb_defuse_abort" and abs(go_event["t"] - rust_event["t"]) <= 8.0:
+        return "synthesized_defuse_abort_timing"
+    return "unclassified"
+
+
+def compare_bomb_events(go_round: dict[str, Any], rust_round: dict[str, Any], limit: int = 10) -> dict[str, Any]:
+    go_events = bomb_event_summary(go_round.get("events", []))
+    rust_events = bomb_event_summary(rust_round.get("events", []))
+    unmatched_go = set(range(len(go_events)))
+    unmatched_rust = set(range(len(rust_events)))
+    mismatched = []
+
+    group_keys = sorted(
+        {(item["type"], item["player"]) for item in go_events}
+        | {(item["type"], item["player"]) for item in rust_events},
+        key=lambda item: (item[0], str(item[1])),
+    )
+    go_groups: dict[tuple[str, Any], list[int]] = {}
+    rust_groups: dict[tuple[str, Any], list[int]] = {}
+    for idx, item in enumerate(go_events):
+        go_groups.setdefault((item["type"], item["player"]), []).append(idx)
+    for idx, item in enumerate(rust_events):
+        rust_groups.setdefault((item["type"], item["player"]), []).append(idx)
+
+    for key in group_keys:
+        go_indexes = go_groups.get(key, [])
+        rust_indexes = rust_groups.get(key, [])
+        go_pos = 0
+        rust_pos = 0
+        tolerance = bomb_event_time_tolerance(key[0])
+        while go_pos < len(go_indexes) and rust_pos < len(rust_indexes):
+            go_idx = go_indexes[go_pos]
+            rust_idx = rust_indexes[rust_pos]
+            go_event = go_events[go_idx]
+            rust_event = rust_events[rust_idx]
+            time_delta = rust_event["t"] - go_event["t"]
+            if abs(time_delta) <= tolerance:
+                unmatched_go.remove(go_idx)
+                unmatched_rust.remove(rust_idx)
+                if abs(time_delta) > 0.125:
+                    classification = classify_bomb_event_mismatch(go_event, rust_event)
+                    mismatched.append(
+                        {
+                            "go": bomb_event_sample(go_event),
+                            "rust": bomb_event_sample(rust_event),
+                            "timeDelta": round(abs(time_delta), 3),
+                            "classification": classification,
+                        }
+                    )
+                go_pos += 1
+                rust_pos += 1
+            elif time_delta < 0:
+                rust_pos += 1
+            else:
+                go_pos += 1
+
+    missing = [go_events[idx] for idx in sorted(unmatched_go)]
+    extra = [rust_events[idx] for idx in sorted(unmatched_rust)]
+    classification_counts: dict[str, int] = {}
+    for mismatch in mismatched:
+        classification = mismatch["classification"]
+        classification_counts[classification] = classification_counts.get(classification, 0) + 1
+    return {
+        "missingInRustCount": len(missing),
+        "missingInRustSample": [bomb_event_sample(item) for item in missing[:limit]],
+        "extraInRustCount": len(extra),
+        "extraInRustSample": [bomb_event_sample(item) for item in extra[:limit]],
+        "eventMismatchCount": len(mismatched),
+        "eventMismatchClassifications": classification_counts,
+        "unclassifiedMismatchCount": classification_counts.get("unclassified", 0),
+        "eventMismatchSample": mismatched[:limit],
+    }
 
 
 def compare_deduped_effects(go_round: dict[str, Any], rust_round: dict[str, Any], limit: int = 10) -> dict[str, Any]:
@@ -972,7 +1081,6 @@ def round_audit(go_output: Path, rust_output: Path) -> dict[str, Any]:
                     )
             for field in [
                 "killSignatures",
-                "bombSignatures",
                 "effectSignatures",
                 "fireSignatures",
                 "projectileSignatures",
@@ -980,6 +1088,13 @@ def round_audit(go_output: Path, rust_output: Path) -> dict[str, Any]:
                 diff = signature_diff(go_summary[field], rust_summary[field])
                 if diff["missingInRustCount"] or diff["extraInRustCount"]:
                     diffs.append({"field": field, **diff})
+            bomb_event_diff = compare_bomb_events(go_rounds[idx], rust_rounds[idx])
+            if (
+                bomb_event_diff["missingInRustCount"]
+                or bomb_event_diff["extraInRustCount"]
+                or bomb_event_diff["eventMismatchCount"]
+            ):
+                diffs.append({"field": "bombEventTolerance", **bomb_event_diff})
             deduped_effect_diff = compare_deduped_effects(go_rounds[idx], rust_rounds[idx])
             if (
                 deduped_effect_diff["missingInRustCount"]
