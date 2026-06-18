@@ -138,6 +138,13 @@ Summary: Rust full quality outputs are smaller and faster than Go on most demos 
   active weapon, team, position, and yaw at `t=46.328`, while Rust
   `weaponFires` jump from `46.203` to `46.406`. That keeps the diagnosis on
   event-source extraction, not replay pose reconstruction.
+- Vendor inspection did not find an obvious local dedupe path for these
+  missing `weapon_fire` events. In `demoparser-rust`, Source1 legacy game
+  events are decoded one message at a time and wanted events are pushed
+  directly; `weapon_fire` is not one of the entity-first events routed through
+  `wrong_order_events`. The remaining gap therefore looks more like an event
+  source/exposure limitation than an ordering cleanup bug in RoundLab's
+  post-processing.
 - Those remaining weapon-fire tolerances are now snapshotted by exact compact
   signatures in `parser/reference_demos.json`, including classification,
   timestamp, shooter, weapon, team, bucketed position, and yaw. This does not
