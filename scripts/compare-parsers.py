@@ -394,6 +394,7 @@ def round_audit_summary(round_obj: dict[str, Any]) -> dict[str, Any]:
             status = bomb.get("status", "")
             bomb_state_counts[status] = bomb_state_counts.get(status, 0) + 1
 
+    projectile_integrity_summary = projectile_integrity(round_obj)
     return {
         "number": round_obj.get("number"),
         "scoreA": round_obj.get("scoreA"),
@@ -426,6 +427,7 @@ def round_audit_summary(round_obj: dict[str, Any]) -> dict[str, Any]:
         "projectileSamples": projectile_samples,
         "projectileTypeCounts": projectile_type_counts,
         "projectileSignatures": sorted(projectile_signatures, key=lambda item: (item["t"], item["thrower"] or 0, item["type"])),
+        **projectile_integrity_summary,
     }
 
 
@@ -543,6 +545,156 @@ def compare_fire_poses(go_round: dict[str, Any], rust_round: dict[str, Any], lim
     }
 
 
+def projectile_tracks(round_obj: dict[str, Any]) -> dict[tuple[Any, str, Any], list[dict[str, float]]]:
+    tracks: dict[tuple[Any, str, Any], list[dict[str, float]]] = {}
+    for frame in round_obj.get("projectileFrames", []):
+        frame_t = float(frame.get("t", 0.0) or 0.0)
+        for projectile in frame.get("projectiles", []):
+            key = (
+                projectile.get("id"),
+                normalize_projectile_type(projectile.get("type")),
+                projectile.get("thrower"),
+            )
+            tracks.setdefault(key, []).append(
+                {
+                    "t": frame_t,
+                    "x": float(projectile.get("x", 0.0) or 0.0),
+                    "y": float(projectile.get("y", 0.0) or 0.0),
+                    "z": float(projectile.get("z", 0.0) or 0.0),
+                }
+            )
+    return tracks
+
+
+def projectile_integrity(round_obj: dict[str, Any]) -> dict[str, Any]:
+    duplicate_projectiles = 0
+    non_monotonic_frames = 0
+    previous_t: float | None = None
+    for frame in round_obj.get("projectileFrames", []):
+        frame_t = float(frame.get("t", 0.0) or 0.0)
+        if previous_t is not None and frame_t <= previous_t:
+            non_monotonic_frames += 1
+        previous_t = frame_t
+        seen = set()
+        for projectile in frame.get("projectiles", []):
+            key = (
+                projectile.get("id"),
+                normalize_projectile_type(projectile.get("type")),
+                projectile.get("thrower"),
+            )
+            if key in seen:
+                duplicate_projectiles += 1
+            seen.add(key)
+
+    track_breaks = 0
+    teleport_count = 0
+    tracks = projectile_tracks(round_obj)
+    for points in tracks.values():
+        points.sort(key=lambda item: item["t"])
+        for left, right in zip(points, points[1:]):
+            dt = right["t"] - left["t"]
+            if dt <= 0.0:
+                track_breaks += 1
+                continue
+            if dt > 0.25:
+                track_breaks += 1
+            distance = (
+                (right["x"] - left["x"]) ** 2
+                + (right["y"] - left["y"]) ** 2
+                + (right["z"] - left["z"]) ** 2
+            ) ** 0.5
+            if dt <= 0.1 and distance > 900.0:
+                teleport_count += 1
+    return {
+        "projectileTrackCount": len(tracks),
+        "duplicateProjectiles": duplicate_projectiles,
+        "nonMonotonicProjectileFrames": non_monotonic_frames,
+        "projectileTrackBreaks": track_breaks,
+        "projectileTeleportCount": teleport_count,
+    }
+
+
+def projectile_track_signature(key: tuple[Any, str, Any], points: list[dict[str, float]]) -> dict[str, Any]:
+    points = sorted(points, key=lambda item: item["t"])
+    first = points[0]
+    last = points[-1]
+    return {
+        "id": key[0],
+        "type": key[1],
+        "thrower": key[2],
+        "start": bucket_time(first["t"], 0.25),
+        "end": bucket_time(last["t"], 0.25),
+        "samples": len(points),
+        "startX": round(first["x"] / 100.0) * 100,
+        "startY": round(first["y"] / 100.0) * 100,
+        "endX": round(last["x"] / 100.0) * 100,
+        "endY": round(last["y"] / 100.0) * 100,
+    }
+
+
+def projectile_position_delta(left: dict[str, Any], right: dict[str, Any], prefix: str) -> float:
+    dx = float(left[f"{prefix}X"] or 0.0) - float(right[f"{prefix}X"] or 0.0)
+    dy = float(left[f"{prefix}Y"] or 0.0) - float(right[f"{prefix}Y"] or 0.0)
+    return (dx * dx + dy * dy) ** 0.5
+
+
+def compare_projectile_tracks(go_round: dict[str, Any], rust_round: dict[str, Any], limit: int = 10) -> dict[str, Any]:
+    go_tracks = projectile_tracks(go_round)
+    rust_tracks = projectile_tracks(rust_round)
+    unmatched_rust = set(range(len(rust_tracks)))
+    rust_items = list(rust_tracks.items())
+    missing = []
+    mismatched = []
+    for go_key, go_points in go_tracks.items():
+        go_sig = projectile_track_signature(go_key, go_points)
+        candidates = []
+        for idx in unmatched_rust:
+            rust_key, rust_points = rust_items[idx]
+            if rust_key[1] != go_key[1] or rust_key[2] != go_key[2]:
+                continue
+            rust_sig = projectile_track_signature(rust_key, rust_points)
+            if abs(rust_sig["start"] - go_sig["start"]) > 0.5:
+                continue
+            start_position_delta = projectile_position_delta(go_sig, rust_sig, "start")
+            end_position_delta = projectile_position_delta(go_sig, rust_sig, "end")
+            distance = (
+                abs(rust_sig["end"] - go_sig["end"])
+                + abs(rust_sig["samples"] - go_sig["samples"]) / 256.0
+                + start_position_delta / 500.0
+                + end_position_delta / 500.0
+            )
+            candidates.append((distance, idx, rust_sig))
+        if not candidates:
+            missing.append(go_sig)
+            continue
+        _, idx, rust_sig = min(candidates, key=lambda item: item[0])
+        unmatched_rust.remove(idx)
+        sample_delta = abs(rust_sig["samples"] - go_sig["samples"])
+        end_delta = abs(rust_sig["end"] - go_sig["end"])
+        start_position_delta = projectile_position_delta(go_sig, rust_sig, "start")
+        end_position_delta = projectile_position_delta(go_sig, rust_sig, "end")
+        if sample_delta > 128 or end_delta > 0.75 or start_position_delta > 250.0 or end_position_delta > 250.0:
+            mismatched.append(
+                {
+                    "go": go_sig,
+                    "rust": rust_sig,
+                    "sampleDelta": sample_delta,
+                    "endDelta": end_delta,
+                    "startPositionDelta": round(start_position_delta, 1),
+                    "endPositionDelta": round(end_position_delta, 1),
+                }
+            )
+    extra = [projectile_track_signature(*rust_items[idx]) for idx in sorted(unmatched_rust)]
+    return {
+        "missingInRustCount": len(missing),
+        "missingInRustSample": missing[:limit],
+        "extraInRustCount": len(extra),
+        "extraInRustSample": extra[:limit],
+        "trackMismatchCount": len(mismatched),
+        "trackMismatchSample": mismatched[:limit],
+    }
+
+
 def round_audit(go_output: Path, rust_output: Path) -> dict[str, Any]:
     go_manifest, go_rounds = load_round_payloads(go_output)
     rust_manifest, rust_rounds = load_round_payloads(rust_output)
@@ -569,6 +721,11 @@ def round_audit(go_output: Path, rust_output: Path) -> dict[str, Any]:
                 "weaponFires",
                 "projectileFrames",
                 "projectileSamples",
+                "projectileTrackCount",
+                "duplicateProjectiles",
+                "nonMonotonicProjectileFrames",
+                "projectileTrackBreaks",
+                "projectileTeleportCount",
             ]
             map_fields = [
                 "bombStateCounts",
@@ -606,6 +763,13 @@ def round_audit(go_output: Path, rust_output: Path) -> dict[str, Any]:
                 or fire_pose_diff["poseMismatchCount"]
             ):
                 diffs.append({"field": "firePoseTolerance", **fire_pose_diff})
+            projectile_track_diff = compare_projectile_tracks(go_rounds[idx], rust_rounds[idx])
+            if (
+                projectile_track_diff["missingInRustCount"]
+                or projectile_track_diff["extraInRustCount"]
+                or projectile_track_diff["trackMismatchCount"]
+            ):
+                diffs.append({"field": "projectileTrackTolerance", **projectile_track_diff})
         rounds.append({"index": idx, "go": go_summary, "rust": rust_summary, "diffs": diffs})
     return {
         "goMeta": go_manifest.get("meta", {}),

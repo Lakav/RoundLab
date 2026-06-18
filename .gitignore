@@ -48,6 +48,8 @@ parser/target/
 coverage/
 tmp/
 temp/
+__pycache__/
+*.pyc
 
 # Tauri updater signing keys (private key MUST stay local — .pub can be committed
 # but we keep the whole folder out for simplicity; the public key is embedded in

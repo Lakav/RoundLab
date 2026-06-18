@@ -15,6 +15,7 @@ Local comparison only. The archived Go parser is used as an oracle/debug aid, no
 ```bash
 python3 scripts/compare-parsers.py --prepare-go --build-rust --quality medium --skip-heavy --out .roundlab-compare/medium-skip.json
 python3 scripts/compare-parsers.py --quality full --round-audit --out .roundlab-compare/full-round-audit-replay-fidelity-kill-fire-normalized.json
+python3 scripts/compare-parsers.py --build-rust --quality full --round-audit --out .roundlab-compare/full-round-audit-projectile-integrity.json
 ```
 
 Use `--keep-outputs` for targeted event-level debugging.
@@ -37,13 +38,13 @@ Summary: Rust is much faster in medium skip mode, but uses much more memory.
 
 | demo | expected | Go score | Rust score | Go ms/RSS MB | Rust ms/RSS MB | Rust output delta |
 | --- | --- | --- | --- | ---: | ---: | ---: |
-| ancient4-13 | 4-13 | 4-13 | 4-13 | 14238/220.5 | 14545/2136.4 | -5.71 MB |
-| anubis16-19 | 16-19 | 16-19 | 16-19 | 27707/178.0 | 27956/3149.0 | -11.00 MB |
-| cache11-13 | 11-13 | 11-13 | 11-13 | 21808/189.4 | 22267/2338.2 | -9.20 MB |
-| dust1-13 | 1-13 | 1-13 | 1-13 | 11333/170.3 | 11136/1409.2 | -4.41 MB |
-| inferno8-13 | 8-13 | 8-13 | 8-13 | 19537/201.1 | 19306/2479.9 | -7.24 MB |
+| ancient4-13 | 4-13 | 4-13 | 4-13 | 14306/194.7 | 12611/2138.0 | -5.69 MB |
+| anubis16-19 | 16-19 | 16-19 | 16-19 | 26316/176.4 | 25772/3556.3 | -10.99 MB |
+| cache11-13 | 11-13 | 11-13 | 11-13 | 20593/191.1 | 19942/2632.0 | -9.21 MB |
+| dust1-13 | 1-13 | 1-13 | 1-13 | 10815/192.0 | 9669/1379.6 | -4.41 MB |
+| inferno8-13 | 8-13 | 8-13 | 8-13 | 18686/198.9 | 16305/2436.9 | -7.25 MB |
 
-Summary: Rust full quality outputs are smaller and now faster than Go on most measured demos. With the current "favor time, keep RAM sane" target, Rust uses roughly 1.4-3.1 GB RSS on the current five-demo run. On a 16 GB machine, 60% RAM is about 9.8 GB, so the worst measured run stays well below the target ceiling.
+Summary: Rust full quality outputs are smaller and faster than Go on every demo in this run. With the current "favor time, keep RAM sane" target, Rust uses roughly 1.4-3.6 GB RSS on the current five-demo run. On a 16 GB machine, 60% RAM is about 9.8 GB, so the worst measured run stays well below the target ceiling.
 
 ## Functional Findings
 
@@ -60,6 +61,8 @@ Summary: Rust full quality outputs are smaller and now faster than Go on most me
 - Rust reconstructs terminal flash detonations from projectile frames when demoparser Rust misses a `flashbang_detonate` at round end. This fixes the Anubis round 18 missing unique flash. Dust 7 and Inferno 13 were confirmed as Go duplicate/bucket artifacts, not missing Rust flashes.
 - Decoy timing now uses the projectile's first stationary tick instead of `decoy_detonate - 15s`. Ancient 12/16 now match deduped effect signatures. One deduped utility effect signature still differs: Inferno round 2 decoy is `29.25s` in Rust vs `29.5s` bucketed in Go, with matching team and position.
 - Weapon fire and projectile frame counts are close in full quality, but not identical. After weapon alias normalization, remaining weapon-fire count deltas are small and round-local. The harness now also performs tolerant fire-pose matching on `shooter`, weapon, time, `x/y/z`, `yaw`, and `team`; the latest five-demo full audit reports zero pose mismatches for matched fires. Remaining unmatched weapon fires are rare across the full set: 26 extra Rust fires and 3 missing Rust fires, still requiring targeted review before claiming full parity.
+- Projectile frame auditing now checks track count, duplicate projectiles per frame, frame monotonicity, track breaks, teleport-like jumps, and tolerant track matching by normalized type, thrower, time, and start/end position. On the latest five-demo full audit, Rust has 1872 projectile tracks vs Go's 1870, zero duplicate projectiles, zero non-monotonic projectile frames, zero track breaks, and zero teleport-like jumps. Go has zero duplicates but 101 non-monotonic projectile frames and 280 track breaks, so exact Go projectile continuity is not a clean oracle.
+- Remaining projectile track tolerance deltas are limited but not gone: 5 rounds differ, with 0 missing Rust tracks, 2 extra Rust tracks, and 8 tolerant mismatches. These are mostly repeated same-type throws by the same player where ID continuity/end timing differs. A tested overmerge fix that allowed large one/two-tick terminal snaps was rejected because it worsened the audit to 9 affected rounds, 18 mismatches, and introduced 3 Rust teleport-like jumps.
 - Bomb state frame counts still differ frequently. Many differences are one-frame boundary shifts or Go's post-explosion dropped-bomb residue, but some dropped-state windows still need targeted replay/UI inspection before claiming full parity.
 
 ## Optimization Findings
@@ -87,4 +90,5 @@ A quick test with `ROUNDLAB_PARSER_GZIP_LEVEL=1` on `dust1-13` did not improve f
 2. Tighten remaining bomb-event signature timing/order if replay UI needs exact Go parity instead of matching event presence and counts.
 3. Investigate the remaining Inferno round 2 decoy timing difference and decide whether Rust's stationary-projectile timing is preferable to Go's later event timing.
 4. Review the remaining unmatched weapon-fire deltas case-by-case, especially whether extra Rust fires without matching projectile/effect evidence are useful replay events or demoparser noise.
-5. Add phase/RSS tracking per parser run to identify whether the remaining peak happens inside vendor parsing, grouping, or replay frame construction.
+5. Investigate the remaining 5 projectile tolerance rounds without overmerging same-player repeated utility tracks; any fix must keep Rust at zero duplicate projectiles, zero non-monotonic frames, zero track breaks, and zero teleport-like jumps.
+6. Add phase/RSS tracking per parser run to identify whether the remaining peak happens inside vendor parsing, grouping, or replay frame construction.
