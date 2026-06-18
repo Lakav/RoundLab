@@ -118,6 +118,16 @@ def expect_list_field(label: str, item: dict[str, Any], field: str) -> None:
         raise AssertionError(f"{label} {field} is missing or not a list")
 
 
+def expect_string_list_field(label: str, item: dict[str, Any], field: str) -> None:
+    expect_list_field(label, item, field)
+    values = item[field]
+    for idx, value in enumerate(values):
+        if not isinstance(value, str):
+            raise AssertionError(
+                f"{label} {field}[{idx}] must be a compact string signature: {value!r}"
+            )
+
+
 def assert_reference_round_payload_shape(
     label: str,
     field: str,
@@ -142,23 +152,23 @@ def assert_reference_round_payload_shape(
             ]:
                 reference_non_negative_int(item.get(metric), item_label, metric)
         case "roundEventSignatures":
-            expect_list_field(item_label, item, "kills")
-            expect_list_field(item_label, item, "bombEvents")
+            expect_string_list_field(item_label, item, "kills")
+            expect_string_list_field(item_label, item, "bombEvents")
         case "roundTerminalEventSignatures":
-            expect_list_field(item_label, item, "terminalEvents")
+            expect_string_list_field(item_label, item, "terminalEvents")
         case "roundEffectSignatures":
-            expect_list_field(item_label, item, "effects")
+            expect_string_list_field(item_label, item, "effects")
         case "roundWeaponFireSignatures":
-            expect_list_field(item_label, item, "weaponFires")
+            expect_string_list_field(item_label, item, "weaponFires")
         case "roundBombStateSignatures":
-            expect_list_field(item_label, item, "bombStates")
+            expect_string_list_field(item_label, item, "bombStates")
         case "roundActiveActionSignatures":
-            expect_list_field(item_label, item, "activeActions")
+            expect_string_list_field(item_label, item, "activeActions")
         case "roundProjectileTrackSignatures":
-            expect_list_field(item_label, item, "projectileTracks")
+            expect_string_list_field(item_label, item, "projectileTracks")
         case "roundWeaponFireToleranceSignatures":
-            expect_list_field(item_label, item, "missingInRust")
-            expect_list_field(item_label, item, "extraInRust")
+            expect_string_list_field(item_label, item, "missingInRust")
+            expect_string_list_field(item_label, item, "extraInRust")
         case "roundClassifiedToleranceSignatures":
             for group, keys in {
                 "bombEvents": [
@@ -185,7 +195,7 @@ def assert_reference_round_payload_shape(
                 if not isinstance(value, dict):
                     raise AssertionError(f"{item_label} {group} is missing or not an object")
                 for key in keys:
-                    expect_list_field(f"{item_label} {group}", value, key)
+                    expect_string_list_field(f"{item_label} {group}", value, key)
 
 
 def assert_reference_snapshot_shape(snapshot: dict[str, Any]) -> str:
