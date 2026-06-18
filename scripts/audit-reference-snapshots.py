@@ -1,0 +1,223 @@
+#!/usr/bin/env python3
+"""Validate Rust reference snapshots against a saved Go/Rust audit report.
+
+This is intentionally read-only. It does not regenerate parser outputs or
+snapshots; it checks that parser/reference_demos.json still matches the Rust
+side of a recent scripts/compare-parsers.py --round-audit JSON report.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_REFERENCE = ROOT / "parser" / "reference_demos.json"
+DEFAULT_REPORT = ROOT / ".roundlab-compare" / "full-round-audit-current.json"
+
+METRIC_FIELDS = [
+    "rounds",
+    "players",
+    "frames",
+    "framePlayers",
+    "framesWithPlayers",
+    "framesWithBombState",
+    "playersWithWeapons",
+    "events",
+    "kills",
+    "bombEvents",
+    "effects",
+    "weaponFires",
+    "projectileFrames",
+    "projectileSamples",
+]
+
+BOMB_EVENTS = {
+    "bomb_planted",
+    "bomb_defuse_start",
+    "bomb_defuse_abort",
+    "bomb_defused",
+    "bomb_exploded",
+}
+
+
+def load_json(path: Path) -> Any:
+    with path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def result_key(result: dict[str, Any]) -> str:
+    return Path(str(result.get("demo", ""))).name
+
+
+def metric_value(metrics: dict[str, Any], field: str) -> int:
+    value = metrics.get(field)
+    if not isinstance(value, int):
+        raise AssertionError(f"report metric {field} is missing or not an int: {value!r}")
+    return value
+
+
+def expect_equal(label: str, field: str, actual: Any, expected: Any) -> None:
+    if actual != expected:
+        raise AssertionError(
+            f"{label} {field} mismatch: report={actual!r} reference={expected!r}"
+        )
+
+
+def aggregate_rust_metrics(report_metrics: dict[str, Any], report_rounds: list[dict[str, Any]]) -> dict[str, int]:
+    aggregate = {
+        field: metric_value(report_metrics, field)
+        for field in METRIC_FIELDS
+        if field not in {"framesWithPlayers", "playersWithWeapons"}
+    }
+    frames_with_players = 0
+    players_with_weapons = 0
+    for round_obj in report_rounds:
+        rust = round_obj.get("rust")
+        if not isinstance(rust, dict):
+            continue
+        frames_with_players += int(rust.get("framesWithPlayers", 0) or 0)
+        players_with_weapons += int(rust.get("playersWithWeapons", 0) or 0)
+    aggregate["framesWithPlayers"] = frames_with_players
+    aggregate["playersWithWeapons"] = players_with_weapons
+    return aggregate
+
+
+def assert_metrics_match(label: str, actual: dict[str, int], reference: dict[str, Any]) -> None:
+    for field in METRIC_FIELDS:
+        expect_equal(label, field, actual.get(field), reference.get(field))
+
+
+def round_kill_count(summary: dict[str, Any]) -> int:
+    return int(summary.get("eventCounts", {}).get("kill", 0))
+
+
+def round_bomb_event_count(summary: dict[str, Any]) -> int:
+    event_counts = summary.get("eventCounts", {})
+    return sum(int(event_counts.get(kind, 0)) for kind in BOMB_EVENTS)
+
+
+def assert_round_metrics_match(
+    label: str,
+    report_rounds: list[dict[str, Any]],
+    reference_rounds: list[dict[str, Any]],
+) -> None:
+    expect_equal(label, "roundMetrics.length", len(report_rounds), len(reference_rounds))
+    for idx, (report_round, reference_round) in enumerate(zip(report_rounds, reference_rounds)):
+        rust = report_round.get("rust")
+        if not isinstance(rust, dict):
+            raise AssertionError(f"{label} round {idx} is missing Rust round audit summary")
+        round_label = f"{label} round {idx}"
+        for field in ["number", "scoreA", "scoreB", "frames", "events", "effects", "weaponFires", "projectileFrames", "projectileSamples"]:
+            expect_equal(round_label, field, rust.get(field), reference_round.get(field))
+        expect_equal(round_label, "kills", round_kill_count(rust), reference_round.get("kills"))
+        expect_equal(
+            round_label,
+            "bombEvents",
+            round_bomb_event_count(rust),
+            reference_round.get("bombEvents"),
+        )
+
+
+def assert_no_unclassified_mismatches(report: dict[str, Any]) -> None:
+    summary = report.get("roundAuditSummary")
+    if not isinstance(summary, dict):
+        raise AssertionError("report is missing roundAuditSummary; rerun compare-parsers.py with --round-audit")
+    unclassified = summary.get("unclassifiedMismatchCounts", {})
+    if unclassified:
+        raise AssertionError(f"Go/Rust audit still has unclassified mismatches: {unclassified}")
+
+
+def assert_no_critical_signature_diffs(report: dict[str, Any]) -> None:
+    forbidden_fields = {"killSignatures", "bombSignatures"}
+    offenders = []
+    for result in report.get("results", []):
+        audit = result.get("roundAudit") or {}
+        for round_obj in audit.get("rounds", []):
+            for diff in round_obj.get("diffs", []):
+                if diff.get("field") in forbidden_fields:
+                    offenders.append(
+                        {
+                            "demo": result_key(result),
+                            "round": round_obj.get("index"),
+                            "field": diff.get("field"),
+                            "missingInRustCount": diff.get("missingInRustCount"),
+                            "extraInRustCount": diff.get("extraInRustCount"),
+                        }
+                    )
+    if offenders:
+        raise AssertionError(f"critical Go/Rust signature diffs remain: {offenders[:10]}")
+
+
+def audit(reference_path: Path, report_path: Path) -> list[str]:
+    snapshots = load_json(reference_path)
+    report = load_json(report_path)
+    if not isinstance(snapshots, list):
+        raise AssertionError(f"{reference_path} must contain a list of snapshots")
+    if report.get("quality") != "full" or report.get("skipHeavy") is not False:
+        raise AssertionError("snapshot audit expects a full-quality non-skip compare report")
+
+    assert_no_unclassified_mismatches(report)
+    assert_no_critical_signature_diffs(report)
+
+    results = {result_key(result): result for result in report.get("results", [])}
+    checked = []
+    for snapshot in snapshots:
+        file_name = snapshot.get("fileName")
+        if not isinstance(file_name, str):
+            raise AssertionError(f"snapshot without fileName: {snapshot!r}")
+        result = results.get(file_name)
+        if result is None:
+            raise AssertionError(f"report is missing reference demo {file_name}")
+
+        label = snapshot.get("label") or file_name
+        expected_score = result.get("expectedScore") or {}
+        expect_equal(label, "scoreA", expected_score.get("scoreA"), snapshot.get("scoreA"))
+        expect_equal(label, "scoreB", expected_score.get("scoreB"), snapshot.get("scoreB"))
+
+        go_metrics = result.get("go", {}).get("metrics", {})
+        rust_metrics = result.get("rust", {}).get("metrics", {})
+        expect_equal(label, "go.scoreA", go_metrics.get("scoreA"), snapshot.get("scoreA"))
+        expect_equal(label, "go.scoreB", go_metrics.get("scoreB"), snapshot.get("scoreB"))
+        expect_equal(label, "rust.scoreA", rust_metrics.get("scoreA"), snapshot.get("scoreA"))
+        expect_equal(label, "rust.scoreB", rust_metrics.get("scoreB"), snapshot.get("scoreB"))
+        round_audit = result.get("roundAudit")
+        if not isinstance(round_audit, dict):
+            raise AssertionError(f"{label} is missing roundAudit; rerun compare-parsers.py with --round-audit")
+        report_rounds = round_audit.get("rounds", [])
+        assert_metrics_match(
+            label,
+            aggregate_rust_metrics(rust_metrics, report_rounds),
+            snapshot.get("metrics", {}),
+        )
+        assert_round_metrics_match(
+            label,
+            report_rounds,
+            snapshot.get("roundMetrics", []),
+        )
+        checked.append(file_name)
+
+    extra = sorted(set(results) - set(checked))
+    if extra:
+        raise AssertionError(f"report contains demos that are not reference snapshots: {extra}")
+    return checked
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--reference", type=Path, default=DEFAULT_REFERENCE)
+    parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
+    args = parser.parse_args()
+
+    checked = audit(args.reference, args.report)
+    print(f"reference snapshot audit passed: {len(checked)} demos")
+    for file_name in checked:
+        print(f"- {file_name}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

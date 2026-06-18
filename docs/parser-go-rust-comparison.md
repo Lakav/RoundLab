@@ -16,6 +16,7 @@ Local comparison only. The archived Go parser is used as an oracle/debug aid, no
 python3 scripts/compare-parsers.py --prepare-go --build-rust --quality medium --skip-heavy --out .roundlab-compare/medium-skip.json
 python3 scripts/compare-parsers.py --quality full --round-audit --out .roundlab-compare/full-round-audit-replay-fidelity-kill-fire-normalized.json
 python3 scripts/compare-parsers.py --build-rust --quality full --round-audit --out .roundlab-compare/full-round-audit-projectile-integrity.json
+python3 scripts/audit-reference-snapshots.py --report .roundlab-compare/full-round-audit-projectile-integrity.json
 ```
 
 Use `--keep-outputs` for targeted event-level debugging.
@@ -25,6 +26,12 @@ JSON serialization, and max RSS per demo.
 Round-audit Markdown also includes an `Audit Summary` section that aggregates
 diff fields, missing/extra Rust counts, classification totals, and any remaining
 unclassified mismatches across all demos.
+`scripts/audit-reference-snapshots.py` is a read-only guard for saved reports:
+it checks that `parser/reference_demos.json` still matches the Rust side of a
+full-quality Go/Rust round audit, that filename/Go/Rust scores agree, and that
+the report has no unclassified or critical kill/bomb signature deltas. It needs
+the JSON report, not only the Markdown summary. It intentionally does not
+regenerate snapshots and does not claim exact tick-by-tick parity.
 
 The Rust integration tests can also validate the local reference demos directly
 without committing demo files. These tests use `parser/reference_demos.json` as

@@ -92,6 +92,11 @@ duplicate projectile identity inside a projectile frame.
 To add a reference demo, keep the `.dem`/`.dem.zst` outside Git, rename it as
 `<map><scoreA>-<scoreB>.dem.zst`, run both parser integration tests, then add
 only the lightweight snapshots to `parser/reference_demos.json`.
+After a full Go/Rust round audit, run
+`python3 scripts/audit-reference-snapshots.py --report .roundlab-compare/<report>.json`
+to verify that the saved Rust snapshots still match the Rust side of the latest
+audited report. This check is read-only and requires the JSON report, not only
+the Markdown summary.
 
 Parser output uses gzip for Tauri compatibility. For benchmarks, set
 `ROUNDLAB_PARSER_GZIP_LEVEL=0..9` to compare compression speed and output size.
