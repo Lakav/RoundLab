@@ -638,6 +638,39 @@ def projectile_position_delta(left: dict[str, Any], right: dict[str, Any], prefi
     return (dx * dx + dy * dy) ** 0.5
 
 
+def round_end_time(round_obj: dict[str, Any]) -> float:
+    for event in round_obj.get("events", []):
+        if event.get("type") == "round_end" and isinstance(event.get("t"), (int, float)):
+            return float(event["t"])
+    return 0.0
+
+
+def classify_projectile_mismatch(
+    mismatch: dict[str, Any],
+    rust_round_end: float,
+) -> str:
+    go_sig = mismatch["go"]
+    rust_sig = mismatch["rust"]
+    if (
+        go_sig["type"] == "smoke"
+        and rust_sig["type"] == "smoke"
+        and mismatch["startPositionDelta"] <= 1.0
+        and mismatch["endPositionDelta"] <= 100.0
+        and abs(float(rust_sig["end"]) - rust_round_end) <= 0.5
+        and float(go_sig["end"]) > float(rust_sig["end"]) + 1.0
+    ):
+        return "post_round_smoke_duration"
+    if (
+        go_sig["type"] in {"he", "flash"}
+        and go_sig["type"] == rust_sig["type"]
+        and go_sig["thrower"] == rust_sig["thrower"]
+        and mismatch["startPositionDelta"] <= 1.0
+        and mismatch["endPositionDelta"] <= 150.0
+    ):
+        return "overlapping_same_thrower_projectile"
+    return "unclassified"
+
+
 def compare_projectile_tracks(go_round: dict[str, Any], rust_round: dict[str, Any], limit: int = 10) -> dict[str, Any]:
     go_tracks = projectile_tracks(go_round)
     rust_tracks = projectile_tracks(rust_round)
@@ -685,12 +718,20 @@ def compare_projectile_tracks(go_round: dict[str, Any], rust_round: dict[str, An
                 }
             )
     extra = [projectile_track_signature(*rust_items[idx]) for idx in sorted(unmatched_rust)]
+    rust_round_end = round_end_time(rust_round)
+    classification_counts: dict[str, int] = {}
+    for mismatch in mismatched:
+        classification = classify_projectile_mismatch(mismatch, rust_round_end)
+        mismatch["classification"] = classification
+        classification_counts[classification] = classification_counts.get(classification, 0) + 1
     return {
         "missingInRustCount": len(missing),
         "missingInRustSample": missing[:limit],
         "extraInRustCount": len(extra),
         "extraInRustSample": extra[:limit],
         "trackMismatchCount": len(mismatched),
+        "trackMismatchClassifications": classification_counts,
+        "unclassifiedMismatchCount": classification_counts.get("unclassified", 0),
         "trackMismatchSample": mismatched[:limit],
     }
 
