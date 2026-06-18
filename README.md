@@ -73,14 +73,16 @@ Known reference demos are listed in `parser/reference_demos.json`. For those
 files, the tests enforce exact map and score identity plus snapshots for rounds,
 players, frames, kills, bomb events, bomb state, utility effects, weapon fires,
 and projectile frames. The snapshots also lock compact per-round kill,
-bomb-event, and utility-effect signatures. The score in the demo filename is the
-expected truth (`dust1-13.dem.zst` means `scoreA=1`, `scoreB=13`). The
-medium-quality skip test also verifies that lightweight parsing keeps core
-replay data while omitting weapon fires and projectile payloads. Full-quality
-integration tests also enforce structural replay invariants: monotonic round
-scores, sorted events and frames, bounded post-round events, no bomb state after
-bomb resolution, valid utility effects, valid weapon-fire poses, and no
-duplicate projectile identity inside a projectile frame.
+bomb-event, utility-effect, and weapon-fire signatures. Weapon-fire signatures
+include bucketed timing, shooter, weapon, team, position, and yaw. The score in
+the demo filename is the expected truth (`dust1-13.dem.zst` means `scoreA=1`,
+`scoreB=13`). The medium-quality skip test also verifies that lightweight
+parsing keeps core replay data while omitting weapon fires and projectile
+payloads. Full-quality integration tests also enforce structural replay
+invariants: monotonic round scores, sorted events and frames, bounded post-round
+events, no bomb state after bomb resolution, valid utility effects, valid
+weapon-fire poses, and no duplicate projectile identity inside a projectile
+frame.
 
 To add a reference demo, keep the `.dem`/`.dem.zst` outside Git, rename it as
 `<map><scoreA>-<scoreB>.dem.zst`, run both parser integration tests, then add

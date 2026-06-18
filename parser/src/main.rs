@@ -3054,6 +3054,7 @@ mod tests {
         round_metrics: Vec<RoundReplayMetrics>,
         round_event_signatures: Vec<RoundEventSignatures>,
         round_effect_signatures: Vec<RoundEffectSignatures>,
+        round_weapon_fire_signatures: Vec<RoundWeaponFireSignatures>,
         medium_skip_metrics: ReplayMetrics,
     }
 
@@ -3086,6 +3087,13 @@ mod tests {
     struct RoundEffectSignatures {
         number: usize,
         effects: Vec<String>,
+    }
+
+    #[derive(Debug, Deserialize, PartialEq, Eq)]
+    #[serde(rename_all = "camelCase")]
+    struct RoundWeaponFireSignatures {
+        number: usize,
+        weapon_fires: Vec<String>,
     }
 
     struct EnvVarGuard {
@@ -4851,6 +4859,11 @@ mod tests {
             &expected.round_effect_signatures,
             &expected.label,
         );
+        assert_round_weapon_fire_signatures_match_reference(
+            &collect_round_weapon_fire_signatures(output),
+            &expected.round_weapon_fire_signatures,
+            &expected.label,
+        );
     }
 
     fn assert_reference_demo_identity(output: &Output, expected: &ExpectedReplaySnapshot) {
@@ -4988,6 +5001,24 @@ mod tests {
             assert_eq!(
                 actual, expected,
                 "{label} round {idx} effect signatures changed: actual={actual:?} expected={expected:?}"
+            );
+        }
+    }
+
+    fn assert_round_weapon_fire_signatures_match_reference(
+        actual: &[RoundWeaponFireSignatures],
+        expected: &[RoundWeaponFireSignatures],
+        label: &str,
+    ) {
+        assert_eq!(
+            actual.len(),
+            expected.len(),
+            "{label} round weapon fire signature count changed"
+        );
+        for (idx, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+            assert_eq!(
+                actual, expected,
+                "{label} round {idx} weapon fire signatures changed: actual={actual:?} expected={expected:?}"
             );
         }
     }
@@ -5132,6 +5163,25 @@ mod tests {
             .collect()
     }
 
+    fn collect_round_weapon_fire_signatures(output: &Output) -> Vec<RoundWeaponFireSignatures> {
+        output
+            .rounds
+            .iter()
+            .map(|round| {
+                let mut weapon_fires = round
+                    .weapon_fires
+                    .iter()
+                    .map(weapon_fire_signature)
+                    .collect::<Vec<_>>();
+                weapon_fires.sort();
+                RoundWeaponFireSignatures {
+                    number: round.number,
+                    weapon_fires,
+                }
+            })
+            .collect()
+    }
+
     fn kill_signature(event: &Event) -> String {
         format!(
             "{:.3}|{}|{}|{}|{}|{}",
@@ -5182,6 +5232,23 @@ mod tests {
         }
     }
 
+    fn weapon_fire_signature(fire: &WeaponFireEvent) -> String {
+        format!(
+            "{:.3}|{}|{}|{}|{}|{}|{}|{}",
+            bucket_signature_time(fire.t),
+            optional_u64_signature(fire.shooter),
+            fire.weapon
+                .as_deref()
+                .map(normalized_weapon_fire_signature_weapon)
+                .unwrap_or_default(),
+            optional_i64_signature(fire.team),
+            bucket_signature_coord(fire.x),
+            bucket_signature_coord(fire.y),
+            bucket_signature_coord(fire.z),
+            bucket_signature_yaw(fire.yaw)
+        )
+    }
+
     fn bomb_event_signature(event: &Event) -> String {
         format!(
             "{:.3}|{}|{}",
@@ -5203,11 +5270,32 @@ mod tests {
         ((value / 50.0).round() * 50.0) as i64
     }
 
+    fn bucket_signature_yaw(value: f64) -> i64 {
+        let normalized = value.rem_euclid(360.0);
+        ((normalized / 15.0).round() as i64 * 15).rem_euclid(360)
+    }
+
     fn optional_u64_signature(value: Option<u64>) -> String {
         value.map(|value| value.to_string()).unwrap_or_default()
     }
 
+    fn optional_i64_signature(value: Option<i64>) -> String {
+        value.map(|value| value.to_string()).unwrap_or_default()
+    }
+
     fn normalized_signature_weapon(value: &str) -> String {
+        let normalized = normalized_base_signature_weapon(value);
+        match normalized.as_str() {
+            "inferno" | "incendiary" | "molotov" => "fire".into(),
+            _ => normalized,
+        }
+    }
+
+    fn normalized_weapon_fire_signature_weapon(value: &str) -> String {
+        normalized_base_signature_weapon(value)
+    }
+
+    fn normalized_base_signature_weapon(value: &str) -> String {
         let raw = value.trim().to_ascii_lowercase();
         let mut normalized = raw
             .strip_prefix("weapon_")
@@ -5225,7 +5313,6 @@ mod tests {
             "decoygrenade" => "decoy".into(),
             "plantedc4" => "c4".into(),
             "incgrenade" | "incendiarygrenade" => "incendiary".into(),
-            "inferno" | "incendiary" | "molotov" => "fire".into(),
             _ if normalized.starts_with("knife")
                 || matches!(normalized.as_str(), "bayonet" | "karambit") =>
             {
