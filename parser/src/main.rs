@@ -4227,6 +4227,48 @@ mod tests {
     }
 
     #[test]
+    fn projectile_grouping_removes_physical_duplicates_in_same_tick() {
+        let rows = vec![
+            ProjectileRow {
+                tick: 100,
+                entity_id: 10,
+                kind: ProjectileKind::Flash,
+                x: 100.0,
+                y: 200.0,
+                z: 300.0,
+                thrower: Some(76561198089762164),
+            },
+            ProjectileRow {
+                tick: 100,
+                entity_id: 11,
+                kind: ProjectileKind::Flash,
+                x: 103.0,
+                y: 204.0,
+                z: 300.0,
+                thrower: Some(76561198089762164),
+            },
+            ProjectileRow {
+                tick: 100,
+                entity_id: 12,
+                kind: ProjectileKind::Flash,
+                x: 107.0,
+                y: 200.0,
+                z: 300.0,
+                thrower: Some(76561198089762164),
+            },
+        ];
+
+        let grouped = group_projectile_rows(rows);
+        let projectiles = grouped.get(&100).expect("projectile frame");
+
+        assert_eq!(projectiles.len(), 2);
+        assert_eq!(projectiles[0].id, 1_000_000_000);
+        assert_eq!(projectiles[1].id, 1_000_000_001);
+        assert_eq!(projectiles[0].x, 100.0);
+        assert_eq!(projectiles[1].x, 107.0);
+    }
+
+    #[test]
     fn knife_round_detection_allows_long_pregame_duels() {
         let round = Round {
             number: 0,
@@ -5155,6 +5197,37 @@ mod tests {
                     seen.insert(key),
                     "{label} duplicate projectile in one frame"
                 );
+                for existing in tracks.keys() {
+                    let (existing_id, existing_kind, existing_thrower) = existing;
+                    if *existing_id == projectile.id
+                        || existing_kind != projectile_kind_label(&projectile.kind)
+                        || *existing_thrower != projectile.thrower
+                    {
+                        continue;
+                    }
+                    let Some(existing_points) = tracks.get(existing) else {
+                        continue;
+                    };
+                    let Some((existing_t, existing_x, existing_y, existing_z)) =
+                        existing_points.last().copied()
+                    else {
+                        continue;
+                    };
+                    if (existing_t - frame.t).abs() > 0.001 {
+                        continue;
+                    }
+                    let distance = ((existing_x - projectile.x).powi(2)
+                        + (existing_y - projectile.y).powi(2)
+                        + (existing_z - projectile.z).powi(2))
+                    .sqrt();
+                    assert!(
+                        distance >= 6.0,
+                        "{label} physically duplicated projectile in one frame: current=({}, {}, {:?}) existing={existing:?} distance={distance}",
+                        projectile.id,
+                        projectile_kind_label(&projectile.kind),
+                        projectile.thrower,
+                    );
+                }
                 tracks
                     .entry((
                         projectile.id,

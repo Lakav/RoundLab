@@ -1104,6 +1104,7 @@ def projectile_tracks(round_obj: dict[str, Any]) -> dict[tuple[Any, str, Any], l
 
 def projectile_integrity(round_obj: dict[str, Any]) -> dict[str, Any]:
     duplicate_projectiles = 0
+    physically_duplicate_projectiles = 0
     non_monotonic_frames = 0
     previous_t: float | None = None
     for frame in round_obj.get("projectileFrames", []):
@@ -1112,15 +1113,43 @@ def projectile_integrity(round_obj: dict[str, Any]) -> dict[str, Any]:
             non_monotonic_frames += 1
         previous_t = frame_t
         seen = set()
+        physical_projectiles = []
         for projectile in frame.get("projectiles", []):
+            kind = normalize_projectile_type(projectile.get("type"))
+            thrower = projectile.get("thrower")
+            x = float(projectile.get("x", 0.0) or 0.0)
+            y = float(projectile.get("y", 0.0) or 0.0)
+            z = float(projectile.get("z", 0.0) or 0.0)
             key = (
                 projectile.get("id"),
-                normalize_projectile_type(projectile.get("type")),
-                projectile.get("thrower"),
+                kind,
+                thrower,
             )
             if key in seen:
                 duplicate_projectiles += 1
             seen.add(key)
+            for (
+                existing_id,
+                existing_kind,
+                existing_thrower,
+                existing_x,
+                existing_y,
+                existing_z,
+            ) in physical_projectiles:
+                if (
+                    existing_id == projectile.get("id")
+                    or existing_kind != kind
+                    or existing_thrower != thrower
+                ):
+                    continue
+                distance = (
+                    (existing_x - x) ** 2
+                    + (existing_y - y) ** 2
+                    + (existing_z - z) ** 2
+                ) ** 0.5
+                if distance < 6.0:
+                    physically_duplicate_projectiles += 1
+            physical_projectiles.append((projectile.get("id"), kind, thrower, x, y, z))
 
     track_breaks = 0
     teleport_count = 0
@@ -1144,6 +1173,7 @@ def projectile_integrity(round_obj: dict[str, Any]) -> dict[str, Any]:
     return {
         "projectileTrackCount": len(tracks),
         "duplicateProjectiles": duplicate_projectiles,
+        "physicallyDuplicateProjectiles": physically_duplicate_projectiles,
         "nonMonotonicProjectileFrames": non_monotonic_frames,
         "projectileTrackBreaks": track_breaks,
         "projectileTeleportCount": teleport_count,
@@ -1303,6 +1333,7 @@ def round_audit(go_output: Path, rust_output: Path) -> dict[str, Any]:
                 "projectileSamples",
                 "projectileTrackCount",
                 "duplicateProjectiles",
+                "physicallyDuplicateProjectiles",
                 "nonMonotonicProjectileFrames",
                 "projectileTrackBreaks",
                 "projectileTeleportCount",
