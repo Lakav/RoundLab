@@ -3009,8 +3009,8 @@ mod tests {
         add_missing_terminal_flash_effects, adjust_decoy_effects_from_projectiles,
         build_round_payload, commit_split_output, group_projectile_rows, looks_like_knife_round,
         parse_args_from, parse_demo_to_output, parser_gzip_compression, read_capped, read_demo,
-        round_events, sample_step, seconds_since, write_json_gz, Args, BombState, Event, Frame,
-        Output, ProjectileFrame, ProjectileKind, ProjectilePos, ProjectileRow, Round,
+        round_events, sample_step, seconds_since, write_json_gz, ActiveAction, Args, BombState,
+        Event, Frame, Output, ProjectileFrame, ProjectileKind, ProjectilePos, ProjectileRow, Round,
         RoundBuildContext, RoundSpan, TickRow, UtilityEffect, WeaponFireEvent, MAX_DEMO_SIZE,
     };
     use flate2::{read::GzDecoder, Compression};
@@ -3056,6 +3056,7 @@ mod tests {
         round_effect_signatures: Vec<RoundEffectSignatures>,
         round_weapon_fire_signatures: Vec<RoundWeaponFireSignatures>,
         round_bomb_state_signatures: Vec<RoundBombStateSignatures>,
+        round_active_action_signatures: Vec<RoundActiveActionSignatures>,
         medium_skip_metrics: ReplayMetrics,
     }
 
@@ -3104,6 +3105,13 @@ mod tests {
         bomb_states: Vec<String>,
     }
 
+    #[derive(Debug, Deserialize, PartialEq, Eq)]
+    #[serde(rename_all = "camelCase")]
+    struct RoundActiveActionSignatures {
+        number: usize,
+        active_actions: Vec<String>,
+    }
+
     struct BombStateWindow<'a> {
         start_t: f64,
         end_t: f64,
@@ -3111,6 +3119,16 @@ mod tests {
         end_cause: String,
         start_bomb: &'a BombState,
         end_bomb: &'a BombState,
+    }
+
+    struct ActiveActionWindow<'a> {
+        player: u64,
+        start_t: f64,
+        end_t: f64,
+        samples: usize,
+        start_elapsed: f64,
+        end_elapsed: f64,
+        action: &'a ActiveAction,
     }
 
     struct EnvVarGuard {
@@ -4886,6 +4904,11 @@ mod tests {
             &expected.round_bomb_state_signatures,
             &expected.label,
         );
+        assert_round_active_action_signatures_match_reference(
+            &collect_round_active_action_signatures(output),
+            &expected.round_active_action_signatures,
+            &expected.label,
+        );
     }
 
     fn assert_reference_demo_identity(output: &Output, expected: &ExpectedReplaySnapshot) {
@@ -5063,6 +5086,24 @@ mod tests {
         }
     }
 
+    fn assert_round_active_action_signatures_match_reference(
+        actual: &[RoundActiveActionSignatures],
+        expected: &[RoundActiveActionSignatures],
+        label: &str,
+    ) {
+        assert_eq!(
+            actual.len(),
+            expected.len(),
+            "{label} round active-action signature count changed"
+        );
+        for (idx, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+            assert_eq!(
+                actual, expected,
+                "{label} round {idx} active-action signatures changed: actual={actual:?} expected={expected:?}"
+            );
+        }
+    }
+
     fn collect_replay_metrics(output: &Output) -> ReplayMetrics {
         let mut metrics = ReplayMetrics {
             rounds: output.rounds.len(),
@@ -5236,6 +5277,99 @@ mod tests {
             .collect()
     }
 
+    fn collect_round_active_action_signatures(output: &Output) -> Vec<RoundActiveActionSignatures> {
+        output
+            .rounds
+            .iter()
+            .map(|round| {
+                let mut active_actions = active_action_windows(round)
+                    .iter()
+                    .map(active_action_signature)
+                    .collect::<Vec<_>>();
+                active_actions.sort();
+                RoundActiveActionSignatures {
+                    number: round.number,
+                    active_actions,
+                }
+            })
+            .collect()
+    }
+
+    fn active_action_windows(round: &Round) -> Vec<ActiveActionWindow<'_>> {
+        let mut windows = Vec::new();
+        let mut current: HashMap<u64, ActiveActionWindow<'_>> = HashMap::new();
+
+        for frame in &round.frames {
+            let mut seen_action_players = HashSet::new();
+            for player in &frame.players {
+                let Some(action) = player.active_action.as_ref() else {
+                    if let Some(window) = current.remove(&player.id) {
+                        windows.push(window);
+                    }
+                    continue;
+                };
+                seen_action_players.insert(player.id);
+                match current.get_mut(&player.id) {
+                    Some(window) if active_action_matches(window.action, action) => {
+                        window.end_t = frame.t;
+                        window.samples += 1;
+                        window.end_elapsed = action.elapsed;
+                        window.action = action;
+                    }
+                    Some(_) => {
+                        if let Some(window) = current.remove(&player.id) {
+                            windows.push(window);
+                        }
+                        current.insert(
+                            player.id,
+                            new_active_action_window(player.id, frame.t, action),
+                        );
+                    }
+                    None => {
+                        current.insert(
+                            player.id,
+                            new_active_action_window(player.id, frame.t, action),
+                        );
+                    }
+                }
+            }
+
+            let finished = current
+                .keys()
+                .copied()
+                .filter(|player_id| !seen_action_players.contains(player_id))
+                .collect::<Vec<_>>();
+            for player_id in finished {
+                if let Some(window) = current.remove(&player_id) {
+                    windows.push(window);
+                }
+            }
+        }
+
+        windows.extend(current.into_values());
+        windows
+    }
+
+    fn new_active_action_window(
+        player: u64,
+        frame_t: f64,
+        action: &ActiveAction,
+    ) -> ActiveActionWindow<'_> {
+        ActiveActionWindow {
+            player,
+            start_t: frame_t,
+            end_t: frame_t,
+            samples: 1,
+            start_elapsed: action.elapsed,
+            end_elapsed: action.elapsed,
+            action,
+        }
+    }
+
+    fn active_action_matches(left: &ActiveAction, right: &ActiveAction) -> bool {
+        left.kind == right.kind && left.item == right.item && left.duration == right.duration
+    }
+
     fn bomb_state_windows(round: &Round) -> Vec<BombStateWindow<'_>> {
         let mut windows = Vec::new();
         let mut current: Option<BombStateWindow<'_>> = None;
@@ -5405,6 +5539,30 @@ mod tests {
         )
     }
 
+    fn active_action_signature(window: &ActiveActionWindow<'_>) -> String {
+        format!(
+            "{:.3}|{:.3}|{}|{}|{}|{}|{:.3}|{:.3}|{}",
+            bucket_signature_time(window.start_t),
+            bucket_signature_time(window.end_t),
+            window.player,
+            window.action.kind,
+            normalized_active_action_item(&window.action.item),
+            window.samples,
+            bucket_signature_time(window.start_elapsed),
+            bucket_signature_time(window.end_elapsed),
+            optional_f64_signature(window.action.duration)
+        )
+    }
+
+    fn normalized_active_action_item(value: &str) -> String {
+        let trimmed = value.trim();
+        if trimmed.eq_ignore_ascii_case("c4") {
+            "c4".into()
+        } else {
+            normalized_base_signature_weapon(trimmed)
+        }
+    }
+
     fn bomb_event_signature(event: &Event) -> String {
         format!(
             "{:.3}|{}|{}",
@@ -5437,6 +5595,12 @@ mod tests {
 
     fn optional_i64_signature(value: Option<i64>) -> String {
         value.map(|value| value.to_string()).unwrap_or_default()
+    }
+
+    fn optional_f64_signature(value: Option<f64>) -> String {
+        value
+            .map(|value| format!("{:.1}", bucket_signature_duration(value)))
+            .unwrap_or_default()
     }
 
     fn normalized_signature_weapon(value: &str) -> String {
