@@ -3017,7 +3017,7 @@ mod tests {
     use serde::Deserialize;
     use serde_json::{json, Value};
     use std::{
-        collections::{BTreeMap, HashSet},
+        collections::{BTreeMap, HashMap, HashSet},
         env,
         io::{Read, Write},
         path::Path,
@@ -4671,7 +4671,11 @@ mod tests {
     }
 
     fn assert_projectile_frames_are_structurally_valid(frames: &[ProjectileFrame], label: &str) {
+        type ProjectileTrackKey = (i64, String, Option<u64>);
+        type ProjectileTrackPoint = (f64, f64, f64, f64);
+
         let mut previous_t = 0.0;
+        let mut tracks: HashMap<ProjectileTrackKey, Vec<ProjectileTrackPoint>> = HashMap::new();
         for frame in frames {
             assert!(
                 frame.t.is_finite(),
@@ -4698,6 +4702,40 @@ mod tests {
                 assert!(
                     seen.insert(key),
                     "{label} duplicate projectile in one frame"
+                );
+                tracks
+                    .entry((
+                        projectile.id,
+                        projectile_kind_label(&projectile.kind).to_string(),
+                        projectile.thrower,
+                    ))
+                    .or_default()
+                    .push((frame.t, projectile.x, projectile.y, projectile.z));
+            }
+        }
+        for (key, points) in tracks {
+            for pair in points.windows(2) {
+                let (left_t, left_x, left_y, left_z) = pair[0];
+                let (right_t, right_x, right_y, right_z) = pair[1];
+                let dt = right_t - left_t;
+                assert!(
+                    dt > 0.0,
+                    "{label} projectile track {:?} has non-increasing samples",
+                    key
+                );
+                assert!(
+                    dt <= 0.25,
+                    "{label} projectile track {:?} has a time break: {left_t}->{right_t}",
+                    key
+                );
+                let distance = ((right_x - left_x).powi(2)
+                    + (right_y - left_y).powi(2)
+                    + (right_z - left_z).powi(2))
+                .sqrt();
+                assert!(
+                    !(dt <= 0.1 && distance > 900.0),
+                    "{label} projectile track {:?} teleported: dt={dt} distance={distance}",
+                    key
                 );
             }
         }
