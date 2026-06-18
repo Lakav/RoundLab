@@ -100,6 +100,10 @@ bomb-state/action and projectile-track signatures, plus the current allowlisted
 Go/Rust classified tolerance signatures for bomb events, bomb-state windows,
 utility effects, weapon fires, and projectile tracks. This check is read-only
 and requires the JSON report, not only the Markdown summary.
+For a fast check that does not require parser outputs, run
+`python3 scripts/audit-reference-snapshots.py --reference-only` to validate the
+reference snapshot structure, score truth, per-round list lengths, and aggregate
+round totals.
 
 Parser output uses gzip for Tauri compatibility. For benchmarks, set
 `ROUNDLAB_PARSER_GZIP_LEVEL=0..9` to compare compression speed and output size.

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +54,13 @@ SNAPSHOT_SIGNATURE_FIELDS = [
     "roundProjectileTrackSignatures",
 ]
 
+REFERENCE_ROUND_LIST_FIELDS = [
+    "roundMetrics",
+    *SNAPSHOT_SIGNATURE_FIELDS,
+    "roundWeaponFireToleranceSignatures",
+    "roundClassifiedToleranceSignatures",
+]
+
 RUST_ZERO_INTEGRITY_FIELDS = [
     "duplicateProjectiles",
     "physicallyDuplicateProjectiles",
@@ -83,6 +91,89 @@ def expect_equal(label: str, field: str, actual: Any, expected: Any) -> None:
         raise AssertionError(
             f"{label} {field} mismatch: report={actual!r} reference={expected!r}"
         )
+
+
+def expected_score_from_name(file_name: str) -> tuple[int, int] | None:
+    match = re.search(r"(\d+)-(\d+)\.dem(?:\.zst)?$", file_name)
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
+def reference_int(value: Any, label: str, field: str) -> int:
+    if not isinstance(value, int):
+        raise AssertionError(f"{label} reference {field} is missing or not an int: {value!r}")
+    return value
+
+
+def assert_reference_snapshot_shape(snapshot: dict[str, Any]) -> str:
+    file_name = snapshot.get("fileName")
+    if not isinstance(file_name, str):
+        raise AssertionError(f"snapshot without fileName: {snapshot!r}")
+    label = snapshot.get("label") or file_name
+
+    expected_score = expected_score_from_name(file_name)
+    if expected_score is None:
+        raise AssertionError(f"{label} fileName does not contain score truth: {file_name}")
+    expect_equal(label, "scoreA", snapshot.get("scoreA"), expected_score[0])
+    expect_equal(label, "scoreB", snapshot.get("scoreB"), expected_score[1])
+
+    metrics = snapshot.get("metrics")
+    if not isinstance(metrics, dict):
+        raise AssertionError(f"{label} reference metrics is missing or not an object")
+    for field in METRIC_FIELDS:
+        reference_int(metrics.get(field), label, f"metrics.{field}")
+
+    round_metrics = snapshot.get("roundMetrics")
+    if not isinstance(round_metrics, list):
+        raise AssertionError(f"{label} roundMetrics is missing or not a list")
+    expect_equal(label, "metrics.rounds", metrics.get("rounds"), len(round_metrics))
+
+    for field in REFERENCE_ROUND_LIST_FIELDS:
+        values = snapshot.get(field)
+        if not isinstance(values, list):
+            raise AssertionError(f"{label} {field} is missing or not a list")
+        expect_equal(label, f"{field}.length", len(values), len(round_metrics))
+        for idx, item in enumerate(values):
+            if not isinstance(item, dict):
+                raise AssertionError(f"{label} {field}[{idx}] is not an object")
+            expected_number = round_metrics[idx].get("number")
+            expect_equal(label, f"{field}[{idx}].number", item.get("number"), expected_number)
+
+    sum_fields = [
+        "frames",
+        "events",
+        "kills",
+        "bombEvents",
+        "effects",
+        "weaponFires",
+        "projectileFrames",
+        "projectileSamples",
+    ]
+    for field in sum_fields:
+        total = sum(
+            reference_int(round_obj.get(field), label, f"roundMetrics.{field}")
+            for round_obj in round_metrics
+        )
+        expect_equal(label, f"metrics.{field}", metrics.get(field), total)
+
+    if round_metrics:
+        final_round = round_metrics[-1]
+        expect_equal(label, "final scoreA", final_round.get("scoreA"), snapshot.get("scoreA"))
+        expect_equal(label, "final scoreB", final_round.get("scoreB"), snapshot.get("scoreB"))
+
+    return file_name
+
+
+def audit_reference_only(reference_path: Path) -> list[str]:
+    snapshots = load_json(reference_path)
+    if not isinstance(snapshots, list):
+        raise AssertionError(f"{reference_path} must contain a list of snapshots")
+    checked = [assert_reference_snapshot_shape(snapshot) for snapshot in snapshots]
+    duplicates = sorted(name for name in set(checked) if checked.count(name) > 1)
+    if duplicates:
+        raise AssertionError(f"duplicate reference snapshots: {duplicates}")
+    return checked
 
 
 def aggregate_rust_metrics(report_metrics: dict[str, Any], report_rounds: list[dict[str, Any]]) -> dict[str, int]:
@@ -255,6 +346,8 @@ def audit(reference_path: Path, report_path: Path) -> list[str]:
     report = load_json(report_path)
     if not isinstance(snapshots, list):
         raise AssertionError(f"{reference_path} must contain a list of snapshots")
+    for snapshot in snapshots:
+        assert_reference_snapshot_shape(snapshot)
     if report.get("quality") != "full" or report.get("skipHeavy") is not False:
         raise AssertionError("snapshot audit expects a full-quality non-skip compare report")
 
@@ -312,10 +405,20 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--reference", type=Path, default=DEFAULT_REFERENCE)
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
+    parser.add_argument(
+        "--reference-only",
+        action="store_true",
+        help="validate parser/reference_demos.json structure without a Go/Rust report",
+    )
     args = parser.parse_args()
 
-    checked = audit(args.reference, args.report)
-    print(f"reference snapshot audit passed: {len(checked)} demos")
+    checked = (
+        audit_reference_only(args.reference)
+        if args.reference_only
+        else audit(args.reference, args.report)
+    )
+    mode = "reference snapshot shape audit" if args.reference_only else "reference snapshot audit"
+    print(f"{mode} passed: {len(checked)} demos")
     for file_name in checked:
         print(f"- {file_name}")
     return 0
