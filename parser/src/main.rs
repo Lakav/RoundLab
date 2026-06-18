@@ -265,11 +265,8 @@ struct Round {
     score_b: i32,
     frames: Vec<Frame>,
     events: Vec<Event>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     effects: Vec<UtilityEffect>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     weapon_fires: Vec<WeaponFireEvent>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     projectile_frames: Vec<ProjectileFrame>,
 }
 
@@ -332,11 +329,8 @@ struct ManifestRound {
     score_b: i32,
     frames: Vec<Frame>,
     events: Vec<Event>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     effects: Vec<UtilityEffect>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     weapon_fires: Vec<WeaponFireEvent>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     projectile_frames: Vec<ProjectileFrame>,
     round_file: String,
 }
@@ -3885,6 +3879,7 @@ mod tests {
 
             write_json_gz(&args.output, &output).unwrap();
             let json = read_gzip_json(&output_path);
+            assert_manifest_json_contract(&json);
             assert_eq!(
                 json["rounds"].as_array().unwrap().len(),
                 output.rounds.len()
@@ -4040,6 +4035,7 @@ mod tests {
         let mut split_frames_with_embedded_projectiles = 0usize;
 
         for (idx, manifest_round) in rounds.iter().enumerate() {
+            assert_manifest_round_json_contract(manifest_round);
             assert_eq!(
                 manifest_round["frames"].as_array().unwrap().len(),
                 0,
@@ -4063,6 +4059,7 @@ mod tests {
                 "missing split round file: {round_file}"
             );
             let round_json = read_gzip_json(&round_path);
+            assert_round_json_contract(&round_json);
             assert_eq!(
                 round_json["number"].as_u64().unwrap(),
                 output.rounds[idx].number as u64
@@ -4181,6 +4178,176 @@ mod tests {
             split_frames_with_embedded_projectiles, 0,
             "split output duplicated projectile payloads in frames"
         );
+    }
+
+    fn assert_manifest_json_contract(manifest: &Value) {
+        assert_object_has_keys(manifest, &["meta", "players", "rounds"], "manifest");
+        assert_object_has_keys(
+            &manifest["meta"],
+            &[
+                "map",
+                "tickRate",
+                "sampleRate",
+                "durationSec",
+                "teamA",
+                "teamB",
+                "scoreA",
+                "scoreB",
+            ],
+            "manifest meta",
+        );
+        let players = manifest["players"]
+            .as_array()
+            .expect("manifest players array");
+        if let Some(player) = players.first() {
+            assert_object_has_keys(player, &["steamId", "name", "team"], "manifest player");
+        }
+    }
+
+    fn assert_manifest_round_json_contract(round: &Value) {
+        assert_object_has_keys(
+            round,
+            &[
+                "number",
+                "startTick",
+                "freezeEndTick",
+                "endTick",
+                "duration",
+                "winner",
+                "scoreA",
+                "scoreB",
+                "frames",
+                "events",
+                "effects",
+                "weaponFires",
+                "projectileFrames",
+                "roundFile",
+            ],
+            "manifest round",
+        );
+    }
+
+    fn assert_round_json_contract(round: &Value) {
+        assert_object_has_keys(
+            round,
+            &[
+                "number",
+                "startTick",
+                "freezeEndTick",
+                "endTick",
+                "duration",
+                "winner",
+                "scoreA",
+                "scoreB",
+                "frames",
+                "events",
+                "effects",
+                "weaponFires",
+                "projectileFrames",
+            ],
+            "split round",
+        );
+        assert!(
+            round.get("roundFile").is_none(),
+            "split round must not contain roundFile"
+        );
+
+        let frames = round["frames"].as_array().expect("round frames array");
+        if let Some(frame) = frames.first() {
+            assert_object_has_keys(frame, &["t", "players"], "frame");
+            if let Some(bomb) = frame.get("bomb").filter(|bomb| !bomb.is_null()) {
+                assert_object_has_keys(bomb, &["x", "y", "z", "status"], "frame bomb");
+            }
+            if let Some(projectiles) = frame.get("projectiles").and_then(Value::as_array) {
+                if let Some(projectile) = projectiles.first() {
+                    assert_projectile_json_contract(projectile, "frame projectile");
+                }
+            }
+            if let Some(player) = frame["players"]
+                .as_array()
+                .and_then(|players| players.first())
+            {
+                assert_object_has_keys(
+                    player,
+                    &["id", "x", "y", "z", "yaw", "hp", "armor", "team"],
+                    "frame player",
+                );
+                if let Some(action) = player
+                    .get("activeAction")
+                    .filter(|action| !action.is_null())
+                {
+                    assert_object_has_keys(
+                        action,
+                        &["type", "item", "elapsed"],
+                        "frame player activeAction",
+                    );
+                }
+            }
+        }
+
+        let events = round["events"].as_array().expect("round events array");
+        if let Some(event) = events.first() {
+            assert_object_has_keys(event, &["t", "type"], "round event");
+        }
+        if let Some(kill) = events
+            .iter()
+            .find(|event| event.get("type").and_then(Value::as_str) == Some("kill"))
+        {
+            assert_object_has_keys(kill, &["t", "type", "victim", "weapon"], "kill event");
+        }
+        if let Some(bomb_event) = events.iter().find(|event| {
+            matches!(
+                event.get("type").and_then(Value::as_str),
+                Some("bomb_planted")
+                    | Some("bomb_defuse_start")
+                    | Some("bomb_defuse_abort")
+                    | Some("bomb_defused")
+                    | Some("bomb_exploded")
+            )
+        }) {
+            assert_object_has_keys(bomb_event, &["t", "type"], "bomb event");
+        }
+
+        let effects = round["effects"].as_array().expect("round effects array");
+        if let Some(effect) = effects.first() {
+            assert_object_has_keys(effect, &["type", "start", "end", "x", "y", "z"], "effect");
+        }
+
+        let weapon_fires = round["weaponFires"]
+            .as_array()
+            .expect("round weaponFires array");
+        if let Some(fire) = weapon_fires.first() {
+            assert_object_has_keys(fire, &["t", "x", "y", "z", "yaw"], "weapon fire");
+        }
+
+        let projectile_frames = round["projectileFrames"]
+            .as_array()
+            .expect("round projectileFrames array");
+        if let Some(projectile_frame) = projectile_frames.first() {
+            assert_object_has_keys(projectile_frame, &["t", "projectiles"], "projectile frame");
+            if let Some(projectile) = projectile_frame["projectiles"]
+                .as_array()
+                .and_then(|projectiles| projectiles.first())
+            {
+                assert_projectile_json_contract(projectile, "projectile frame projectile");
+            }
+        }
+    }
+
+    fn assert_projectile_json_contract(projectile: &Value, context: &str) {
+        assert_object_has_keys(projectile, &["id", "type", "x", "y", "z"], context);
+    }
+
+    fn assert_object_has_keys(value: &Value, keys: &[&str], context: &str) {
+        let object = value.as_object().unwrap_or_else(|| {
+            panic!("{context} must be a JSON object, got {value}");
+        });
+        for key in keys {
+            assert!(
+                object.contains_key(*key),
+                "{context} missing JSON key `{key}` in {value}"
+            );
+        }
     }
 
     fn assert_split_output_omits_skipped_payloads(

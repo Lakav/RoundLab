@@ -29,7 +29,11 @@ unclassified mismatches across all demos.
 The Rust integration tests can also validate the local reference demos directly
 without committing demo files. These tests use `parser/reference_demos.json` as
 strict lightweight metric snapshots, not loose lower bounds, so intentional
-parser output changes must update the snapshot deliberately:
+parser output changes must update the snapshot deliberately. The full-quality
+test also locks the split JSON contract expected by Tauri: manifest rounds keep
+empty `frames`, `events`, `effects`, `weaponFires`, and `projectileFrames`
+arrays plus `roundFile`, while split round files contain the full replay arrays
+without a recursive `roundFile`.
 
 ```bash
 cd parser
