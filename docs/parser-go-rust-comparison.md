@@ -27,7 +27,9 @@ diff fields, missing/extra Rust counts, classification totals, and any remaining
 unclassified mismatches across all demos.
 
 The Rust integration tests can also validate the local reference demos directly
-without committing demo files:
+without committing demo files. These tests use `parser/reference_demos.json` as
+strict lightweight metric snapshots, not loose lower bounds, so intentional
+parser output changes must update the snapshot deliberately:
 
 ```bash
 cd parser

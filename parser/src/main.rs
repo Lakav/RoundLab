@@ -3050,7 +3050,7 @@ mod tests {
 
     #[derive(Debug, Deserialize)]
     #[serde(rename_all = "camelCase")]
-    struct ExpectedReplayFloor {
+    struct ExpectedReplaySnapshot {
         file_name: String,
         label: String,
         map: String,
@@ -3879,8 +3879,8 @@ mod tests {
             assert_replay_output_is_usable(&output);
             assert_round_level_replay_integrity(&output);
             assert_projectiles_are_not_duplicated_in_frames(&output);
-            if let Some(expected) = expected_floor_for_demo(&args.input) {
-                assert_reference_demo_floor(&output, &expected);
+            if let Some(expected) = expected_snapshot_for_demo(&args.input) {
+                assert_reference_demo_snapshot(&output, &expected);
             }
 
             write_json_gz(&args.output, &output).unwrap();
@@ -3892,8 +3892,8 @@ mod tests {
             assert!(json["meta"]["tickRate"].as_f64().unwrap_or_default() > 0.0);
             assert!(json["players"].as_array().unwrap().len() >= output.players.len());
             assert_split_output_is_usable(&output_path, &json, &output);
-            if let Some(expected) = expected_floor_for_demo(&args.input) {
-                assert_split_reference_demo_floor(&json, &expected);
+            if let Some(expected) = expected_snapshot_for_demo(&args.input) {
+                assert_split_reference_demo_snapshot(&json, &expected);
             }
         }
     }
@@ -3925,9 +3925,9 @@ mod tests {
             assert_round_level_core_integrity(&output);
             assert_eq!(output.meta.sample_rate, 2);
             assert_skip_options_removed_heavy_payloads(&output);
-            if let Some(expected) = expected_floor_for_demo(&args.input) {
+            if let Some(expected) = expected_snapshot_for_demo(&args.input) {
                 assert_reference_demo_identity(&output, &expected);
-                assert_metrics_meet_floor(
+                assert_metrics_match_reference(
                     &collect_replay_metrics(&output),
                     &expected.medium_skip_metrics,
                     &expected.label,
@@ -4580,24 +4580,26 @@ mod tests {
             .unwrap_or_default()
     }
 
-    fn expected_floor_for_demo(input: &str) -> Option<ExpectedReplayFloor> {
+    fn expected_snapshot_for_demo(input: &str) -> Option<ExpectedReplaySnapshot> {
         let file_name = Path::new(input).file_name()?.to_str()?;
-        let floors: Vec<ExpectedReplayFloor> =
+        let snapshots: Vec<ExpectedReplaySnapshot> =
             serde_json::from_str(include_str!("../reference_demos.json"))
                 .expect("valid parser/reference_demos.json");
-        floors.into_iter().find(|demo| demo.file_name == file_name)
+        snapshots
+            .into_iter()
+            .find(|demo| demo.file_name == file_name)
     }
 
-    fn assert_reference_demo_floor(output: &Output, expected: &ExpectedReplayFloor) {
+    fn assert_reference_demo_snapshot(output: &Output, expected: &ExpectedReplaySnapshot) {
         assert_reference_demo_identity(output, expected);
-        assert_metrics_meet_floor(
+        assert_metrics_match_reference(
             &collect_replay_metrics(output),
             &expected.metrics,
             &expected.label,
         );
     }
 
-    fn assert_reference_demo_identity(output: &Output, expected: &ExpectedReplayFloor) {
+    fn assert_reference_demo_identity(output: &Output, expected: &ExpectedReplaySnapshot) {
         assert_eq!(
             output.meta.map, expected.map,
             "reference demo map changed for {}",
@@ -4615,7 +4617,7 @@ mod tests {
         );
     }
 
-    fn assert_split_reference_demo_floor(manifest: &Value, expected: &ExpectedReplayFloor) {
+    fn assert_split_reference_demo_snapshot(manifest: &Value, expected: &ExpectedReplaySnapshot) {
         assert_eq!(
             manifest["meta"]["map"].as_str().unwrap_or_default(),
             expected.map,
@@ -4647,34 +4649,39 @@ mod tests {
         );
     }
 
-    fn assert_metrics_meet_floor(actual: &ReplayMetrics, floor: &ReplayMetrics, label: &str) {
-        macro_rules! floor {
+    fn assert_metrics_match_reference(
+        actual: &ReplayMetrics,
+        expected: &ReplayMetrics,
+        label: &str,
+    ) {
+        macro_rules! exact {
             ($field:ident) => {
-                assert!(
-                    actual.$field >= floor.$field,
-                    "{} {} below floor: actual={} floor={}",
+                assert_eq!(
+                    actual.$field,
+                    expected.$field,
+                    "{} {} changed: actual={} expected={}",
                     label,
                     stringify!($field),
                     actual.$field,
-                    floor.$field
+                    expected.$field
                 );
             };
         }
 
-        floor!(rounds);
-        floor!(players);
-        floor!(frames);
-        floor!(frame_players);
-        floor!(frames_with_players);
-        floor!(frames_with_bomb_state);
-        floor!(players_with_weapons);
-        floor!(events);
-        floor!(kills);
-        floor!(bomb_events);
-        floor!(effects);
-        floor!(weapon_fires);
-        floor!(projectile_frames);
-        floor!(projectile_samples);
+        exact!(rounds);
+        exact!(players);
+        exact!(frames);
+        exact!(frame_players);
+        exact!(frames_with_players);
+        exact!(frames_with_bomb_state);
+        exact!(players_with_weapons);
+        exact!(events);
+        exact!(kills);
+        exact!(bomb_events);
+        exact!(effects);
+        exact!(weapon_fires);
+        exact!(projectile_frames);
+        exact!(projectile_samples);
     }
 
     fn collect_replay_metrics(output: &Output) -> ReplayMetrics {
