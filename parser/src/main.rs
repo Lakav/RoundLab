@@ -3489,6 +3489,312 @@ mod tests {
     }
 
     #[test]
+    fn round_frames_track_bomb_carry_drop_pickup_plant_and_defuse() {
+        let args = Args {
+            input: "demo.dem".into(),
+            output: "out.json.gz".into(),
+            quality: "full".into(),
+            skip_projectiles: false,
+            skip_weapon_fires: false,
+            stats: false,
+        };
+        let events = vec![
+            json!({
+                "event_name": "bomb_planted",
+                "tick": 4,
+                "user_steamid": 8_u64,
+                "x": 400.0,
+                "y": 40.0,
+                "z": 4.0
+            }),
+            json!({
+                "event_name": "bomb_defused",
+                "tick": 5
+            }),
+        ];
+        let spans = vec![RoundSpan {
+            start: 0,
+            end: 6,
+            round_end: 6,
+            winner: "CT".into(),
+        }];
+        let weapon_names = vec!["weapon_c4".to_string(), "ak47".to_string()];
+        let mut rows_by_tick = BTreeMap::new();
+        for tick in 0..=6 {
+            let (steamid, x, y, active, weapons) = match tick {
+                0 => (7, 10.0, 1.0, Some(0), vec![0]),
+                3..=6 => (8, 300.0 + tick as f64, 30.0, Some(0), vec![0]),
+                _ => (7, 20.0 + tick as f64, 2.0, Some(1), vec![1]),
+            };
+            rows_by_tick.insert(
+                tick,
+                vec![TickRow {
+                    tick,
+                    steamid,
+                    x,
+                    y,
+                    z: tick as f64,
+                    yaw: 0.0,
+                    hp: 100,
+                    armor: 0,
+                    money: None,
+                    helmet: false,
+                    kit: false,
+                    alive: true,
+                    team: 2,
+                    active,
+                    weapons,
+                    fire: false,
+                    right_click: false,
+                    use_key: false,
+                }],
+            );
+        }
+        let mut c4_by_tick = BTreeMap::new();
+        c4_by_tick.insert(
+            1,
+            super::C4Pos {
+                tick: 1,
+                x: 100.0,
+                y: 10.0,
+                z: 1.0,
+            },
+        );
+        let projectiles_by_tick = BTreeMap::new();
+        let round_scores = vec![(1, 0)];
+        let ctx = RoundBuildContext {
+            args: &args,
+            events: &events,
+            spans: &spans,
+            rows_by_tick: &rows_by_tick,
+            c4_by_tick: &c4_by_tick,
+            projectiles_by_tick: &projectiles_by_tick,
+            weapon_names: &weapon_names,
+            round_scores: &round_scores,
+            sample_step: 1,
+        };
+
+        let round = build_round_payload(&ctx, 0, 0).expect("round payload");
+        let bomb_at = |t: f64| {
+            round
+                .frames
+                .iter()
+                .find(|frame| (frame.t - t).abs() < 0.001)
+                .and_then(|frame| frame.bomb.as_ref())
+        };
+
+        let carried_before_drop = bomb_at(0.0).expect("carried bomb before drop");
+        assert_eq!(carried_before_drop.status, "carried");
+        assert_eq!(carried_before_drop.carrier, Some(7));
+
+        let dropped = bomb_at(1.0 / super::TICK_RATE).expect("dropped bomb");
+        assert_eq!(dropped.status, "dropped");
+        assert_eq!(dropped.carrier, None);
+        assert_eq!((dropped.x, dropped.y, dropped.z), (100.0, 10.0, 1.0));
+
+        let persisted_drop = bomb_at(2.0 / super::TICK_RATE).expect("persisted dropped bomb");
+        assert_eq!(persisted_drop.status, "dropped");
+        assert_eq!(
+            (persisted_drop.x, persisted_drop.y, persisted_drop.z),
+            (100.0, 10.0, 1.0)
+        );
+
+        let picked_up = bomb_at(3.0 / super::TICK_RATE).expect("picked up bomb");
+        assert_eq!(picked_up.status, "carried");
+        assert_eq!(picked_up.carrier, Some(8));
+
+        let planted = bomb_at(4.0 / super::TICK_RATE).expect("planted bomb");
+        assert_eq!(planted.status, "planted");
+        assert_eq!(planted.carrier, None);
+        assert_eq!((planted.x, planted.y, planted.z), (400.0, 40.0, 4.0));
+
+        assert!(
+            bomb_at(5.0 / super::TICK_RATE).is_none(),
+            "bomb must clear after defuse"
+        );
+    }
+
+    #[test]
+    fn round_frames_clear_bomb_after_explicit_explosion() {
+        let args = Args {
+            input: "demo.dem".into(),
+            output: "out.json.gz".into(),
+            quality: "full".into(),
+            skip_projectiles: false,
+            skip_weapon_fires: false,
+            stats: false,
+        };
+        let events = vec![
+            json!({
+                "event_name": "bomb_planted",
+                "tick": 5,
+                "user_steamid": 7_u64,
+                "x": 10.0,
+                "y": 20.0,
+                "z": 0.0
+            }),
+            json!({
+                "event_name": "bomb_exploded",
+                "tick": 10
+            }),
+        ];
+        let spans = vec![RoundSpan {
+            start: 0,
+            end: 20,
+            round_end: 10,
+            winner: "T".into(),
+        }];
+        let weapon_names = vec!["weapon_c4".to_string()];
+        let mut rows_by_tick = BTreeMap::new();
+        for tick in 0..=20 {
+            rows_by_tick.insert(
+                tick,
+                vec![TickRow {
+                    tick,
+                    steamid: 7,
+                    x: tick as f64,
+                    y: 0.0,
+                    z: 0.0,
+                    yaw: 0.0,
+                    hp: 100,
+                    armor: 0,
+                    money: None,
+                    helmet: false,
+                    kit: false,
+                    alive: true,
+                    team: 2,
+                    active: Some(0),
+                    weapons: vec![0],
+                    fire: false,
+                    right_click: false,
+                    use_key: false,
+                }],
+            );
+        }
+        let c4_by_tick = BTreeMap::new();
+        let projectiles_by_tick = BTreeMap::new();
+        let round_scores = vec![(0, 1)];
+        let ctx = RoundBuildContext {
+            args: &args,
+            events: &events,
+            spans: &spans,
+            rows_by_tick: &rows_by_tick,
+            c4_by_tick: &c4_by_tick,
+            projectiles_by_tick: &projectiles_by_tick,
+            weapon_names: &weapon_names,
+            round_scores: &round_scores,
+            sample_step: 1,
+        };
+
+        let round = build_round_payload(&ctx, 0, 0).expect("round payload");
+        let planted_at = seconds_since(0, 5);
+        let exploded_at = seconds_since(0, 10);
+
+        assert!(
+            round.frames.iter().any(|frame| frame.t >= planted_at
+                && frame.t < exploded_at
+                && frame
+                    .bomb
+                    .as_ref()
+                    .is_some_and(|bomb| bomb.status == "planted")),
+            "expected planted bomb before explicit explosion"
+        );
+        assert!(
+            round
+                .frames
+                .iter()
+                .filter(|frame| frame.t >= exploded_at)
+                .all(|frame| frame.bomb.is_none()),
+            "bomb must not remain visible after explicit explosion"
+        );
+    }
+
+    #[test]
+    fn round_frames_fallback_drop_uses_last_carried_position_without_c4_position() {
+        let args = Args {
+            input: "demo.dem".into(),
+            output: "out.json.gz".into(),
+            quality: "full".into(),
+            skip_projectiles: false,
+            skip_weapon_fires: false,
+            stats: false,
+        };
+        let events = Vec::new();
+        let spans = vec![RoundSpan {
+            start: 0,
+            end: 2,
+            round_end: 2,
+            winner: "CT".into(),
+        }];
+        let weapon_names = vec!["weapon_c4".to_string(), "ak47".to_string()];
+        let mut rows_by_tick = BTreeMap::new();
+        for tick in 0..=2 {
+            let (active, weapons) = if tick == 0 {
+                (Some(0), vec![0])
+            } else {
+                (Some(1), vec![1])
+            };
+            rows_by_tick.insert(
+                tick,
+                vec![TickRow {
+                    tick,
+                    steamid: 7,
+                    x: 100.0 + tick as f64,
+                    y: 200.0,
+                    z: 10.0,
+                    yaw: 0.0,
+                    hp: 100,
+                    armor: 0,
+                    money: None,
+                    helmet: false,
+                    kit: false,
+                    alive: true,
+                    team: 2,
+                    active,
+                    weapons,
+                    fire: false,
+                    right_click: false,
+                    use_key: false,
+                }],
+            );
+        }
+        let c4_by_tick = BTreeMap::new();
+        let projectiles_by_tick = BTreeMap::new();
+        let round_scores = vec![(1, 0)];
+        let ctx = RoundBuildContext {
+            args: &args,
+            events: &events,
+            spans: &spans,
+            rows_by_tick: &rows_by_tick,
+            c4_by_tick: &c4_by_tick,
+            projectiles_by_tick: &projectiles_by_tick,
+            weapon_names: &weapon_names,
+            round_scores: &round_scores,
+            sample_step: 1,
+        };
+
+        let round = build_round_payload(&ctx, 0, 0).expect("round payload");
+        let carried = round
+            .frames
+            .iter()
+            .find(|frame| frame.t == 0.0)
+            .and_then(|frame| frame.bomb.as_ref())
+            .expect("carried bomb");
+        assert_eq!(carried.status, "carried");
+        assert_eq!(carried.carrier, Some(7));
+
+        let dropped = round
+            .frames
+            .iter()
+            .find(|frame| (frame.t - (1.0 / super::TICK_RATE)).abs() < 0.001)
+            .and_then(|frame| frame.bomb.as_ref())
+            .expect("fallback dropped bomb");
+        assert_eq!(dropped.status, "dropped");
+        assert_eq!(dropped.carrier, None);
+        assert_eq!((dropped.x, dropped.y, dropped.z), (100.0, 200.0, 10.0));
+    }
+
+    #[test]
     fn round_events_does_not_duplicate_explicit_bomb_exploded() {
         let span = RoundSpan {
             start: 100,
