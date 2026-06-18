@@ -787,8 +787,19 @@ where
                 manifest_round.number, round.number
             ));
         }
-        let frame_count = round.frames.as_array().map(Vec::len).unwrap_or_default();
-        let event_count = round.events.as_array().map(Vec::len).unwrap_or_default();
+        let frames = round
+            .frames
+            .as_array()
+            .ok_or_else(|| format!("split round {} frames is not an array", round.number))?;
+        let events = round
+            .events
+            .as_array()
+            .ok_or_else(|| format!("split round {} events is not an array", round.number))?;
+        require_split_round_array(&round.effects, round.number, "effects")?;
+        require_split_round_array(&round.weapon_fires, round.number, "weaponFires")?;
+        require_split_round_array(&round.projectile_frames, round.number, "projectileFrames")?;
+        let frame_count = frames.len();
+        let event_count = events.len();
         if frame_count == 0 {
             return Err(format!("split round {} has no frames", round.number));
         }
@@ -800,6 +811,19 @@ where
     }
     if total_events == 0 {
         return Err("split parser output has no events".into());
+    }
+    Ok(())
+}
+
+fn require_split_round_array(
+    value: &serde_json::Value,
+    round_number: i64,
+    field: &str,
+) -> Result<(), String> {
+    if value.as_array().is_none() {
+        return Err(format!(
+            "split round {round_number} {field} is not an array"
+        ));
     }
     Ok(())
 }
@@ -2367,6 +2391,25 @@ mod tests {
         empty_round.frames = serde_json::json!([]);
         let err = validate_match_output(&m, |_| Ok(empty_round.clone())).unwrap_err();
         assert!(err.contains("has no frames"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn validate_match_output_rejects_split_round_missing_heavy_arrays() {
+        let mut m = diagnostic_match_file();
+        m.rounds[0].round_file = Some("match/round-000.json.gz".into());
+        m.rounds[0].frames = serde_json::json!([]);
+        m.rounds[0].events = serde_json::json!([]);
+        m.rounds[0].effects = serde_json::json!([]);
+        m.rounds[0].weapon_fires = serde_json::json!([]);
+        m.rounds[0].projectile_frames = serde_json::json!([]);
+
+        let mut round = diagnostic_round(0, 0, 0, 0);
+        round.projectile_frames = serde_json::Value::Null;
+        let err = validate_match_output(&m, |_| Ok(round.clone())).unwrap_err();
+        assert!(
+            err.contains("projectileFrames is not an array"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]

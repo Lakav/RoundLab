@@ -36,7 +36,8 @@ frames, and projectile samples. The full-quality test also locks the split JSON
 contract expected by Tauri: manifest rounds keep empty `frames`, `events`,
 `effects`, `weaponFires`, and `projectileFrames` arrays plus `roundFile`, while
 split round files contain the full replay arrays without a recursive
-`roundFile`.
+`roundFile`. Tauri validation now also rejects split round payloads where
+`effects`, `weaponFires`, or `projectileFrames` are missing or not arrays.
 
 ```bash
 cd parser
