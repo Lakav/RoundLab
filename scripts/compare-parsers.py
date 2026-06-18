@@ -43,6 +43,7 @@ EVENT_TYPES_TO_AUDIT = {
     "bomb_exploded",
     "round_end",
 }
+GRENADE_FIRE_WEAPONS = {"decoy", "flashbang", "hegrenade", "incendiary", "molotov", "smokegrenade"}
 
 
 def run_checked(cmd: list[str], cwd: Path = ROOT) -> None:
@@ -481,18 +482,10 @@ def yaw_delta(left: float, right: float) -> float:
     return min(delta, 360.0 - delta)
 
 
-def fire_pose_distance(left: dict[str, Any], right: dict[str, Any]) -> float:
-    position_delta = (
-        (left["x"] - right["x"]) ** 2
-        + (left["y"] - right["y"]) ** 2
-        + (left["z"] - right["z"]) ** 2
-    ) ** 0.5
-    return abs(left["t"] - right["t"]) / 0.35 + position_delta / 160.0 + yaw_delta(left["yaw"], right["yaw"]) / 45.0
-
-
 def fire_pose_sample(item: dict[str, Any]) -> dict[str, Any]:
     return {
         **item,
+        "tRaw": round(item["t"], 3),
         "t": bucket_time(item["t"], 0.25),
         "x": round(item["x"] / 50.0) * 50,
         "y": round(item["y"] / 50.0) * 50,
@@ -500,25 +493,102 @@ def fire_pose_sample(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def actor_matches(left: Any, right: Any) -> bool:
+    return str(left or "") == str(right or "")
+
+
+def classify_fire_mismatch(fire: dict[str, Any], round_obj: dict[str, Any]) -> str:
+    weapon = normalize_weapon(fire.get("weapon"))
+    if weapon in GRENADE_FIRE_WEAPONS:
+        return "grenade_weapon_fire"
+
+    fire_t = float(fire.get("t", 0.0) or 0.0)
+    shooter = fire.get("shooter")
+    for event in round_obj.get("events", []):
+        if event.get("type") != "kill":
+            continue
+        event_t = event.get("t")
+        if not isinstance(event_t, (int, float)) or abs(float(event_t) - fire_t) > 0.75:
+            continue
+        if actor_matches(shooter, event.get("killer")) or actor_matches(shooter, event.get("victim")):
+            return "near_related_kill"
+
+    end_t = round_end_time(round_obj)
+    if end_t and abs(fire_t - end_t) <= 0.75:
+        return "near_round_end"
+
+    return "unclassified"
+
+
+def classify_fire_samples(
+    items: list[dict[str, Any]],
+    round_obj: dict[str, Any],
+    limit: int,
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    counts: dict[str, int] = {}
+    classified = []
+    for idx, item in enumerate(items):
+        classification = classify_fire_mismatch(item, round_obj)
+        counts[classification] = counts.get(classification, 0) + 1
+        if idx < limit:
+            classified.append({**fire_pose_sample(item), "classification": classification})
+    return classified, counts
+
+
+def fire_time_tolerance(weapon: str) -> float:
+    if weapon in GRENADE_FIRE_WEAPONS:
+        return 0.35
+    return 0.08
+
+
 def compare_fire_poses(go_round: dict[str, Any], rust_round: dict[str, Any], limit: int = 10) -> dict[str, Any]:
-    go_fires = fire_pose_summary(go_round.get("weaponFires", []))
-    rust_fires = fire_pose_summary(rust_round.get("weaponFires", []))
+    go_fires = sorted(fire_pose_summary(go_round.get("weaponFires", [])), key=lambda item: item["t"])
+    rust_fires = sorted(fire_pose_summary(rust_round.get("weaponFires", [])), key=lambda item: item["t"])
+    unmatched_go = set(range(len(go_fires)))
     unmatched_rust = set(range(len(rust_fires)))
+    matched_pairs = []
     missing = []
     mismatched = []
-    for go_fire in go_fires:
-        candidates = [
-            (idx, rust_fires[idx])
-            for idx in unmatched_rust
-            if rust_fires[idx]["shooter"] == go_fire["shooter"]
-            and rust_fires[idx]["weapon"] == go_fire["weapon"]
-            and abs(rust_fires[idx]["t"] - go_fire["t"]) <= 0.35
-        ]
-        if not candidates:
-            missing.append(go_fire)
+
+    group_keys = sorted(
+        {(item["shooter"], item["weapon"]) for item in go_fires}
+        | {(item["shooter"], item["weapon"]) for item in rust_fires},
+        key=lambda item: (str(item[0]), item[1]),
+    )
+    go_groups: dict[tuple[Any, str], list[int]] = {}
+    rust_groups: dict[tuple[Any, str], list[int]] = {}
+    for idx, item in enumerate(go_fires):
+        go_groups.setdefault((item["shooter"], item["weapon"]), []).append(idx)
+    for idx, item in enumerate(rust_fires):
+        rust_groups.setdefault((item["shooter"], item["weapon"]), []).append(idx)
+
+    for key in group_keys:
+        go_indexes = go_groups.get(key, [])
+        rust_indexes = rust_groups.get(key, [])
+        go_pos = 0
+        rust_pos = 0
+        while go_pos < len(go_indexes) and rust_pos < len(rust_indexes):
+            go_idx = go_indexes[go_pos]
+            rust_idx = rust_indexes[rust_pos]
+            go_fire = go_fires[go_idx]
+            rust_fire = rust_fires[rust_idx]
+            time_delta = rust_fire["t"] - go_fire["t"]
+            if abs(time_delta) <= fire_time_tolerance(key[1]):
+                unmatched_go.remove(go_idx)
+                unmatched_rust.remove(rust_idx)
+                matched_pairs.append((go_idx, rust_idx))
+                go_pos += 1
+                rust_pos += 1
+            elif time_delta < 0:
+                rust_pos += 1
+            else:
+                go_pos += 1
+
+    for go_idx, rust_idx in matched_pairs:
+        go_fire = go_fires[go_idx]
+        rust_fire = rust_fires[rust_idx]
+        if go_fire["shooter"] != rust_fire["shooter"] or go_fire["weapon"] != rust_fire["weapon"]:
             continue
-        idx, rust_fire = min(candidates, key=lambda item: fire_pose_distance(go_fire, item[1]))
-        unmatched_rust.remove(idx)
         position_delta = (
             (go_fire["x"] - rust_fire["x"]) ** 2
             + (go_fire["y"] - rust_fire["y"]) ** 2
@@ -534,14 +604,21 @@ def compare_fire_poses(go_round: dict[str, Any], rust_round: dict[str, Any], lim
                     "yawDelta": round(yaw, 1),
                 }
             )
+    missing = [go_fires[idx] for idx in sorted(unmatched_go)]
     extra = [rust_fires[idx] for idx in sorted(unmatched_rust)]
+    missing_sample, missing_classifications = classify_fire_samples(missing, go_round, limit)
+    extra_sample, extra_classifications = classify_fire_samples(extra, rust_round, limit)
     return {
         "missingInRustCount": len(missing),
-        "missingInRustSample": [fire_pose_sample(item) for item in missing[:limit]],
+        "missingInRustClassifications": missing_classifications,
+        "missingInRustSample": missing_sample,
         "extraInRustCount": len(extra),
-        "extraInRustSample": [fire_pose_sample(item) for item in extra[:limit]],
+        "extraInRustClassifications": extra_classifications,
+        "extraInRustSample": extra_sample,
         "poseMismatchCount": len(mismatched),
         "poseMismatchSample": mismatched[:limit],
+        "firearmTimeToleranceSec": fire_time_tolerance("ak47"),
+        "grenadeTimeToleranceSec": fire_time_tolerance("smokegrenade"),
     }
 
 
