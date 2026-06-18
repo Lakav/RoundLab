@@ -3052,6 +3052,7 @@ mod tests {
         score_b: i32,
         metrics: ReplayMetrics,
         round_metrics: Vec<RoundReplayMetrics>,
+        round_event_signatures: Vec<RoundEventSignatures>,
         medium_skip_metrics: ReplayMetrics,
     }
 
@@ -3069,6 +3070,14 @@ mod tests {
         weapon_fires: usize,
         projectile_frames: usize,
         projectile_samples: usize,
+    }
+
+    #[derive(Debug, Deserialize, PartialEq, Eq)]
+    #[serde(rename_all = "camelCase")]
+    struct RoundEventSignatures {
+        number: usize,
+        kills: Vec<String>,
+        bomb_events: Vec<String>,
     }
 
     struct EnvVarGuard {
@@ -4824,6 +4833,11 @@ mod tests {
             &expected.round_metrics,
             &expected.label,
         );
+        assert_round_event_signatures_match_reference(
+            &collect_round_event_signatures(output),
+            &expected.round_event_signatures,
+            &expected.label,
+        );
     }
 
     fn assert_reference_demo_identity(output: &Output, expected: &ExpectedReplaySnapshot) {
@@ -4929,6 +4943,24 @@ mod tests {
         }
     }
 
+    fn assert_round_event_signatures_match_reference(
+        actual: &[RoundEventSignatures],
+        expected: &[RoundEventSignatures],
+        label: &str,
+    ) {
+        assert_eq!(
+            actual.len(),
+            expected.len(),
+            "{label} round event signature count changed"
+        );
+        for (idx, (actual, expected)) in actual.iter().zip(expected).enumerate() {
+            assert_eq!(
+                actual, expected,
+                "{label} round {idx} event signatures changed: actual={actual:?} expected={expected:?}"
+            );
+        }
+    }
+
     fn collect_replay_metrics(output: &Output) -> ReplayMetrics {
         let mut metrics = ReplayMetrics {
             rounds: output.rounds.len(),
@@ -5017,6 +5049,99 @@ mod tests {
                 }
             })
             .collect()
+    }
+
+    fn collect_round_event_signatures(output: &Output) -> Vec<RoundEventSignatures> {
+        output
+            .rounds
+            .iter()
+            .map(|round| RoundEventSignatures {
+                number: round.number,
+                kills: round
+                    .events
+                    .iter()
+                    .filter(|event| event.kind == "kill")
+                    .map(kill_signature)
+                    .collect(),
+                bomb_events: round
+                    .events
+                    .iter()
+                    .filter(|event| {
+                        matches!(
+                            event.kind.as_str(),
+                            "bomb_planted"
+                                | "bomb_defuse_start"
+                                | "bomb_defuse_abort"
+                                | "bomb_defused"
+                                | "bomb_exploded"
+                        )
+                    })
+                    .map(bomb_event_signature)
+                    .collect(),
+            })
+            .collect()
+    }
+
+    fn kill_signature(event: &Event) -> String {
+        format!(
+            "{:.3}|{}|{}|{}|{}|{}",
+            bucket_signature_time(event.t),
+            optional_u64_signature(event.killer),
+            optional_u64_signature(event.victim),
+            optional_u64_signature(event.assist),
+            event
+                .weapon
+                .as_deref()
+                .map(normalized_signature_weapon)
+                .unwrap_or_default(),
+            event.hs
+        )
+    }
+
+    fn bomb_event_signature(event: &Event) -> String {
+        format!(
+            "{:.3}|{}|{}",
+            bucket_signature_time(event.t),
+            event.kind,
+            optional_u64_signature(event.player)
+        )
+    }
+
+    fn bucket_signature_time(value: f64) -> f64 {
+        (value / 0.25).round() * 0.25
+    }
+
+    fn optional_u64_signature(value: Option<u64>) -> String {
+        value.map(|value| value.to_string()).unwrap_or_default()
+    }
+
+    fn normalized_signature_weapon(value: &str) -> String {
+        let raw = value.trim().to_ascii_lowercase();
+        let mut normalized = raw
+            .strip_prefix("weapon_")
+            .unwrap_or(raw.as_str())
+            .chars()
+            .filter(|ch| ch.is_ascii_alphanumeric())
+            .collect::<String>();
+        normalized = match normalized.as_str() {
+            "glock18" => "glock".into(),
+            "usps" | "uspsilencer" => "usp".into(),
+            "hkp2000" => "p2000".into(),
+            "deserteagle" => "deagle".into(),
+            "elite" => "dualberettas".into(),
+            "m4a1" | "m4a1silencer" | "m4a4" => "m4".into(),
+            "decoygrenade" => "decoy".into(),
+            "plantedc4" => "c4".into(),
+            "incgrenade" | "incendiarygrenade" => "incendiary".into(),
+            "inferno" | "incendiary" | "molotov" => "fire".into(),
+            _ if normalized.starts_with("knife")
+                || matches!(normalized.as_str(), "bayonet" | "karambit") =>
+            {
+                "knife".into()
+            }
+            _ => normalized,
+        };
+        normalized
     }
 
     fn collect_manifest_metrics(manifest: &Value) -> ReplayMetrics {
