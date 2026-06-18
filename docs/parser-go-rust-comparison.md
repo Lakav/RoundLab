@@ -133,6 +133,11 @@ Summary: Rust full quality outputs are smaller and faster than Go on most demos 
   - Anubis round 5: Go has an M4A4 fire at `t=15.906`, demo tick `35024`, shooter `76561199247537101`. Rust has the same shooter pose, active weapon, and nearby burst frames at the exact timestamp, but no `weapon_fire` event for that shot.
   - Cache round 11: Go has two simultaneous AK-47 fires at `t=46.328`, demo tick `81163`, shooters `76561198054701233` and `76561198024550733`. Rust has both shooter poses and active AK-47 state at the exact timestamp, plus both bursts continue at `46.406+`, but the underlying Rust event stream does not expose a safe missing `weapon_fire` source at the skipped tick.
   These are real Go/Rust event-source gaps, not pose reconstruction bugs.
+- A fresh targeted full audit of `cache11-13.dem.zst` confirms the Cache
+  round 11 gap: Rust and Go frames both contain both AK-47 shooters with valid
+  active weapon, team, position, and yaw at `t=46.328`, while Rust
+  `weaponFires` jump from `46.203` to `46.406`. That keeps the diagnosis on
+  event-source extraction, not replay pose reconstruction.
 - Those remaining weapon-fire tolerances are now snapshotted by exact compact
   signatures in `parser/reference_demos.json`, including classification,
   timestamp, shooter, weapon, team, bucketed position, and yaw. This does not
