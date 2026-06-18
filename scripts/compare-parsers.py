@@ -212,6 +212,21 @@ def effect_sample(effect: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def effect_tolerance_signature(effect: dict[str, Any], classification: str) -> str:
+    return "|".join(
+        [
+            classification,
+            f"{float(effect.get('t', 0.0) or 0.0):.3f}",
+            str(effect.get("type", "")),
+            snapshot_optional(effect.get("variant")),
+            snapshot_optional(effect.get("team")),
+            str(snapshot_bucket_coord(effect.get("x"))),
+            str(snapshot_bucket_coord(effect.get("y"))),
+            str(snapshot_bucket_coord(effect.get("z"))),
+        ]
+    )
+
+
 def bomb_event_summary(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out = []
     for event in events:
@@ -234,6 +249,17 @@ def bomb_event_sample(event: dict[str, Any]) -> dict[str, Any]:
         "tRaw": round(event["t"], 3),
         "t": bucket_time(event["t"], 0.25),
     }
+
+
+def bomb_event_tolerance_signature(event: dict[str, Any], classification: str) -> str:
+    return "|".join(
+        [
+            classification,
+            f"{float(event.get('t', 0.0) or 0.0):.3f}",
+            str(event.get("type", "")),
+            snapshot_optional(event.get("player")),
+        ]
+    )
 
 
 def bucket_yaw(value: Any, precision: float = 15.0) -> float:
@@ -1178,16 +1204,34 @@ def compare_bomb_events(go_round: dict[str, Any], rust_round: dict[str, Any], li
     missing = [go_events[idx] for idx in sorted(unmatched_go)]
     extra = [rust_events[idx] for idx in sorted(unmatched_rust)]
     classification_counts: dict[str, int] = {}
+    mismatch_signatures = []
     for mismatch in mismatched:
         classification = mismatch["classification"]
         classification_counts[classification] = classification_counts.get(classification, 0) + 1
+        mismatch_signatures.append(
+            "|".join(
+                [
+                    classification,
+                    bomb_event_tolerance_signature(mismatch["go"], "go"),
+                    bomb_event_tolerance_signature(mismatch["rust"], "rust"),
+                    f"{float(mismatch.get('timeDelta', 0.0) or 0.0):.3f}",
+                ]
+            )
+        )
     return {
         "missingInRustCount": len(missing),
         "missingInRustSample": [bomb_event_sample(item) for item in missing[:limit]],
+        "missingInRustSignatures": sorted(
+            bomb_event_tolerance_signature(item, "missing") for item in missing
+        ),
         "extraInRustCount": len(extra),
         "extraInRustSample": [bomb_event_sample(item) for item in extra[:limit]],
+        "extraInRustSignatures": sorted(
+            bomb_event_tolerance_signature(item, "extra") for item in extra
+        ),
         "eventMismatchCount": len(mismatched),
         "eventMismatchClassifications": classification_counts,
+        "eventMismatchSignatures": sorted(mismatch_signatures),
         "unclassifiedMismatchCount": classification_counts.get("unclassified", 0),
         "eventMismatchSample": mismatched[:limit],
     }
@@ -1244,6 +1288,18 @@ def bomb_window_sample(window: dict[str, Any]) -> dict[str, Any]:
         "end": round(window["end"], 3),
         "duration": round(window["end"] - window["start"], 3),
     }
+
+
+def bomb_window_tolerance_signature(window: dict[str, Any], classification: str) -> str:
+    return "|".join(
+        [
+            classification,
+            str(window.get("status", "")),
+            f"{float(window.get('start', 0.0) or 0.0):.3f}",
+            f"{float(window.get('end', 0.0) or 0.0):.3f}",
+            f"{float(window.get('end', 0.0) or 0.0) - float(window.get('start', 0.0) or 0.0):.3f}",
+        ]
+    )
 
 
 def classify_bomb_state_window(
@@ -1316,6 +1372,8 @@ def compare_bomb_state_windows(go_round: dict[str, Any], rust_round: dict[str, A
     extra = [rust_windows[idx] for idx in sorted(unmatched_rust)]
     missing_samples = []
     extra_samples = []
+    missing_signatures = []
+    extra_signatures = []
     classification_counts: dict[str, int] = {}
     for window in missing:
         classification = classify_bomb_state_window(
@@ -1328,6 +1386,7 @@ def compare_bomb_state_windows(go_round: dict[str, Any], rust_round: dict[str, A
             rust_round_end,
         )
         classification_counts[classification] = classification_counts.get(classification, 0) + 1
+        missing_signatures.append(bomb_window_tolerance_signature(window, classification))
         if len(missing_samples) < limit:
             missing_samples.append({**bomb_window_sample(window), "classification": classification})
     for window in extra:
@@ -1341,13 +1400,16 @@ def compare_bomb_state_windows(go_round: dict[str, Any], rust_round: dict[str, A
             rust_round_end,
         )
         classification_counts[classification] = classification_counts.get(classification, 0) + 1
+        extra_signatures.append(bomb_window_tolerance_signature(window, classification))
         if len(extra_samples) < limit:
             extra_samples.append({**bomb_window_sample(window), "classification": classification})
     return {
         "missingInRustCount": len(missing),
         "missingInRustSample": missing_samples,
+        "missingInRustSignatures": sorted(missing_signatures),
         "extraInRustCount": len(extra),
         "extraInRustSample": extra_samples,
+        "extraInRustSignatures": sorted(extra_signatures),
         "windowMismatchClassifications": classification_counts,
         "unclassifiedMismatchCount": classification_counts.get("unclassified", 0),
     }
@@ -1403,16 +1465,35 @@ def compare_deduped_effects(go_round: dict[str, Any], rust_round: dict[str, Any]
     missing = [go_effects[idx] for idx in sorted(unmatched_go)]
     extra = [rust_effects[idx] for idx in sorted(unmatched_rust)]
     classification_counts: dict[str, int] = {}
+    mismatch_signatures = []
     for mismatch in mismatched:
         classification = mismatch["classification"]
         classification_counts[classification] = classification_counts.get(classification, 0) + 1
+        mismatch_signatures.append(
+            "|".join(
+                [
+                    classification,
+                    effect_tolerance_signature(mismatch["go"], "go"),
+                    effect_tolerance_signature(mismatch["rust"], "rust"),
+                    f"{float(mismatch.get('timeDelta', 0.0) or 0.0):.3f}",
+                    f"{float(mismatch.get('positionDelta', 0.0) or 0.0):.1f}",
+                ]
+            )
+        )
     return {
         "missingInRustCount": len(missing),
         "missingInRustSample": [effect_sample(item) for item in missing[:limit]],
+        "missingInRustSignatures": sorted(
+            effect_tolerance_signature(item, "missing") for item in missing
+        ),
         "extraInRustCount": len(extra),
         "extraInRustSample": [effect_sample(item) for item in extra[:limit]],
+        "extraInRustSignatures": sorted(
+            effect_tolerance_signature(item, "extra") for item in extra
+        ),
         "effectMismatchCount": len(mismatched),
         "effectMismatchClassifications": classification_counts,
+        "effectMismatchSignatures": sorted(mismatch_signatures),
         "unclassifiedMismatchCount": classification_counts.get("unclassified", 0),
         "effectMismatchSample": mismatched[:limit],
     }
@@ -1680,6 +1761,25 @@ def projectile_track_signature(key: tuple[Any, str, Any], points: list[dict[str,
     }
 
 
+def projectile_track_tolerance_signature(signature: dict[str, Any]) -> str:
+    return "|".join(
+        [
+            snapshot_optional(signature.get("id")),
+            str(signature.get("type", "")),
+            snapshot_optional(signature.get("thrower")),
+            f"{float(signature.get('start', 0.0) or 0.0):.3f}",
+            f"{float(signature.get('end', 0.0) or 0.0):.3f}",
+            str(signature.get("samples", 0)),
+            str(signature.get("startX", 0)),
+            str(signature.get("startY", 0)),
+            str(signature.get("startZ", 0)),
+            str(signature.get("endX", 0)),
+            str(signature.get("endY", 0)),
+            str(signature.get("endZ", 0)),
+        ]
+    )
+
+
 def projectile_position_delta(left: dict[str, Any], right: dict[str, Any], prefix: str) -> float:
     dx = float(left[f"{prefix}X"] or 0.0) - float(right[f"{prefix}X"] or 0.0)
     dy = float(left[f"{prefix}Y"] or 0.0) - float(right[f"{prefix}Y"] or 0.0)
@@ -1769,17 +1869,38 @@ def compare_projectile_tracks(go_round: dict[str, Any], rust_round: dict[str, An
     extra = [projectile_track_signature(*rust_items[idx]) for idx in sorted(unmatched_rust)]
     rust_round_end = round_end_time(rust_round)
     classification_counts: dict[str, int] = {}
+    mismatch_signatures = []
     for mismatch in mismatched:
         classification = classify_projectile_mismatch(mismatch, rust_round_end)
         mismatch["classification"] = classification
         classification_counts[classification] = classification_counts.get(classification, 0) + 1
+        mismatch_signatures.append(
+            "|".join(
+                [
+                    classification,
+                    projectile_track_tolerance_signature(mismatch["go"]),
+                    projectile_track_tolerance_signature(mismatch["rust"]),
+                    str(mismatch.get("sampleDelta", 0)),
+                    f"{float(mismatch.get('endDelta', 0.0) or 0.0):.3f}",
+                    f"{float(mismatch.get('startPositionDelta', 0.0) or 0.0):.1f}",
+                    f"{float(mismatch.get('endPositionDelta', 0.0) or 0.0):.1f}",
+                ]
+            )
+        )
     return {
         "missingInRustCount": len(missing),
         "missingInRustSample": missing[:limit],
+        "missingInRustSignatures": sorted(
+            projectile_track_tolerance_signature(item) for item in missing
+        ),
         "extraInRustCount": len(extra),
         "extraInRustSample": extra[:limit],
+        "extraInRustSignatures": sorted(
+            projectile_track_tolerance_signature(item) for item in extra
+        ),
         "trackMismatchCount": len(mismatched),
         "trackMismatchClassifications": classification_counts,
+        "trackMismatchSignatures": sorted(mismatch_signatures),
         "unclassifiedMismatchCount": classification_counts.get("unclassified", 0),
         "trackMismatchSample": mismatched[:limit],
     }
@@ -1788,12 +1909,7 @@ def compare_projectile_tracks(go_round: dict[str, Any], rust_round: dict[str, An
 def weapon_fire_tolerance_signatures(rounds: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out = []
     for round_obj in rounds:
-        number = None
-        rust = round_obj.get("rust")
-        if isinstance(rust, dict):
-            number = rust.get("number")
-        if number is None:
-            number = round_obj.get("index")
+        number = round_tolerance_number(round_obj)
         missing: list[str] = []
         extra: list[str] = []
         for diff in round_obj.get("diffs", []):
@@ -1803,6 +1919,60 @@ def weapon_fire_tolerance_signatures(rounds: list[dict[str, Any]]) -> list[dict[
             extra = list(diff.get("extraInRustSignatures", []))
             break
         out.append({"number": number, "missingInRust": missing, "extraInRust": extra})
+    return out
+
+
+def round_tolerance_number(round_obj: dict[str, Any]) -> Any:
+    rust = round_obj.get("rust")
+    if isinstance(rust, dict) and rust.get("number") is not None:
+        return rust.get("number")
+    return round_obj.get("index")
+
+
+def classified_tolerance_signatures(rounds: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    field_map = {
+        "bombEventTolerance": {
+            "key": "bombEvents",
+            "signature_keys": [
+                "missingInRustSignatures",
+                "extraInRustSignatures",
+                "eventMismatchSignatures",
+            ],
+        },
+        "bombStateWindows": {
+            "key": "bombStateWindows",
+            "signature_keys": [
+                "missingInRustSignatures",
+                "extraInRustSignatures",
+            ],
+        },
+        "dedupedEffectTolerance": {
+            "key": "dedupedEffects",
+            "signature_keys": [
+                "missingInRustSignatures",
+                "extraInRustSignatures",
+                "effectMismatchSignatures",
+            ],
+        },
+        "projectileTrackTolerance": {
+            "key": "projectileTracks",
+            "signature_keys": [
+                "missingInRustSignatures",
+                "extraInRustSignatures",
+                "trackMismatchSignatures",
+            ],
+        },
+    }
+    out = []
+    for round_obj in rounds:
+        item: dict[str, Any] = {"number": round_tolerance_number(round_obj)}
+        by_field = {diff.get("field"): diff for diff in round_obj.get("diffs", [])}
+        for field, config in field_map.items():
+            diff = by_field.get(field, {})
+            item[config["key"]] = {
+                key: sorted(list(diff.get(key, []))) for key in config["signature_keys"]
+            }
+        out.append(item)
     return out
 
 
@@ -1906,6 +2076,7 @@ def round_audit(go_output: Path, rust_output: Path) -> dict[str, Any]:
         "rustMeta": rust_manifest.get("meta", {}),
         "rustSnapshotSignatures": reference_snapshot_signatures(rust_rounds),
         "roundWeaponFireToleranceSignatures": weapon_fire_tolerance_signatures(rounds),
+        "roundClassifiedToleranceSignatures": classified_tolerance_signatures(rounds),
         "rounds": rounds,
     }
 

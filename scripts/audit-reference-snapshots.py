@@ -172,6 +172,24 @@ def assert_weapon_fire_tolerances_match(
     )
 
 
+def assert_classified_tolerances_match(
+    label: str,
+    round_audit: dict[str, Any],
+    reference: dict[str, Any],
+) -> None:
+    actual = round_audit.get("roundClassifiedToleranceSignatures")
+    if not isinstance(actual, list):
+        raise AssertionError(
+            f"{label} report is missing roundClassifiedToleranceSignatures; rerun compare-parsers.py with --round-audit"
+        )
+    expect_equal(
+        label,
+        "roundClassifiedToleranceSignatures",
+        actual,
+        reference.get("roundClassifiedToleranceSignatures"),
+    )
+
+
 def assert_no_unclassified_mismatches(report: dict[str, Any]) -> None:
     summary = report.get("roundAuditSummary")
     if not isinstance(summary, dict):
@@ -281,6 +299,7 @@ def audit(reference_path: Path, report_path: Path) -> list[str]:
         assert_rust_replay_integrity(label, report_rounds)
         assert_snapshot_signatures_match(label, round_audit, snapshot)
         assert_weapon_fire_tolerances_match(label, round_audit, snapshot)
+        assert_classified_tolerances_match(label, round_audit, snapshot)
         checked.append(file_name)
 
     extra = sorted(set(results) - set(checked))

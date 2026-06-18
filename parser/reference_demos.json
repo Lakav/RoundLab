@@ -3741,6 +3741,345 @@
         "missingInRust": [],
         "number": 13
       }
+    ],
+    "roundClassifiedToleranceSignatures": [
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|51.594|51.594|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 0,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|37.094|37.094|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 1,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|107.984|114.969|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 2,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|136.438|143.422|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 3,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|95.219|95.219|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 4,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|76.125|76.125|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 5,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|57.891|57.891|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 6,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|66.109|66.109|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 7,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|61.766|61.766|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 8,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|90.125|90.125|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 9,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|77.906|77.906|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 10,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|90.547|99.031|8.484"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 11,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 12,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "boundary_shift|carried|9.156|31.625|22.469"
+          ],
+          "missingInRustSignatures": [
+            "go_post_round_bomb_residue|carried|9.156|34.359|25.203",
+            "go_post_round_bomb_residue|dropped|34.375|38.375|4.000"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 13,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      }
     ]
   },
   {
@@ -8671,6 +9010,415 @@
         ],
         "missingInRust": [],
         "number": 16
+      }
+    ],
+    "roundClassifiedToleranceSignatures": [
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 0,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 1,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 2,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|115.531|122.516|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 3,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|82.000|88.984|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 4,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|58.812|65.797|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 5,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|78.031|78.031|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 6,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 7,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|64.172|71.156|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 8,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [
+            "synthesized_defuse_abort_timing|go|92.250|bomb_defuse_abort|76561197978708080|rust|98.500|bomb_defuse_abort|76561197978708080|6.125"
+          ],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|98.422|105.406|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 9,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|76.547|83.531|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 10,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|50.172|50.172|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 11,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|90.766|97.750|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 12,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|35.266|35.266|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 13,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [
+            "synthesized_defuse_abort_timing|go|73.000|bomb_defuse_abort|76561199566894045|rust|73.250|bomb_defuse_abort|76561199566894045|0.312",
+            "synthesized_defuse_abort_timing|go|73.250|bomb_defuse_abort|76561199566894045|rust|73.500|bomb_defuse_abort|76561199566894045|0.234"
+          ],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|83.781|90.766|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 14,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 15,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "boundary_shift|dropped|107.625|109.156|1.531"
+          ],
+          "missingInRustSignatures": [
+            "go_post_round_bomb_residue|dropped|107.625|115.562|7.938"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 16,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": [
+            "post_round_smoke_duration|981740504374643772|smoke|76561198054701233|100.500|115.500|974|-1400|0|200|-1300|500|100|1000000272|smoke|76561198054701233|100.500|109.250|563|-1400|0|200|-1300|500|100|411|6.250|0.0|0.0"
+          ]
+        }
       }
     ]
   },
@@ -19259,6 +20007,834 @@
         "missingInRust": [],
         "number": 34
       }
+    ],
+    "roundClassifiedToleranceSignatures": [
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 0,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 1,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 2,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 3,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|75.188|82.172|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 4,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|56.891|56.891|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 5,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|58.984|58.984|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 6,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|37.516|37.516|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 7,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 8,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|78.406|78.406|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 9,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|86.797|93.781|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 10,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|60.219|60.219|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 11,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 12,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 13,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|105.625|105.625|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 14,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|34.156|34.156|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 15,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|36.938|36.938|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 16,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|118.484|118.484|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 17,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 18,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|122.000|122.000|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 19,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 20,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|107.453|114.438|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 21,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|91.969|91.969|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 22,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [
+            "small_explosion_timing_offset|go|91.000|bomb_exploded||rust|90.750|bomb_exploded||0.156"
+          ],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|90.891|99.219|8.328"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 23,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 24,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|91.438|91.438|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 25,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|106.156|114.625|8.469"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 26,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|80.047|80.047|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 27,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 28,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [
+            "small_explosion_timing_offset|go|68.250|bomb_exploded||rust|68.250|bomb_exploded||0.188"
+          ],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|68.328|76.625|8.297"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 29,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|70.984|77.969|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 30,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|76.500|76.500|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 31,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|82.422|82.422|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 32,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|89.578|89.578|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 33,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|46.719|52.812|6.094"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 34,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": [
+            "post_round_smoke_duration|5335714000381561705|smoke|76561198056985517|31.500|52.750|1372|800|1500|0|1700|1400|-100|1000000653|smoke|76561198056985517|31.500|46.750|980|800|1500|0|1700|1400|-100|392|6.000|0.0|0.0",
+            "post_round_smoke_duration|5838591858574137513|smoke|76561198359807766|29.250|52.750|1503|-1200|-600|100|-900|1100|0|1000000652|smoke|76561198359807766|29.250|46.750|1111|-1200|-600|100|-900|1100|0|392|6.000|0.0|0.0",
+            "post_round_smoke_duration|7231024461958722589|smoke|76561199247537101|26.500|50.000|1511|-1700|300|100|-1500|400|0|1000000651|smoke|76561199247537101|26.500|46.750|1299|-1700|300|100|-1500|400|0|212|3.250|0.0|0.0"
+          ]
+        }
+      }
     ]
   },
   {
@@ -25571,6 +27147,574 @@
         "missingInRust": [],
         "number": 23
       }
+    ],
+    "roundClassifiedToleranceSignatures": [
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 0,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|92.625|99.609|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 1,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|96.297|103.281|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 2,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|81.156|81.156|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 3,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|85.203|85.203|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 4,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|92.891|92.891|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 5,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|91.062|98.047|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 6,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|36.781|36.781|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 7,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|95.656|102.641|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 8,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|50.734|50.734|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 9,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|109.422|109.422|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 10,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [
+            "small_explosion_timing_offset|go|63.750|bomb_exploded||rust|63.500|bomb_exploded||0.203"
+          ],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|63.656|71.938|8.281"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 11,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|60.844|67.828|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 12,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|108.828|108.828|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 13,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 14,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 15,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 16,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|100.781|100.781|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 17,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|91.375|91.375|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 18,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 19,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|72.219|79.203|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 20,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 21,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|72.172|72.172|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 22,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|111.891|117.984|6.094"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 23,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      }
     ]
   },
   {
@@ -31734,6 +33878,514 @@
         "extraInRust": [],
         "missingInRust": [],
         "number": 20
+      }
+    ],
+    "roundClassifiedToleranceSignatures": [
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|55.953|55.953|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 0,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 1,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [
+            "synthesized_defuse_abort_timing|go|77.000|bomb_defuse_abort|76561198054701233|rust|78.000|bomb_defuse_abort|76561198054701233|0.859"
+          ],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|87.922|94.906|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [
+            "decoy_stationary_vs_event_timing|go|29.500|decoy||3|950|450|100|rust|29.250|decoy||3|950|450|100|0.156|0.0"
+          ],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 2,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|56.484|56.484|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 3,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|53.844|53.844|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 4,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 5,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|90.125|90.125|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 6,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|69.312|69.312|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 7,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 8,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|104.969|111.953|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 9,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|109.719|109.719|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 10,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [
+            "small_explosion_timing_offset|go|91.750|bomb_exploded||rust|91.500|bomb_exploded||0.219"
+          ],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|91.812|100.078|8.266"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 11,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|71.922|78.906|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 12,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|88.531|88.531|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 13,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|45.609|45.609|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 14,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [
+            "single_frame_boundary_shift|carried|54.859|54.859|0.000"
+          ],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 15,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 16,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|131.094|138.078|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 17,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": [
+            "overlapping_same_thrower_projectile|7101971216149479156|he|76561199129479054|31.000|37.750|424|400|1800|300|900|2800|200|1000000250|he|76561199129479054|31.000|32.500|103|400|1800|300|900|2700|200|321|5.250|0.0|100.0",
+            "overlapping_same_thrower_projectile|892354968270829207|he|76561199129479054|28.250|34.750|425|400|1800|300|900|2800|200|1000000249|he|76561199129479054|28.250|37.750|609|400|1800|300|900|2800|200|184|3.000|0.0|0.0"
+          ]
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 18,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|124.109|131.094|6.984"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 19,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
+      },
+      {
+        "bombEvents": {
+          "eventMismatchSignatures": [
+            "synthesized_defuse_abort_timing|go|104.250|bomb_defuse_abort|76561198419437076|rust|105.250|bomb_defuse_abort|76561198419437076|0.984",
+            "synthesized_defuse_abort_timing|go|98.500|bomb_defuse_abort|76561198419437076|rust|101.250|bomb_defuse_abort|76561198419437076|2.719"
+          ],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "bombStateWindows": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [
+            "go_post_resolution_dropped_residue|dropped|105.172|111.578|6.406"
+          ]
+        },
+        "dedupedEffects": {
+          "effectMismatchSignatures": [],
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": []
+        },
+        "number": 20,
+        "projectileTracks": {
+          "extraInRustSignatures": [],
+          "missingInRustSignatures": [],
+          "trackMismatchSignatures": []
+        }
       }
     ]
   }

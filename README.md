@@ -97,8 +97,9 @@ After a full Go/Rust round audit, run
 to verify that the saved Rust snapshots still match the Rust side of the latest
 audited report, including compact event/terminal-event/effect/weapon-fire/
 bomb-state/action and projectile-track signatures, plus the current allowlisted
-Go/Rust weapon-fire tolerance signatures. This check is read-only and requires
-the JSON report, not only the Markdown summary.
+Go/Rust classified tolerance signatures for bomb events, bomb-state windows,
+utility effects, weapon fires, and projectile tracks. This check is read-only
+and requires the JSON report, not only the Markdown summary.
 
 Parser output uses gzip for Tauri compatibility. For benchmarks, set
 `ROUNDLAB_PARSER_GZIP_LEVEL=0..9` to compare compression speed and output size.
