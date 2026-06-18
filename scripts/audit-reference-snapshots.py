@@ -61,6 +61,33 @@ REFERENCE_ROUND_LIST_FIELDS = [
     "roundClassifiedToleranceSignatures",
 ]
 
+ALLOWED_WEAPON_FIRE_TOLERANCES = {
+    "adjacent_same_shooter_burst_gap",
+    "grenade_weapon_fire",
+    "near_related_kill",
+}
+
+ALLOWED_BOMB_EVENT_MISMATCHES = {
+    "small_explosion_timing_offset",
+    "synthesized_defuse_abort_timing",
+}
+
+ALLOWED_BOMB_STATE_WINDOW_TOLERANCES = {
+    "boundary_shift",
+    "go_post_resolution_dropped_residue",
+    "go_post_round_bomb_residue",
+    "single_frame_boundary_shift",
+}
+
+ALLOWED_EFFECT_MISMATCHES = {
+    "decoy_stationary_vs_event_timing",
+}
+
+ALLOWED_PROJECTILE_TRACK_MISMATCHES = {
+    "overlapping_same_thrower_projectile",
+    "post_round_smoke_duration",
+}
+
 RUST_ZERO_INTEGRITY_FIELDS = [
     "duplicateProjectiles",
     "physicallyDuplicateProjectiles",
@@ -128,6 +155,39 @@ def expect_string_list_field(label: str, item: dict[str, Any], field: str) -> No
             )
 
 
+def signature_classification(signature: str) -> str:
+    return signature.split("|", 1)[0]
+
+
+def assert_known_signature_classification(
+    label: str,
+    signature: str,
+    allowed: set[str],
+) -> None:
+    classification = signature_classification(signature)
+    if classification == "unclassified" or classification not in allowed:
+        raise AssertionError(
+            f"{label} has unsupported tolerance classification {classification!r}: {signature}"
+        )
+
+
+def expect_empty_string_list_field(label: str, item: dict[str, Any], field: str) -> None:
+    expect_string_list_field(label, item, field)
+    if item[field]:
+        raise AssertionError(f"{label} {field} must stay empty: {item[field][:3]!r}")
+
+
+def assert_signature_list_classifications(
+    label: str,
+    item: dict[str, Any],
+    field: str,
+    allowed: set[str],
+) -> None:
+    expect_string_list_field(label, item, field)
+    for signature in item[field]:
+        assert_known_signature_classification(f"{label} {field}", signature, allowed)
+
+
 def assert_reference_round_payload_shape(
     label: str,
     field: str,
@@ -167,8 +227,18 @@ def assert_reference_round_payload_shape(
         case "roundProjectileTrackSignatures":
             expect_string_list_field(item_label, item, "projectileTracks")
         case "roundWeaponFireToleranceSignatures":
-            expect_string_list_field(item_label, item, "missingInRust")
-            expect_string_list_field(item_label, item, "extraInRust")
+            assert_signature_list_classifications(
+                item_label,
+                item,
+                "missingInRust",
+                ALLOWED_WEAPON_FIRE_TOLERANCES,
+            )
+            assert_signature_list_classifications(
+                item_label,
+                item,
+                "extraInRust",
+                ALLOWED_WEAPON_FIRE_TOLERANCES,
+            )
         case "roundClassifiedToleranceSignatures":
             for group, keys in {
                 "bombEvents": [
@@ -196,6 +266,73 @@ def assert_reference_round_payload_shape(
                     raise AssertionError(f"{item_label} {group} is missing or not an object")
                 for key in keys:
                     expect_string_list_field(f"{item_label} {group}", value, key)
+            bomb_events = item["bombEvents"]
+            expect_empty_string_list_field(
+                f"{item_label} bombEvents",
+                bomb_events,
+                "missingInRustSignatures",
+            )
+            expect_empty_string_list_field(
+                f"{item_label} bombEvents",
+                bomb_events,
+                "extraInRustSignatures",
+            )
+            assert_signature_list_classifications(
+                f"{item_label} bombEvents",
+                bomb_events,
+                "eventMismatchSignatures",
+                ALLOWED_BOMB_EVENT_MISMATCHES,
+            )
+
+            bomb_state_windows = item["bombStateWindows"]
+            assert_signature_list_classifications(
+                f"{item_label} bombStateWindows",
+                bomb_state_windows,
+                "missingInRustSignatures",
+                ALLOWED_BOMB_STATE_WINDOW_TOLERANCES,
+            )
+            assert_signature_list_classifications(
+                f"{item_label} bombStateWindows",
+                bomb_state_windows,
+                "extraInRustSignatures",
+                ALLOWED_BOMB_STATE_WINDOW_TOLERANCES,
+            )
+
+            effects = item["dedupedEffects"]
+            expect_empty_string_list_field(
+                f"{item_label} dedupedEffects",
+                effects,
+                "missingInRustSignatures",
+            )
+            expect_empty_string_list_field(
+                f"{item_label} dedupedEffects",
+                effects,
+                "extraInRustSignatures",
+            )
+            assert_signature_list_classifications(
+                f"{item_label} dedupedEffects",
+                effects,
+                "effectMismatchSignatures",
+                ALLOWED_EFFECT_MISMATCHES,
+            )
+
+            projectile_tracks = item["projectileTracks"]
+            expect_empty_string_list_field(
+                f"{item_label} projectileTracks",
+                projectile_tracks,
+                "missingInRustSignatures",
+            )
+            expect_empty_string_list_field(
+                f"{item_label} projectileTracks",
+                projectile_tracks,
+                "extraInRustSignatures",
+            )
+            assert_signature_list_classifications(
+                f"{item_label} projectileTracks",
+                projectile_tracks,
+                "trackMismatchSignatures",
+                ALLOWED_PROJECTILE_TRACK_MISMATCHES,
+            )
 
 
 def assert_reference_snapshot_shape(snapshot: dict[str, Any]) -> str:

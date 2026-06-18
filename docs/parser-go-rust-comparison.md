@@ -139,6 +139,11 @@ Summary: Rust full quality outputs are smaller and faster than Go on most demos 
   make exact parity true, but it prevents the broad `near_related_kill`
   classifier from silently hiding new missing Rust fires or changed unmatched
   fires in future audits.
+- The reference snapshot audit now keeps those tolerance classes on a closed
+  allowlist and rejects `unclassified` snapshot signatures. It also requires
+  bomb-event, deduped utility-effect, and projectile-track missing/extra
+  signature lists to stay empty, so only explicitly justified timing/window
+  mismatches can remain in the committed reference data.
 - A Rust-side attempt to synthesize missing firearm `weaponFires` from tick-row `FIRE` state was rejected. Raw `FIRE` is held across many ticks and generated thousands of false extra shots even when restricted to rising edges, so it is not a safe source for weapon-fire reconstruction without deeper shot-cadence/recoil modeling.
 - `demoparser-rust` also exposes a custom `fire_bullets` message, but it does not solve the remaining weapon-fire gap. On Cache, `fire_bullets` exists globally (`2635` events in the demo), but neither `weapon_fire` nor `fire_bullets` is emitted around the confirmed missing tick `81163` for the two simultaneous AK-47 shots. Adding `fire_bullets` as a fallback left the five-demo weapon-fire audit unchanged, so the fallback was rejected as dead complexity.
 - Projectile frame auditing now checks track count, duplicate projectiles per frame, near-identical physical duplicates in one frame, frame monotonicity, track breaks, teleport-like jumps, and tolerant track matching by normalized type, thrower, time, and 3D start/end position. Rust now keeps IDs through small terminal grenade snaps by using a conservative 128-unit continuity floor instead of 90 units. This fixed confirmed smoke splits on Cache round 8 and Anubis round 29 without reintroducing the previous overmerge bug.
