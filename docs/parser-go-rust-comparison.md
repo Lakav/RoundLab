@@ -1,6 +1,10 @@
-# Go vs Rust Parser Comparison
+# Rust Parser Validation and Historical Go Comparison
 
-Local comparison only. The archived Go parser is used as an oracle/debug aid, not as a product dependency or fallback.
+This document is now historical. The active parser workflow is Rust-only:
+`parser/reference_demos.json`, `ROUNDLAB_TEST_DEMOS`, parser structural tests,
+and `ROUNDLAB_STATS` are the normal validation and optimization tools. The
+archived Go parser is only a debug aid for old investigations; it is not a
+product dependency, fallback, or daily oracle.
 
 ## Setup
 
@@ -10,7 +14,7 @@ Local comparison only. The archived Go parser is used as an oracle/debug aid, no
 - Demos: local ignored files under `demos/`.
 - Score truth: demo filename, for example `dust1-13.dem.zst` means `scoreA=1`, `scoreB=13`.
 
-## Commands
+## Historical Go Comparison Commands
 
 ```bash
 python3 scripts/compare-parsers.py --prepare-go --build-rust --quality medium --skip-heavy --out .roundlab-compare/medium-skip.json
@@ -19,7 +23,8 @@ python3 scripts/compare-parsers.py --build-rust --quality full --round-audit --o
 python3 scripts/audit-reference-snapshots.py --report .roundlab-compare/full-round-audit-projectile-integrity.json
 ```
 
-Use `--keep-outputs` for targeted event-level debugging.
+Use these only for targeted historical/debug work. Use `--keep-outputs` for
+targeted event-level debugging.
 The generated Markdown report now includes a `Rust Phase Timings` section from
 `ROUNDLAB_STATS`, with read, vendor parse, grouping, round build, write output,
 JSON serialization, and max RSS per demo.

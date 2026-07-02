@@ -51,10 +51,9 @@ jobs:
         with:
           workspaces: parser -> target
 
-      - name: Validate parser audit tooling
+      - name: Validate Rust parser audit tooling
         run: |
           python3 -m py_compile \
-            scripts/compare-parsers.py \
             scripts/audit-reference-snapshots.py \
             scripts/validate-release-version.py
           python3 -m json.tool parser/reference_demos.json >/dev/null

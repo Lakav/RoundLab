@@ -91,22 +91,22 @@ duplicate projectile identity inside a projectile frame.
 
 To add a reference demo, keep the `.dem`/`.dem.zst` outside Git, rename it as
 `<map><scoreA>-<scoreB>.dem.zst`, run both parser integration tests, then add
-only the lightweight snapshots to `parser/reference_demos.json`.
-After a full Go/Rust round audit, run
-`python3 scripts/audit-reference-snapshots.py --report .roundlab-compare/<report>.json`
-to verify that the saved Rust snapshots still match the Rust side of the latest
-audited report, including compact event/terminal-event/effect/weapon-fire/
-bomb-state/action and projectile-track signatures, plus the current allowlisted
-Go/Rust classified tolerance signatures for bomb events, bomb-state windows,
-utility effects, weapon fires, and projectile tracks. This check is read-only
-and requires the JSON report, not only the Markdown summary.
-For a fast check that does not require parser outputs, run
+only the lightweight snapshots to `parser/reference_demos.json`. The current
+validation workflow is Rust-only: `parser/reference_demos.json` and the
+`ROUNDLAB_TEST_DEMOS` integration tests are the source of truth. The archived
+Go parser comparison harness remains available for historical/debug work, but
+it is not part of the daily parser validation path and should not block Rust
+optimization unless it exposes a clear Rust replay bug.
+
+For a fast snapshot check that does not require parser outputs, run
 `python3 scripts/audit-reference-snapshots.py --reference-only` to validate the
 reference snapshot structure, score truth, per-round list lengths, and aggregate
 round totals.
 
 Parser output uses gzip for Tauri compatibility. For benchmarks, set
 `ROUNDLAB_PARSER_GZIP_LEVEL=0..9` to compare compression speed and output size.
+The current parser workflow and Rust-only optimization baseline are documented
+in `docs/parser-rust-only.md`.
 
 ## Releases
 

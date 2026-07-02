@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Validate Rust reference snapshots against a saved Go/Rust audit report.
+"""Validate committed Rust reference snapshots.
 
-This is intentionally read-only. It does not regenerate parser outputs or
-snapshots; it checks that parser/reference_demos.json still matches the Rust
-side of a recent scripts/compare-parsers.py --round-audit JSON report.
+The default daily guard is --reference-only: it validates
+parser/reference_demos.json structure, score truth, per-round list lengths, and
+aggregate totals without running parsers or requiring Go. The optional --report
+mode is intentionally historical/read-only; it checks that the saved snapshots
+still match the Rust side of a scripts/compare-parsers.py --round-audit JSON
+report when someone deliberately runs the archived Go comparison harness.
 """
 
 from __future__ import annotations
