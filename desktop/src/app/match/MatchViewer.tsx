@@ -20,7 +20,8 @@ import { cropFor, MAP_CALIBRATION, RADAR_SIZE } from "@/lib/maps";
 import { enterMatchFullscreen, exitMatchFullscreen, getMatchMetadata, getRound, writeDebugLog } from "@/lib/api";
 
 const DRAW_WIDTH = 3;
-const MIN_MAP = 360;
+const BASE_MAP_VIEW_SCALE = 0.75;
+const MIN_MAP = 280;
 const MAX_MAP = 860;
 const MIN_MAP_ZOOM = 1;
 const MAX_MAP_ZOOM = 2.6;
@@ -291,10 +292,16 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
     let raf = 0;
     const compute = () => {
       const rect = el.getBoundingClientRect();
-      const w = rect.width;
-      const h = rect.height;
-      const size = Math.max(MIN_MAP, Math.min(MAX_MAP, Math.floor(Math.min(w, h) * 0.94)));
+      const styles = window.getComputedStyle(el);
+      const horizontalPadding = parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
+      const verticalPadding = parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom);
+      const usableWidth = Math.max(0, rect.width - horizontalPadding);
+      const usableHeight = Math.max(0, rect.height - verticalPadding);
+      const available = Math.min(usableWidth, usableHeight);
+      const scaled = available * BASE_MAP_VIEW_SCALE;
+      const size = Math.floor(available <= MIN_MAP ? available : Math.min(MAX_MAP, Math.max(MIN_MAP, scaled)));
       setMapSize(size);
+      setMapPan((current) => clampMapPan(current, mapZoom, size));
     };
     const ro = new ResizeObserver(() => {
       cancelAnimationFrame(raf);
@@ -306,7 +313,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
       ro.disconnect();
       cancelAnimationFrame(raf);
     };
-  }, [loading]);
+  }, [loading, mapZoom]);
 
   const [strokesByRound, setStrokesByRound] = useState<Record<number, Stroke[]>>({});
   const strokes = strokesByRound[currentRoundIdx] ?? [];
@@ -751,13 +758,15 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
           {!condensedMode && <KillFeed />}
           <div
             ref={mainRef}
+            data-testid="match-map-stage"
             className={[
               "relative flex min-h-0 flex-1 items-center justify-center pb-24 pt-12",
               condensedMode ? "px-6" : "px-0",
             ].join(" ")}
           >
             <div
-              className="relative overflow-visible"
+              data-testid="match-map-viewport"
+              className="relative overflow-hidden"
               style={{
                 width: mapSize,
                 height: mapSize,
@@ -769,14 +778,16 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
               onPointerCancel={endMapPan}
             >
               <div
+                data-testid="match-map-clip"
                 style={{
                   width: mapSize,
                   height: mapSize,
-                  overflow: "visible",
+                  overflow: "hidden",
                   contain: "layout style",
                 }}
               >
                 <div
+                  data-testid="match-map-content"
                   className="relative"
                   style={{
                     width: innerSize,
