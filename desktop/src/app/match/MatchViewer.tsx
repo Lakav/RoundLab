@@ -3,7 +3,7 @@
 import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useReplay } from "@/lib/replay-store";
+import { type HabitOverlay, type HabitReplayEffect, type HabitReplayRound, useReplay } from "@/lib/replay-store";
 import { MapRenderer } from "@/components/replay/MapRenderer";
 import { DrawingLayer, type DrawTool, type Stroke } from "@/components/replay/DrawingLayer";
 import { DrawingToolbar } from "@/components/replay/DrawingToolbar";
@@ -13,17 +13,30 @@ import { RoundList } from "@/components/replay/RoundList";
 import { PlayerHUD } from "@/components/replay/PlayerHUD";
 import { RoundClock } from "@/components/replay/RoundClock";
 import { KillFeed } from "@/components/replay/KillFeed";
-import { Loader2 } from "lucide-react";
+import { Loader2, Maximize2, Minimize2, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { MatchData, Round } from "@/lib/types";
+import type { MatchData, PlayerPos, Round, UtilityEffect } from "@/lib/types";
 import { cropFor, MAP_CALIBRATION, RADAR_SIZE } from "@/lib/maps";
-import { getMatchMetadata, getRound, writeDebugLog } from "@/lib/api";
-import { invoke } from "@tauri-apps/api/core";
+import { enterMatchFullscreen, exitMatchFullscreen, getMatchMetadata, getRound, writeDebugLog } from "@/lib/api";
 
 const DRAW_WIDTH = 3;
 const MIN_MAP = 360;
-const MAX_MAP = 760;
+const MAX_MAP = 860;
+const MIN_MAP_ZOOM = 1;
+const MAX_MAP_ZOOM = 2.6;
+const MAP_ZOOM_STEP = 0.25;
 const PROJECTILE_DEBUG_KEY = "roundlab.debugProjectiles";
+
+type HabitProjectileKind = "smoke" | "flash" | "he" | "fire" | "decoy";
+type ReviewMode = "classic" | "condensed";
+
+const DEFAULT_HABIT_TYPES: Record<HabitProjectileKind, boolean> = {
+  smoke: true,
+  flash: true,
+  he: true,
+  fire: true,
+  decoy: true,
+};
 
 function assertRenderableRound(round: Round): Round {
   if (round.frames.length === 0) {
@@ -32,67 +45,16 @@ function assertRenderableRound(round: Round): Round {
   return round;
 }
 
-function logFrontendRoundList(matchId: string, data: MatchData): void {
-  const selectedInitialRoundIndex = 0;
-  const rounds = data.rounds.map((round, roundIndex) => ({
-    roundIndex,
-    roundNumber: round.number,
-    startTick: round.startTick,
-    endTick: round.endTick,
-    freezeEndTick: round.freezeEndTick ?? null,
-    duration: round.duration,
-    reason: "loaded",
-    selectedInitialRoundIndex,
-  }));
-  const first = data.rounds[0];
-  void writeDebugLog(
-    "rounds",
-    `ROUNDLAB_DEBUG_ROUNDS frontend-round-list ${JSON.stringify({ matchId, selectedInitialRoundIndex, rounds })}`,
-  ).catch(() => {});
-  if (first) {
-    void writeDebugLog(
-      "rounds",
-      `ROUNDLAB_DEBUG_ROUNDS replay-initial-round ${JSON.stringify({
-        matchId,
-        roundIndex: 0,
-        roundNumber: first.number,
-        startTick: first.startTick,
-        endTick: first.endTick,
-        freezeEndTick: first.freezeEndTick ?? null,
-        duration: first.duration,
-        reason: "setMatch",
-        selectedInitialRoundIndex,
-      })}`,
-    ).catch(() => {});
-    void writeDebugLog(
-      "rounds",
-      `ROUNDLAB_DEBUG_ROUNDS replay-auto-seek ${JSON.stringify({
-        matchId,
-        roundIndex: 0,
-        roundNumber: first.number,
-        startTick: first.startTick,
-        endTick: first.endTick,
-        freezeEndTick: first.freezeEndTick ?? null,
-        duration: first.duration,
-        reason: "none",
-        selectedInitialRoundIndex,
-      })}`,
-    ).catch(() => {});
-  }
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
 }
 
-function logFrontendRoundScore(matchId: string, source: string, round: Round): void {
-  void writeDebugLog(
-    "rounds",
-    `ROUNDLAB_DEBUG_SCORE frontend-round-score ${JSON.stringify({
-      matchId,
-      source,
-      roundNumber: round.number,
-      ctScore: round.scoreA,
-      tScore: round.scoreB,
-      winningSide: round.winner ?? null,
-    })}`,
-  ).catch(() => {});
+function clampMapPan(pan: { x: number; y: number }, zoom: number, size: number) {
+  const max = Math.max(0, (size * (zoom - 1)) / 2);
+  return {
+    x: clamp(pan.x, -max, max),
+    y: clamp(pan.y, -max, max),
+  };
 }
 
 function projectileDebugEnabled(): boolean {
@@ -127,6 +89,148 @@ function logFrontendRoundReceived(matchId: string, round: Round): void {
   ).catch(() => {});
 }
 
+function projectileSamplesForHabits(round: Round) {
+  return round.projectileFrames?.length ? round.projectileFrames : round.frames;
+}
+
+function habitProjectileKind(type: string): HabitProjectileKind | null {
+  const lower = type.toLowerCase();
+  if (lower.includes("smoke")) return "smoke";
+  if (lower.includes("molotov") || lower.includes("incendiary") || lower.includes("incgrenade") || lower.includes("inferno")) return "fire";
+  if (lower.includes("decoy")) return "decoy";
+  if (lower.includes("flash")) return "flash";
+  if (lower.startsWith("he") || lower.includes("hegrenade") || lower.includes("high explosive")) return "he";
+  return null;
+}
+
+function simplifyTimedHabitPoints<T extends { x: number; y: number; z: number }>(points: T[], minDistance = 28): T[] {
+  if (points.length <= 2) return points;
+  const out = [points[0]];
+  for (const point of points.slice(1, -1)) {
+    const last = out[out.length - 1];
+    if (Math.hypot(point.x - last.x, point.y - last.y, point.z - last.z) >= minDistance) out.push(point);
+  }
+  const final = points[points.length - 1];
+  if (out[out.length - 1] !== final) out.push(final);
+  return out;
+}
+
+function playerAtOrBefore(round: Round, playerId: number, time: number): PlayerPos | null {
+  for (let i = round.frames.length - 1; i >= 0; i--) {
+    const frame = round.frames[i];
+    if (frame.t > time) continue;
+    const player = frame.players.find((candidate) => candidate.id === playerId);
+    if (player) return player;
+  }
+  return null;
+}
+
+function effectKind(effect: UtilityEffect): HabitProjectileKind | null {
+  if (effect.type === "smoke" || effect.type === "flash" || effect.type === "he" || effect.type === "fire" || effect.type === "decoy") {
+    return effect.type;
+  }
+  return null;
+}
+
+function habitEffectMatchRadius(kind: HabitProjectileKind): number {
+  if (kind === "he") return 1500;
+  if (kind === "flash") return 1100;
+  return 950;
+}
+
+function buildHabitReplayRound(
+  round: Round,
+  playerId: number,
+  playerName: string,
+  enabledTypes: Record<HabitProjectileKind, boolean>,
+): HabitReplayRound | null {
+  const positions = simplifyTimedHabitPoints(
+    round.frames
+      .map((frame) => {
+        const player = frame.players.find((candidate) => candidate.id === playerId);
+        return player
+          ? {
+              t: frame.t,
+              x: player.x,
+              y: player.y,
+              z: player.z,
+              yaw: player.yaw,
+              hp: player.hp,
+              team: player.team,
+            }
+          : null;
+      })
+      .filter((sample): sample is HabitReplayRound["positions"][number] => Boolean(sample)),
+    22,
+  );
+
+  if (!positions.length) return null;
+
+  const tracks = new Map<
+    number,
+    { type: string; thrower?: number; samples: Array<{ t: number; x: number; y: number; z: number }> }
+  >();
+  for (const frame of projectileSamplesForHabits(round)) {
+    for (const projectile of frame.projectiles ?? []) {
+      if (projectile.thrower !== playerId) continue;
+      const kind = habitProjectileKind(projectile.type);
+      if (!kind || !enabledTypes[kind]) continue;
+      const track = tracks.get(projectile.id) ?? { type: projectile.type, thrower: projectile.thrower, samples: [] };
+      track.samples.push({ t: frame.t, x: projectile.x, y: projectile.y, z: projectile.z });
+      tracks.set(projectile.id, track);
+    }
+  }
+
+  const projectiles = [...tracks.entries()]
+    .map(([projectileId, track]) => ({
+      id: `${round.number}:${projectileId}`,
+      roundNumber: round.number,
+      projectileId,
+      type: track.type,
+      thrower: track.thrower,
+      samples: track.samples,
+    }))
+    .filter((track) => track.samples.length >= 2);
+
+  const effects: HabitReplayEffect[] = [];
+  for (const effect of round.effects ?? []) {
+    const kind = effectKind(effect);
+    if (!kind || !enabledTypes[kind]) continue;
+    const radius = habitEffectMatchRadius(kind);
+    const radius2 = radius * radius;
+    let bestDistance = Infinity;
+    for (const track of projectiles) {
+      if (habitProjectileKind(track.type) !== kind) continue;
+      for (let i = track.samples.length - 1; i >= 0; i--) {
+        const sample = track.samples[i];
+        if (sample.t > effect.start + 0.25) continue;
+        if (sample.t < effect.start - 1.65) break;
+        const dx = sample.x - effect.x;
+        const dy = sample.y - effect.y;
+        const distance = dx * dx + dy * dy;
+        if (distance < bestDistance) bestDistance = distance;
+      }
+    }
+    if (bestDistance <= radius2) effects.push(effect);
+  }
+
+  const deathEvent = round.events.find((event) => event.type === "kill" && event.victim === playerId);
+  const deathPosition = deathEvent ? playerAtOrBefore(round, playerId, deathEvent.t) : null;
+
+  return {
+    id: `${round.number}:${playerId}`,
+    roundNumber: round.number,
+    playerId,
+    playerName,
+    positions,
+    death: deathEvent && deathPosition
+      ? { t: deathEvent.t, x: deathPosition.x, y: deathPosition.y, z: deathPosition.z }
+      : undefined,
+    projectiles,
+    effects,
+  };
+}
+
 export default function MatchViewer({ id, visualTest = false }: { id: string; visualTest?: boolean }) {
   const setMatch = useReplay((s) => s.setMatch);
   const setRoundData = useReplay((s) => s.setRoundData);
@@ -135,41 +239,50 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
   const setTime = useReplay((s) => s.setTime);
   const setPlaying = useReplay((s) => s.setPlaying);
   const setSpeed = useReplay((s) => s.setSpeed);
+  const setDurationOverride = useReplay((s) => s.setDurationOverride);
   const togglePlay = useReplay((s) => s.togglePlay);
+  const habitOverlay = useReplay((s) => s.habitOverlay);
+  const setHabitOverlay = useReplay((s) => s.setHabitOverlay);
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [reviewMode, setReviewMode] = useState<ReviewMode>("classic");
+  const [condensedPlayerValue, setCondensedPlayerValue] = useState("");
+  const [habitLoading, setHabitLoading] = useState(false);
+  const [habitStatus, setHabitStatus] = useState("");
 
   const [tool, setTool] = useState<DrawTool>("none");
   const [color, setColor] = useState("#ef4444");
   const mainRef = useRef<HTMLDivElement>(null);
-  const loadingRoundsRef = useRef<Set<number>>(new Set());
+  const matchRef = useRef<MatchData | null>(null);
+  const roundLoadPromisesRef = useRef<Map<number, Promise<Round>>>(new Map());
+  const habitRunRef = useRef(0);
   const [mapSize, setMapSize] = useState(600);
+  const [mapZoom, setMapZoom] = useState(1);
+  const [mapPan, setMapPan] = useState({ x: 0, y: 0 });
+  const [mapDrag, setMapDrag] = useState<{ pointerId: number; startX: number; startY: number; startPanX: number; startPanY: number } | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
     document.documentElement.classList.add("overflow-hidden");
     document.body.classList.add("overflow-hidden");
+    const onFullscreenChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    onFullscreenChange();
+    document.addEventListener("fullscreenchange", onFullscreenChange);
     return () => {
       document.documentElement.classList.remove("overflow-hidden");
       document.body.classList.remove("overflow-hidden");
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
     };
   }, []);
 
   useEffect(() => {
-    if (loading || !match) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        if (cancelled) return;
-        await invoke("enter_match_fullscreen");
-      } catch (error) {
-        console.warn("Could not enter fullscreen", error);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [loading, match]);
+    roundLoadPromisesRef.current.clear();
+  }, [id]);
+
+  useEffect(() => {
+    matchRef.current = match;
+  }, [match]);
 
   useEffect(() => {
     if (loading) return;
@@ -180,7 +293,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
       const rect = el.getBoundingClientRect();
       const w = rect.width;
       const h = rect.height;
-      const size = Math.max(MIN_MAP, Math.min(MAX_MAP, Math.floor(Math.min(w, h) * 0.88)));
+      const size = Math.max(MIN_MAP, Math.min(MAX_MAP, Math.floor(Math.min(w, h) * 0.94)));
       setMapSize(size);
     };
     const ro = new ResizeObserver(() => {
@@ -200,23 +313,82 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
   const setStrokes = (s: Stroke[]) =>
     setStrokesByRound((m) => ({ ...m, [currentRoundIdx]: s }));
 
-  const loadRoundData = useCallback(
-    async (roundNumber: number) => {
-      if (loadingRoundsRef.current.has(roundNumber)) return;
-      loadingRoundsRef.current.add(roundNumber);
-      try {
+  const setClampedZoom = useCallback((nextZoom: number) => {
+    const next = clamp(nextZoom, MIN_MAP_ZOOM, MAX_MAP_ZOOM);
+    setMapZoom(next);
+    setMapPan((current) => clampMapPan(current, next, mapSize));
+  }, [mapSize]);
+
+  const toggleFullscreen = useCallback(() => {
+    const action = document.fullscreenElement ? exitMatchFullscreen : enterMatchFullscreen;
+    void action().catch(() => {
+      /* Browser fullscreen can be denied if the browser blocks the gesture. */
+    });
+  }, []);
+
+  const startMapPan = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (tool !== "none" || mapZoom <= 1) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setMapDrag({
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startPanX: mapPan.x,
+      startPanY: mapPan.y,
+    });
+  };
+
+  const moveMapPan = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!mapDrag || mapDrag.pointerId !== event.pointerId) return;
+    setMapPan(
+      clampMapPan(
+        {
+          x: mapDrag.startPanX + event.clientX - mapDrag.startX,
+          y: mapDrag.startPanY + event.clientY - mapDrag.startY,
+        },
+        mapZoom,
+        mapSize,
+      ),
+    );
+  };
+
+  const endMapPan = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!mapDrag || mapDrag.pointerId !== event.pointerId) return;
+    setMapDrag(null);
+  };
+
+  const fetchRoundData = useCallback(
+    (roundNumber: number): Promise<Round> => {
+      const existing = roundLoadPromisesRef.current.get(roundNumber);
+      if (existing) return existing;
+      const promise = (async () => {
         const debugProjectiles = projectileDebugEnabled();
         const data = assertRenderableRound(await getRound(id, roundNumber, debugProjectiles));
         logFrontendRoundReceived(id, data);
-        logFrontendRoundScore(id, "get-round", data);
         startTransition(() => setRoundData(id, roundNumber, data));
-      } catch (e) {
-        throw e;
-      } finally {
-        loadingRoundsRef.current.delete(roundNumber);
-      }
+        return data;
+      })().finally(() => {
+        roundLoadPromisesRef.current.delete(roundNumber);
+      });
+      roundLoadPromisesRef.current.set(roundNumber, promise);
+      return promise;
     },
     [id, setRoundData],
+  );
+
+  const loadRoundData = useCallback(
+    async (roundNumber: number) => {
+      await fetchRoundData(roundNumber);
+    },
+    [fetchRoundData],
+  );
+
+  const loadRoundForHabits = useCallback(
+    async (round: Round): Promise<Round> => {
+      if (round.frames.length > 0) return round;
+      return fetchRoundData(round.number);
+    },
+    [fetchRoundData],
   );
 
   useEffect(() => {
@@ -232,8 +404,6 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
         if (!MAP_CALIBRATION[visibleData.meta.map]) {
           throw new Error(`Unsupported map "${visibleData.meta.map || "unknown"}".`);
         }
-        logFrontendRoundList(id, visibleData);
-        visibleData.rounds.forEach((round) => logFrontendRoundScore(id, "metadata", round));
         startTransition(() => setMatch(id, visibleData));
         setLoading(false);
       } catch (e: unknown) {
@@ -313,13 +483,14 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
       const st = useReplay.getState();
       const round = st.match?.rounds[st.currentRoundIdx];
       if (!round) return;
+      const duration = st.durationOverride ?? round.duration;
       if (e.code === "Space") {
         e.preventDefault();
         togglePlay();
       } else if (e.key === "j" || e.key === "ArrowLeft") {
         setTime(Math.max(0, (st.time ?? 0) - 5));
       } else if (e.key === "l" || e.key === "ArrowRight") {
-        setTime(Math.min(round.duration, (st.time ?? 0) + 5));
+        setTime(Math.min(duration, (st.time ?? 0) + 5));
       } else if (e.key === "k") {
         togglePlay();
       } else if (e.key === "v") setTool("none");
@@ -329,6 +500,73 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
     return () => window.removeEventListener("keydown", onKey);
   }, [togglePlay, setTime]);
 
+  const invalidateHabitRun = useCallback(() => {
+    habitRunRef.current += 1;
+    setHabitOverlay(null);
+    setDurationOverride(null);
+  }, [setDurationOverride, setHabitOverlay]);
+
+  const clearHabitOverlay = useCallback(() => {
+    invalidateHabitRun();
+    setHabitStatus("");
+    setHabitLoading(false);
+  }, [invalidateHabitRun]);
+
+  useEffect(() => () => invalidateHabitRun(), [invalidateHabitRun]);
+
+  const runCondensedOverlay = useCallback(async (playerValue: string) => {
+    const currentMatch = matchRef.current;
+    if (!currentMatch) return;
+    const [scopeKind, scopeId] = playerValue.split(":");
+    const playerId = scopeKind === "player" ? Number(scopeId) : NaN;
+    if (!Number.isFinite(playerId)) {
+      setHabitStatus("Select a player");
+      return;
+    }
+    const runId = habitRunRef.current + 1;
+    habitRunRef.current = runId;
+    setHabitLoading(true);
+    setHabitStatus("Loading rounds…");
+    setPlaying(false);
+    setTime(0);
+    try {
+      const label = currentMatch.players.find((player) => player.steamId === playerId)?.name ?? String(playerId);
+      const replays: HabitReplayRound[] = [];
+      for (let i = 0; i < currentMatch.rounds.length; i++) {
+        if (habitRunRef.current !== runId) return;
+        setHabitStatus(`Loading ${i + 1}/${currentMatch.rounds.length}`);
+        const round = await loadRoundForHabits(currentMatch.rounds[i]);
+        if (habitRunRef.current !== runId) return;
+        const replay = buildHabitReplayRound(round, playerId, label, DEFAULT_HABIT_TYPES);
+        if (replay) replays.push(replay);
+      }
+      if (habitRunRef.current === runId) {
+        const overlay: HabitOverlay = { label, mode: "replay", trails: [], replays };
+        const duration = Math.max(
+          currentMatch.rounds.reduce((max, round) => Math.max(max, round.duration), 0),
+          ...replays.map((replay) => {
+            const samples = replay.positions.map((sample) => sample.t);
+            const projectiles = replay.projectiles.flatMap((projectile) => projectile.samples.map((sample) => sample.t));
+            const effects = replay.effects.flatMap((effect) => [effect.start, effect.end]);
+            const death = replay.death ? [replay.death.t] : [];
+            return Math.max(0, ...samples, ...projectiles, ...effects, ...death);
+          }),
+        );
+        setHabitOverlay(overlay);
+        setDurationOverride(duration || null);
+        setHabitStatus(`${replays.length} rounds`);
+      }
+    } catch (error) {
+      if (habitRunRef.current === runId) {
+        setHabitStatus(error instanceof Error ? error.message : String(error));
+      }
+    } finally {
+      if (habitRunRef.current === runId) {
+        setHabitLoading(false);
+      }
+    }
+  }, [loadRoundForHabits, setDurationOverride, setHabitOverlay, setPlaying, setTime]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-neutral-950">
@@ -337,7 +575,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
           alt="RoundLab"
           width={72}
           height={74}
-          priority
+          loading="eager"
           className="h-auto w-16 object-contain opacity-90"
         />
         <Loader2 className="size-5 animate-spin text-neutral-400" />
@@ -352,7 +590,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
           alt="RoundLab"
           width={72}
           height={74}
-          priority
+          loading="eager"
           className="h-auto w-16 object-contain opacity-90"
         />
         <p className="max-w-md text-center text-sm text-red-400">
@@ -370,9 +608,18 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
   const innerSize = mapSize * cropScale;
   const cropTx = -crop.x * (mapSize / crop.size);
   const cropTy = -crop.y * (mapSize / crop.size);
+  const condensedMode = reviewMode === "condensed";
+  const condensedPlayerOptions = match.players.map((player) => ({
+    value: `player:${player.steamId}`,
+    label: player.name || `#${String(player.steamId).slice(-4)}`,
+  }));
+  const displayMapPan = clampMapPan(mapPan, mapZoom, mapSize);
+  const effectiveCondensedPlayerValue = condensedPlayerOptions.some((option) => option.value === condensedPlayerValue)
+    ? condensedPlayerValue
+    : condensedPlayerOptions[0]?.value ?? "";
 
   return (
-    <div className="h-screen flex flex-col text-neutral-100" style={{ background: "#1d1f1f" }}>
+    <div className="h-screen flex flex-col overflow-hidden bg-[#101212] text-neutral-100">
       {match.meta.partial && (
         <div className="bg-yellow-950/50 border-b border-yellow-700/30 px-4 py-2 text-sm text-yellow-200">
           ⚠️ Partial parse: This replay was truncated during parsing. Data may be incomplete.
@@ -391,32 +638,142 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
             alt=""
             width={20}
             height={21}
+            loading="eager"
             className="h-auto w-5 object-contain"
           />
           Home
         </Button>
       </Link>
-      <main className="relative flex min-h-0 flex-1 flex-col overflow-visible">
-        <PlayerHUD side="CT" />
-        <PlayerHUD side="T" />
+      <div className="fixed left-28 top-4 z-50 flex items-center gap-2 rounded-md border border-white/10 bg-[#0b0d0d]/75 px-2 py-1.5 shadow-xl shadow-black/30 backdrop-blur-md">
+        <div className="flex rounded-[3px] border border-white/10 bg-[#151717] p-0.5">
+          {([
+            ["classic", "Classique"],
+            ["condensed", "Condensé"],
+          ] as const).map(([mode, label]) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => {
+                setReviewMode(mode);
+                if (mode === "classic") clearHabitOverlay();
+                else if (effectiveCondensedPlayerValue) {
+                  if (!condensedPlayerValue) setCondensedPlayerValue(effectiveCondensedPlayerValue);
+                  void runCondensedOverlay(effectiveCondensedPlayerValue);
+                }
+              }}
+              className={[
+                "h-7 rounded-[2px] px-2.5 text-[11px] font-semibold transition-colors",
+                reviewMode === mode
+                  ? "bg-white text-neutral-950"
+                  : "text-neutral-500 hover:bg-white/[0.05] hover:text-neutral-200",
+              ].join(" ")}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1 rounded-[3px] border border-white/10 bg-[#151717] px-1 py-0.5">
+          <button
+            type="button"
+            onClick={() => setClampedZoom(mapZoom - MAP_ZOOM_STEP)}
+            className="flex size-7 items-center justify-center rounded-[2px] text-neutral-500 transition-colors hover:bg-white/[0.05] hover:text-neutral-200"
+            title="Zoom out"
+          >
+            <ZoomOut className="size-3.5" />
+          </button>
+          <span className="w-9 text-center text-[11px] font-semibold tabular-nums text-neutral-400">
+            {Math.round(mapZoom * 100)}%
+          </span>
+          <button
+            type="button"
+            onClick={() => setClampedZoom(mapZoom + MAP_ZOOM_STEP)}
+            className="flex size-7 items-center justify-center rounded-[2px] text-neutral-500 transition-colors hover:bg-white/[0.05] hover:text-neutral-200"
+            title="Zoom in"
+          >
+            <ZoomIn className="size-3.5" />
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={toggleFullscreen}
+          className="flex size-8 items-center justify-center rounded-[3px] border border-white/10 bg-[#151717] text-neutral-400 transition-colors hover:bg-white/[0.05] hover:text-neutral-100"
+          title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+        >
+          {isFullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+        </button>
+        {condensedMode && (
+          <select
+            value={effectiveCondensedPlayerValue}
+            onChange={(event) => {
+              setCondensedPlayerValue(event.target.value);
+              void runCondensedOverlay(event.target.value);
+            }}
+            className="h-7 max-w-40 rounded-[3px] border border-white/10 bg-[#171a1a] px-2 text-[11px] font-medium text-neutral-200 outline-none"
+          >
+            {condensedPlayerOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        )}
+        {condensedMode && (habitStatus || habitOverlay) && (
+          <span
+            className="whitespace-nowrap text-[11px] text-neutral-500"
+            title={
+              habitOverlay
+                ? habitOverlay.mode === "replay"
+                  ? `${habitOverlay.label}: ${habitOverlay.replays?.length ?? 0} rounds`
+                  : `${habitOverlay.label}: ${habitOverlay.trails.length} trajectories`
+                : habitStatus
+            }
+          >
+            {habitOverlay
+              ? habitOverlay.mode === "replay"
+                ? `${habitOverlay.replays?.length ?? 0} rounds`
+                : `${habitOverlay.trails.length} trajectories`
+              : habitLoading
+                ? habitStatus || "Loading rounds…"
+                : habitStatus}
+          </span>
+        )}
+      </div>
+      <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        {!condensedMode && (
+          <>
+            <PlayerHUD side="CT" />
+            <PlayerHUD side="T" />
+          </>
+        )}
 
         <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-          <RoundClock />
-          <KillFeed />
-          <div ref={mainRef} className="flex min-h-0 flex-1 items-center justify-center px-[290px] pb-4 pt-6">
+          {!condensedMode && <RoundClock />}
+          {!condensedMode && <KillFeed />}
+          <div
+            ref={mainRef}
+            className={[
+              "relative flex min-h-0 flex-1 items-center justify-center pb-24 pt-12",
+              condensedMode ? "px-6" : "px-0",
+            ].join(" ")}
+          >
             <div
-              className="relative overflow-hidden opacity-90"
+              className="relative overflow-visible"
               style={{
                 width: mapSize,
                 height: mapSize,
+                cursor: tool === "none" && mapZoom > 1 ? (mapDrag ? "grabbing" : "grab") : undefined,
               }}
+              onPointerDown={startMapPan}
+              onPointerMove={moveMapPan}
+              onPointerUp={endMapPan}
+              onPointerCancel={endMapPan}
             >
               <div
                 style={{
                   width: mapSize,
                   height: mapSize,
-                  overflow: "hidden",
-                  contain: "strict",
+                  overflow: "visible",
+                  contain: "layout style",
                 }}
               >
                 <div
@@ -424,10 +781,11 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
                   style={{
                     width: innerSize,
                     height: innerSize,
-                    transform: `translate(${cropTx}px, ${cropTy}px)`,
+                    transform: `translate(${displayMapPan.x}px, ${displayMapPan.y}px) scale(${mapZoom}) translate(${cropTx}px, ${cropTy}px)`,
+                    transformOrigin: "center",
                   }}
                 >
-                  <MapRenderer size={innerSize} />
+                  <MapRenderer size={innerSize} condensed={condensedMode} />
                   <DrawingLayer
                     size={innerSize}
                     tool={tool}
@@ -442,13 +800,13 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
           </div>
         </div>
 
-        <div className="shrink-0 border-t border-dashed border-white/10 bg-[#121414] px-5 pb-3 pt-1">
+        <div className="absolute inset-x-4 bottom-4 z-40 shrink-0 rounded-md border border-white/10 bg-[#0b0d0d]/78 px-4 pb-3 pt-1 shadow-2xl shadow-black/35 backdrop-blur-md">
           <RoundList />
           <div className="flex items-center gap-3">
-          <Controls />
-          <div className="min-w-0 flex-1">
-            <Timeline />
-          </div>
+            <Controls />
+            <div className="min-w-0 flex-1">
+              <Timeline />
+            </div>
             <DrawingToolbar
               tool={tool}
               setTool={setTool}

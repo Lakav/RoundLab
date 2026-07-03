@@ -1,17 +1,13 @@
 # Continuous integration for pull requests and non-main pushes.
 #
-# Runs the lightweight check matrix. Pushes to `main` are checked inside
-# `auto-release.yml` so that the bump/release gate uses the same result.
-#
-# This workflow does NOT build installers or create releases. The release
-# pipeline lives in `auto-release.yml` and runs on push to `main`.
+# Runs the lightweight web + parser check matrix.
 name: ci
 
 on:
   pull_request:
     branches: [main]
   push:
-    branches-ignore: [main]
+    branches: [main]
 
 concurrency:
   group: ci-${{ github.ref }}

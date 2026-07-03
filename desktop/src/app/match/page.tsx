@@ -15,7 +15,7 @@ function MatchPageInner() {
       </div>
     );
   }
-  return <MatchViewer id={id} visualTest={visualTest} />;
+  return <MatchViewer key={id} id={id} visualTest={visualTest} />;
 }
 
 export default function MatchPage() {

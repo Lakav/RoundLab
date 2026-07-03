@@ -7,7 +7,7 @@ block Rust optimization unless it exposes a clear Rust replay bug.
 
 ## Guardrails
 
-- Keep the Tauri JSON contract stable: `meta`, `players`, manifest `rounds`,
+- Keep the web replay JSON contract stable: `meta`, `players`, manifest `rounds`,
   split round files, and per-round `frames`, `events`, `effects`,
   `weaponFires`, and `projectileFrames`.
 - Use `parser/reference_demos.json` and `ROUNDLAB_TEST_DEMOS` as the replay

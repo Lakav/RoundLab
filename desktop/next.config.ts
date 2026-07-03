@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 
 const projectRoot = dirname(fileURLToPath(import.meta.url));
 
-// Static export for the Tauri desktop build: Next produces a plain HTML/JS/CSS
-// renderer bundle in `out/`. No server runtime.
+// Static export keeps the app hostable as plain HTML/JS/CSS. The parser still
+// runs locally in the browser through the Web Worker + WASM path.
 const nextConfig: NextConfig = {
   turbopack: {
     root: projectRoot,
@@ -15,8 +15,7 @@ const nextConfig: NextConfig = {
     // `next/image` optimization requires a server — disable for static export.
     unoptimized: true,
   },
-  // Tauri serves assets via a custom protocol; trailing slash makes the dev
-  // and bundled routing consistent.
+  // Keep exported routes and dev routes consistent.
   trailingSlash: true,
 };
 

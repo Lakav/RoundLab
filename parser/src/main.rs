@@ -1,9 +1,9 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fs,
-    io::{BufReader, Read, Write},
+    io::{BufReader, BufWriter, Read, Write},
     path::{Path, PathBuf},
-    time::{Instant, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use ahash::AHashMap;
@@ -20,9 +20,14 @@ use parser::{
 use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::Value;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
 
 const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
 const TICK_RATE: f64 = 64.0;
+const JSON_WRITE_BUFFER_BYTES: usize = 256 * 1024;
 
 #[derive(Debug, Default)]
 struct Args {
@@ -431,15 +436,43 @@ fn emit_progress(progress: f64, message: &str) {
     eprintln!("ROUNDLAB_PROGRESS {progress:.4} {message}");
 }
 
-fn final_step_start(name: &str) -> Instant {
-    eprintln!("ROUNDLAB_FINAL start step={name}");
-    Instant::now()
+#[cfg(not(target_arch = "wasm32"))]
+type ParserInstant = Instant;
+
+#[cfg(target_arch = "wasm32")]
+type ParserInstant = f64;
+
+fn parser_now() -> ParserInstant {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        Instant::now()
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        js_sys::Date::now()
+    }
 }
 
-fn final_step_done(name: &str, started: Instant) {
+fn elapsed_ms(started: ParserInstant) -> u128 {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        started.elapsed().as_millis()
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        (js_sys::Date::now() - started).max(0.0) as u128
+    }
+}
+
+fn final_step_start(name: &str) -> ParserInstant {
+    eprintln!("ROUNDLAB_FINAL start step={name}");
+    parser_now()
+}
+
+fn final_step_done(name: &str, started: ParserInstant) {
     eprintln!(
         "ROUNDLAB_FINAL done step={name} duration_ms={}",
-        started.elapsed().as_millis()
+        elapsed_ms(started)
     );
 }
 
@@ -447,14 +480,10 @@ fn timed<T, F>(slot: &mut u128, f: F) -> Result<T>
 where
     F: FnOnce() -> Result<T>,
 {
-    let started = Instant::now();
+    let started = parser_now();
     let result = f();
-    *slot = started.elapsed().as_millis();
+    *slot = elapsed_ms(started);
     result
-}
-
-fn elapsed_ms(started: Instant) -> u128 {
-    started.elapsed().as_millis()
 }
 
 fn emit_stats(stats: &ParserStats) {
@@ -572,7 +601,7 @@ fn parse_demo_to_output(args: &Args) -> Result<Output> {
 
 fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)> {
     let mut data = parse_demo_data(args)?;
-    let build_rounds_started = Instant::now();
+    let build_rounds_started = parser_now();
     let ctx = RoundBuildContext {
         args,
         events: &data.events,
@@ -628,15 +657,27 @@ fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)>
 }
 
 fn parse_demo_data(args: &Args) -> Result<ParsedDemoData> {
+    let input_bytes = fs::metadata(&args.input)
+        .map(|m| m.len())
+        .unwrap_or_default();
+    let mut read_demo_ms = 0;
+    let bytes = timed(&mut read_demo_ms, || read_demo(&args.input))?;
+    let mut data = parse_demo_data_from_bytes(args, bytes, input_bytes)?;
+    data.stats.read_demo_ms = read_demo_ms;
+    Ok(data)
+}
+
+fn parse_demo_data_from_bytes(
+    args: &Args,
+    bytes: Vec<u8>,
+    input_bytes: u64,
+) -> Result<ParsedDemoData> {
     let mut stats = ParserStats {
-        input_bytes: fs::metadata(&args.input)
-            .map(|m| m.len())
-            .unwrap_or_default(),
+        input_bytes,
         ..ParserStats::default()
     };
-    let bytes = timed(&mut stats.read_demo_ms, || read_demo(&args.input))?;
     stats.decompressed_bytes = bytes.len() as u64;
-    let huf_started = Instant::now();
+    let huf_started = parser_now();
     let huf = create_huffman_lookup_table();
     stats.create_huffman_ms = elapsed_ms(huf_started);
 
@@ -662,7 +703,7 @@ fn parse_demo_data(args: &Args) -> Result<ParsedDemoData> {
     })?;
     stats.tick_rows = tick_data.rows.len();
     stats.c4_records = tick_data.c4_positions.len();
-    let group_ticks_started = Instant::now();
+    let group_ticks_started = parser_now();
     let rows_by_tick = group_tick_rows(tick_data.rows);
     let c4_by_tick = group_c4_positions(tick_data.c4_positions);
     stats.group_ticks_ms = elapsed_ms(group_ticks_started);
@@ -679,7 +720,7 @@ fn parse_demo_data(args: &Args) -> Result<ParsedDemoData> {
         })?
     };
     stats.projectile_rows = projectile_rows.len();
-    let group_projectiles_started = Instant::now();
+    let group_projectiles_started = parser_now();
     let projectiles_by_tick = group_projectile_rows(projectile_rows);
     stats.group_projectiles_ms = elapsed_ms(group_projectiles_started);
 
@@ -1198,6 +1239,7 @@ fn add_round_stats(stats: &mut ParserStats, round: &Round) {
 /// reject zstd bombs before they exhaust RAM.
 const MAX_DEMO_SIZE: u64 = 1024 * 1024 * 1024;
 
+#[cfg(not(target_arch = "wasm32"))]
 fn read_demo(path: &str) -> Result<Vec<u8>> {
     // Check file size BEFORE reading to avoid allocating multi-GB buffers
     // for plain .dem files or for the compressed payload of a .dem.zst.
@@ -1236,6 +1278,11 @@ fn read_demo(path: &str) -> Result<Vec<u8>> {
     read_capped(&mut decoder, &mut decoded, MAX_DEMO_SIZE)
         .context("decompress zstd demo (streaming, capped)")?;
     Ok(decoded)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn read_demo(path: &str) -> Result<Vec<u8>> {
+    bail!("filesystem demo reads are not available in the WASM parser: {path}");
 }
 
 /// Read up to buf.len() bytes from `r`. Returns the number of bytes actually
@@ -2377,7 +2424,56 @@ fn round_effects(
             team: get_i64(event, "user_team_num").or_else(|| get_i64(event, "team_num")),
         });
     }
+    clamp_fire_effects_from_expire(events, span, &mut out);
+    out.sort_by(|a, b| {
+        a.start
+            .partial_cmp(&b.start)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     out
+}
+
+fn clamp_fire_effects_from_expire(
+    events: &[Value],
+    span: &RoundSpan,
+    effects: &mut [UtilityEffect],
+) {
+    for event in events {
+        if get_str(event, "event_name") != Some("inferno_expire") {
+            continue;
+        }
+        let tick = get_i64(event, "tick").unwrap_or_default() as i32;
+        if tick < span.start || tick > span.end {
+            continue;
+        }
+        let x = get_f64(event, "x").or_else(|| get_f64(event, "X"));
+        let y = get_f64(event, "y").or_else(|| get_f64(event, "Y"));
+        let z = get_f64(event, "z")
+            .or_else(|| get_f64(event, "Z"))
+            .unwrap_or_default();
+        let (Some(x), Some(y)) = (x, y) else {
+            continue;
+        };
+        if x == 0.0 && y == 0.0 && z == 0.0 {
+            continue;
+        }
+        let expire = seconds_since(span.start, tick);
+        let mut best_idx = None;
+        let mut best_dist = f64::INFINITY;
+        for (idx, effect) in effects.iter().enumerate() {
+            if effect.kind != "fire" || effect.start > expire || effect.end <= expire {
+                continue;
+            }
+            let d = squared_distance(effect.x, effect.y, effect.z, x, y, z);
+            if d <= 220.0 * 220.0 && d < best_dist {
+                best_idx = Some(idx);
+                best_dist = d;
+            }
+        }
+        if let Some(idx) = best_idx {
+            effects[idx].end = expire.max(effects[idx].start + 0.25);
+        }
+    }
 }
 
 fn adjust_decoy_effects_from_projectiles(
@@ -2942,14 +3038,16 @@ fn write_gzip_json_inner<T: Serialize>(
 
     let serialize_step = label.map(|label| format!("{label}:serde_json::to_writer"));
     let serialize_started = serialize_step.as_deref().map(final_step_start);
-    let serialize_timer = Instant::now();
+    let serialize_timer = parser_now();
     {
-        let mut counting = CountingWriter {
+        let counting = CountingWriter {
             inner: &mut gz,
             bytes: 0,
         };
-        serde_json::to_writer(&mut counting, value)?;
-        stats.raw_json_bytes = counting.bytes;
+        let mut buffered = BufWriter::with_capacity(JSON_WRITE_BUFFER_BYTES, counting);
+        serde_json::to_writer(&mut buffered, value)?;
+        buffered.flush()?;
+        stats.raw_json_bytes = buffered.get_ref().bytes;
     }
     stats.serialize_json_ms = elapsed_ms(serialize_timer);
     if let (Some(step), Some(started)) = (serialize_step.as_deref(), serialize_started) {
@@ -2958,7 +3056,7 @@ fn write_gzip_json_inner<T: Serialize>(
 
     let flush_step = label.map(|label| format!("{label}:gz.flush"));
     let flush_started = flush_step.as_deref().map(final_step_start);
-    let flush_timer = Instant::now();
+    let flush_timer = parser_now();
     gz.flush()?;
     stats.gz_flush_ms = elapsed_ms(flush_timer);
     if let (Some(step), Some(started)) = (flush_step.as_deref(), flush_started) {
@@ -2967,7 +3065,7 @@ fn write_gzip_json_inner<T: Serialize>(
 
     let finish_step = label.map(|label| format!("{label}:gz.finish"));
     let finish_started = finish_step.as_deref().map(final_step_start);
-    let finish_timer = Instant::now();
+    let finish_timer = parser_now();
     let file = gz.finish()?;
     stats.gzip_finish_ms = elapsed_ms(finish_timer);
     if let (Some(step), Some(started)) = (finish_step.as_deref(), finish_started) {
@@ -2982,7 +3080,7 @@ fn write_gzip_json_inner<T: Serialize>(
     } else {
         let sync_step = label.map(|label| format!("{label}:File::sync_all"));
         let sync_started = sync_step.as_deref().map(final_step_start);
-        let sync_timer = Instant::now();
+        let sync_timer = parser_now();
         file.sync_all()?;
         stats.fsync_ms = elapsed_ms(sync_timer);
         if let (Some(step), Some(started)) = (sync_step.as_deref(), sync_started) {
@@ -3003,15 +3101,89 @@ fn parser_gzip_compression() -> Compression {
         .unwrap_or_default()
 }
 
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn parse_demo_bytes_to_json(
+    bytes: &[u8],
+    quality: Option<String>,
+    skip_projectiles: bool,
+    skip_weapon_fires: bool,
+) -> std::result::Result<String, JsValue> {
+    let args = Args {
+        input: String::new(),
+        output: String::new(),
+        quality: quality.unwrap_or_else(|| "full".to_string()),
+        skip_projectiles,
+        skip_weapon_fires,
+        stats: false,
+    };
+    let (output, _) = parse_demo_data_from_bytes(&args, bytes.to_vec(), bytes.len() as u64)
+        .and_then(|mut data| {
+            let build_rounds_started = parser_now();
+            let ctx = RoundBuildContext {
+                args: &args,
+                events: &data.events,
+                spans: &data.spans,
+                rows_by_tick: &data.rows_by_tick,
+                c4_by_tick: &data.c4_by_tick,
+                projectiles_by_tick: &data.projectiles_by_tick,
+                weapon_names: &data.weapon_names,
+                round_scores: &data.round_scores,
+                sample_step: data.sample_step,
+            };
+            let mut rounds = Vec::with_capacity(data.spans.len());
+            for idx in 0..data.spans.len() {
+                if let Some(round) = build_round_payload(&ctx, idx, rounds.len()) {
+                    rounds.push(round);
+                }
+                if idx > 200 {
+                    break;
+                }
+            }
+            if rounds.is_empty() {
+                bail!("parser produced no frames");
+            }
+            if looks_like_knife_round(rounds.first()) {
+                rounds.remove(0);
+                for (idx, round) in rounds.iter_mut().enumerate() {
+                    round.number = idx;
+                }
+            }
+            data.stats.build_rounds_ms = elapsed_ms(build_rounds_started);
+            let (score_a, score_b) = rounds
+                .last()
+                .map(|round| (round.score_a, round.score_b))
+                .unwrap_or_default();
+            let output = Output {
+                meta: Meta {
+                    map: data.map,
+                    tick_rate: TICK_RATE,
+                    sample_rate: data.sample_rate,
+                    duration_sec: data.duration_sec,
+                    team_a: data.team_a,
+                    team_b: data.team_b,
+                    score_a,
+                    score_b,
+                },
+                players: data.players,
+                rounds,
+            };
+            collect_output_stats(&mut data.stats, &output);
+            Ok((output, data.stats))
+        })
+        .map_err(|err| JsValue::from_str(&format!("{err:#}")))?;
+    serde_json::to_string(&output).map_err(|err| JsValue::from_str(&err.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         add_missing_terminal_flash_effects, adjust_decoy_effects_from_projectiles,
         build_round_payload, commit_split_output, group_projectile_rows, looks_like_knife_round,
         parse_args_from, parse_demo_to_output, parser_gzip_compression, read_capped, read_demo,
-        round_events, round_weapon_fires, sample_step, seconds_since, write_json_gz, ActiveAction,
-        Args, BombState, Event, Frame, Output, ProjectileFrame, ProjectileKind, ProjectilePos,
-        ProjectileRow, Round, RoundBuildContext, RoundSpan, TickRow, UtilityEffect,
+        round_effects, round_events, round_weapon_fires, sample_step, seconds_since, write_json_gz,
+        ActiveAction, Args, BombState, Event, Frame, Output, ProjectileFrame, ProjectileKind,
+        ProjectilePos, ProjectileRow, Round, RoundBuildContext, RoundSpan, TickRow, UtilityEffect,
         WeaponFireEvent, MAX_DEMO_SIZE,
     };
     use flate2::{read::GzDecoder, Compression};
@@ -4192,6 +4364,71 @@ mod tests {
 
         assert_eq!(effects[0].start, 4.0);
         assert_eq!(effects[0].end, 35.0);
+    }
+
+    #[test]
+    fn fire_effect_end_uses_nearby_inferno_expire() {
+        let span = RoundSpan {
+            start: 100,
+            end: 800,
+            round_end: 800,
+            winner: "CT".into(),
+        };
+        let events = vec![
+            json!({
+                "event_name": "inferno_startburn",
+                "tick": 164,
+                "x": 100.0,
+                "y": 200.0,
+                "z": 20.0,
+                "team_num": 2,
+            }),
+            json!({
+                "event_name": "inferno_expire",
+                "tick": 292,
+                "x": 108.0,
+                "y": 196.0,
+                "z": 20.0,
+            }),
+        ];
+
+        let effects = round_effects(&events, &span, &BTreeMap::new());
+
+        assert_eq!(effects.len(), 1);
+        assert_eq!(effects[0].kind, "fire");
+        assert!((effects[0].start - seconds_since(span.start, 164)).abs() < 0.001);
+        assert!((effects[0].end - seconds_since(span.start, 292)).abs() < 0.001);
+    }
+
+    #[test]
+    fn fire_effect_ignores_far_inferno_expire() {
+        let span = RoundSpan {
+            start: 100,
+            end: 800,
+            round_end: 800,
+            winner: "CT".into(),
+        };
+        let events = vec![
+            json!({
+                "event_name": "inferno_startburn",
+                "tick": 164,
+                "x": 100.0,
+                "y": 200.0,
+                "z": 20.0,
+            }),
+            json!({
+                "event_name": "inferno_expire",
+                "tick": 292,
+                "x": 900.0,
+                "y": 900.0,
+                "z": 20.0,
+            }),
+        ];
+
+        let effects = round_effects(&events, &span, &BTreeMap::new());
+
+        assert_eq!(effects.len(), 1);
+        assert!((effects[0].end - (effects[0].start + 7.0)).abs() < 0.001);
     }
 
     #[test]

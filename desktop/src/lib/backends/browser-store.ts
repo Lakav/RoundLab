@@ -1,0 +1,168 @@
+import type { MatchSummary } from "@/lib/api";
+import type { MatchData, Round } from "@/lib/types";
+
+const DB_NAME = "roundlab-web";
+const DB_VERSION = 1;
+const MATCH_STORE = "matches";
+const ROUND_STORE = "rounds";
+
+type StoredMatch = MatchSummary & {
+  metadata: MatchData;
+};
+
+type StoredRound = {
+  key: string;
+  matchId: string;
+  number: number;
+  round: Round;
+};
+
+function roundKey(matchId: string, number: number): string {
+  return `${matchId}:${number}`;
+}
+
+function openDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(MATCH_STORE)) {
+        db.createObjectStore(MATCH_STORE, { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains(ROUND_STORE)) {
+        const rounds = db.createObjectStore(ROUND_STORE, { keyPath: "key" });
+        rounds.createIndex("matchId", "matchId", { unique: false });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error ?? new Error("IndexedDB open failed"));
+  });
+}
+
+function txDone(tx: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error("IndexedDB transaction failed"));
+    tx.onabort = () => reject(tx.error ?? new Error("IndexedDB transaction aborted"));
+  });
+}
+
+function requestResult<T>(req: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error ?? new Error("IndexedDB request failed"));
+  });
+}
+
+function stripRoundPayload(round: Round): Round {
+  return {
+    ...round,
+    frames: [],
+    events: [],
+    effects: [],
+    weaponFires: [],
+    projectileFrames: [],
+  };
+}
+
+export async function listStoredMatches(): Promise<MatchSummary[]> {
+  const db = await openDb();
+  try {
+    const tx = db.transaction(MATCH_STORE, "readonly");
+    const matches = await requestResult<StoredMatch[]>(
+      tx.objectStore(MATCH_STORE).getAll() as IDBRequest<StoredMatch[]>,
+    );
+    return matches
+      .map(({ id, name, createdAt, size }) => ({ id, name, createdAt, size }))
+      .sort((a, b) => b.createdAt - a.createdAt);
+  } finally {
+    db.close();
+  }
+}
+export async function readStoredMetadata(id: string): Promise<MatchData> {
+  const db = await openDb();
+  try {
+    const tx = db.transaction(MATCH_STORE, "readonly");
+    const item = await requestResult<StoredMatch | undefined>(
+      tx.objectStore(MATCH_STORE).get(id) as IDBRequest<StoredMatch | undefined>,
+    );
+    if (!item) throw new Error(`Match not found: ${id}`);
+    return item.metadata;
+  } finally {
+    db.close();
+  }
+}
+
+export async function readStoredRound(matchId: string, number: number): Promise<Round> {
+  const db = await openDb();
+  try {
+    const tx = db.transaction(ROUND_STORE, "readonly");
+    const item = await requestResult<StoredRound | undefined>(
+      tx.objectStore(ROUND_STORE).get(roundKey(matchId, number)) as IDBRequest<StoredRound | undefined>,
+    );
+    if (!item) throw new Error(`Round not found: ${number}`);
+    return item.round;
+  } finally {
+    db.close();
+  }
+}
+
+export async function deleteStoredMatch(id: string): Promise<void> {
+  const db = await openDb();
+  try {
+    const tx = db.transaction([MATCH_STORE, ROUND_STORE], "readwrite");
+    tx.objectStore(MATCH_STORE).delete(id);
+    const index = tx.objectStore(ROUND_STORE).index("matchId");
+    const keysReq = index.getAllKeys(id);
+    keysReq.onsuccess = () => {
+      for (const key of keysReq.result) tx.objectStore(ROUND_STORE).delete(key);
+    };
+    await txDone(tx);
+  } finally {
+    db.close();
+  }
+}
+
+export async function renameStoredMatch(id: string, name: string): Promise<MatchSummary> {
+  const db = await openDb();
+  try {
+    const tx = db.transaction(MATCH_STORE, "readwrite");
+    const store = tx.objectStore(MATCH_STORE);
+    const item = await requestResult<StoredMatch | undefined>(
+      store.get(id) as IDBRequest<StoredMatch | undefined>,
+    );
+    if (!item) throw new Error(`Match not found: ${id}`);
+    const updated = { ...item, name };
+    store.put(updated);
+    await txDone(tx);
+    return { id: updated.id, name: updated.name, createdAt: updated.createdAt, size: updated.size };
+  } finally {
+    db.close();
+  }
+}
+
+export async function saveParsedMatch(id: string, name: string, size: number, data: MatchData): Promise<MatchSummary> {
+  const db = await openDb();
+  const summary: MatchSummary = { id, name, createdAt: Date.now(), size };
+  const metadata: MatchData = {
+    ...data,
+    rounds: data.rounds.map(stripRoundPayload),
+  };
+  try {
+    const tx = db.transaction([MATCH_STORE, ROUND_STORE], "readwrite");
+    tx.objectStore(MATCH_STORE).put({ ...summary, metadata });
+    const rounds = tx.objectStore(ROUND_STORE);
+    for (const round of data.rounds) {
+      rounds.put({
+        key: roundKey(id, round.number),
+        matchId: id,
+        number: round.number,
+        round,
+      } satisfies StoredRound);
+    }
+    await txDone(tx);
+    return summary;
+  } finally {
+    db.close();
+  }
+}

@@ -1,57 +1,84 @@
 # RoundLab
 
-RoundLab is a standalone desktop app for reviewing CS2 GOTV demos locally. It parses `.dem` and `.dem.zst` files on-device, stores parsed matches in the OS app-data directory, and replays rounds on a 2D radar with timeline controls and drawing tools.
+RoundLab is a browser-based CS2 GOTV demo review app. It parses `.dem` and
+`.dem.zst` files locally on the user's machine in a Web Worker, stores parsed
+matches in browser storage, and replays rounds on a 2D radar with timeline
+controls and drawing tools.
 
-No demo is uploaded. No server is required.
+No demo is uploaded. The parser runs client-side in the browser.
 
 ## Features
 
 - Import local `.dem` and `.dem.zst` files.
-- Parse CS2 demos with a bundled Rust parser sidecar.
+- Parse demos locally with the Rust parser compiled to WebAssembly.
+- Store parsed matches and split round payloads in IndexedDB.
 - Replay rounds on a 2D radar.
 - Scrub the round timeline, play/pause, and change playback speed.
 - Draw annotations over the review.
 - Show player HP, armor, helmet, defuse kit, weapons, money, utility, kill feed, bomb, and effect timers.
+- Review utility habits by rendering all rounds for a player or team at once.
 
 ## Project Structure
 
 ```txt
-desktop/         Tauri desktop app and renderer
-parser/          Rust demo parser sidecar
+desktop/         Next.js web app
+parser/          Rust demo parser and WebAssembly entrypoint
 ressources/      Source assets
+docs/            Architecture and migration notes
 ```
 
 ## Local Development
 
-Prerequisites: Rust (`rustup`), Node 20+, pnpm 10+, and `protoc` 23.x on your `PATH`.
+Prerequisites: Rust (`rustup`), Node 20+, pnpm, `wasm32-unknown-unknown`, and
+`wasm-bindgen-cli`.
 
 ```bash
 cd desktop
 pnpm install
 
-# Build the parser sidecar for your host platform.
-pnpm sidecar:build
+# Rebuild the browser parser after Rust parser changes.
+pnpm parser:wasm
 
-# Launch the native desktop app.
-pnpm tauri:dev
+# Launch the web app.
+pnpm dev
 ```
 
-To produce a local desktop bundle:
+Then open `http://localhost:3000`.
+
+## Browser Support
+
+The local parser requires Web Workers, WebAssembly, IndexedDB, the File API, and
+`crypto.randomUUID`. The import flow checks these capabilities before parsing
+and shows a clear error if the current browser cannot run the client-side
+parser.
+
+Current validation status:
+
+- Chrome: validated with real `.dem.zst` parsing, replay open, and utility
+  habits overlay on large demos.
+- Safari: not validated yet. To automate Safari, enable Safari Settings →
+  Developer → Allow Remote Automation, then run the same static-export smoke
+  tests through `safaridriver`.
+- Edge and Firefox: not validated yet in this workspace because the browsers
+  are not installed here.
+
+## Validation
+
+Frontend checks:
 
 ```bash
 cd desktop
-pnpm tauri:build
+pnpm lint
+pnpm exec tsc --noEmit
+pnpm build
 ```
 
-The resulting installers land in `desktop/src-tauri/target/release/bundle/`.
-
-## Parser Validation
-
-Parser unit tests run without committed demo fixtures:
+Parser checks:
 
 ```bash
 cd parser
 cargo test
+cargo check --target wasm32-unknown-unknown --lib
 ```
 
 For real replay-integrity coverage, point `ROUNDLAB_TEST_DEMOS` at local `.dem`
@@ -64,91 +91,18 @@ ROUNDLAB_TEST_DEMOS="/path/to/ancient4-13.dem.zst:/path/to/anubis16-19.dem.zst" 
 ROUNDLAB_TEST_DEMOS="/path/to/ancient4-13.dem.zst:/path/to/anubis16-19.dem.zst" cargo test roundlab_test_demo_honors_quality_and_skip_options_when_configured -- --nocapture
 ```
 
-For the full five-demo local set, prefer `cargo test --release ... -- --nocapture`.
-The debug test binary is correct but much slower on full-quality replay output.
-
-`ROUNDLAB_TEST_DEMO=/path/to/demo.dem.zst` still works for one-off local runs.
-
 Known reference demos are listed in `parser/reference_demos.json`. For those
-files, the tests enforce exact map and score identity plus snapshots for rounds,
+files, tests enforce exact map and score identity plus snapshots for rounds,
 players, frames, kills, bomb events, bomb state, utility effects, weapon fires,
-and projectile frames. The snapshots also lock compact per-round kill,
-bomb-event, bomb-state, active-action, utility-effect, and weapon-fire
-signatures plus compact projectile-track signatures. Bomb-state signatures
-summarize carried/dropped/planted windows with timing, sample count, end cause,
-carrier, and bucketed start/end position. Active-action signatures summarize
-visible plant/utility windows by player, item, elapsed timing, sample count, and
-duration. Weapon-fire signatures include bucketed timing, shooter, weapon, team,
-position, and yaw. Projectile-track signatures summarize id, type, thrower,
-timing, samples, and bucketed start/end position. The score in the demo filename
-is the expected truth (`dust1-13.dem.zst` means `scoreA=1`, `scoreB=13`). The
-medium-quality skip test also verifies that lightweight parsing keeps core
-replay data while omitting weapon fires and projectile payloads. Full-quality
-integration tests also enforce structural replay invariants: monotonic round
-scores, sorted events and frames, bounded post-round events, no bomb state after
-bomb resolution, valid utility effects, valid weapon-fire poses, and no
-duplicate projectile identity inside a projectile frame.
+and projectile frames.
 
-To add a reference demo, keep the `.dem`/`.dem.zst` outside Git, rename it as
-`<map><scoreA>-<scoreB>.dem.zst`, run both parser integration tests, then add
-only the lightweight snapshots to `parser/reference_demos.json`. The current
-validation workflow is Rust-only: `parser/reference_demos.json` and the
-`ROUNDLAB_TEST_DEMOS` integration tests are the source of truth. The archived
-Go parser comparison harness remains available for historical/debug work, but
-it is not part of the daily parser validation path and should not block Rust
-optimization unless it exposes a clear Rust replay bug.
-
-For a fast snapshot check that does not require parser outputs, run
-`python3 scripts/audit-reference-snapshots.py --reference-only` to validate the
-reference snapshot structure, score truth, per-round list lengths, and aggregate
-round totals.
-
-Parser output uses gzip for Tauri compatibility. For benchmarks, set
-`ROUNDLAB_PARSER_GZIP_LEVEL=0..9` to compare compression speed and output size.
-The current parser workflow and Rust-only optimization baseline are documented
-in `docs/parser-rust-only.md`.
-
-## Releases
-
-The release workflow builds macOS Apple Silicon and Windows x64 installers when a `v*.*.*` tag is pushed.
-
-1. Bump `version` in `desktop/src-tauri/tauri.conf.json` and `desktop/package.json`.
-2. Commit and push.
-3. Tag and push:
+For a fast snapshot check that does not require parser outputs, run:
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+python3 scripts/audit-reference-snapshots.py --reference-only
 ```
-
-## Installation notes
-
-### macOS
-
-RoundLab is currently unsigned.
-
-If macOS says the app is damaged or cannot be opened, run:
-
-```bash
-xattr -cr ~/Downloads/RoundLab.app
-open ~/Downloads/RoundLab.app
-```
-
-Then confirm the security prompt from macOS.
-
-### Windows
-
-RoundLab is currently unsigned.
-
-If SmartScreen blocks the app:
-
-1. Click `More info`
-2. Click `Run anyway`
-
-## Auto-Update
-
-The app checks GitHub Releases for `latest.json` on launch. Update payloads are signed with the public key embedded in `desktop/src-tauri/tauri.conf.json`; the private key is stored in the `TAURI_SIGNING_PRIVATE_KEY` repository secret.
 
 ## Notes
 
-Demo files, parsed outputs, build artifacts, sidecar binaries, signing keys, and local caches are intentionally ignored by Git.
+Demo files, parsed outputs, build artifacts, and local caches are intentionally
+ignored by Git.

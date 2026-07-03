@@ -16,21 +16,22 @@ export function Controls() {
   const time = useReplay((s) => s.time) ?? 0;
   const currentRoundIdx = useReplay((s) => s.currentRoundIdx);
   const match = useReplay((s) => s.match);
+  const durationOverride = useReplay((s) => s.durationOverride);
   const round = match?.rounds[currentRoundIdx];
 
   const skip = (dt: number) => {
     if (!round) return;
-    setTime(Math.max(0, Math.min(round.duration, time + dt)));
+    setTime(Math.max(0, Math.min(durationOverride ?? round.duration, time + dt)));
   };
 
   return (
-    <div className="flex shrink-0 items-center gap-1.5 text-neutral-500">
+    <div className="flex shrink-0 items-center gap-1.5 rounded-[4px] border border-white/[0.06] bg-white/[0.03] px-1.5 py-1 text-neutral-500">
       <Button
         variant="ghost"
         size="icon"
         onClick={() => skip(-5)}
         title="-5s (J)"
-        className="size-7 rounded-[3px] text-neutral-500 hover:bg-white/[0.05] hover:text-neutral-200"
+        className="size-7 rounded-[3px] text-neutral-500 hover:bg-white/[0.08] hover:text-neutral-200"
       >
         <SkipBack className="size-4" />
       </Button>
@@ -38,7 +39,7 @@ export function Controls() {
         size="icon"
         onClick={togglePlay}
         title="Play/Pause (Space)"
-        className="size-8 rounded-[3px] bg-transparent text-[#6fea76] shadow-none hover:bg-white/[0.05] hover:text-[#8dff91]"
+        className="size-8 rounded-[3px] bg-[#6fea76]/12 text-[#6fea76] shadow-none hover:bg-[#6fea76]/18 hover:text-[#8dff91]"
       >
         {playing ? <Pause className="size-[18px] fill-current" /> : <Play className="size-[18px] fill-current" />}
       </Button>
@@ -47,18 +48,18 @@ export function Controls() {
         size="icon"
         onClick={() => skip(5)}
         title="+5s (L)"
-        className="size-7 rounded-[3px] text-neutral-500 hover:bg-white/[0.05] hover:text-neutral-200"
+        className="size-7 rounded-[3px] text-neutral-500 hover:bg-white/[0.08] hover:text-neutral-200"
       >
         <SkipForward className="size-4" />
       </Button>
 
-      <div className="ml-2 flex items-center gap-1">
+      <div className="ml-1 flex items-center gap-1 border-l border-white/10 pl-2">
         {SPEEDS.map((s) => (
           <button
             key={s}
             onClick={() => setSpeed(s)}
             className={cn(
-              "h-6 min-w-8 rounded-[3px] px-1.5 text-[11px] tabular-nums transition-colors",
+              "h-6 min-w-8 rounded-[3px] px-1.5 text-[11px] font-semibold tabular-nums transition-colors",
               speed === s
                 ? "bg-white text-neutral-950"
                 : "text-neutral-500 hover:bg-white/[0.05] hover:text-neutral-200"

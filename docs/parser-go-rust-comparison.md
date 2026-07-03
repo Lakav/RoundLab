@@ -73,11 +73,11 @@ effects, or synthesized flash ownership. Projectile tracks are locked with compa
 per-round signatures for id, normalized type, thrower, bucketed timing, sample
 count, and bucketed start/end position, so grouping or identity regressions
 cannot hide behind unchanged projectile-frame counts. The full-quality test also
-locks the split JSON contract expected by Tauri: manifest rounds keep empty
+locks the split JSON contract expected by the web viewer: manifest rounds keep empty
 `frames`, `events`, `effects`, `weaponFires`, and `projectileFrames` arrays plus
 `roundFile`, while split round files contain the full replay arrays without a
-recursive `roundFile`. Tauri validation now also rejects split round payloads
-where `effects`, `weaponFires`, or `projectileFrames` are missing or not arrays.
+recursive `roundFile`. Validation also rejects split round payloads where
+`effects`, `weaponFires`, or `projectileFrames` are missing or not arrays.
 
 ```bash
 cd parser
