@@ -42,14 +42,14 @@ test.json
 test.json.gz
 
 # compiled binaries
-parser/parser
-parser/*.exe
-parser-fallback/target/
+parser/target/
 
 # temp / caches
 coverage/
 tmp/
 temp/
+__pycache__/
+*.pyc
 
 # Tauri updater signing keys (private key MUST stay local — .pub can be committed
 # but we keep the whole folder out for simplicity; the public key is embedded in

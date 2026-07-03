@@ -23,32 +23,21 @@ jobs:
           cache: pnpm
           cache-dependency-path: desktop/pnpm-lock.yaml
 
-      - name: Install desktop UI dependencies
+      - name: Install web app dependencies
         working-directory: desktop
         run: pnpm install --frozen-lockfile
 
-      - name: Lint desktop UI
+      - name: Lint web app
         working-directory: desktop
         run: pnpm lint
 
-      - name: Typecheck desktop UI
+      - name: Typecheck web app
         working-directory: desktop
         run: pnpm exec tsc --noEmit
 
-  go:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.24"
-          cache-dependency-path: parser/go.sum
-
-      - name: Test parser
-        working-directory: parser
-        run: go test ./...
+      - name: Build web app
+        working-directory: desktop
+        run: pnpm build
 
   rust:
     runs-on: ubuntu-latest
@@ -64,8 +53,26 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: parser-fallback -> target
+          workspaces: parser -> target
 
-      - name: Check parser fallback
-        working-directory: parser-fallback
-        run: cargo check
+      - name: Validate Rust parser audit tooling
+        run: |
+          python3 -m py_compile \
+            scripts/audit-reference-snapshots.py \
+            scripts/validate-release-version.py
+          python3 -m json.tool parser/reference_demos.json >/dev/null
+
+      - name: Validate reference parser snapshots
+        run: python3 scripts/audit-reference-snapshots.py --reference-only
+
+      - name: Format Rust parser
+        working-directory: parser
+        run: cargo fmt --check
+
+      - name: Test Rust parser
+        working-directory: parser
+        run: cargo test
+
+      - name: Clippy Rust parser
+        working-directory: parser
+        run: cargo clippy --all-targets -- -D warnings

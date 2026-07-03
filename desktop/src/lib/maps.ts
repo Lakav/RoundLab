@@ -12,7 +12,9 @@ export const MAP_CALIBRATION: Record<string, MapCalibration> = {
   de_overpass: { posX: -4831, posY: 1781, scale: 5.2 },
   de_ancient: { posX: -2953, posY: 2164, scale: 5 },
   de_anubis: { posX: -2796, posY: 3328, scale: 5.22 },
-  de_cache: { posX: -2000, posY: 3250, scale: 5.5 },
+  // CS2Lens stores Cache as (world - x) * 4.58 / 256. Converted to
+  // this renderer's Valve-style pixel formula, that is a 5.4585 scale.
+  de_cache: { posX: -1964, posY: 3250, scale: 5.458515283842795 },
   de_train: { posX: -2308, posY: 2078, scale: 4.082077 },
   de_vertigo: { posX: -3168, posY: 1762, scale: 4.0 },
 };

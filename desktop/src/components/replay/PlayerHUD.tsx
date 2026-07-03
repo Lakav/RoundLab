@@ -1,12 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
 import { useReplay } from "@/lib/replay-store";
 import { cn } from "@/lib/utils";
 import type { Frame, PlayerPos } from "@/lib/types";
 import { iconPathFor } from "@/lib/icons";
 import { THEME, sideColors } from "@/lib/theme";
-import { writeDebugLog } from "@/lib/api";
 
 const BOMB_CARRIER_COLOR = "#ef4444";
 
@@ -40,25 +38,6 @@ export function PlayerHUD({ side }: { side: "CT" | "T" }) {
   const match = useReplay((s) => s.match);
   const currentRoundIdx = useReplay((s) => s.currentRoundIdx);
   const time = useReplay((s) => s.time) ?? 0;
-  const debugRound = match?.rounds[currentRoundIdx];
-  const debugRoundNumber = debugRound?.number;
-  const debugScoreA = debugRound?.scoreA;
-  const debugScoreB = debugRound?.scoreB;
-  const debugWinner = debugRound?.winner;
-  useEffect(() => {
-    if (debugRoundNumber === undefined) return;
-    void writeDebugLog(
-      "rounds",
-      `ROUNDLAB_DEBUG_SCORE hud-round-score ${JSON.stringify({
-        source: "hud",
-        roundNumber: debugRoundNumber,
-        side,
-        ctScore: debugScoreA,
-        tScore: debugScoreB,
-        winningSide: debugWinner ?? null,
-      })}`,
-    ).catch(() => {});
-  }, [debugRoundNumber, debugScoreA, debugScoreB, debugWinner, side]);
   if (!match) return null;
   const round = match.rounds[currentRoundIdx];
   if (!round) return null;
@@ -92,12 +71,12 @@ export function PlayerHUD({ side }: { side: "CT" | "T" }) {
   return (
     <aside
       className={cn(
-        "pointer-events-none absolute top-1/2 z-20 flex w-[250px] -translate-y-[48%] flex-col gap-1",
+        "pointer-events-none absolute top-1/2 z-40 flex w-[258px] -translate-y-[48%] flex-col gap-1.5 rounded-md border border-white/10 bg-[#070909]/62 p-2 shadow-2xl shadow-black/35 backdrop-blur-md",
         side === "CT" ? "left-5" : "right-5"
       )}
     >
       <div
-        className="mb-2 flex items-center gap-2"
+        className="mb-1 flex items-center gap-2 px-0.5"
       >
         <div
           className="flex size-5 shrink-0 items-center justify-center rounded-full border text-[9px] font-bold"
@@ -259,7 +238,7 @@ function PlayerRow({
   return (
     <div className="pointer-events-auto flex flex-col gap-0.5">
       <div
-        className="relative flex h-[24px] w-full items-center overflow-hidden rounded-[2px] bg-[#232424]/90 px-2"
+        className="relative flex h-[25px] w-full items-center overflow-hidden rounded-[3px] border border-white/[0.04] bg-[#202323]/82 px-2 shadow-sm shadow-black/20"
       >
         {/* HP fill in team color */}
         <div
@@ -306,7 +285,7 @@ function PlayerRow({
       </div>
 
       <div
-        className="flex h-[18px] w-full items-center gap-1.5 px-0.5"
+        className="flex h-[18px] w-full items-center gap-1.5 px-1"
       >
         {alive && (
           <>

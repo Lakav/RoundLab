@@ -2,13 +2,16 @@
 
 import { useEffect, useRef } from "react";
 import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
-import { useReplay } from "@/lib/replay-store";
+import { type HabitOverlayTrail, type HabitReplayEffect, type HabitReplayPlayerSample, type HabitReplayProjectile, type HabitReplayRound, useReplay } from "@/lib/replay-store";
 import { MAP_CALIBRATION, RADAR_SIZE, worldToRadar } from "@/lib/maps";
 import type { BombState, Frame, MatchEvent, PlayerPos, ProjectileFrame, ProjectilePos, Round, UtilityEffect, WeaponFireEvent } from "@/lib/types";
 import { iconPathFor } from "@/lib/icons";
 import { writeDebugLog } from "@/lib/api";
+import { smokeBlastClearAlpha } from "@/lib/replay-logic";
 
 const iconTextureCache = new Map<string, Promise<Texture>>();
+const iconTextureReadyCache = new Map<string, Texture>();
+const roundIconPreloadCache = new WeakMap<Round, string[]>();
 const BOMB_CARRIER_COLOR = 0xef4444;
 const BOMB_SECONDS = 40;
 const FIRE_EFFECT_MAX_DURATION = 7;
@@ -16,12 +19,82 @@ const bombFrameFallbackCache = new WeakMap<Round, Frame[]>();
 const PROJECTILE_DEBUG_KEY = "roundlab.debugProjectiles";
 let projectileDebugCache = { checkedAt: 0, enabled: false };
 
-// Pixi v8's Assets.load pipeline for SVG goes through a fetch()+parse step that
-// silently fails inside Tauri's https://tauri.localhost custom scheme on
-// Windows release builds — the bundled SVGs return 200 but WebView2 won't
-// hand the body off to the Image element via Pixi's path. Loading the bytes
-// ourselves and feeding a blob URL into a vanilla HTMLImageElement sidesteps
-// the whole loader, so SVGs render the same way they do in `next dev`.
+const PRELOADABLE_ICON_PATHS = new Set([
+  "/icons/ak47.svg",
+  "/icons/armor_helmet.svg",
+  "/icons/aug.svg",
+  "/icons/awp.svg",
+  "/icons/bayonet.svg",
+  "/icons/bizon.svg",
+  "/icons/c4.svg",
+  "/icons/cz75a.svg",
+  "/icons/deagle.svg",
+  "/icons/decoy.svg",
+  "/icons/defuser.svg",
+  "/icons/elite.svg",
+  "/icons/famas.svg",
+  "/icons/fiveseven.svg",
+  "/icons/flashbang.svg",
+  "/icons/g3sg1.svg",
+  "/icons/galilar.svg",
+  "/icons/glock.svg",
+  "/icons/hegrenade.svg",
+  "/icons/hkp2000.svg",
+  "/icons/incgrenade.svg",
+  "/icons/kevlar.svg",
+  "/icons/knife.svg",
+  "/icons/knife_bowie.svg",
+  "/icons/knife_butterfly.svg",
+  "/icons/knife_canis.svg",
+  "/icons/knife_cord.svg",
+  "/icons/knife_css.svg",
+  "/icons/knife_flip.svg",
+  "/icons/knife_gut.svg",
+  "/icons/knife_gypsy_jackknife.svg",
+  "/icons/knife_karambit.svg",
+  "/icons/knife_kukri.svg",
+  "/icons/knife_m9_bayonet.svg",
+  "/icons/knife_outdoor.svg",
+  "/icons/knife_push.svg",
+  "/icons/knife_skeleton.svg",
+  "/icons/knife_slash.svg",
+  "/icons/knife_stiletto.svg",
+  "/icons/knife_survival_bowie.svg",
+  "/icons/knife_t.svg",
+  "/icons/knife_tactical.svg",
+  "/icons/knife_twinblade.svg",
+  "/icons/knife_ursus.svg",
+  "/icons/knife_widowmaker.svg",
+  "/icons/m249.svg",
+  "/icons/m4a1.svg",
+  "/icons/m4a1_silencer.svg",
+  "/icons/mac10.svg",
+  "/icons/mag7.svg",
+  "/icons/molotov.svg",
+  "/icons/mp5sd.svg",
+  "/icons/mp7.svg",
+  "/icons/mp9.svg",
+  "/icons/negev.svg",
+  "/icons/nova.svg",
+  "/icons/p2000.svg",
+  "/icons/p250.svg",
+  "/icons/quick-slash.svg",
+  "/icons/revolver.svg",
+  "/icons/sawedoff.svg",
+  "/icons/scar20.svg",
+  "/icons/shoot.svg",
+  "/icons/smokegrenade.svg",
+  "/icons/ssg08.svg",
+  "/icons/taser.svg",
+  "/icons/tec9.svg",
+  "/icons/ump45.svg",
+  "/icons/usp_silencer.svg",
+  "/icons/xm1014.svg",
+]);
+
+// Pixi's SVG asset pipeline has been brittle across runtimes. Loading the bytes
+// ourselves and feeding a blob URL into a vanilla HTMLImageElement keeps utility
+// icons rendering consistently in the browser.
 async function loadSvgTextureDirect(path: string): Promise<Texture> {
   const res = await fetch(path);
   if (!res.ok) throw new Error(`fetch ${path}: ${res.status}`);
@@ -33,13 +106,21 @@ async function loadSvgTextureDirect(path: string): Promise<Texture> {
     image.decoding = "async";
     image.src = url;
     await image.decode();
-    return Texture.from(image);
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth || image.width || 64;
+    canvas.height = image.naturalHeight || image.height || 64;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error(`canvas context unavailable for ${path}`);
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return Texture.from(canvas);
   } finally {
     URL.revokeObjectURL(url);
   }
 }
 
 function loadIconTexture(path: string): Promise<Texture> {
+  const ready = iconTextureReadyCache.get(path);
+  if (ready) return Promise.resolve(ready);
   let p = iconTextureCache.get(path);
   if (!p) {
     const loader = path.toLowerCase().endsWith(".svg")
@@ -47,14 +128,104 @@ function loadIconTexture(path: string): Promise<Texture> {
       : (Assets.load(path) as Promise<Texture>);
     // Don't poison the cache with a rejected promise — drop it so the next
     // call gets a fresh attempt instead of replaying the failure forever.
-    p = loader.catch((err) => {
-      iconTextureCache.delete(path);
-      console.error(`[icons] failed to load ${path}`, err);
-      throw err;
-    });
+    p = loader
+      .then((tex) => {
+        iconTextureReadyCache.set(path, tex);
+        return tex;
+      })
+      .catch((err) => {
+        iconTextureCache.delete(path);
+        iconTextureReadyCache.delete(path);
+        console.error(`[icons] failed to load ${path}`, err);
+        throw err;
+      });
     iconTextureCache.set(path, p);
   }
   return p;
+}
+
+function cachedIconTexture(path: string): Texture | undefined {
+  return iconTextureReadyCache.get(path);
+}
+
+function addPreloadPath(out: Set<string>, path: string | null): void {
+  if (path && PRELOADABLE_ICON_PATHS.has(path)) out.add(path);
+}
+
+function preloadIconPathSet(paths: Set<string>): void {
+  for (const path of paths) {
+    if (!cachedIconTexture(path)) void loadIconTexture(path).catch(() => {});
+  }
+}
+
+function yieldToMainThread(): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, 0));
+}
+
+async function collectRoundIconPreloadPaths(round: Round, shouldCancel: () => boolean): Promise<string[]> {
+  const cached = roundIconPreloadCache.get(round);
+  if (cached) return cached;
+  const paths = new Set<string>([
+    "/icons/c4.svg",
+    "/icons/quick-slash.svg",
+    "/icons/shoot.svg",
+    "/icons/smokegrenade.svg",
+    "/icons/flashbang.svg",
+    "/icons/hegrenade.svg",
+    "/icons/molotov.svg",
+    "/icons/incgrenade.svg",
+    "/icons/decoy.svg",
+  ]);
+
+  for (let index = 0; index < round.frames.length; index++) {
+    if (shouldCancel()) return [];
+    const frame = round.frames[index];
+    for (const player of frame.players) {
+      addPreloadPath(paths, iconPathFor(player.active));
+      for (const weapon of player.weapons ?? []) addPreloadPath(paths, iconPathFor(weapon));
+      if (player.activeAction) {
+        addPreloadPath(paths, iconPathFor(player.activeAction.type === "plant" ? "c4" : player.activeAction.item));
+      }
+    }
+    for (const projectile of frame.projectiles ?? []) {
+      addPreloadPath(paths, iconPathFor(projectile.type));
+    }
+    if (index % 160 === 159) await yieldToMainThread();
+  }
+
+  const projectileFrames = round.projectileFrames ?? [];
+  for (let index = 0; index < projectileFrames.length; index++) {
+    if (shouldCancel()) return [];
+    const frame = projectileFrames[index];
+    for (const projectile of frame.projectiles) {
+      addPreloadPath(paths, iconPathFor(projectile.type));
+    }
+    if (index % 240 === 239) await yieldToMainThread();
+  }
+
+  for (const fire of round.weaponFires ?? []) {
+    if (isKnifeWeapon(fire.weapon)) addPreloadPath(paths, "/icons/quick-slash.svg");
+    else if (!isUtilityWeapon(fire.weapon)) addPreloadPath(paths, "/icons/shoot.svg");
+    addPreloadPath(paths, iconPathFor(fire.weapon));
+  }
+
+  for (const effect of round.effects ?? []) {
+    if (effect.type === "fire") addPreloadPath(paths, iconPathFor(effect.variant === "incendiary" ? "incgrenade" : "molotov"));
+    else addPreloadPath(paths, iconPathFor(effect.type));
+  }
+
+  const result = [...paths];
+  roundIconPreloadCache.set(round, result);
+  return result;
+}
+
+async function preloadRoundIconTextures(rounds: Round[], shouldCancel: () => boolean): Promise<void> {
+  const paths = new Set<string>();
+  for (const round of rounds) {
+    if (shouldCancel()) return;
+    for (const path of await collectRoundIconPreloadPaths(round, shouldCancel)) paths.add(path);
+    preloadIconPathSet(paths);
+  }
 }
 
 function sampleFrame(frames: Frame[], t: number): PlayerPos[] {
@@ -114,6 +285,22 @@ function sampleFrame(frames: Frame[], t: number): PlayerPos[] {
   return out;
 }
 
+function playerPositionAtOrBefore(frames: Frame[], playerId: number, t: number): PlayerPos | null {
+  if (!frames || frames.length === 0) return null;
+  let lo = 0;
+  let hi = frames.length - 1;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (frames[mid].t <= t) lo = mid;
+    else hi = mid - 1;
+  }
+  for (let i = lo; i >= 0; i--) {
+    const player = frames[i].players.find((candidate) => candidate.id === playerId);
+    if (player) return player;
+  }
+  return null;
+}
+
 function nearestFrame(frames: Frame[], t: number): Frame | null {
   if (!frames || frames.length === 0) return null;
   if (t <= frames[0].t) return frames[0];
@@ -152,6 +339,24 @@ type ProjectileSample = Frame | ProjectileFrame;
 function projectileSamples(round: Round): ProjectileSample[] {
   return round.projectileFrames?.length ? round.projectileFrames : round.frames;
 }
+
+type ProjectileTrack = {
+  samples: Array<{ t: number; projectile: ProjectilePos }>;
+  first: number | null;
+  last: number | null;
+  samplesCount: number;
+  moved: boolean;
+};
+
+type RoundRenderCache = {
+  projectileFrames: ProjectileSample[];
+  projectileTracks: Map<number, ProjectileTrack>;
+  resolvedEffects: UtilityEffect[];
+  deathMarkers: Array<{ t: number; x: number; y: number; z: number }>;
+  fixedProjectileSamples: Map<number, ProjectilePos[]>;
+};
+
+const roundRenderCache = new WeakMap<Round, RoundRenderCache>();
 
 function projectileDebugEnabled() {
   if (typeof window === "undefined") return false;
@@ -232,25 +437,16 @@ function fireClampDebugPayload(effect: UtilityEffect, round: Round, tickRate: nu
   };
 }
 
-function projectileTrackWindow(frames: ProjectileSample[], id: number) {
-  let first: number | null = null;
-  let last: number | null = null;
-  let samples = 0;
-  let previous: ProjectilePos | null = null;
-  let moved = false;
-  for (const frame of frames) {
-    const projectile = frame.projectiles?.find((candidate) => candidate.id === id);
-    if (!projectile) continue;
-    first = first ?? frame.t;
-    last = frame.t;
-    samples++;
-    if (previous) {
-      const distance = Math.hypot(projectile.x - previous.x, projectile.y - previous.y, projectile.z - previous.z);
-      if (distance > 2) moved = true;
-    }
-    previous = projectile;
-  }
-  return { first, last, samples, moved };
+type ProjectileTrackWindow = { first: number | null; last: number | null; samples: number; moved: boolean };
+
+function projectileTrackWindowFromCache(cache: RoundRenderCache, id: number): ProjectileTrackWindow {
+  const track = cache.projectileTracks.get(id);
+  return {
+    first: track?.first ?? null,
+    last: track?.last ?? null,
+    samples: track?.samplesCount ?? 0,
+    moved: track?.moved ?? false,
+  };
 }
 
 function projectileSampleSourceDebug(frames: ProjectileSample[], id: number, time: number) {
@@ -271,7 +467,7 @@ function projectilePositionSuspicion(
   projectile: ProjectilePos,
   radar: { x: number; y: number },
   size: number,
-  track: ReturnType<typeof projectileTrackWindow>,
+  track: ProjectileTrackWindow,
 ): string[] {
   const reasons: string[] = [];
   if ([projectile.x, projectile.y, projectile.z].some((value) => !Number.isFinite(value))) reasons.push("invalid-world-coordinates");
@@ -332,9 +528,8 @@ function projectileHistory(
     if (!p) continue;
     const pt = toRadar(p.x, p.y, p.z);
     const last = points[points.length - 1];
-    const staleGap = lastSampleTime !== null && frame.t - lastSampleTime > 0.55;
-    const visualJump = last && Math.hypot(last.x - pt.x, last.y - pt.y) > 65;
-    if (staleGap || visualJump) {
+    const staleGap = lastSampleTime !== null && frame.t - lastSampleTime > 0.9;
+    if (staleGap) {
       points.length = 0;
       points.push(pt);
       lastSampleTime = frame.t;
@@ -346,7 +541,39 @@ function projectileHistory(
 
   const current = toRadar(projectile.x, projectile.y, projectile.z);
   const last = points[points.length - 1];
-  if (last && Math.hypot(last.x - current.x, last.y - current.y) > 65) return [current];
+  if (!last || Math.hypot(last.x - current.x, last.y - current.y) > 0.5) points.push(current);
+  return points;
+}
+
+function projectileHistoryFromTrack(
+  track: ProjectileTrack | undefined,
+  projectile: ProjectilePos,
+  time: number,
+  toRadar: (x: number, y: number, z?: number) => { x: number; y: number }
+): { x: number; y: number }[] {
+  if (!track) return projectileHistory([], projectile, time, toRadar);
+  const points: { x: number; y: number }[] = [];
+  let lastSampleTime: number | null = null;
+  const groundZ = projectileGroundZ(track, projectile.z);
+
+  for (const sample of track.samples) {
+    if (sample.t > time) break;
+    const p = sample.projectile;
+    const pt = toRadar(p.x, p.y, Math.max(0, p.z - groundZ));
+    const last = points[points.length - 1];
+    const staleGap = lastSampleTime !== null && sample.t - lastSampleTime > 0.9;
+    if (staleGap) {
+      points.length = 0;
+      points.push(pt);
+      lastSampleTime = sample.t;
+      continue;
+    }
+    if (!last || Math.hypot(last.x - pt.x, last.y - pt.y) > 0.5) points.push(pt);
+    lastSampleTime = sample.t;
+  }
+
+  const current = toRadar(projectile.x, projectile.y, Math.max(0, projectile.z - groundZ));
+  const last = points[points.length - 1];
   if (!last || Math.hypot(last.x - current.x, last.y - current.y) > 0.5) points.push(current);
   return points;
 }
@@ -416,12 +643,248 @@ function drawSmoothTrail(g: Graphics, points: { x: number; y: number }[], color:
   }
 }
 
-function fireVariantFromProjectiles(effect: UtilityEffect, frames: ProjectileSample[]): UtilityEffect {
+function habitTrailColor(type: string): number {
+  const effect = projectileTypeToEffect(type);
+  if (effect === "smoke") return 0x9ca3af;
+  if (effect === "flash") return 0xfef3c7;
+  if (effect === "he") return 0xf97316;
+  if (effect === "fire") return 0xef4444;
+  if (effect === "decoy") return 0xa78bfa;
+  return 0x6fea76;
+}
+
+function drawHabitOverlayTrail(
+  layer: Container,
+  trail: HabitOverlayTrail,
+  toRadar: (x: number, y: number, z?: number) => { x: number; y: number },
+) {
+  if (trail.points.length < 2) return;
+  const points = trail.points.map((point) => toRadar(point.x, point.y, point.z));
+  const color = habitTrailColor(trail.type);
+  const g = new Graphics();
+  drawSmoothTrail(g, points, color);
+  const start = points[0];
+  const end = points[points.length - 1];
+  g.circle(start.x, start.y, 2.4).fill({ color, alpha: 0.65 });
+  g.circle(end.x, end.y, 3.4).fill({ color, alpha: 0.9 });
+  layer.addChild(g);
+}
+
+function sampleHabitPosition(samples: HabitReplayPlayerSample[], time: number): HabitReplayPlayerSample | null {
+  const pair = framePair(samples, time);
+  if (!pair) return null;
+  const { a, b, alpha } = pair;
+  let dyaw = b.yaw - a.yaw;
+  while (dyaw > 180) dyaw -= 360;
+  while (dyaw < -180) dyaw += 360;
+  return {
+    ...b,
+    t: time,
+    x: a.x + (b.x - a.x) * alpha,
+    y: a.y + (b.y - a.y) * alpha,
+    z: a.z + (b.z - a.z) * alpha,
+    yaw: a.yaw + dyaw * alpha,
+    hp: a.hp + (b.hp - a.hp) * alpha,
+    team: b.team,
+  };
+}
+
+function habitTimedPoints<T extends { t: number; x: number; y: number; z: number }>(
+  samples: T[],
+  start: number,
+  end: number,
+  toRadar: (x: number, y: number, z?: number) => { x: number; y: number },
+): { x: number; y: number }[] {
+  const points: { x: number; y: number }[] = [];
+  for (const sample of samples) {
+    if (sample.t < start || sample.t > end) continue;
+    const p = toRadar(sample.x, sample.y, sample.z);
+    const last = points[points.length - 1];
+    if (!last || Math.hypot(p.x - last.x, p.y - last.y) >= 2.5) points.push(p);
+  }
+  return points;
+}
+
+function sampleHabitProjectile(projectile: HabitReplayProjectile, time: number): { x: number; y: number; z: number } | null {
+  const pair = framePair(projectile.samples, time);
+  if (!pair) return null;
+  const { a, b, alpha } = pair;
+  return {
+    x: a.x + (b.x - a.x) * alpha,
+    y: a.y + (b.y - a.y) * alpha,
+    z: a.z + (b.z - a.z) * alpha,
+  };
+}
+
+function habitProjectileGroundZ(projectile: HabitReplayProjectile) {
+  if (!projectile.samples.length) return 0;
+  return projectile.samples.reduce((lowest, sample) => Math.min(lowest, sample.z), projectile.samples[0].z);
+}
+
+function drawHabitGhostLabel(layer: Container, text: string, x: number, y: number, color: number) {
+  const label = new Text({
+    text,
+    style: {
+      fontFamily: "ui-sans-serif, system-ui",
+      fontSize: 34,
+      fontWeight: "700",
+      fill: 0xffffff,
+      stroke: { color: 0x111111, width: 5 },
+    },
+    resolution: Math.max(2, window.devicePixelRatio || 1),
+  });
+  label.anchor.set(0.5, 0.5);
+  label.scale.set(0.22);
+  label.alpha = 0.72;
+  label.position.set(x, y - 14);
+  const bg = new Graphics();
+  const width = Math.max(17, label.width + 5);
+  bg.roundRect(x - width / 2, y - 20, width, 10, 3).fill({ color, alpha: 0.34 });
+  layer.addChild(bg);
+  layer.addChild(label);
+}
+
+function drawHabitGhostPlayer(
+  layer: Container,
+  replay: HabitReplayRound,
+  time: number,
+  toRadar: (x: number, y: number, z?: number) => { x: number; y: number },
+) {
+  const position = sampleHabitPosition(replay.positions, time);
+  const died = replay.death && time >= replay.death.t;
+  if (died && replay.death) {
+    const p = toRadar(replay.death.x, replay.death.y, replay.death.z);
+    drawDeathMarker(layer, p.x, p.y, time - replay.death.t);
+    drawHabitGhostLabel(layer, `R${replay.roundNumber}`, p.x, p.y, 0xef4444);
+    return;
+  }
+  if (!position || position.hp <= 0) return;
+
+  const color = teamColor(position.team);
+  const recentPath = habitTimedPoints(replay.positions, Math.max(0, time - 7), time, toRadar);
+  const path = new Graphics();
+  if (recentPath.length >= 2) {
+    path.moveTo(recentPath[0].x, recentPath[0].y);
+    for (const point of recentPath.slice(1)) path.lineTo(point.x, point.y);
+    path.stroke({ color, width: 1.6, alpha: 0.2 });
+  }
+  const p = toRadar(position.x, position.y, position.z);
+  path.circle(p.x, p.y, 8).stroke({ color, width: 1.4, alpha: 0.28 });
+  layer.addChild(path);
+
+  const marker = new Graphics();
+  marker.position.set(p.x, p.y);
+  marker.rotation = (position.yaw * Math.PI) / 180;
+  marker
+    .moveTo(8, 0)
+    .lineTo(-6, -4.5)
+    .lineTo(-3.5, 0)
+    .lineTo(-6, 4.5)
+    .lineTo(8, 0)
+    .fill({ color, alpha: 0.38 })
+    .stroke({ color: 0xffffff, width: 1, alpha: 0.42 });
+  layer.addChild(marker);
+  drawHabitGhostLabel(layer, `R${replay.roundNumber}`, p.x, p.y, color);
+}
+
+function drawHabitProjectile(
+  layer: Container,
+  projectile: HabitReplayProjectile,
+  time: number,
+  toRadar: (x: number, y: number, z?: number) => { x: number; y: number },
+  effects: HabitReplayEffect[] = [],
+) {
+  const first = projectile.samples[0];
+  const last = projectile.samples[projectile.samples.length - 1];
+  if (!first || !last || time < first.t || time > last.t + 1.05) return;
+  const color = habitTrailColor(projectile.type);
+  const kind = projectileTypeToEffect(projectile.type);
+  const handoff = kind
+    ? effects
+        .filter((effect) => effect.type === kind && time >= effect.start - 0.12 && time <= effect.start + 0.12)
+        .map((effect) => {
+          const distances = projectile.samples
+            .filter((sample) => sample.t >= effect.start - 0.45 && sample.t <= effect.start + 0.12)
+            .map((sample) => Math.hypot(sample.x - effect.x, sample.y - effect.y));
+          return { effect, distance: distances.length ? Math.min(...distances) : Infinity };
+        })
+        .filter((match) => match.distance <= effectSuppressionRadius(kind))
+        .sort((a, b) => a.distance - b.distance)[0]?.effect
+    : undefined;
+  const activeHandoff = Boolean(handoff && time >= handoff.start);
+  const fade = activeHandoff && handoff
+    ? Math.max(0, 1 - (time - handoff.start) / 0.12)
+    : time > last.t
+      ? Math.max(0, 1 - (time - last.t) / 1.05)
+      : 1;
+  const visibleTime = Math.min(time, last.t);
+  const points = habitTimedPoints(projectile.samples, first.t, visibleTime, toRadar);
+  const sampled = sampleHabitProjectile(projectile, visibleTime);
+  if (sampled) {
+    const groundZ = habitProjectileGroundZ(projectile);
+    const sampledPoint = toRadar(sampled.x, sampled.y, Math.max(0, sampled.z - groundZ));
+    const tail = points[points.length - 1];
+    if (!tail || Math.hypot(sampledPoint.x - tail.x, sampledPoint.y - tail.y) > 0.5) points.push(sampledPoint);
+  }
+  if (activeHandoff && handoff) {
+    const impact = toRadar(handoff.x, handoff.y, handoff.z);
+    const tail = points[points.length - 1];
+    if (!tail || Math.hypot(impact.x - tail.x, impact.y - tail.y) > 0.5) points.push(impact);
+  }
+  if (points.length < 2) return;
+  const g = new Graphics();
+  drawSmoothTrail(g, points, color);
+  g.alpha = 0.45 * fade;
+  const current = points[points.length - 1];
+  if (sampled && !activeHandoff) {
+    const shadow = toRadar(sampled.x, sampled.y, 0);
+    const shadowDistance = Math.hypot(current.x - shadow.x, current.y - shadow.y);
+    const shadowAlpha = 0.11 + Math.min(0.12, shadowDistance / 160);
+    const shadowRadius = 3.8 - Math.min(1, shadowDistance / 24);
+    g.circle(shadow.x, shadow.y, shadowRadius).fill({ color: 0x000000, alpha: shadowAlpha * fade });
+  }
+  g.circle(current.x, current.y, 3.4).fill({ color, alpha: 0.8 * fade });
+  layer.addChild(g);
+  if (!activeHandoff && time <= last.t + 0.08) drawUtilityIcon(layer, projectile.type, current.x, current.y, color, 13);
+}
+
+function drawHabitEffect(
+  layer: Container,
+  effect: HabitReplayEffect,
+  time: number,
+  toRadar: (x: number, y: number, z?: number) => { x: number; y: number },
+  unitsToPx: number,
+  contextualEffects: HabitReplayEffect[],
+) {
+  if (time < effect.start || time > effect.end) return;
+  drawEffect(layer, effect as UtilityEffect, time, toRadar, unitsToPx, contextualEffects as UtilityEffect[]);
+}
+
+function drawHabitReplayOverlay(
+  layer: Container,
+  replays: HabitReplayRound[],
+  time: number,
+  toRadar: (x: number, y: number, z?: number) => { x: number; y: number },
+  unitsToPx: number,
+) {
+  for (const replay of replays) {
+    for (const projectile of replay.projectiles) drawHabitProjectile(layer, projectile, time, toRadar, replay.effects);
+    for (const effect of replay.effects) drawHabitEffect(layer, effect, time, toRadar, unitsToPx, replay.effects);
+  }
+  for (const replay of replays) drawHabitGhostPlayer(layer, replay, time, toRadar);
+}
+
+function fireVariantFromProjectiles(effect: UtilityEffect, frames: ProjectileSample[], cache?: RoundRenderCache): UtilityEffect {
   if (effect.type !== "fire" || effect.variant) return effect;
-  const candidates = [
-    ...sampleProjectiles(frames, effect.start),
-    ...sampleProjectiles(frames, Math.max(0, effect.start - 0.12)),
-  ];
+  const candidates = cache
+    ? [
+        ...sampleProjectilesFixed(cache, effect.start),
+        ...sampleProjectilesFixed(cache, Math.max(0, effect.start - 0.12)),
+      ]
+    : [
+        ...sampleProjectiles(frames, effect.start),
+        ...sampleProjectiles(frames, Math.max(0, effect.start - 0.12)),
+      ];
   let best: ProjectilePos | null = null;
   let bestDist = Infinity;
   for (const p of candidates) {
@@ -501,11 +964,17 @@ function effectSuppressionRadius(type: string): number {
 }
 
 function projectileHideStart(effect: UtilityEffect): number {
-  // HE explosions need a short visual handoff. Without it, the projectile can
-  // disappear one frame before the blast animation is readable.
-  if (effect.type === "he") return effect.start + 0.08;
-  return effect.start;
+  // Keep a short visual handoff after detonation. Without it, projectiles can
+  // vanish exactly when the viewer expects the impact/bounce trail to explain
+  // what happened.
+  if (effect.type === "he") return effect.start + 0.12;
+  return effect.start + 0.1;
 }
+
+type ProjectileEffectHandoff = {
+  effect: UtilityEffect;
+  active: boolean;
+};
 
 function projectileTypeForEffect(effect: UtilityEffect): string {
   if (effect.type === "he") return "hegrenade";
@@ -590,6 +1059,29 @@ function projectileResolvedByEffect(
     if (effect.type !== type || time < projectileHideStart(effect)) return false;
     return projectileTouchesEffect(projectile, effect, frames, time) || projectileSeenNearEffect(projectile, effect, frames);
   });
+}
+
+function projectileEffectHandoff(
+  projectile: ProjectilePos,
+  effects: UtilityEffect[],
+  frames: ProjectileSample[],
+  time: number,
+): ProjectileEffectHandoff | null {
+  const type = projectileTypeToEffect(projectile.type);
+  if (!type) return null;
+  let best: { effect: UtilityEffect; distance: number } | null = null;
+
+  for (const effect of effects) {
+    if (effect.type !== type) continue;
+    if (time < effect.start - 0.12 || time > projectileHideStart(effect)) continue;
+    if (!projectileTouchesEffect(projectile, effect, frames, time) && !projectileSeenNearEffect(projectile, effect, frames)) {
+      continue;
+    }
+    const distance = Math.hypot(projectile.x - effect.x, projectile.y - effect.y);
+    if (!best || distance < best.distance) best = { effect, distance };
+  }
+
+  return best ? { effect: best.effect, active: time >= best.effect.start } : null;
 }
 
 function liveProjectileForEffect(frames: ProjectileSample[], effect: UtilityEffect, time: number): ProjectilePos | null {
@@ -737,6 +1229,64 @@ function resolveFireEffect(effect: UtilityEffect): UtilityEffect {
 
 function resolveEffects(effects: UtilityEffect[], frames: ProjectileSample[]): UtilityEffect[] {
   return effects.map((effect) => resolveFireEffect(resolveDecoyEffect(effect, frames)));
+}
+
+function buildProjectileTracks(frames: ProjectileSample[]): Map<number, ProjectileTrack> {
+  const tracks = new Map<number, ProjectileTrack>();
+  for (const frame of frames) {
+    for (const projectile of frame.projectiles ?? []) {
+      let track = tracks.get(projectile.id);
+      if (!track) {
+        track = {
+          samples: [],
+          first: frame.t,
+          last: frame.t,
+          samplesCount: 0,
+          moved: false,
+        };
+        tracks.set(projectile.id, track);
+      }
+      const previous = track.samples[track.samples.length - 1]?.projectile;
+      if (previous) {
+        const distance = Math.hypot(projectile.x - previous.x, projectile.y - previous.y, projectile.z - previous.z);
+        if (distance > 2) track.moved = true;
+      }
+      track.samples.push({ t: frame.t, projectile });
+      track.first = track.first ?? frame.t;
+      track.last = frame.t;
+      track.samplesCount++;
+    }
+  }
+  return tracks;
+}
+
+function getRoundRenderCache(round: Round): RoundRenderCache {
+  const cached = roundRenderCache.get(round);
+  if (cached) return cached;
+  const projectileFrames = projectileSamples(round);
+  const cache = {
+    projectileFrames,
+    projectileTracks: buildProjectileTracks(projectileFrames),
+    resolvedEffects: resolveEffects(round.effects ?? [], projectileFrames),
+    deathMarkers: (round.events ?? [])
+      .filter((event) => event.type === "kill" && Boolean(event.victim))
+      .flatMap((event) => {
+        const victimPos = playerPositionAtOrBefore(round.frames, event.victim ?? 0, event.t);
+        return victimPos ? [{ t: event.t, x: victimPos.x, y: victimPos.y, z: victimPos.z }] : [];
+      }),
+    fixedProjectileSamples: new Map(),
+  };
+  roundRenderCache.set(round, cache);
+  return cache;
+}
+
+function sampleProjectilesFixed(cache: RoundRenderCache, t: number): ProjectilePos[] {
+  const key = Math.round(t * 1000);
+  const cached = cache.fixedProjectileSamples.get(key);
+  if (cached) return cached;
+  const samples = sampleProjectiles(cache.projectileFrames, t);
+  cache.fixedProjectileSamples.set(key, samples);
+  return samples;
 }
 
 function isSameVisualProjectile(a: ProjectilePos, b: ProjectilePos): boolean {
@@ -1262,6 +1812,7 @@ type PlayerSprite = {
   hpRing: Graphics;
   arrow: Graphics;
   arrowRotator: Container;
+  muzzleFlash: Graphics;
   labelBadge: Container;
   labelFill: Text;
   labelEmpty: Text;
@@ -1283,8 +1834,32 @@ type BombSprite = {
   icon: Sprite;
 };
 
+type DisposableDisplayObject = Container | Graphics | Sprite | Text;
+
+function queueLayerChildrenForDestroy(layer: Container, queue: DisposableDisplayObject[]): void {
+  queue.push(...(layer.removeChildren() as DisposableDisplayObject[]));
+}
+
+function drainDestroyQueue(queue: DisposableDisplayObject[], maxItems = 16, maxMs = 1.2): void {
+  const started = performance.now();
+  for (let i = 0; i < maxItems && queue.length > 0; i++) {
+    if (performance.now() - started > maxMs) break;
+    const child = queue.shift();
+    if (child && !child.destroyed) child.destroy({ children: true });
+  }
+}
+
 function heightLift(z: number) {
   return Math.max(0, Math.min(22, Math.abs(z) / 35));
+}
+
+function projectileGroundZ(track: ProjectileTrack | undefined, fallbackZ: number): number {
+  if (!track || track.samples.length === 0) return fallbackZ;
+  return track.samples.reduce((lowest, sample) => Math.min(lowest, sample.projectile.z), track.samples[0].projectile.z);
+}
+
+function projectileHeightAboveGround(projectile: ProjectilePos, track: ProjectileTrack | undefined): number {
+  return Math.max(0, projectile.z - projectileGroundZ(track, projectile.z));
 }
 
 function drawUtilityIcon(
@@ -1302,6 +1877,12 @@ function drawUtilityIcon(
   sprite.position.set(x, y);
   sprite.tint = color;
   layer.addChild(sprite);
+  const ready = cachedIconTexture(path);
+  if (ready) {
+    sprite.texture = ready;
+    fitSprite(sprite, max);
+    return;
+  }
   loadIconTexture(path)
     .then((tex) => {
       if (sprite.destroyed) return;
@@ -1309,6 +1890,22 @@ function drawUtilityIcon(
       fitSprite(sprite, max);
     })
     .catch(() => {});
+}
+
+function drawFireMarker(layer: Container, x: number, y: number) {
+  const g = new Graphics();
+  g.position.set(x, y);
+  g.moveTo(0, -11)
+    .bezierCurveTo(8, -3, 9, 5, 2, 11)
+    .bezierCurveTo(-8, 6, -7, -2, -2, -8)
+    .bezierCurveTo(-1, -4, 2, -2, 0, -11)
+    .fill({ color: 0xf97316, alpha: 0.88 });
+  g.moveTo(1, -5)
+    .bezierCurveTo(5, 1, 4, 6, 0, 9)
+    .bezierCurveTo(-4, 5, -3, 0, 1, -5)
+    .fill({ color: 0xfde047, alpha: 0.88 });
+  g.circle(0, 2, 9).stroke({ color: 0xfffbeb, width: 1.2, alpha: 0.55 });
+  layer.addChild(g);
 }
 
 function drawTimerArc(
@@ -1323,29 +1920,49 @@ function drawTimerArc(
   if (lifeRemaining <= 0) return;
   const start = -Math.PI / 2;
   const end = start + Math.PI * 2 * Math.min(1, lifeRemaining);
-  // active arc as its own path so it doesn't connect to previous graphics
-  const path = new Graphics();
-  path.moveTo(cx + Math.cos(start) * radius, cy + Math.sin(start) * radius);
-  path.arc(cx, cy, radius, start, end);
-  path.stroke({ color, width, alpha: 0.95 });
-  g.addChild(path);
+  g.moveTo(cx + Math.cos(start) * radius, cy + Math.sin(start) * radius);
+  g.arc(cx, cy, radius, start, end);
+  g.stroke({ color, width, alpha: 0.95 });
 }
 
-function drawCountdownLabel(layer: Graphics, text: string, x: number, y: number, color = 0xc8c8c8) {
-  const label = new Text({
-    text,
-    style: {
-      fontFamily: "ui-sans-serif, system-ui",
-      fontSize: 24,
-      fontWeight: "700",
-      fill: color,
-    },
-    resolution: Math.max(2, window.devicePixelRatio || 1),
+function drawCountdownLabel(layer: Container, text: string, x: number, y: number, color = 0xc8c8c8) {
+  const segments: Record<string, Array<"a" | "b" | "c" | "d" | "e" | "f" | "g">> = {
+    "0": ["a", "b", "c", "d", "e", "f"],
+    "1": ["b", "c"],
+    "2": ["a", "b", "d", "e", "g"],
+    "3": ["a", "b", "c", "d", "g"],
+    "4": ["b", "c", "f", "g"],
+    "5": ["a", "c", "d", "f", "g"],
+    "6": ["a", "c", "d", "e", "f", "g"],
+    "7": ["a", "b", "c"],
+    "8": ["a", "b", "c", "d", "e", "f", "g"],
+    "9": ["a", "b", "c", "d", "f", "g"],
+  };
+  const chars = text.split("").filter((char) => segments[char]);
+  if (!chars.length) return;
+  const digitW = 7;
+  const digitH = 12;
+  const gap = 2;
+  const thickness = 1.6;
+  const totalW = chars.length * digitW + (chars.length - 1) * gap;
+  const g = new Graphics();
+  g.position.set(x - totalW / 2, y - digitH / 2);
+  const rect = (rx: number, ry: number, rw: number, rh: number) => {
+    g.roundRect(rx, ry, rw, rh, thickness / 2).fill({ color, alpha: 0.95 });
+  };
+  chars.forEach((char, index) => {
+    const ox = index * (digitW + gap);
+    for (const segment of segments[char]) {
+      if (segment === "a") rect(ox + thickness, 0, digitW - thickness * 2, thickness);
+      else if (segment === "b") rect(ox + digitW - thickness, thickness, thickness, digitH / 2 - thickness);
+      else if (segment === "c") rect(ox + digitW - thickness, digitH / 2, thickness, digitH / 2 - thickness);
+      else if (segment === "d") rect(ox + thickness, digitH - thickness, digitW - thickness * 2, thickness);
+      else if (segment === "e") rect(ox, digitH / 2, thickness, digitH / 2 - thickness);
+      else if (segment === "f") rect(ox, thickness, thickness, digitH / 2 - thickness);
+      else if (segment === "g") rect(ox + thickness, digitH / 2 - thickness / 2, digitW - thickness * 2, thickness);
+    }
   });
-  label.anchor.set(0.5);
-  label.scale.set(0.5);
-  label.position.set(x, y);
-  layer.addChild(label);
+  layer.addChild(g);
 }
 
 function drawEffect(
@@ -1353,7 +1970,8 @@ function drawEffect(
   effect: UtilityEffect,
   time: number,
   toRadar: (x: number, y: number, z?: number) => { x: number; y: number },
-  unitsToPx: number
+  unitsToPx: number,
+  contextualEffects: UtilityEffect[] = [],
 ) {
   const p = toRadar(effect.x, effect.y, effect.z);
   const age = Math.max(0, time - effect.start);
@@ -1368,11 +1986,14 @@ function drawEffect(
     const alpha = Math.max(0, fadeIn * fadeOut);
     const radius = 156 * unitsToPx;
     const teamCol = teamColor(effect.team);
-    g.circle(p.x, p.y, radius).fill({ color: 0x9ca3af, alpha: 0.42 * alpha });
+    g.circle(p.x, p.y, radius).fill({
+      color: 0x9ca3af,
+      alpha: 0.42 * alpha * smokeBlastClearAlpha(effect, contextualEffects, time),
+    });
     drawTimerArc(g, p.x, p.y, radius, remaining, teamCol, 1.7);
     const secsLeft = Math.max(0, Math.ceil(effect.end - time));
-    drawCountdownLabel(g, String(secsLeft), p.x, p.y, 0xb8b8b8);
     layer.addChild(g);
+    drawCountdownLabel(layer, String(secsLeft), p.x, p.y, 0xb8b8b8);
     return;
   }
 
@@ -1425,11 +2046,9 @@ function drawEffect(
     g.circle(p.x, p.y, radius).fill({ color: teamDarkColor(effect.team), alpha: 0.32 * alpha });
     drawTimerArc(g, p.x, p.y, radius, remaining, teamColor(effect.team), 1.7);
     layer.addChild(g);
-    drawUtilityIcon(layer, "burningFlammes", p.x, p.y, 0xffffff, 20);
-    const labelLayer = new Graphics();
+    drawFireMarker(layer, p.x, p.y);
     const secsLeft = Math.max(0, Math.ceil(effect.end - time));
-    drawCountdownLabel(labelLayer, String(secsLeft), p.x, p.y + 2, 0x3a3a3a);
-    layer.addChild(labelLayer);
+    drawCountdownLabel(layer, String(secsLeft), p.x, p.y + 2, 0x3a3a3a);
     return;
   }
 
@@ -1454,22 +2073,43 @@ function drawEffect(
 function drawProjectile(
   layer: Container,
   projectile: ProjectilePos,
-  projectileFrames: ProjectileSample[],
+  projectileTrack: ProjectileTrack | undefined,
   time: number,
   throwerTeams: Map<number, number>,
-  toRadar: (x: number, y: number, z?: number) => { x: number; y: number }
+  toRadar: (x: number, y: number, z?: number) => { x: number; y: number },
+  handoff: ProjectileEffectHandoff | null = null,
 ) {
   const throwerTeam = projectile.thrower ? throwerTeams.get(projectile.thrower) : undefined;
   const color = teamColor(throwerTeam);
-  const raw = projectileHistory(projectileFrames, projectile, time, toRadar);
+  const raw = projectileHistoryFromTrack(projectileTrack, projectile, time, toRadar);
+  if (handoff?.active) {
+    const impact = toRadar(handoff.effect.x, handoff.effect.y, handoff.effect.z);
+    const tail = raw[raw.length - 1];
+    if (!tail || Math.hypot(impact.x - tail.x, impact.y - tail.y) > 0.5) raw.push(impact);
+  }
 
   const trail = new Graphics();
   drawSmoothTrail(trail, raw, color);
+  if (handoff?.active) {
+    trail.alpha = Math.max(
+      0,
+      1 - (time - handoff.effect.start) / Math.max(0.04, projectileHideStart(handoff.effect) - handoff.effect.start),
+    );
+  }
 
-  const p = toRadar(projectile.x, projectile.y, projectile.z);
+  const heightAboveGround = projectileHeightAboveGround(projectile, projectileTrack);
+  const p = handoff?.active
+    ? toRadar(handoff.effect.x, handoff.effect.y, handoff.effect.z)
+    : toRadar(projectile.x, projectile.y, heightAboveGround);
   const shadow = toRadar(projectile.x, projectile.y, 0);
-  trail.circle(shadow.x, shadow.y, 4).fill({ color: 0x000000, alpha: 0.25 });
+  const shadowDistance = Math.hypot(p.x - shadow.x, p.y - shadow.y);
+  const shadowAlpha = 0.14 + Math.min(0.16, shadowDistance / 140);
+  const shadowRadius = 4.6 - Math.min(1.4, shadowDistance / 18);
+  if (!handoff?.active) {
+    trail.circle(shadow.x, shadow.y, shadowRadius).fill({ color: 0x000000, alpha: shadowAlpha });
+  }
   layer.addChild(trail);
+  if (handoff?.active) return;
   const iconName =
     projectileTypeToEffect(projectile.type) === "fire" && throwerTeam === 3
       ? "incgrenade"
@@ -1516,6 +2156,31 @@ function drawWeaponFire(
   const forward = PLAYER_ARROW_TIP_OFFSET + maxW / 2;
   const px = start.x + Math.cos(angle) * forward;
   const py = start.y + Math.sin(angle) * forward;
+  const texturePath = isKnife ? "/icons/quick-slash.svg" : "/icons/shoot.svg";
+  const readyTexture = cachedIconTexture(texturePath);
+
+  if (!readyTexture) {
+    const fallback = new Graphics();
+    fallback.position.set(start.x, start.y);
+    fallback.rotation = angle;
+    if (isKnife) {
+      fallback
+        .moveTo(PLAYER_ARROW_TIP_OFFSET + 2, -6)
+        .lineTo(PLAYER_ARROW_TIP_OFFSET + maxW + 4, 0)
+        .lineTo(PLAYER_ARROW_TIP_OFFSET + 2, 6)
+        .stroke({ color: 0xf8fafc, width: 2.2, alpha: 0.85 * alpha });
+    } else {
+      const tip = PLAYER_ARROW_TIP_OFFSET + maxW + 7;
+      fallback
+        .moveTo(PLAYER_ARROW_TIP_OFFSET, 0)
+        .lineTo(tip, -maxH * 0.32)
+        .lineTo(tip - 5, 0)
+        .lineTo(tip, maxH * 0.32)
+        .fill({ color: 0xfff2a6, alpha: 0.55 * alpha });
+      fallback.circle(PLAYER_ARROW_TIP_OFFSET + 4, 0, 2.2).fill({ color: 0xffffff, alpha: 0.75 * alpha });
+    }
+    layer.addChild(fallback);
+  }
 
   const sprite = new Sprite();
   sprite.anchor.set(0.5, 0.5);
@@ -1524,38 +2189,57 @@ function drawWeaponFire(
   sprite.alpha = 0.95 * alpha;
   layer.addChild(sprite);
 
-  const texturePath = isKnife ? "/icons/quick-slash.svg" : "/icons/shoot.svg";
+  const applyTexture = (tex: Texture) => {
+    if (sprite.destroyed) return;
+    sprite.texture = tex;
+    fitSpriteBox(sprite, maxW, maxH);
+    // Refine using the true rendered width (matters for quick-slash whose
+    // aspect is narrower than its max box).
+    const trueForward = PLAYER_ARROW_TIP_OFFSET + sprite.width / 2;
+    sprite.position.set(
+      start.x + Math.cos(angle) * trueForward,
+      start.y + Math.sin(angle) * trueForward
+    );
+  };
+  if (readyTexture) {
+    applyTexture(readyTexture);
+    return;
+  }
   loadIconTexture(texturePath)
-    .then((tex) => {
-      if (sprite.destroyed) return;
-      sprite.texture = tex;
-      fitSpriteBox(sprite, maxW, maxH);
-      // Refine using the true rendered width (matters for quick-slash
-      // whose aspect is narrower than its max box).
-      const trueForward = PLAYER_ARROW_TIP_OFFSET + sprite.width / 2;
-      sprite.position.set(
-        start.x + Math.cos(angle) * trueForward,
-        start.y + Math.sin(angle) * trueForward
-      );
-    })
+    .then(applyTexture)
     .catch(() => {
       sprite.destroy();
     });
 }
 
-export function MapRenderer({ size = 800 }: { size?: number }) {
+function drawDeathMarker(layer: Container, x: number, y: number, age: number) {
+  const alpha = Math.max(0.45, 1 - age / 18);
+  const g = new Graphics();
+  g.circle(x, y, 7.2).fill({ color: 0x1d1f1f, alpha: 0.78 * alpha });
+  g.circle(x, y, 7.2).stroke({ color: 0xef4444, width: 1.8, alpha: 0.95 * alpha });
+  g.moveTo(x - 4, y - 4)
+    .lineTo(x + 4, y + 4)
+    .moveTo(x + 4, y - 4)
+    .lineTo(x - 4, y + 4)
+    .stroke({ color: 0xffffff, width: 1.5, alpha: 0.9 * alpha });
+  layer.addChild(g);
+}
+
+export function MapRenderer({ size = 800, condensed = false }: { size?: number; condensed?: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sizeRef = useRef(size);
   const appRef = useRef<Application | null>(null);
   const bgLayerRef = useRef<Container | null>(null);
+  const habitLayerRef = useRef<Container | null>(null);
   const utilityLayerRef = useRef<Container | null>(null);
   const bombLayerRef = useRef<Container | null>(null);
   const playerLayerRef = useRef<Container | null>(null);
+  const deathLayerRef = useRef<Container | null>(null);
   const spritesRef = useRef<Map<number, PlayerSprite>>(new Map());
   const bombSpriteRef = useRef<BombSprite | null>(null);
   const loadedMapRef = useRef<string | null>(null);
   const defuseVisualRef = useRef<{ key: string; start: number; lastTime: number } | null>(null);
-  const deferredDestroyRef = useRef<Array<Container | Graphics | Sprite | Text>>([]);
+  const deferredDestroyRef = useRef<DisposableDisplayObject[]>([]);
   const projectileDebugRoundRef = useRef<string | null>(null);
   const projectileDebugLastFrameLogRef = useRef(0);
   const projectileDebugHiddenRef = useRef<Set<string>>(new Set());
@@ -1566,6 +2250,14 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
   const projectileDebugSuspiciousRef = useRef<Set<string>>(new Set());
   const projectileDebugVisibleReasonRef = useRef<Set<string>>(new Set());
   const projectileDebugDetectedRef = useRef(false);
+  const habitOverlay = useReplay((s) => s.habitOverlay);
+  const habitOverlayRef = useRef(habitOverlay);
+  const preloadMatch = useReplay((s) => s.match);
+  const preloadRoundIdx = useReplay((s) => s.currentRoundIdx);
+
+  useEffect(() => {
+    habitOverlayRef.current = habitOverlay;
+  }, [habitOverlay]);
 
   // init pixi once
   useEffect(() => {
@@ -1593,22 +2285,28 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
         return;
       }
       const bgLayer = new Container();
+      const habitLayer = new Container();
       const utilityLayer = new Container();
       const bombLayer = new Container();
       const playerLayer = new Container();
+      const deathLayer = new Container();
       app.stage.addChild(bgLayer);
+      app.stage.addChild(habitLayer);
       app.stage.addChild(utilityLayer);
       app.stage.addChild(bombLayer);
       app.stage.addChild(playerLayer);
+      app.stage.addChild(deathLayer);
       app.canvas.style.position = "absolute";
       app.canvas.style.inset = "0";
       app.canvas.style.zIndex = "1";
       host.appendChild(app.canvas);
       appRef.current = app;
       bgLayerRef.current = bgLayer;
+      habitLayerRef.current = habitLayer;
       utilityLayerRef.current = utilityLayer;
       bombLayerRef.current = bombLayer;
       playerLayerRef.current = playerLayer;
+      deathLayerRef.current = deathLayer;
       app.renderer.resize(sizeRef.current, sizeRef.current);
     })();
 
@@ -1621,6 +2319,8 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       sprites.clear();
       bombSpriteRef.current = null;
       loadedMapRef.current = null;
+      habitLayerRef.current = null;
+      deathLayerRef.current = null;
       deferredDestroyRef.current = [];
     };
   }, []);
@@ -1632,8 +2332,56 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
     app.renderer.resize(size, size);
   }, [size]);
 
+  useEffect(() => {
+    if (!preloadMatch) return;
+    let cancelled = false;
+    const rounds = [
+      preloadMatch.rounds[preloadRoundIdx],
+      preloadMatch.rounds[preloadRoundIdx + 1],
+      preloadMatch.rounds[preloadRoundIdx - 1],
+    ].filter((round): round is Round => Boolean(round?.frames.length));
+    if (!rounds.length) return;
+    const id = window.setTimeout(() => {
+      void preloadRoundIconTextures(rounds, () => cancelled);
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(id);
+    };
+  }, [preloadMatch, preloadRoundIdx]);
+
   // load radar when map changes
   const map = useReplay((s) => s.match?.meta.map);
+
+  useEffect(() => {
+    let cancel = false;
+    const render = async () => {
+      for (let i = 0; i < 50 && !habitLayerRef.current; i++) {
+        await new Promise((r) => setTimeout(r, 30));
+      }
+      const layer = habitLayerRef.current;
+      if (cancel || !layer) return;
+      queueLayerChildrenForDestroy(layer, deferredDestroyRef.current);
+      drainDestroyQueue(deferredDestroyRef.current, 24, 2);
+      if (!habitOverlay || !map) return;
+      if (habitOverlay.mode === "replay") return;
+      const calib = MAP_CALIBRATION[map];
+      if (!calib) return;
+      const scale = size / RADAR_SIZE;
+      const toRadar = (x: number, y: number, z = 0) => {
+        const p = worldToRadar(x, y, calib);
+        return { x: p.x * scale, y: p.y * scale - heightLift(z) };
+      };
+      for (const trail of habitOverlay.trails) {
+        drawHabitOverlayTrail(layer, trail, toRadar);
+      }
+    };
+    void render();
+    return () => {
+      cancel = true;
+    };
+  }, [habitOverlay, map, size]);
+
   useEffect(() => {
     if (!map) return;
     let cancel = false;
@@ -1672,7 +2420,9 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       const layer = playerLayerRef.current;
       const utilityLayer = utilityLayerRef.current;
       const bombLayer = bombLayerRef.current;
-      if (!match || !layer || !utilityLayer || !bombLayer) return;
+      const deathLayer = deathLayerRef.current;
+      const habitLayer = habitLayerRef.current;
+      if (!match || !layer || !utilityLayer || !bombLayer || !deathLayer) return;
       const round = match.rounds[currentRoundIdx];
       if (!round) return;
       const calib = MAP_CALIBRATION[match.meta.map];
@@ -1703,19 +2453,18 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       const scale = size / RADAR_SIZE;
       const seen = new Set<number>();
       const utilityChildrenBeforeCleanup = utilityLayer.children.length;
-      deferredDestroyRef.current.push(...(utilityLayer.removeChildren() as Array<Container | Graphics | Sprite | Text>));
-      for (let i = 0; i < 40 && deferredDestroyRef.current.length > 0; i++) {
-        const child = deferredDestroyRef.current.shift();
-        if (child && !child.destroyed) child.destroy({ children: true });
-      }
+      queueLayerChildrenForDestroy(utilityLayer, deferredDestroyRef.current);
+      queueLayerChildrenForDestroy(deathLayer, deferredDestroyRef.current);
+      drainDestroyQueue(deferredDestroyRef.current);
 
       const toRadar = (x: number, y: number, z = 0) => {
         const p = worldToRadar(x, y, calib);
         return { x: p.x * scale, y: p.y * scale - heightLift(z) };
       };
 
-      const projectileFrames = projectileSamples(round);
-      const roundEffects = resolveEffects(round.effects ?? [], projectileFrames);
+      const renderCache = getRoundRenderCache(round);
+      const projectileFrames = renderCache.projectileFrames;
+      const roundEffects = renderCache.resolvedEffects;
       const debugProjectiles = projectileDebugEnabled();
       if (debugProjectiles) {
         if (!projectileDebugDetectedRef.current) {
@@ -1761,8 +2510,30 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       }
       const unitsToPx = scale / calib.scale;
       const activeEffects = roundEffects.filter((e) => time >= e.start && time <= e.end);
+      const currentHabitOverlay = habitOverlayRef.current;
+      if (condensed) {
+        queueLayerChildrenForDestroy(bombLayer, deferredDestroyRef.current);
+        for (const [, sprite] of spritesRef.current) {
+          layer.removeChild(sprite.container);
+          sprite.container.destroy({ children: true });
+        }
+        spritesRef.current.clear();
+        bombSpriteRef.current = null;
+        if (habitLayer) {
+          queueLayerChildrenForDestroy(habitLayer, deferredDestroyRef.current);
+          if (currentHabitOverlay?.mode === "replay" && currentHabitOverlay.replays?.length) {
+            drawHabitReplayOverlay(habitLayer, currentHabitOverlay.replays, time, toRadar, unitsToPx);
+          }
+        }
+        drainDestroyQueue(deferredDestroyRef.current);
+        return;
+      }
+      if (habitLayer && currentHabitOverlay?.mode === "replay" && currentHabitOverlay.replays?.length) {
+        queueLayerChildrenForDestroy(habitLayer, deferredDestroyRef.current);
+        drawHabitReplayOverlay(habitLayer, currentHabitOverlay.replays, time, toRadar, unitsToPx);
+      }
       for (const effect of activeEffects) {
-        const resolved = fireVariantFromProjectiles(effect, projectileFrames);
+        const resolved = fireVariantFromProjectiles(effect, projectileFrames, renderCache);
         if (resolved.type === "bomb_planted" && displayBomb) continue;
         if (resolved.type === "fire") {
           const smoked = fireIsSmoked(resolved, activeEffects);
@@ -1784,7 +2555,13 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
           }
           if (smoked) continue;
         }
-        drawEffect(utilityLayer, resolved, time, toRadar, unitsToPx);
+        drawEffect(utilityLayer, resolved, time, toRadar, unitsToPx, roundEffects);
+      }
+
+      for (const marker of renderCache.deathMarkers) {
+        if (marker.t > time) continue;
+        const p = toRadar(marker.x, marker.y, marker.z);
+        drawDeathMarker(deathLayer, p.x, p.y, time - marker.t);
       }
 
       const visibleFires: WeaponFireEvent[] = (round.weaponFires ?? []).filter(
@@ -1908,11 +2685,11 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       for (const e of startedEffects) {
         if (time < projectileHideStart(e)) continue;
         const sampled = [
-          ...sampleProjectiles(projectileFrames, e.start + 0.08),
-          ...sampleProjectiles(projectileFrames, e.start),
-          ...sampleProjectiles(projectileFrames, Math.max(0, e.start - 0.08)),
-          ...sampleProjectiles(projectileFrames, Math.max(0, e.start - 0.16)),
-          ...sampleProjectiles(projectileFrames, Math.max(0, e.start - 0.32)),
+          ...sampleProjectilesFixed(renderCache, e.start + 0.08),
+          ...sampleProjectilesFixed(renderCache, e.start),
+          ...sampleProjectilesFixed(renderCache, Math.max(0, e.start - 0.08)),
+          ...sampleProjectilesFixed(renderCache, Math.max(0, e.start - 0.16)),
+          ...sampleProjectilesFixed(renderCache, Math.max(0, e.start - 0.32)),
         ];
         const sampledById = new Map(sampled.map((projectile) => [projectile.id, projectile]));
         let bestId: number | null = null;
@@ -2002,8 +2779,12 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
       let debugTrailsNotDrawn = 0;
       for (const projectile of projectiles) {
         if (debugProjectiles) {
-          const current = toRadar(projectile.x, projectile.y, projectile.z);
-          const track = projectileTrackWindow(projectileFrames, projectile.id);
+          const current = toRadar(
+            projectile.x,
+            projectile.y,
+            projectileHeightAboveGround(projectile, renderCache.projectileTracks.get(projectile.id)),
+          );
+          const track = projectileTrackWindowFromCache(renderCache, projectile.id);
           const earlyRound = time <= 5 || (track.first !== null && track.first <= 5);
           const beforeRound = track.first !== null && track.first < -0.001;
           const afterRound = track.last !== null && track.last > round.duration + 0.001;
@@ -2089,8 +2870,9 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
           }
         }
         if (debugProjectiles) {
-          const raw = projectileHistory(projectileFrames, projectile, time, toRadar);
-          const current = toRadar(projectile.x, projectile.y, projectile.z);
+          const projectileTrack = renderCache.projectileTracks.get(projectile.id);
+          const raw = projectileHistoryFromTrack(projectileTrack, projectile, time, toRadar);
+          const current = toRadar(projectile.x, projectile.y, projectileHeightAboveGround(projectile, projectileTrack));
           const issue = projectileRenderIssueDebug(projectile, raw, current, utilityLayer, size);
           if (issue) {
             debugTrailsNotDrawn++;
@@ -2115,7 +2897,15 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
             debugTrailsDrawn++;
           }
         }
-        drawProjectile(utilityLayer, projectile, projectileFrames, time, throwerTeams, toRadar);
+        drawProjectile(
+          utilityLayer,
+          projectile,
+          renderCache.projectileTracks.get(projectile.id),
+          time,
+          throwerTeams,
+          toRadar,
+          projectileEffectHandoff(projectile, projectileEffects, projectileFrames, time),
+        );
       }
       if (debugProjectiles && now - projectileDebugLastFrameLogRef.current >= 1000) {
         projectileDebugLastFrameLogRef.current = now;
@@ -2202,7 +2992,9 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
           const hpRing = new Graphics();
           const arrowRotator = new Container();
           const arrow = new Graphics();
+          const muzzleFlash = new Graphics();
           arrowRotator.addChild(arrow);
+          arrowRotator.addChild(muzzleFlash);
           const actionGroup = new Container();
           const action = new Sprite();
           action.anchor.set(0.5);
@@ -2233,6 +3025,7 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
             hpRing,
             arrow,
             arrowRotator,
+            muzzleFlash,
             labelBadge,
             labelFill,
             labelEmpty,
@@ -2272,11 +3065,31 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
           .stroke({ color: 0xffffff, width: 1.7, alpha: alive ? 0.96 : 0.35 });
 
         const shot = recentFireByShooter.get(p.id);
+        s.muzzleFlash.clear();
         if (alive && shot && !isUtilityWeapon(shot.weapon)) {
           const shotAge = Math.max(0, time - shot.t);
           const shotDuration = isKnifeWeapon(shot.weapon) ? 0.18 : 0.14;
           const shotAlpha = Math.max(0, 1 - shotAge / shotDuration);
           s.arrowRotator.scale.set(1 + shotAlpha * (isKnifeWeapon(shot.weapon) ? 0.05 : 0.03));
+          if (isKnifeWeapon(shot.weapon)) {
+            s.muzzleFlash
+              .moveTo(PLAYER_ARROW_TIP_OFFSET + 1, -7)
+              .lineTo(PLAYER_ARROW_TIP_OFFSET + 30, 0)
+              .lineTo(PLAYER_ARROW_TIP_OFFSET + 1, 7)
+              .stroke({ color: 0xf8fafc, width: 2.4, alpha: 0.95 * shotAlpha });
+          } else {
+            const tip = PLAYER_ARROW_TIP_OFFSET + 33;
+            s.muzzleFlash
+              .moveTo(PLAYER_ARROW_TIP_OFFSET + 1, 0)
+              .lineTo(tip, -6)
+              .lineTo(tip - 7, 0)
+              .lineTo(tip, 6)
+              .fill({ color: 0xffd166, alpha: 0.78 * shotAlpha });
+            s.muzzleFlash
+              .moveTo(PLAYER_ARROW_TIP_OFFSET + 4, 0)
+              .lineTo(tip + 4, 0)
+              .stroke({ color: 0xffffff, width: 1.6, alpha: 0.95 * shotAlpha });
+          }
         } else {
           s.arrowRotator.scale.set(1);
         }
@@ -2439,13 +3252,13 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [size]);
+  }, [condensed, size]);
 
   return (
     <div
       ref={hostRef}
       style={{ width: size, height: size }}
-      className="relative overflow-hidden bg-[#1d1f1f]"
+      className="relative overflow-visible bg-transparent"
     >
       {map && (
         // The radar is kept in the DOM instead of only in Pixi: it is more
@@ -2454,7 +3267,7 @@ export function MapRenderer({ size = 800 }: { size?: number }) {
         <img
           src={`/cs2lens-maps/${map}.png`}
           alt=""
-          className="absolute inset-0 z-0 size-full select-none object-cover opacity-95"
+          className="absolute inset-0 z-0 size-full select-none object-cover"
           style={{ mixBlendMode: "lighten" }}
           draggable={false}
         />

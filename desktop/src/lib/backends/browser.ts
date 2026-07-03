@@ -1,0 +1,156 @@
+import type { RoundLabBackend, DemoSource, ParseProgress, ProgressListener } from "@/lib/backends/types";
+import {
+  deleteStoredMatch,
+  listStoredMatches,
+  readStoredMetadata,
+  readStoredRound,
+  renameStoredMatch,
+} from "@/lib/backends/browser-store";
+
+class BrowserProgressBus {
+  private listeners = new Set<ProgressListener>();
+
+  emit(progress: ParseProgress): void {
+    for (const listener of this.listeners) listener(progress);
+  }
+
+  subscribe(listener: ProgressListener): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+}
+
+const progressBus = new BrowserProgressBus();
+let activeWorker: Worker | null = null;
+let activeReject: ((error: Error) => void) | null = null;
+
+function isDemoFile(file: File): boolean {
+  const lower = file.name.toLowerCase();
+  return lower.endsWith(".dem") || lower.endsWith(".dem.zst") || lower.endsWith(".zst");
+}
+
+export function createBrowserBackend(): RoundLabBackend {
+  return {
+    parser: {
+      async parseDemo(source: DemoSource, options): Promise<string> {
+        if (!isDemoFile(source.file)) {
+          throw new Error("Choose a .dem or .dem.zst file.");
+        }
+        progressBus.emit({
+          phase: "starting",
+          progress: 0.02,
+          message: "Starting browser parser worker...",
+        });
+        if (source.file.size > 1024 * 1024 * 1024) {
+          throw new Error("Demo file is larger than the 1 GB browser parser limit.");
+        }
+        const worker = new Worker(new URL("../../workers/web-parser.worker.ts", import.meta.url), {
+          type: "module",
+        });
+        activeWorker = worker;
+        try {
+          const buffer = await source.file.arrayBuffer();
+          return await new Promise<string>((resolve, reject) => {
+            activeReject = reject;
+            worker.onmessage = (event: MessageEvent) => {
+              const data = event.data as
+                | { type: "progress"; payload: ParseProgress }
+                | { type: "done"; id: string }
+                | { type: "error"; message: string };
+              if (data.type === "progress") progressBus.emit(data.payload);
+              else if (data.type === "done") resolve(data.id);
+              else if (data.type === "error") reject(new Error(data.message));
+            };
+            worker.onerror = (event) => reject(new Error(event.message));
+            worker.postMessage(
+              {
+                type: "parse",
+                name: source.file.name,
+                size: source.file.size,
+                options,
+                buffer,
+              },
+              [buffer],
+            );
+          });
+        } finally {
+          activeWorker = null;
+          activeReject = null;
+          worker.terminate();
+        }
+      },
+      async cancelParse(): Promise<void> {
+        activeWorker?.terminate();
+        activeReject?.(new Error("Browser parse cancelled."));
+        activeWorker = null;
+        activeReject = null;
+        progressBus.emit({ phase: "cancelled", progress: 0, message: "Cancelled." });
+      },
+      async onProgress(listener: ProgressListener): Promise<() => void> {
+        return progressBus.subscribe(listener);
+      },
+    },
+    matches: {
+      listMatches: listStoredMatches,
+      getMatchMetadata: readStoredMetadata,
+      getRound: readStoredRound,
+      deleteMatch: deleteStoredMatch,
+      renameMatch: renameStoredMatch,
+    },
+    diagnostics: {
+      async getDebugInfo() {
+        return { runtime: "browser", storage: "indexeddb" };
+      },
+      async getLogFilePath() {
+        return "";
+      },
+      async readLogTail() {
+        return "";
+      },
+      async readProjectileDebugLogs() {
+        return {
+          lines: "",
+          rawTail: "",
+          scannedLines: 0,
+          matchedLines: 0,
+          paths: [],
+          writtenPath: "",
+          projectilePath: "",
+          projectileSizeBytes: 0,
+          projectileLines: 0,
+        };
+      },
+      async getProjectileLogInfo() {
+        return { path: "", sizeBytes: 0, lines: 0 };
+      },
+      async openLogsFolder() {
+        throw new Error("Log folders are not available in the browser app.");
+      },
+      async openProjectileLogsFolder() {
+        throw new Error("Projectile log folders are not available in the browser app.");
+      },
+      async openProjectileLogFile() {
+        throw new Error("Projectile log files are not available in the browser app.");
+      },
+      async writeDebugLog(source: string, message: string) {
+        console.debug(`[${source}] ${message}`);
+        return "";
+      },
+    },
+    shell: {
+      async getAppVersion() {
+        return "";
+      },
+      async enterMatchFullscreen() {
+        if (typeof document === "undefined") return;
+        if (document.fullscreenElement) return;
+        await document.documentElement.requestFullscreen?.();
+      },
+      async exitMatchFullscreen() {
+        if (typeof document === "undefined") return;
+        if (!document.fullscreenElement) return;
+        await document.exitFullscreen?.();
+      },
+    },
+  };
+}

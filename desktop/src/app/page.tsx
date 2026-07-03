@@ -3,10 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { getCurrentWebview } from "@tauri-apps/api/webview";
-import type { DragDropEvent } from "@tauri-apps/api/webview";
-import { listen } from "@tauri-apps/api/event";
-import { getVersion } from "@tauri-apps/api/app";
 import { Button } from "@/components/ui/button";
 import {
   Upload,
@@ -20,17 +16,18 @@ import {
 } from "lucide-react";
 import {
   cancelParse,
-  createVisualTestMatch,
   deleteMatch,
+  getAppVersion,
   getMatchMetadata,
   listMatches,
+  onParseProgress,
   parseDemo,
-  pickDemoFile,
   renameMatch,
+  type DemoSource,
   type MatchSummary,
+  type ParseProgress,
 } from "@/lib/api";
 import { SettingsPanel } from "@/components/SettingsPanel";
-import { UpdateChecker } from "@/components/UpdateChecker";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,13 +35,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-type ParseProgress = {
-  phase: string;
-  progress: number;
-  message: string;
-};
-
 const PARSE_DURATION_KEY = "roundlab.parseDurationMs";
+const PARSE_ESTIMATE_KEY = "roundlab.parseEstimate.v2";
+const FALLBACK_PARSE_ESTIMATE_MS = 90_000;
+const FALLBACK_WEB_MS_PER_MB = 160;
+const FALLBACK_ZSTD_EXPANSION_RATIO = 1.6;
+const MIN_ZSTD_WEB_MS_PER_MB = 135;
+const MIN_WEB_PARSE_ESTIMATE_MS = 12_000;
 
 function formatDuration(ms: number) {
   const total = Math.max(0, Math.ceil(ms / 1000));
@@ -53,11 +50,115 @@ function formatDuration(ms: number) {
   return min > 0 ? `${min}m ${sec.toString().padStart(2, "0")}s` : `${sec}s`;
 }
 
+function parseSourceSize(source: DemoSource): number | null {
+  return source.file.size;
+}
+
+function sourceIsZstd(source: DemoSource): boolean {
+  const lower = source.file.name.toLowerCase();
+  return lower.endsWith(".zst") || lower.endsWith(".dem.zst");
+}
+
+function loadWebParseEstimate(): { webMsPerMb?: number; zstdExpansionRatio?: number } {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(window.localStorage.getItem(PARSE_ESTIMATE_KEY) ?? "{}") as {
+      webMsPerMb?: number;
+      zstdExpansionRatio?: number;
+    };
+  } catch {
+    return {};
+  }
+}
+
+function loadLegacyParseEstimate(): number {
+  if (typeof window === "undefined") return FALLBACK_PARSE_ESTIMATE_MS;
+  const raw = Number(window.localStorage.getItem(PARSE_DURATION_KEY));
+  return Number.isFinite(raw) && raw > 0 ? raw : FALLBACK_PARSE_ESTIMATE_MS;
+}
+
+function webEstimateForBytes(bytes: number, minMsPerMb = 0): number {
+  if (typeof window === "undefined") {
+    return Math.max(MIN_WEB_PARSE_ESTIMATE_MS, (bytes / 1024 / 1024) * Math.max(FALLBACK_WEB_MS_PER_MB, minMsPerMb));
+  }
+  const parsed = loadWebParseEstimate();
+  const msPerMb =
+    Number.isFinite(parsed.webMsPerMb) && parsed.webMsPerMb && parsed.webMsPerMb > 0
+      ? parsed.webMsPerMb
+      : FALLBACK_WEB_MS_PER_MB;
+  return Math.max(MIN_WEB_PARSE_ESTIMATE_MS, (bytes / 1024 / 1024) * Math.max(msPerMb, minMsPerMb));
+}
+
+function estimateForSource(source: DemoSource): number {
+  const size = parseSourceSize(source);
+  if (!size) return loadLegacyParseEstimate();
+  const parsed = loadWebParseEstimate();
+  const expansionRatio =
+    sourceIsZstd(source) && Number.isFinite(parsed.zstdExpansionRatio) && parsed.zstdExpansionRatio && parsed.zstdExpansionRatio > 1
+      ? parsed.zstdExpansionRatio
+      : sourceIsZstd(source)
+        ? FALLBACK_ZSTD_EXPANSION_RATIO
+        : 1;
+  return webEstimateForBytes(size * expansionRatio, sourceIsZstd(source) ? MIN_ZSTD_WEB_MS_PER_MB : 0);
+}
+
+function saveParseEstimate(source: DemoSource, durationMs: number, effectiveBytes?: number | null): void {
+  if (typeof window === "undefined") return;
+  const rawSize = parseSourceSize(source);
+  const size = effectiveBytes && effectiveBytes > 0 ? effectiveBytes : rawSize;
+  try {
+    if (size) {
+      const observed = durationMs / Math.max(1, size / 1024 / 1024);
+      const parsed = loadWebParseEstimate();
+      const prev =
+        Number.isFinite(parsed.webMsPerMb) && parsed.webMsPerMb && parsed.webMsPerMb > 0
+          ? parsed.webMsPerMb
+          : observed;
+      const next = prev * 0.65 + observed * 0.35;
+      const ratioObserved =
+        sourceIsZstd(source) && rawSize && effectiveBytes && effectiveBytes > rawSize
+          ? effectiveBytes / rawSize
+          : null;
+      const previousRatio =
+        Number.isFinite(parsed.zstdExpansionRatio) && parsed.zstdExpansionRatio && parsed.zstdExpansionRatio > 1
+          ? parsed.zstdExpansionRatio
+          : ratioObserved ?? FALLBACK_ZSTD_EXPANSION_RATIO;
+      const zstdExpansionRatio = ratioObserved
+        ? previousRatio * 0.65 + ratioObserved * 0.35
+        : parsed.zstdExpansionRatio;
+      window.localStorage.setItem(
+        PARSE_ESTIMATE_KEY,
+        JSON.stringify({
+          webMsPerMb: Math.round(next),
+          ...(zstdExpansionRatio ? { zstdExpansionRatio: Number(zstdExpansionRatio.toFixed(2)) } : {}),
+        }),
+      );
+    } else {
+      const prev = Number(window.localStorage.getItem(PARSE_DURATION_KEY));
+      const next = Number.isFinite(prev) && prev > 0 ? prev * 0.65 + durationMs * 0.35 : durationMs;
+      window.localStorage.setItem(PARSE_DURATION_KEY, String(Math.round(next)));
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function browserSupportError(): string | null {
+  if (typeof window === "undefined") return null;
+  const missing: string[] = [];
+  if (typeof Worker === "undefined") missing.push("Web Workers");
+  if (typeof WebAssembly === "undefined") missing.push("WebAssembly");
+  if (!("indexedDB" in window)) missing.push("IndexedDB");
+  if (typeof File === "undefined" || typeof Blob === "undefined") missing.push("File API");
+  if (!globalThis.crypto?.randomUUID) missing.push("crypto.randomUUID");
+  if (!missing.length) return null;
+  return `This browser cannot run RoundLab's local parser. Missing: ${missing.join(", ")}.`;
+}
+
 export default function Home() {
   const router = useRouter();
   const [uploading, setUploading] = useState(false);
   const [opening, setOpening] = useState(false);
-  const [visualTestRunning, setVisualTestRunning] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [parseProgress, setParseProgress] = useState<ParseProgress>({
@@ -68,8 +169,8 @@ export default function Home() {
   const [parseStartedAt, setParseStartedAt] = useState<number | null>(null);
   const [parseNow, setParseNow] = useState(() => Date.now());
   const [matches, setMatches] = useState<MatchSummary[]>([]);
-  // window.prompt / window.confirm are blocked in Tauri's WKWebView, so we
-  // render lightweight modals ourselves and stash the pending action here.
+  // Browser prompts are awkward to style and easy to block, so use lightweight
+  // in-app modals for rename/delete and post-parse naming.
   const [renameTarget, setRenameTarget] = useState<MatchSummary | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<MatchSummary | null>(null);
@@ -79,14 +180,13 @@ export default function Home() {
   const [postParse, setPostParse] = useState<MatchSummary | null>(null);
   const [postParseName, setPostParseName] = useState("");
   const [appVersion, setAppVersion] = useState("");
+  const [parseEstimateMs, setParseEstimateMs] = useState(FALLBACK_PARSE_ESTIMATE_MS);
+  const parseEffectiveBytesRef = useRef<number | null>(null);
+  const parseMinMsPerMbRef = useRef(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const elapsedMs = parseStartedAt ? Math.max(0, parseNow - parseStartedAt) : 0;
-  const storedEstimateMs = (() => {
-    if (typeof window === "undefined") return 90_000;
-    const raw = Number(window.localStorage.getItem(PARSE_DURATION_KEY));
-    return Number.isFinite(raw) && raw > 0 ? raw : 90_000;
-  })();
   const backendPct = Math.max(0, Math.min(1, parseProgress.progress || 0));
-  const timePct = parseStartedAt ? Math.min(0.95, elapsedMs / storedEstimateMs) : 0;
+  const timePct = parseStartedAt ? Math.min(0.95, elapsedMs / parseEstimateMs) : 0;
   // Once the backend is past 95%, stop blending with the time-based estimate —
   // the time estimate's job is to keep the bar moving while we wait for the
   // first real progress event, not to compete with late-stage real progress.
@@ -95,9 +195,10 @@ export default function Home() {
   const blended = backendPct > 0.95 ? backendPct : Math.max(backendPct, timePct);
   const shownProgress = uploading ? Math.max(0.03, Math.min(0.99, blended)) : 0;
   const remainingMs =
-    uploading && shownProgress > 0.04
-      ? Math.max(0, (elapsedMs / shownProgress) * (1 - shownProgress))
-      : storedEstimateMs;
+    uploading && parseStartedAt
+      ? Math.max(0, parseEstimateMs - elapsedMs)
+      : parseEstimateMs;
+  const estimateExceeded = uploading && parseStartedAt && elapsedMs >= parseEstimateMs && backendPct < 0.95;
 
   const refreshMatches = useCallback(async (cancelled?: () => boolean) => {
     listMatches()
@@ -109,25 +210,23 @@ export default function Home() {
       });
   }, []);
 
-  const parsePath = useCallback(
-    async (path: string) => {
+  const parseSource = useCallback(
+    async (source: DemoSource) => {
       if (uploading) return;
       setError(null);
       const started = Date.now();
+      const estimate = estimateForSource(source);
       try {
         setUploading(true);
         setParseStartedAt(started);
         setParseNow(started);
+        parseEffectiveBytesRef.current = parseSourceSize(source);
+        parseMinMsPerMbRef.current = sourceIsZstd(source) ? MIN_ZSTD_WEB_MS_PER_MB : 0;
+        setParseEstimateMs(estimate);
         setParseProgress({ phase: "starting", progress: 0.02, message: "Preparing parser…" });
-        const id = await parseDemo(path);
+        const id = await parseDemo(source);
         const duration = Date.now() - started;
-        try {
-          const prev = Number(window.localStorage.getItem(PARSE_DURATION_KEY));
-          const next = Number.isFinite(prev) && prev > 0 ? prev * 0.65 + duration * 0.35 : duration;
-          window.localStorage.setItem(PARSE_DURATION_KEY, String(Math.round(next)));
-        } catch {
-          /* ignore */
-        }
+        saveParseEstimate(source, duration, parseEffectiveBytesRef.current);
         // Pull the freshly parsed match summary from the store so we can
         // pre-fill the name prompt and refresh the recent list at the same
         // time. Falls back to a synthetic summary if listing fails.
@@ -152,6 +251,8 @@ export default function Home() {
       } finally {
         setUploading(false);
         setParseStartedAt(null);
+        parseEffectiveBytesRef.current = null;
+        parseMinMsPerMbRef.current = 0;
         setParseProgress({ phase: "idle", progress: 0, message: "" });
       }
     },
@@ -166,12 +267,12 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false;
-    getVersion()
+    getAppVersion()
       .then((v) => {
         if (!cancelled) setAppVersion(v);
       })
       .catch(() => {
-        /* not running inside Tauri (e.g. next dev in browser) */
+        /* version metadata is optional in the browser app */
       });
     return () => {
       cancelled = true;
@@ -181,15 +282,21 @@ export default function Home() {
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | undefined;
-    listen<ParseProgress>("parse-progress", (event) => {
-      if (!cancelled) setParseProgress(event.payload);
+    onParseProgress((progress) => {
+      if (!cancelled) {
+        if (progress.effectiveBytes && progress.effectiveBytes > 0) {
+          parseEffectiveBytesRef.current = progress.effectiveBytes;
+          setParseEstimateMs((current) => Math.max(current, webEstimateForBytes(progress.effectiveBytes ?? 0, parseMinMsPerMbRef.current)));
+        }
+        setParseProgress(progress);
+      }
     })
       .then((fn) => {
         if (cancelled) fn();
         else unlisten = fn;
       })
       .catch(() => {
-        /* no Tauri event bus in non-native checks */
+        /* progress listeners are best-effort across backends */
       });
     return () => {
       cancelled = true;
@@ -205,89 +312,67 @@ export default function Home() {
     };
   }, [refreshMatches]);
 
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    let cancelled = false;
-    let webview: ReturnType<typeof getCurrentWebview> | undefined;
-    try {
-      webview = getCurrentWebview();
-    } catch {
-      // During non-native renderer checks there is no Tauri webview.
+  const onPickAndParse = () => {
+    if (uploading) return;
+    const supportError = browserSupportError();
+    if (supportError) {
+      setError(supportError);
       return;
     }
-    if (!webview) return;
-    webview
-      .onDragDropEvent((event: { payload: DragDropEvent }) => {
-        const payload = event.payload;
-        if (payload.type === "enter" || payload.type === "over") {
-          setDragging(true);
-          return;
-        }
-        if (payload.type === "leave") {
-          setDragging(false);
-          return;
-        }
-        setDragging(false);
-        if (uploading) return;
-        const path = payload.paths.find(isDemoPath);
-        if (!path) {
-          setError("Drop a .dem or .dem.zst file.");
-          return;
-        }
-        void parsePath(path);
-      })
-      .then((fn) => {
-        if (cancelled) fn();
-        else unlisten = fn;
-      })
-      .catch(() => {
-        /* no Tauri webview in non-native renderer checks */
-      });
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, [parsePath, uploading]);
-
-  const onPickAndParse = async () => {
-    if (uploading) return;
     setError(null);
-    try {
-      const path = await pickDemoFile();
-      if (!path) return;
-      await parsePath(path);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+    fileInputRef.current?.click();
+  };
+
+  const onFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0] ?? null;
+    event.currentTarget.value = "";
+    if (!file || uploading) return;
+    const supportError = browserSupportError();
+    if (supportError) {
+      setError(supportError);
+      return;
     }
+    if (!isDemoFile(file)) {
+      setError("Choose a .dem or .dem.zst file.");
+      return;
+    }
+    void parseSource({ kind: "file", file });
+  };
+
+  const onImportKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onPickAndParse();
+  };
+
+  const onBrowserDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setDragging(false);
+    if (uploading) return;
+    const supportError = browserSupportError();
+    if (supportError) {
+      setError(supportError);
+      return;
+    }
+    const file = Array.from(event.dataTransfer.files).find(isDemoFile);
+    if (!file) {
+      setError("Drop a .dem or .dem.zst file.");
+      return;
+    }
+    void parseSource({ kind: "file", file });
   };
 
   const openMatch = async (id: string, visualTest = false) => {
     if (uploading) return;
     setOpening(true);
-    // Warm the Rust-side match cache before navigating so MatchViewer's
-    // initial getMatchMetadata() call is instant. Failures here aren't
-    // fatal — the viewer will retry on its own.
+    // Warm the match metadata before navigating. Failures here aren't fatal;
+    // the viewer will retry and show the real error if needed.
     try {
       await getMatchMetadata(id);
     } catch {
       /* ignore — let MatchViewer surface the real error */
     }
     router.push(`/match/?id=${id}${visualTest ? "&visualTest=1" : ""}`);
-  };
-
-  const onRunVisualTest = async () => {
-    if (uploading || opening || visualTestRunning) return;
-    setError(null);
-    setVisualTestRunning(true);
-    try {
-      const summary = await createVisualTestMatch();
-      setMatches((items) => [summary, ...items.filter((m) => m.id !== summary.id)]);
-      await openMatch(summary.id, true);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setVisualTestRunning(false);
-    }
   };
 
   const onCancelParse = async () => {
@@ -314,7 +399,7 @@ export default function Home() {
         return;
       }
     }
-    if (open) await openMatch(target.id);
+    if (open) await openMatch(target.id, false);
   };
 
   const onRename = (match: MatchSummary) => {
@@ -390,7 +475,7 @@ export default function Home() {
             </div>
             <div className="mt-1 flex items-center justify-between text-[11px] text-neutral-500">
               <span>Elapsed {formatDuration(elapsedMs)}</span>
-              <span>About {formatDuration(remainingMs)} left</span>
+              <span>{estimateExceeded ? "Still parsing" : `About ${formatDuration(remainingMs)} left`}</span>
             </div>
             <div className="mt-5 flex justify-end">
               <Button
@@ -414,7 +499,7 @@ export default function Home() {
             alt="RoundLab"
             width={36}
             height={37}
-            priority
+            loading="eager"
             className="h-auto w-9 object-contain"
           />
           <span className="text-sm font-semibold">RoundLab</span>
@@ -422,15 +507,35 @@ export default function Home() {
             <span className="text-[11px] text-neutral-500">v{appVersion}</span>
           )}
         </div>
-        <SettingsPanel
-          onRunVisualTest={() => void onRunVisualTest()}
-          visualTestRunning={visualTestRunning}
-        />
+        <SettingsPanel />
       </header>
 
       <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-6 py-8 sm:py-10">
+        <input
+          ref={fileInputRef}
+          data-testid="demo-file-input"
+          type="file"
+          accept=".dem,.zst,.dem.zst"
+          className="sr-only"
+          tabIndex={-1}
+          onChange={onFileSelected}
+        />
         <div
           onClick={onPickAndParse}
+          onKeyDown={onImportKeyDown}
+          onDragEnter={(event) => {
+            event.preventDefault();
+            setDragging(true);
+          }}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={(event) => {
+            event.preventDefault();
+            setDragging(false);
+          }}
+          onDrop={onBrowserDrop}
           role="button"
           tabIndex={0}
           className={[
@@ -454,7 +559,7 @@ export default function Home() {
                   />
                 </div>
                 <div className="mt-2 text-[11px] text-neutral-500">
-                  {formatDuration(elapsedMs)} elapsed · about {formatDuration(remainingMs)} left
+                  {formatDuration(elapsedMs)} elapsed · {estimateExceeded ? "still parsing" : `about ${formatDuration(remainingMs)} left`}
                 </div>
               </div>
             </>
@@ -478,8 +583,6 @@ export default function Home() {
             {error}
           </div>
         )}
-
-        <UpdateChecker />
 
         {matches.length > 0 && (
           <section className="space-y-2">
@@ -721,4 +824,8 @@ function MatchRow({
 function isDemoPath(path: string): boolean {
   const lower = path.toLowerCase();
   return lower.endsWith(".dem") || lower.endsWith(".dem.zst") || lower.endsWith(".zst");
+}
+
+function isDemoFile(file: File): boolean {
+  return isDemoPath(file.name);
 }

@@ -40,6 +40,7 @@ export function DebugConsole({ isOpen, onClose }: { isOpen: boolean; onClose: ()
     clipboardStatus: "copied" | "failed" | "not-attempted";
     error?: string;
   } | null>(null);
+  const isBrowserRuntime = debugInfo.runtime === "browser";
 
   useEffect(() => {
     if (!isOpen) return;
@@ -410,6 +411,7 @@ export function DebugConsole({ isOpen, onClose }: { isOpen: boolean; onClose: ()
                 variant="outline"
                 onClick={handleOpenLogsFolder}
                 className="h-6 px-2 text-[10px]"
+                disabled={isBrowserRuntime}
               >
                 Open logs folder
               </Button>
@@ -418,6 +420,7 @@ export function DebugConsole({ isOpen, onClose }: { isOpen: boolean; onClose: ()
                 variant="outline"
                 onClick={handleOpenProjectileLogFile}
                 className="h-6 px-2 text-[10px]"
+                disabled={isBrowserRuntime}
               >
                 Open projectile log file
               </Button>
@@ -426,6 +429,7 @@ export function DebugConsole({ isOpen, onClose }: { isOpen: boolean; onClose: ()
                 variant="outline"
                 onClick={handleOpenProjectileLogsFolder}
                 className="h-6 px-2 text-[10px]"
+                disabled={isBrowserRuntime}
               >
                 Open projectile logs folder
               </Button>

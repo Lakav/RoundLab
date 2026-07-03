@@ -23,13 +23,13 @@ use crate::second_pass::parser_settings::SpecialIDs;
 use crate::second_pass::variants::*;
 use csgoproto::CMsgPlayerBulletHit;
 use csgoproto::CMsgTeFireBullets;
-use csgoproto::csvc_msg_game_event::KeyT;
+use csgoproto::c_msg_source1_legacy_game_event::KeyT;
 use csgoproto::maps::WEAPINDICIES;
 use csgoproto::CUserMessageSayText;
 use csgoproto::CUserMessageSayText2;
 use csgoproto::CcsUsrMsgServerRankUpdate;
 use csgoproto::CnetMsgSetConVar;
-use csgoproto::CsvcMsgGameEvent;
+use csgoproto::CMsgSource1LegacyGameEvent;
 use itertools::Itertools;
 use prost::Message;
 use serde::ser::SerializeMap;
@@ -85,7 +85,7 @@ impl<'a> SecondPassParser<'a> {
             return Ok(None);
         }
 
-        let event = match CsvcMsgGameEvent::decode(bytes) {
+        let event = match CMsgSource1LegacyGameEvent::decode(bytes) {
             Ok(event) => event,
             Err(_) => return Err(DemoParserError::MalformedMessage),
         };

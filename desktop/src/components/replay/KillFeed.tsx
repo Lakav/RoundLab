@@ -29,7 +29,7 @@ export function KillFeed() {
   const name = (id?: number) => (id ? playerById.get(id)?.name ?? "?" : "?");
 
   return (
-    <div className="pointer-events-none absolute right-8 top-5 z-30 flex flex-col items-end gap-1">
+    <div className="pointer-events-none absolute right-8 top-5 z-40 flex flex-col items-end gap-1">
       {kills.map((k, i) => {
         const age = time - k.t;
         const opacity = Math.max(0.5, 1 - age / WINDOW_SECONDS);
@@ -39,7 +39,7 @@ export function KillFeed() {
         return (
           <div
             key={`${k.t}-${i}`}
-            className="flex items-center gap-2 px-2 py-0.5 text-[13px]"
+            className="flex items-center gap-2 rounded-[3px] border border-white/[0.06] bg-[#070909]/58 px-2 py-0.5 text-[13px] shadow-lg shadow-black/20 backdrop-blur-md"
             style={{
               opacity,
               textShadow: "0 1px 2px rgba(0,0,0,0.9)",

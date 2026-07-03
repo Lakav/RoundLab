@@ -1,92 +1,108 @@
 # RoundLab
 
-RoundLab is a standalone desktop app for reviewing CS2 GOTV demos locally. It parses `.dem` and `.dem.zst` files on-device, stores parsed matches in the OS app-data directory, and replays rounds on a 2D radar with timeline controls and drawing tools.
+RoundLab is a browser-based CS2 GOTV demo review app. It parses `.dem` and
+`.dem.zst` files locally on the user's machine in a Web Worker, stores parsed
+matches in browser storage, and replays rounds on a 2D radar with timeline
+controls and drawing tools.
 
-No demo is uploaded. No server is required.
+No demo is uploaded. The parser runs client-side in the browser.
 
 ## Features
 
 - Import local `.dem` and `.dem.zst` files.
-- Parse CS2 demos with bundled Go and Rust parser sidecars.
+- Parse demos locally with the Rust parser compiled to WebAssembly.
+- Store parsed matches and split round payloads in IndexedDB.
 - Replay rounds on a 2D radar.
 - Scrub the round timeline, play/pause, and change playback speed.
 - Draw annotations over the review.
 - Show player HP, armor, helmet, defuse kit, weapons, money, utility, kill feed, bomb, and effect timers.
+- Review utility habits by rendering all rounds for a player or team at once.
 
 ## Project Structure
 
 ```txt
-desktop/         Tauri desktop app and renderer
-parser/          Primary Go demo parser sidecar
-parser-fallback/ Rust fallback parser sidecar
+desktop/         Next.js web app
+parser/          Rust demo parser and WebAssembly entrypoint
 ressources/      Source assets
+docs/            Architecture and migration notes
 ```
 
 ## Local Development
 
-Prerequisites: Rust (`rustup`), Go 1.23+, Node 20+, pnpm 10+, and `protoc` 23.x on your `PATH`.
+Prerequisites: Rust (`rustup`), Node 20+, pnpm, `wasm32-unknown-unknown`, and
+`wasm-bindgen-cli`.
 
 ```bash
 cd desktop
 pnpm install
 
-# Build parser sidecars for your host platform.
-pnpm sidecar:build
+# Rebuild the browser parser after Rust parser changes.
+pnpm parser:wasm
 
-# Launch the native desktop app.
-pnpm tauri:dev
+# Launch the web app.
+pnpm dev
 ```
 
-To produce a local desktop bundle:
+Then open `http://localhost:3000`.
+
+## Browser Support
+
+The local parser requires Web Workers, WebAssembly, IndexedDB, the File API, and
+`crypto.randomUUID`. The import flow checks these capabilities before parsing
+and shows a clear error if the current browser cannot run the client-side
+parser.
+
+Current validation status:
+
+- Chrome: validated with real `.dem.zst` parsing, replay open, and utility
+  habits overlay on large demos.
+- Safari: not validated yet. To automate Safari, enable Safari Settings →
+  Developer → Allow Remote Automation, then run the same static-export smoke
+  tests through `safaridriver`.
+- Edge and Firefox: not validated yet in this workspace because the browsers
+  are not installed here.
+
+## Validation
+
+Frontend checks:
 
 ```bash
 cd desktop
-pnpm tauri:build
+pnpm lint
+pnpm exec tsc --noEmit
+pnpm build
 ```
 
-The resulting installers land in `desktop/src-tauri/target/release/bundle/`.
-
-## Releases
-
-The release workflow builds macOS Apple Silicon and Windows x64 installers when a `v*.*.*` tag is pushed.
-
-1. Bump `version` in `desktop/src-tauri/tauri.conf.json` and `desktop/package.json`.
-2. Commit and push.
-3. Tag and push:
+Parser checks:
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+cd parser
+cargo test
+cargo check --target wasm32-unknown-unknown --lib
 ```
 
-## Installation notes
-
-### macOS
-
-RoundLab is currently unsigned.
-
-If macOS says the app is damaged or cannot be opened, run:
+For real replay-integrity coverage, point `ROUNDLAB_TEST_DEMOS` at local `.dem`
+or `.dem.zst` files. Use the platform path separator (`:` on macOS/Linux, `;`
+on Windows). Large demos must stay outside Git.
 
 ```bash
-xattr -cr ~/Downloads/RoundLab.app
-open ~/Downloads/RoundLab.app
+cd parser
+ROUNDLAB_TEST_DEMOS="/path/to/ancient4-13.dem.zst:/path/to/anubis16-19.dem.zst" cargo test roundlab_test_demo_produces_replay_json_when_configured -- --nocapture
+ROUNDLAB_TEST_DEMOS="/path/to/ancient4-13.dem.zst:/path/to/anubis16-19.dem.zst" cargo test roundlab_test_demo_honors_quality_and_skip_options_when_configured -- --nocapture
 ```
 
-Then confirm the security prompt from macOS.
+Known reference demos are listed in `parser/reference_demos.json`. For those
+files, tests enforce exact map and score identity plus snapshots for rounds,
+players, frames, kills, bomb events, bomb state, utility effects, weapon fires,
+and projectile frames.
 
-### Windows
+For a fast snapshot check that does not require parser outputs, run:
 
-RoundLab is currently unsigned.
-
-If SmartScreen blocks the app:
-
-1. Click `More info`
-2. Click `Run anyway`
-
-## Auto-Update
-
-The app checks GitHub Releases for `latest.json` on launch. Update payloads are signed with the public key embedded in `desktop/src-tauri/tauri.conf.json`; the private key is stored in the `TAURI_SIGNING_PRIVATE_KEY` repository secret.
+```bash
+python3 scripts/audit-reference-snapshots.py --reference-only
+```
 
 ## Notes
 
-Demo files, parsed outputs, build artifacts, sidecar binaries, signing keys, and local caches are intentionally ignored by Git.
+Demo files, parsed outputs, build artifacts, and local caches are intentionally
+ignored by Git.
