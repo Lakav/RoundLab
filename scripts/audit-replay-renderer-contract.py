@@ -9,6 +9,7 @@ show those trajectories instead of only showing the final utility effect.
 
 from __future__ import annotations
 
+import math
 import re
 from pathlib import Path
 
@@ -60,6 +61,16 @@ def function_body(source: str, name: str) -> str:
 
 def assert_contains(label: str, source: str, tokens: list[str]) -> list[str]:
     return [f"{label} is missing {token!r}" for token in tokens if token not in source]
+
+
+def source_between(source: str, start_marker: str, end_marker: str) -> str:
+    start = source.find(start_marker)
+    if start < 0:
+        raise AssertionError(f"missing marker {start_marker!r}")
+    end = source.find(end_marker, start + len(start_marker))
+    if end < 0:
+        raise AssertionError(f"missing marker {end_marker!r}")
+    return source[start:end]
 
 
 def assert_projectile_source_selection(map_renderer: str) -> list[str]:
@@ -232,6 +243,77 @@ def assert_projectile_diagnostics(map_renderer: str) -> list[str]:
     )
 
 
+def assert_projectile_shadow_depth(map_renderer: str) -> list[str]:
+    errors: list[str] = []
+    errors.extend(
+        assert_contains(
+            "heightLift",
+            function_body(map_renderer, "heightLift"),
+            [
+                "Math.max(0, Math.min(22, Math.abs(z) / 35))",
+            ],
+        )
+    )
+    errors.extend(
+        assert_contains(
+            "projectileHeightAboveGround",
+            function_body(map_renderer, "projectileHeightAboveGround"),
+            [
+                "projectile.z - projectileGroundZ(track, projectile.z)",
+                "Math.max(0,",
+            ],
+        )
+    )
+    errors.extend(
+        assert_contains(
+            "projectileHistoryFromTrack",
+            source_between(map_renderer, "function projectileHistoryFromTrack", "function drawSmoothTrail"),
+            [
+                "const groundZ = projectileGroundZ(track, projectile.z)",
+                "Math.max(0, p.z - groundZ)",
+                "Math.max(0, projectile.z - groundZ)",
+            ],
+        )
+    )
+    errors.extend(
+        assert_contains(
+            "drawProjectile shadow",
+            function_body(map_renderer, "drawProjectile"),
+            [
+                "const heightAboveGround = projectileHeightAboveGround(projectile, projectileTrack)",
+                "toRadar(projectile.x, projectile.y, heightAboveGround)",
+                "const shadow = toRadar(projectile.x, projectile.y, 0)",
+                "const shadowDistance = Math.hypot(p.x - shadow.x, p.y - shadow.y)",
+                "shadowRadius = 4.6 - Math.min(1.4, shadowDistance / 18)",
+            ],
+        )
+    )
+    errors.extend(
+        assert_contains(
+            "condensed projectile shadow",
+            function_body(map_renderer, "drawHabitProjectile"),
+            [
+                "const groundZ = habitProjectileGroundZ(projectile)",
+                "Math.max(0, sampled.z - groundZ)",
+                "const shadow = toRadar(sampled.x, sampled.y, 0)",
+                "const shadowDistance = Math.hypot(current.x - shadow.x, current.y - shadow.y)",
+                "shadowRadius = 3.8 - Math.min(1, shadowDistance / 24)",
+            ],
+        )
+    )
+
+    def height_lift(z: float) -> float:
+        return max(0.0, min(22.0, abs(z) / 35.0))
+
+    near_ground = height_lift(8)
+    high_arc = height_lift(600)
+    if not (0 < near_ground < high_arc <= 22):
+        errors.append("heightLift simulation no longer increases with projectile altitude and caps at 22px")
+    if not math.isclose(height_lift(0), 0):
+        errors.append("heightLift(0) must keep landed utility icons on their shadow")
+    return errors
+
+
 def main() -> None:
     map_renderer = read(MAP_RENDERER)
     match_viewer = read(MATCH_VIEWER)
@@ -242,6 +324,7 @@ def main() -> None:
     errors.extend(assert_classic_projectile_handoff(map_renderer))
     errors.extend(assert_condensed_projectile_handoff(map_renderer, match_viewer, replay_store))
     errors.extend(assert_projectile_diagnostics(map_renderer))
+    errors.extend(assert_projectile_shadow_depth(map_renderer))
 
     if errors:
         raise AssertionError("replay renderer contract audit failed: " + "; ".join(errors))
