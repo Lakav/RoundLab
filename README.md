@@ -187,6 +187,13 @@ not silently skip projectile or weapon-fire data, run:
 python3 scripts/audit-parser-fidelity.py
 ```
 
+To validate that public icons, logos, and referenced radar assets exist and are
+loadable by the replay UI, run:
+
+```bash
+python3 scripts/audit-public-assets.py
+```
+
 To validate the match review map sizing, crop transform formulas, and round
 selector overflow guard across representative viewport sizes, run:
 

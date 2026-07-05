@@ -67,6 +67,7 @@ jobs:
             scripts/audit-ci-coverage.py \
             scripts/audit-match-layout.py \
             scripts/audit-parser-fidelity.py \
+            scripts/audit-public-assets.py \
             scripts/audit-reference-snapshots.py \
             scripts/audit-replay-fixture-coverage.py \
             scripts/audit-replay-renderer-contract.py \
@@ -103,6 +104,9 @@ jobs:
 
       - name: Validate parser fidelity defaults
         run: python3 scripts/audit-parser-fidelity.py
+
+      - name: Validate public assets
+        run: python3 scripts/audit-public-assets.py
 
       - name: Validate reference parser snapshots
         run: python3 scripts/audit-reference-snapshots.py --reference-only
