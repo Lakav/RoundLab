@@ -141,6 +141,29 @@ def assert_worker_errors_are_user_safe() -> None:
         raise AssertionError("; ".join(errors))
 
 
+def assert_worker_rejects_unplayable_output() -> None:
+    worker = read(WORKER)
+    required = [
+        "function validatePlayableMatch(data: MatchData): void",
+        "if (!Array.isArray(data.rounds) || data.rounds.length === 0)",
+        '"This demo parsed successfully, but no playable rounds were found."',
+        "const seenRoundNumbers = new Set<number>()",
+        "if (seenRoundNumbers.has(round.number))",
+        "Parser output has duplicate round number",
+        "if (!Array.isArray(round.frames) || round.frames.length === 0)",
+        "has no frame data.",
+        "validatePlayableMatch(data)",
+    ]
+    missing = [snippet for snippet in required if snippet not in worker]
+    errors = [f"worker playable-match validation is missing: {missing}"] if missing else []
+    if worker.find("validatePlayableMatch(data)") > worker.find("const id = crypto.randomUUID()"):
+        errors.append("worker must validate parsed match before allocating a stored match id")
+    if worker.find("validatePlayableMatch(data)") > worker.find("await saveParsedMatch"):
+        errors.append("worker must validate parsed match before writing to IndexedDB")
+    if errors:
+        raise AssertionError("; ".join(errors))
+
+
 def assert_worker_progress_is_monotonic() -> None:
     worker = read(WORKER)
     updates = [(float(value), message) for value, _, message in PROGRESS_RE.findall(worker)]
@@ -184,6 +207,7 @@ def main() -> None:
     assert_page_blocks_oversized_demo_before_parse()
     assert_worker_blocks_oversized_decompressed_demo()
     assert_worker_errors_are_user_safe()
+    assert_worker_rejects_unplayable_output()
     assert_worker_progress_is_monotonic()
     assert_ui_estimate_uses_backend_progress()
     print("browser import flow audit passed")

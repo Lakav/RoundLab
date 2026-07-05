@@ -34,6 +34,22 @@ function displayName(name: string): string {
   return name.replace(/\.dem\.zst$/i, "").replace(/\.dem$/i, "").replace(/\.zst$/i, "") || "CS2 demo";
 }
 
+function validatePlayableMatch(data: MatchData): void {
+  if (!Array.isArray(data.rounds) || data.rounds.length === 0) {
+    throw new Error("This demo parsed successfully, but no playable rounds were found.");
+  }
+  const seenRoundNumbers = new Set<number>();
+  for (const round of data.rounds) {
+    if (seenRoundNumbers.has(round.number)) {
+      throw new Error(`Parser output has duplicate round number ${round.number}.`);
+    }
+    seenRoundNumbers.add(round.number);
+    if (!Array.isArray(round.frames) || round.frames.length === 0) {
+      throw new Error(`Round ${round.number} has no frame data.`);
+    }
+  }
+}
+
 async function getZstdDecoder(): Promise<ZSTDDecoder> {
   zstdDecoderPromise ??= (async () => {
     const decoder = new ZSTDDecoder();
@@ -79,6 +95,7 @@ async function parseDemo(request: ParseRequest): Promise<string> {
 
   postProgress(0.86, "Storing parsed match locally...", "storing");
   const data = JSON.parse(json) as MatchData;
+  validatePlayableMatch(data);
   const id = crypto.randomUUID();
   await saveParsedMatch(id, displayName(request.name), request.size, data);
   postProgress(0.99, "Parser output stored.", "done");
