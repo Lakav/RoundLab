@@ -178,6 +178,13 @@ def assert_map_assets(calibrations: dict[str, Calibration], public_dir: Path) ->
         width, height = png_size(path)
         if width != RADAR_SIZE or height != RADAR_SIZE:
             invalid.append(f"{path.relative_to(ROOT)} is {width}x{height}, expected {RADAR_SIZE}x{RADAR_SIZE}")
+        lower_path = public_dir / "cs2lens-maps" / f"{map_name}_lower.png"
+        if lower_path.exists():
+            lower_width, lower_height = png_size(lower_path)
+            if lower_width != RADAR_SIZE or lower_height != RADAR_SIZE:
+                invalid.append(
+                    f"{lower_path.relative_to(ROOT)} is {lower_width}x{lower_height}, expected {RADAR_SIZE}x{RADAR_SIZE}"
+                )
     if missing or invalid:
         detail = []
         if missing:

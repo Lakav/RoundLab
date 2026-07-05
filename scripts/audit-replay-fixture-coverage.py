@@ -50,7 +50,13 @@ def lower_level_maps() -> set[str]:
 
 def renderer_supports_lower_level_maps() -> bool:
     text = MAP_RENDERER.read_text(encoding="utf-8")
-    return "_lower" in text and ".z" in text and "cs2lens-maps" in text
+    primary_only_dom_radar = 'src={`/cs2lens-maps/${map}.png`}' in text
+    return (
+        not primary_only_dom_radar
+        and "_lower.png" in text
+        and "cs2lens-maps" in text
+        and (".z" in text or "player.z" in text or "projectile.z" in text)
+    )
 
 
 def load_manifest(path: Path) -> dict[str, Any]:

@@ -156,6 +156,11 @@ def assert_map_contract() -> list[str]:
             width, height = png_size(asset)
             if width != 1024 or height != 1024:
                 errors.append(f"/cs2lens-maps/{map_name}.png is {width}x{height}, expected 1024x1024")
+        lower_asset = PUBLIC / "cs2lens-maps" / f"{map_name}_lower.png"
+        if lower_asset.exists():
+            width, height = png_size(lower_asset)
+            if width != 1024 or height != 1024:
+                errors.append(f"/cs2lens-maps/{map_name}_lower.png is {width}x{height}, expected 1024x1024")
 
     cache = calibrations.get("de_cache")
     if cache is None:
