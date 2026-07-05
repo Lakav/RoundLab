@@ -36,10 +36,3 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-
-# tauri
-/src-tauri/target/
-/src-tauri/gen/
-# Committing generated sidecar binaries would bloat the repo — build locally
-# via `pnpm sidecar:build` (see src-tauri/binaries/build-sidecar.sh).
-/src-tauri/binaries/parser-*

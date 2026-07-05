@@ -60,8 +60,12 @@ jobs:
           python3 -m py_compile \
             scripts/audit-reference-snapshots.py \
             scripts/audit-replay-rendering.py \
+            scripts/audit-web-portability.py \
             scripts/validate-release-version.py
           python3 -m json.tool parser/reference_demos.json >/dev/null
+
+      - name: Validate web portability
+        run: python3 scripts/audit-web-portability.py
 
       - name: Validate reference parser snapshots
         run: python3 scripts/audit-reference-snapshots.py --reference-only

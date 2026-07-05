@@ -117,6 +117,12 @@ Add `--skip-parsed` to audit only the split `.roundlab-compare` fixtures, or
 fixtures. Add `--require-all-map-fixtures` to fail when a calibrated map has no
 replay fixture coverage.
 
+To catch accidental regressions back to desktop/Tauri-only code paths, run:
+
+```bash
+python3 scripts/audit-web-portability.py
+```
+
 ## Notes
 
 Demo files, parsed outputs, build artifacts, and local caches are intentionally
