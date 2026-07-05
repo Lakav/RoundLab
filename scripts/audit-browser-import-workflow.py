@@ -182,6 +182,9 @@ def assert_parse_success_progress_and_cancel(page: str, backend: str) -> list[st
             parse,
             [
                 "if (uploading) return",
+                "const sizeError = demoFileSizeError(source.file)",
+                "setError(sizeError)",
+                "return;",
                 "setUploading(true)",
                 "setParseStartedAt(started)",
                 "setParseProgress({ phase: \"starting\", progress: 0.02, message: \"Preparing parser…\" })",

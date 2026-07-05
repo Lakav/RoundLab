@@ -27,7 +27,7 @@ def read(path: Path) -> str:
 
 def demo_size_limits() -> list[tuple[str, int]]:
     out: list[tuple[str, int]] = []
-    for path in [BACKEND, WORKER]:
+    for path in [PAGE, BACKEND, WORKER]:
         text = read(path)
         for match in FILE_LIMIT_RE.finditer(text):
             value = int(match.group(1)) * int(match.group(2)) * int(match.group(3))
@@ -76,6 +76,23 @@ def assert_demo_extension_filters() -> None:
         raise AssertionError("; ".join(errors))
 
 
+def assert_page_blocks_oversized_demo_before_parse() -> None:
+    page = read(PAGE)
+    required = [
+        "const MAX_DEMO_SIZE = 1024 * 1024 * 1024",
+        "function demoFileSizeError(file: File): string | null",
+        "if (file.size <= MAX_DEMO_SIZE) return null",
+        '"Demo file is larger than the 1 GB browser parser limit."',
+        "const sizeError = demoFileSizeError(source.file)",
+        "setError(sizeError)",
+        "return;",
+        "setUploading(true)",
+    ]
+    missing = [snippet for snippet in required if snippet not in page]
+    if missing:
+        raise AssertionError(f"page oversized-demo guard is missing: {missing}")
+
+
 def assert_worker_progress_is_monotonic() -> None:
     worker = read(WORKER)
     updates = [(float(value), message) for value, _, message in PROGRESS_RE.findall(worker)]
@@ -116,6 +133,7 @@ def main() -> None:
     assert_file_limit_consistency()
     assert_browser_capability_checks()
     assert_demo_extension_filters()
+    assert_page_blocks_oversized_demo_before_parse()
     assert_worker_progress_is_monotonic()
     assert_ui_estimate_uses_backend_progress()
     print("browser import flow audit passed")

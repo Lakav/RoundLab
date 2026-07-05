@@ -37,6 +37,7 @@ import {
 
 const PARSE_DURATION_KEY = "roundlab.parseDurationMs";
 const PARSE_ESTIMATE_KEY = "roundlab.parseEstimate.v2";
+const MAX_DEMO_SIZE = 1024 * 1024 * 1024;
 const FALLBACK_PARSE_ESTIMATE_MS = 90_000;
 const FALLBACK_WEB_MS_PER_MB = 160;
 const FALLBACK_ZSTD_EXPANSION_RATIO = 1.6;
@@ -155,6 +156,11 @@ function browserSupportError(): string | null {
   return `This browser cannot run RoundLab's local parser. Missing: ${missing.join(", ")}.`;
 }
 
+function demoFileSizeError(file: File): string | null {
+  if (file.size <= MAX_DEMO_SIZE) return null;
+  return "Demo file is larger than the 1 GB browser parser limit.";
+}
+
 export default function Home() {
   const router = useRouter();
   const [uploading, setUploading] = useState(false);
@@ -218,6 +224,11 @@ export default function Home() {
   const parseSource = useCallback(
     async (source: DemoSource) => {
       if (uploading) return;
+      const sizeError = demoFileSizeError(source.file);
+      if (sizeError) {
+        setError(sizeError);
+        return;
+      }
       setError(null);
       const started = Date.now();
       const estimate = estimateForSource(source);
