@@ -15,7 +15,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DIR = ROOT / "desktop" / "src" / "lib" / "backends"
 API_TS = ROOT / "desktop" / "src" / "lib" / "api.ts"
+HOME_TSX = ROOT / "desktop" / "src" / "app" / "page.tsx"
 WORKER_DIR = ROOT / "desktop" / "src" / "workers"
+WORKER_TS = WORKER_DIR / "web-parser.worker.ts"
 
 LOCALITY_FILES = [
     API_TS,
@@ -23,7 +25,7 @@ LOCALITY_FILES = [
     BACKEND_DIR / "browser.ts",
     BACKEND_DIR / "browser-store.ts",
     BACKEND_DIR / "types.ts",
-    WORKER_DIR / "web-parser.worker.ts",
+    WORKER_TS,
 ]
 
 FORBIDDEN_NETWORK_PATTERNS = {
@@ -46,7 +48,7 @@ REQUIRED_SNIPPETS = {
         "[buffer]",
         "storage: \"indexeddb\"",
     ],
-    WORKER_DIR / "web-parser.worker.ts": [
+    WORKER_TS: [
         "parse_demo_bytes_to_json",
         "await initParser()",
         "saveParsedMatch",
@@ -95,9 +97,54 @@ def assert_required_local_path() -> None:
         raise AssertionError("; ".join(errors))
 
 
+def assert_worker_returns_id_only() -> None:
+    worker = read(WORKER_TS)
+    backend = read(BACKEND_DIR / "browser.ts")
+    backend_types = read(BACKEND_DIR / "types.ts")
+    api = read(API_TS)
+    home = read(HOME_TSX)
+    errors: list[str] = []
+    required = {
+        "worker parse return type": (worker, "async function parseDemo(request: ParseRequest): Promise<string>"),
+        "worker parses JSON inside worker": (worker, "const data = JSON.parse(json) as MatchData"),
+        "worker stores parsed match before resolving": (
+            worker,
+            "await saveParsedMatch(id, displayName(request.name), request.size, data)",
+        ),
+        "worker returns the stored id": (worker, "return id;"),
+        "worker done message is id-only": (worker, 'self.postMessage({ type: "done", id })'),
+        "browser backend parse return type": (backend, "async parseDemo(source: DemoSource, options): Promise<string>"),
+        "browser backend done message type": (backend, '| { type: "done"; id: string }'),
+        "browser backend resolves done id": (backend, 'else if (data.type === "done") resolve(data.id)'),
+        "backend parser contract returns id": (backend_types, "parseDemo(source: DemoSource, options?: ParseOptions): Promise<string>"),
+        "public parser api returns id": (api, "): Promise<string>"),
+        "home import treats parse result as id": (home, "const id = await parseDemo(source);"),
+        "home reloads summary from IndexedDB": (home, "const items = await listMatches().catch(() => [] as MatchSummary[]);"),
+        "home finds parsed summary by id": (home, "items.find((m) => m.id === id)"),
+    }
+    for label, (source, snippet) in required.items():
+        if snippet not in source:
+            errors.append(f"{label} is missing {snippet!r}")
+
+    done_messages = re.findall(r"postMessage\s*\(\s*\{[^)]*type:\s*[\"']done[\"'][^)]*\}\s*\)", worker, re.DOTALL)
+    if done_messages != ['postMessage({ type: "done", id })']:
+        errors.append("worker done postMessage must return only { type: \"done\", id }")
+    forbidden_done_payload = re.search(
+        r"postMessage\s*\(\s*\{[^)]*type:\s*[\"']done[\"'][^)]*\b(data|match|metadata|rounds|json|payload)\b",
+        worker,
+        re.DOTALL,
+    )
+    if forbidden_done_payload:
+        errors.append("worker done postMessage appears to include parsed match payload data")
+
+    if errors:
+        raise AssertionError("; ".join(errors))
+
+
 def main() -> None:
     assert_no_network_apis()
     assert_required_local_path()
+    assert_worker_returns_id_only()
     print(f"browser parser locality audit passed: {len(LOCALITY_FILES)} files checked")
 
 
