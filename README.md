@@ -136,6 +136,10 @@ fixtures when present, run:
 python3 scripts/audit-replay-fixture-coverage.py
 ```
 
+Maps with committed `*_lower` radar assets, currently Nuke and Vertigo, must
+stay listed as missing until the renderer supports lower-level radar switching
+or dedicated replay proof is added.
+
 To catch accidental regressions back to desktop/Tauri-only code paths, run:
 
 ```bash

@@ -21,6 +21,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_COMPARE_DIR = ROOT / ".roundlab-compare"
 DEFAULT_MANIFEST = ROOT / "docs" / "replay-fixture-coverage.json"
 MAPS_TS = ROOT / "desktop" / "src" / "lib" / "maps.ts"
+PUBLIC_MAPS = ROOT / "desktop" / "public" / "cs2lens-maps"
+MAP_RENDERER = ROOT / "desktop" / "src" / "components" / "replay" / "MapRenderer.tsx"
 
 CALIB_RE = re.compile(r"(de_[a-z0-9_]+):\s*\{\s*posX:")
 
@@ -34,6 +36,21 @@ def calibrated_maps() -> set[str]:
     if not maps:
         raise AssertionError(f"no calibrated maps parsed from {MAPS_TS}")
     return maps
+
+
+def lower_level_maps() -> set[str]:
+    if not PUBLIC_MAPS.exists():
+        return set()
+    return {
+        path.stem.removesuffix("_lower")
+        for path in PUBLIC_MAPS.glob("*_lower.png")
+        if path.stem.removesuffix("_lower")
+    }
+
+
+def renderer_supports_lower_level_maps() -> bool:
+    text = MAP_RENDERER.read_text(encoding="utf-8")
+    return "_lower" in text and ".z" in text and "cs2lens-maps" in text
 
 
 def load_manifest(path: Path) -> dict[str, Any]:
@@ -151,6 +168,20 @@ def main() -> None:
         errors.append(f"calibrated maps are neither covered nor missing: {format_map_list(unclassified)}")
     if overlap:
         errors.append(f"maps cannot be both covered and missing: {format_map_list(overlap)}")
+    lower_maps = lower_level_maps() & maps
+    if lower_maps and not renderer_supports_lower_level_maps():
+        lower_marked_covered = lower_maps & covered_maps
+        lower_not_missing = lower_maps - missing
+        if lower_marked_covered:
+            errors.append(
+                "multi-level maps are marked covered but the renderer has no lower-level radar switching: "
+                f"{format_map_list(lower_marked_covered)}"
+            )
+        if lower_not_missing:
+            errors.append(
+                "multi-level maps with *_lower radar assets must stay listed as missing until lower-level rendering is supported: "
+                f"{format_map_list(lower_not_missing)}"
+            )
     if errors:
         raise AssertionError("; ".join(errors))
 
