@@ -217,6 +217,13 @@ selector overflow guard across representative viewport sizes, run:
 python3 scripts/audit-match-layout.py
 ```
 
+To validate the match review controls, including the user-triggered fullscreen
+toggle and map zoom/pan affordances, run:
+
+```bash
+python3 scripts/audit-match-controls.py
+```
+
 To validate that the Pixi replay renderer still keeps projectile trajectories
 visible through effect handoff/future-frame fallbacks in both classic and
 condensed replay modes, run:
