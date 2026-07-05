@@ -71,7 +71,12 @@ type ReplayState = {
 };
 
 function roundHasFrames(match: MatchData | null, roundIdx: number) {
-  return Boolean(match?.rounds[roundIdx]?.frames.length);
+  const frames = match?.rounds[roundIdx]?.frames;
+  return Array.isArray(frames) && frames.length > 0;
+}
+
+function isLoadedRoundPayload(roundNumber: number, round: Round) {
+  return round.number === roundNumber && Array.isArray(round.frames) && round.frames.length > 0;
 }
 
 export const useReplay = create<ReplayState>((set, get) => ({
@@ -87,6 +92,8 @@ export const useReplay = create<ReplayState>((set, get) => ({
   setRoundData: (matchId, roundNumber, round) =>
     set((s) => {
       if (!s.match || s.matchId !== matchId) return s;
+      if (!isLoadedRoundPayload(roundNumber, round)) return { playing: false };
+      if (!s.match.rounds.some((r) => r.number === roundNumber)) return { playing: false };
       return {
         match: {
           ...s.match,
@@ -100,7 +107,11 @@ export const useReplay = create<ReplayState>((set, get) => ({
     const maxTime = duration ?? roundDuration;
     return { durationOverride: duration, time: Math.min(s.time, maxTime) };
   }),
-  setRound: (idx) => set({ currentRoundIdx: idx, time: 0, playing: false }),
+  setRound: (idx) => set((s) => (
+    s.match && idx >= 0 && idx < s.match.rounds.length
+      ? { currentRoundIdx: idx, time: 0, playing: false }
+      : { playing: false }
+  )),
   setTime: (t) => set({ time: t }),
   setPlaying: (p) => set((s) => ({ playing: p && roundHasFrames(s.match, s.currentRoundIdx) })),
   togglePlay: () => set((s) => {

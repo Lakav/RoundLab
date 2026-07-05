@@ -405,6 +405,7 @@ def assert_placeholder_round_playback_guard(errors: list[str]) -> None:
         replay_store,
         [
             "function roundHasFrames(match: MatchData | null, roundIdx: number)",
+            "return Array.isArray(frames) && frames.length > 0",
             "setPlaying: (p) => set((s) => ({ playing: p && roundHasFrames(s.match, s.currentRoundIdx) }))",
             "if (!roundHasFrames(s.match, s.currentRoundIdx)) return { playing: false }",
             "if (!round || round.frames.length === 0) {",
@@ -434,6 +435,33 @@ def assert_placeholder_round_playback_guard(errors: list[str]) -> None:
     )
 
 
+def assert_replay_store_round_state_guards(errors: list[str]) -> None:
+    replay_store = read(REPLAY_STORE)
+    require(
+        "replay store loaded round payload guard",
+        replay_store,
+        [
+            "function isLoadedRoundPayload(roundNumber: number, round: Round)",
+            "round.number === roundNumber && Array.isArray(round.frames) && round.frames.length > 0",
+            "if (!isLoadedRoundPayload(roundNumber, round)) return { playing: false }",
+            "if (!s.match.rounds.some((r) => r.number === roundNumber)) return { playing: false }",
+            "s.match.rounds.map((r) => (r.number === roundNumber ? round : r))",
+        ],
+        errors,
+    )
+    require(
+        "replay store round index guard",
+        replay_store,
+        [
+            "setRound: (idx) => set((s) => (",
+            "s.match && idx >= 0 && idx < s.match.rounds.length",
+            "? { currentRoundIdx: idx, time: 0, playing: false }",
+            ": { playing: false }",
+        ],
+        errors,
+    )
+
+
 def main() -> None:
     errors: list[str] = []
     assert_fullscreen_is_user_initiated(errors)
@@ -443,6 +471,7 @@ def main() -> None:
     assert_review_modes(errors)
     assert_match_identity_resets(errors)
     assert_placeholder_round_playback_guard(errors)
+    assert_replay_store_round_state_guards(errors)
     if errors:
         raise AssertionError("match controls audit failed: " + "; ".join(errors))
     print("match controls audit passed")
