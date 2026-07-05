@@ -33,6 +33,10 @@ CALIB_RE = re.compile(
 CROP_RE = re.compile(
     r"(de_[a-z0-9_]+):\s*\{\s*x:\s*([-0-9.]+),\s*y:\s*([-0-9.]+),\s*size:\s*([-0-9.]+)\s*\}"
 )
+VERTICAL_SECTION_RE = re.compile(r"(de_[a-z0-9_]+):\s*\[(?P<body>.*?)\]", re.S)
+VERTICAL_LAYER_RE = re.compile(
+    r"\{\s*layer:\s*\"([a-z]+)\",\s*altitudeMin:\s*([-0-9.]+),\s*altitudeMax:\s*([-0-9.]+)\s*\}"
+)
 
 
 @dataclass(frozen=True)
@@ -47,6 +51,13 @@ class Crop:
     x: float
     y: float
     size: float
+
+
+@dataclass(frozen=True)
+class VerticalSection:
+    layer: str
+    altitude_min: float
+    altitude_max: float
 
 
 @dataclass
@@ -92,6 +103,8 @@ class AuditStats:
     min_y: float = math.inf
     max_x: float = -math.inf
     max_y: float = -math.inf
+    radar_layers: dict[str, int] = field(default_factory=dict)
+    start_radar_layers: dict[str, int] = field(default_factory=dict)
     examples: list[dict[str, Any]] = field(default_factory=list)
 
     def pct(self, value: int, total: int) -> float:
@@ -135,6 +148,8 @@ class AuditStats:
                 "maxX": None if math.isinf(self.max_x) else math.ceil(self.max_x),
                 "maxY": None if math.isinf(self.max_y) else math.ceil(self.max_y),
             },
+            "radarLayers": dict(sorted(self.radar_layers.items())),
+            "startRadarLayers": dict(sorted(self.start_radar_layers.items())),
             "examples": self.examples[:8],
         }
 
@@ -157,6 +172,21 @@ def load_maps() -> tuple[dict[str, Calibration], dict[str, Crop]]:
     if not calibrations:
         raise AssertionError(f"no map calibrations parsed from {MAPS_TS}")
     return calibrations, crops
+
+
+def load_vertical_sections() -> dict[str, list[VerticalSection]]:
+    text = MAPS_TS.read_text(encoding="utf-8")
+    sections: dict[str, list[VerticalSection]] = {}
+    for match in VERTICAL_SECTION_RE.finditer(text):
+        map_name = match.group(1)
+        body = match.group("body")
+        parsed = [
+            VerticalSection(layer, float(altitude_min), float(altitude_max))
+            for layer, altitude_min, altitude_max in VERTICAL_LAYER_RE.findall(body)
+        ]
+        if parsed:
+            sections[map_name] = parsed
+    return sections
 
 
 def png_size(path: Path) -> tuple[int, int]:
@@ -196,6 +226,21 @@ def assert_map_assets(calibrations: dict[str, Calibration], public_dir: Path) ->
 
 def world_to_radar(x: float, y: float, calibration: Calibration) -> tuple[float, float]:
     return ((x - calibration.pos_x) / calibration.scale, (calibration.pos_y - y) / calibration.scale)
+
+
+def radar_layer_for_z(z: float, sections: list[VerticalSection] | None) -> str | None:
+    if not sections or not math.isfinite(z):
+        return None
+    for section in sections:
+        if z >= section.altitude_min and z < section.altitude_max:
+            return section.layer
+    return "default"
+
+
+def record_radar_layer(target: dict[str, int], z: float, sections: list[VerticalSection] | None) -> None:
+    layer = radar_layer_for_z(z, sections)
+    if layer is not None:
+        target[layer] = target.get(layer, 0) + 1
 
 
 def in_crop(point: tuple[float, float], crop: Crop, margin: float) -> bool:
@@ -331,6 +376,7 @@ def audit_positions(
     stats: AuditStats,
     calibration: Calibration,
     crop: Crop,
+    vertical_sections: list[VerticalSection] | None,
 ) -> None:
     saw_start_players = False
     for frame in round_obj.get("frames") or []:
@@ -339,6 +385,7 @@ def audit_positions(
             saw_start_players = True
             for player in players:
                 stats.start_players += 1
+                record_radar_layer(stats.start_radar_layers, float(player["z"]), vertical_sections)
                 radar = world_to_radar(float(player["x"]), float(player["y"]), calibration)
                 if not in_crop(radar, crop, 40):
                     stats.start_players_out += 1
@@ -357,6 +404,7 @@ def audit_positions(
                         )
         for player in players:
             stats.players += 1
+            record_radar_layer(stats.radar_layers, float(player["z"]), vertical_sections)
             radar = world_to_radar(float(player["x"]), float(player["y"]), calibration)
             if not in_crop(radar, crop, 40):
                 stats.players_out += 1
@@ -521,6 +569,7 @@ def audit_match_rounds(
     rounds: list[dict[str, Any]],
     calibrations: dict[str, Calibration],
     crops: dict[str, Crop],
+    vertical_sections: dict[str, list[VerticalSection]],
     source: str,
 ) -> AuditStats:
     calibration = calibrations.get(map_name)
@@ -532,7 +581,7 @@ def audit_match_rounds(
         raise AssertionError(f"{label} has no rounds")
     for round_obj in rounds:
         stats.rounds += 1
-        audit_positions(round_obj, stats, calibration, crop)
+        audit_positions(round_obj, stats, calibration, crop, vertical_sections.get(map_name))
         tracks = build_tracks(round_obj, stats, calibration, crop)
         audit_effects(round_obj, stats, tracks, calibration, crop)
     return stats
@@ -543,6 +592,7 @@ def audit_split_fixture(
     round_dir: Path,
     calibrations: dict[str, Calibration],
     crops: dict[str, Crop],
+    vertical_sections: dict[str, list[VerticalSection]],
 ) -> AuditStats:
     manifest = load_json_gz(manifest_path)
     map_name = str(manifest.get("meta", {}).get("map") or "")
@@ -550,20 +600,21 @@ def audit_split_fixture(
     if not round_paths:
         raise AssertionError(f"{round_dir} has no round-*.json.gz files")
     rounds = [load_json_gz(path) for path in round_paths]
-    return audit_match_rounds(round_dir.name, map_name, rounds, calibrations, crops, source="fixture")
+    return audit_match_rounds(round_dir.name, map_name, rounds, calibrations, crops, vertical_sections, source="fixture")
 
 
 def audit_full_match(
     match_path: Path,
     calibrations: dict[str, Calibration],
     crops: dict[str, Crop],
+    vertical_sections: dict[str, list[VerticalSection]],
 ) -> AuditStats:
     data = load_json_gz(match_path)
     map_name = str(data.get("meta", {}).get("map") or "")
     rounds = data.get("rounds") or []
     if not isinstance(rounds, list):
         raise AssertionError(f"{match_path} rounds is not a list")
-    return audit_match_rounds(match_path.name, map_name, rounds, calibrations, crops, source="parsed")
+    return audit_match_rounds(match_path.name, map_name, rounds, calibrations, crops, vertical_sections, source="parsed")
 
 
 def discover_split_fixtures(compare_dir: Path) -> list[tuple[Path, Path]]:
@@ -588,20 +639,26 @@ def audit_all(
     parsed_dir: Path | None,
     calibrations: dict[str, Calibration],
     crops: dict[str, Crop],
+    vertical_sections: dict[str, list[VerticalSection]],
 ) -> list[AuditStats]:
     all_stats = [
-        audit_split_fixture(manifest_path, round_dir, calibrations, crops)
+        audit_split_fixture(manifest_path, round_dir, calibrations, crops, vertical_sections)
         for manifest_path, round_dir in discover_split_fixtures(compare_dir)
     ]
     if parsed_dir is not None:
         all_stats.extend(
-            audit_full_match(match_path, calibrations, crops)
+            audit_full_match(match_path, calibrations, crops, vertical_sections)
             for match_path in discover_full_matches(parsed_dir)
         )
     return all_stats
 
 
-def assert_stats(stats: AuditStats, *, max_out_pct: float) -> None:
+def assert_stats(
+    stats: AuditStats,
+    *,
+    max_out_pct: float,
+    vertical_sections: dict[str, list[VerticalSection]],
+) -> None:
     errors: list[str] = []
     if stats.source == "fixture" and (stats.effects == 0 or stats.utility_tracks == 0):
         errors.append("fixture has no utility effect/projectile signal, so it does not prove replay utility rendering")
@@ -629,6 +686,14 @@ def assert_stats(stats: AuditStats, *, max_out_pct: float) -> None:
         errors.append(f"{stats.pct(stats.effects_out, stats.effects)}% effects outside map crop")
     if stats.pct(stats.projectiles_out, stats.projectiles) > max_out_pct:
         errors.append(f"{stats.pct(stats.projectiles_out, stats.projectiles)}% projectiles outside map crop")
+    sections = vertical_sections.get(stats.map_name)
+    if stats.source == "fixture" and sections:
+        missing_layers = sorted({section.layer for section in sections} - set(stats.radar_layers))
+        if missing_layers:
+            errors.append(
+                f"multi-level fixture does not prove radar layers {missing_layers}; "
+                f"observed={dict(sorted(stats.radar_layers.items()))}"
+            )
     if errors:
         raise AssertionError(f"{stats.label} failed replay rendering audit: {'; '.join(errors)}")
 
@@ -646,13 +711,14 @@ def main() -> None:
     args = parser.parse_args()
 
     calibrations, crops = load_maps()
+    vertical_sections = load_vertical_sections()
     assert_map_assets(calibrations, args.public_dir)
     if args.assets_only:
         if not args.json:
             print(f"OK map assets and calibrations for {len(calibrations)} maps")
         return
     parsed_dir = None if args.skip_parsed else args.parsed_dir
-    all_stats = audit_all(args.compare_dir, parsed_dir, calibrations, crops)
+    all_stats = audit_all(args.compare_dir, parsed_dir, calibrations, crops, vertical_sections)
     if not all_stats:
         locations = [str(args.compare_dir)]
         if parsed_dir is not None:
@@ -665,7 +731,7 @@ def main() -> None:
         raise AssertionError(f"missing replay fixtures for calibrated maps: {missing_fixture_maps}")
 
     for stats in all_stats:
-        assert_stats(stats, max_out_pct=args.max_out_pct)
+        assert_stats(stats, max_out_pct=args.max_out_pct, vertical_sections=vertical_sections)
         if args.json:
             print(json.dumps(stats.as_dict(), sort_keys=True))
         else:
@@ -679,6 +745,7 @@ def main() -> None:
                 f"condensedAmbiguous={stats.condensed_effects_ambiguous} "
                 f"utilityTracks={stats.utility_tracks} unownedUtilityTracks={stats.utility_tracks_missing_thrower} "
                 f"futureOnly={stats.future_only_windows} suppressionRisks={stats.active_effect_suppression_risks} "
+                f"layers={dict(sorted(stats.radar_layers.items())) or '{}'} "
                 f"bounds={stats.as_dict()['radarBounds']}"
             )
     if missing_fixture_maps and not args.json:
