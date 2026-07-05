@@ -181,6 +181,8 @@ def assert_review_modes(errors: list[str]) -> None:
             '["condensed", "Condensé"]',
             "setReviewMode(mode)",
             'if (mode === "classic") clearHabitOverlay()',
+            'setTool("none")',
+            "setMapDrag(null)",
             "void runCondensedOverlay(effectiveCondensedPlayerValue)",
         ],
         errors,

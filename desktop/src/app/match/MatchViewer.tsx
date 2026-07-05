@@ -669,9 +669,13 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
               onClick={() => {
                 setReviewMode(mode);
                 if (mode === "classic") clearHabitOverlay();
-                else if (effectiveCondensedPlayerValue) {
-                  if (!condensedPlayerValue) setCondensedPlayerValue(effectiveCondensedPlayerValue);
-                  void runCondensedOverlay(effectiveCondensedPlayerValue);
+                else {
+                  setTool("none");
+                  setMapDrag(null);
+                  if (effectiveCondensedPlayerValue) {
+                    if (!condensedPlayerValue) setCondensedPlayerValue(effectiveCondensedPlayerValue);
+                    void runCondensedOverlay(effectiveCondensedPlayerValue);
+                  }
                 }
               }}
               className={[
