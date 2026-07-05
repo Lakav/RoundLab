@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
 import { type HabitOverlayTrail, type HabitReplayEffect, type HabitReplayPlayerSample, type HabitReplayProjectile, type HabitReplayRound, useReplay } from "@/lib/replay-store";
-import { MAP_CALIBRATION, RADAR_SIZE, worldToRadar } from "@/lib/maps";
+import { MAP_CALIBRATION, RADAR_SIZE, radarImagePath, radarLayerForPositions, type RadarLayer, worldToRadar } from "@/lib/maps";
 import type { BombState, Frame, MatchEvent, PlayerPos, ProjectileFrame, ProjectilePos, Round, UtilityEffect, WeaponFireEvent } from "@/lib/types";
 import { iconPathFor } from "@/lib/icons";
 import { writeDebugLog } from "@/lib/api";
@@ -690,6 +690,19 @@ function sampleHabitPosition(samples: HabitReplayPlayerSample[], time: number): 
     hp: a.hp + (b.hp - a.hp) * alpha,
     team: b.team,
   };
+}
+
+function habitRadarLayerPositions(replays: HabitReplayRound[], time: number): Array<{ z: number }> {
+  const positions: Array<{ z: number }> = [];
+  for (const replay of replays) {
+    if (replay.death && time >= replay.death.t) {
+      positions.push({ z: replay.death.z });
+      continue;
+    }
+    const position = sampleHabitPosition(replay.positions, time);
+    if (position && position.hp > 0) positions.push(position);
+  }
+  return positions;
 }
 
 function habitTimedPoints<T extends { t: number; x: number; y: number; z: number }>(
@@ -2247,6 +2260,8 @@ function drawDeathMarker(layer: Container, x: number, y: number, age: number) {
 export function MapRenderer({ size = 800, condensed = false }: { size?: number; condensed?: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sizeRef = useRef(size);
+  const [radarLayer, setRadarLayer] = useState<RadarLayer>("default");
+  const radarLayerRef = useRef<RadarLayer>("default");
   const appRef = useRef<Application | null>(null);
   const bgLayerRef = useRef<Container | null>(null);
   const habitLayerRef = useRef<Container | null>(null);
@@ -2273,6 +2288,12 @@ export function MapRenderer({ size = 800, condensed = false }: { size?: number; 
   const habitOverlayRef = useRef(habitOverlay);
   const preloadMatch = useReplay((s) => s.match);
   const preloadRoundIdx = useReplay((s) => s.currentRoundIdx);
+
+  const syncRadarLayer = (nextLayer: RadarLayer) => {
+    if (radarLayerRef.current === nextLayer) return;
+    radarLayerRef.current = nextLayer;
+    setRadarLayer(nextLayer);
+  };
 
   useEffect(() => {
     habitOverlayRef.current = habitOverlay;
@@ -2449,6 +2470,12 @@ export function MapRenderer({ size = 800, condensed = false }: { size?: number; 
 
       const bombFrames = roundFramesWithBombFallback(round);
       const positions = sampleFrame(round.frames, time);
+      const overlay = habitOverlayRef.current;
+      const radarPositions =
+        condensed && overlay?.mode === "replay" && overlay.replays?.length
+          ? habitRadarLayerPositions(overlay.replays, time)
+          : positions;
+      syncRadarLayer(radarLayerForPositions(match.meta.map, radarPositions, "default"));
       const frame = nearestFrame(bombFrames, time);
       const bombPair = framePair(bombFrames, time);
       const smoothBomb = (() => {
@@ -3284,7 +3311,7 @@ export function MapRenderer({ size = 800, condensed = false }: { size?: number; 
         // reliable across browsers/headless renderers while Pixi handles motion.
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={`/cs2lens-maps/${map}.png`}
+          src={radarImagePath(map, radarLayer)}
           alt=""
           className="absolute inset-0 z-0 size-full select-none object-cover"
           style={{ mixBlendMode: "lighten" }}

@@ -30,6 +30,10 @@ CALIB_RE = re.compile(
 CROP_RE = re.compile(
     r"(de_[a-z0-9_]+):\s*\{\s*x:\s*([-0-9.]+),\s*y:\s*([-0-9.]+),\s*size:\s*([-0-9.]+)\s*\}"
 )
+VERTICAL_SECTION_RE = re.compile(
+    r"(de_[a-z0-9_]+):\s*\[(?P<body>.*?)\]",
+    re.S,
+)
 
 
 def tracked_files() -> list[str]:
@@ -89,7 +93,9 @@ def calibrated_map_paths() -> set[str]:
     maps = set(calibrated_maps())
     if not maps:
         raise AssertionError("could not parse calibrated maps from desktop/src/lib/maps.ts")
-    return {f"/cs2lens-maps/{map_name}.png" for map_name in maps}
+    paths = {f"/cs2lens-maps/{map_name}.png" for map_name in maps}
+    paths.update(f"/cs2lens-maps/{map_name}_lower.png" for map_name in multi_level_maps())
+    return paths
 
 
 def calibrated_maps() -> dict[str, tuple[float, float, float]]:
@@ -104,6 +110,10 @@ def cropped_maps() -> dict[str, tuple[float, float, float]]:
         name: (float(x), float(y), float(size))
         for name, x, y, size in CROP_RE.findall(read(MAPS_TS))
     }
+
+
+def multi_level_maps() -> set[str]:
+    return {match.group(1) for match in VERTICAL_SECTION_RE.finditer(read(MAPS_TS))}
 
 
 def assert_asset_exists(path: str) -> list[str]:
@@ -135,8 +145,14 @@ def assert_map_contract() -> list[str]:
     crops = cropped_maps()
     if set(calibrations) != set(crops):
         errors.append(f"MAP_CALIBRATION and MAP_CROP map sets differ: calibration={sorted(calibrations)}, crop={sorted(crops)}")
-    if 'src={`/cs2lens-maps/${map}.png`}' not in renderer:
-        errors.append("MapRenderer must render calibrated maps from /cs2lens-maps/${map}.png")
+    if 'src={`/cs2lens-maps/${map}.png`}' in renderer:
+        errors.append("MapRenderer must not hard-code only the primary radar image for multi-level maps")
+    for token in [
+        "radarImagePath(map, radarLayer)",
+        "radarLayerForPositions(match.meta.map, radarPositions, \"default\")",
+    ]:
+        if token not in renderer:
+            errors.append(f"MapRenderer radar layer contract is missing {token!r}")
     for rel in tracked_files():
         if rel.startswith("desktop/src/wasm/") or not rel.endswith((".ts", ".tsx", ".js", ".jsx")):
             continue
@@ -161,6 +177,22 @@ def assert_map_contract() -> list[str]:
             width, height = png_size(lower_asset)
             if width != 1024 or height != 1024:
                 errors.append(f"/cs2lens-maps/{map_name}_lower.png is {width}x{height}, expected 1024x1024")
+            if map_name not in multi_level_maps():
+                errors.append(f"{map_name}_lower.png exists but MAP_VERTICAL_SECTIONS has no {map_name} entry")
+    expected_sections = {
+        "de_nuke": [
+            '{ layer: "default", altitudeMin: -495, altitudeMax: 10000 }',
+            '{ layer: "lower", altitudeMin: -10000, altitudeMax: -495 }',
+        ],
+        "de_vertigo": [
+            '{ layer: "default", altitudeMin: 11700, altitudeMax: 20000 }',
+            '{ layer: "lower", altitudeMin: -10000, altitudeMax: 11700 }',
+        ],
+    }
+    for map_name, snippets in expected_sections.items():
+        for snippet in snippets:
+            if snippet not in maps_text:
+                errors.append(f"MAP_VERTICAL_SECTIONS missing official {map_name} snippet {snippet!r}")
 
     cache = calibrations.get("de_cache")
     if cache is None:

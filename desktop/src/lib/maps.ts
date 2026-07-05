@@ -4,6 +4,14 @@ export type MapCalibration = {
   scale: number;
 };
 
+export type RadarLayer = "default" | "lower";
+
+export type MapVerticalSection = {
+  layer: RadarLayer;
+  altitudeMin: number;
+  altitudeMax: number;
+};
+
 export const MAP_CALIBRATION: Record<string, MapCalibration> = {
   de_inferno: { posX: -2087, posY: 3870, scale: 4.9 },
   de_mirage: { posX: -3230, posY: 1713, scale: 5.0 },
@@ -20,6 +28,19 @@ export const MAP_CALIBRATION: Record<string, MapCalibration> = {
 };
 
 export const RADAR_SIZE = 1024;
+
+// Values come from the official CS2 overview verticalsections. The upper
+// section uses the base radar image; the lower section uses `<map>_lower.png`.
+export const MAP_VERTICAL_SECTIONS: Partial<Record<string, MapVerticalSection[]>> = {
+  de_nuke: [
+    { layer: "default", altitudeMin: -495, altitudeMax: 10000 },
+    { layer: "lower", altitudeMin: -10000, altitudeMax: -495 },
+  ],
+  de_vertigo: [
+    { layer: "default", altitudeMin: 11700, altitudeMax: 20000 },
+    { layer: "lower", altitudeMin: -10000, altitudeMax: 11700 },
+  ],
+};
 
 // Crop region in radar pixels (0..RADAR_SIZE) for each map, trimming the
 // empty black borders around the actual playable area. x/y is the top-left
@@ -53,4 +74,36 @@ export function worldToRadar(
     x: (worldX - calib.posX) / calib.scale,
     y: (calib.posY - worldY) / calib.scale,
   };
+}
+
+export function radarLayerForZ(map: string, z: number): RadarLayer {
+  const sections = MAP_VERTICAL_SECTIONS[map];
+  if (!sections || !Number.isFinite(z)) return "default";
+  const lower = sections.find((section) => section.layer === "lower");
+  if (lower && z >= lower.altitudeMin && z < lower.altitudeMax) return "lower";
+  return "default";
+}
+
+export function radarLayerForPositions(
+  map: string,
+  positions: Array<{ z: number }>,
+  fallback: RadarLayer = "default"
+): RadarLayer {
+  const sections = MAP_VERTICAL_SECTIONS[map];
+  if (!sections) return "default";
+  let lower = 0;
+  let upper = 0;
+  for (const position of positions) {
+    if (!Number.isFinite(position.z)) continue;
+    if (radarLayerForZ(map, position.z) === "lower") lower += 1;
+    else upper += 1;
+  }
+  if (lower === 0 && upper === 0) return fallback;
+  return lower > upper ? "lower" : "default";
+}
+
+export function radarImagePath(map: string, layer: RadarLayer = "default"): string {
+  const hasLayer = MAP_VERTICAL_SECTIONS[map]?.some((section) => section.layer === layer);
+  const suffix = layer === "lower" && hasLayer ? "_lower" : "";
+  return `/cs2lens-maps/${map}${suffix}.png`;
 }

@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MAP_RENDERER = ROOT / "desktop" / "src" / "components" / "replay" / "MapRenderer.tsx"
 MATCH_VIEWER = ROOT / "desktop" / "src" / "app" / "match" / "MatchViewer.tsx"
 REPLAY_STORE = ROOT / "desktop" / "src" / "lib" / "replay-store.ts"
+MAPS_TS = ROOT / "desktop" / "src" / "lib" / "maps.ts"
 
 
 def read(path: Path) -> str:
@@ -397,10 +398,52 @@ def assert_weapon_fire_rendering(map_renderer: str) -> list[str]:
     return errors
 
 
+def assert_multi_level_radar_switching(map_renderer: str, maps: str) -> list[str]:
+    errors: list[str] = []
+    errors.extend(
+        assert_contains(
+            "maps multi-level radar metadata",
+            maps,
+            [
+                "export type RadarLayer",
+                "export const MAP_VERTICAL_SECTIONS",
+                'de_nuke: [',
+                '{ layer: "default", altitudeMin: -495, altitudeMax: 10000 }',
+                '{ layer: "lower", altitudeMin: -10000, altitudeMax: -495 }',
+                'de_vertigo: [',
+                '{ layer: "default", altitudeMin: 11700, altitudeMax: 20000 }',
+                '{ layer: "lower", altitudeMin: -10000, altitudeMax: 11700 }',
+                "export function radarLayerForZ",
+                "export function radarLayerForPositions",
+                "export function radarImagePath",
+                'return `/cs2lens-maps/${map}${suffix}.png`',
+            ],
+        )
+    )
+    errors.extend(
+        assert_contains(
+            "MapRenderer multi-level radar switching",
+            map_renderer,
+            [
+                "useState<RadarLayer>(\"default\")",
+                "const radarLayerRef = useRef<RadarLayer>(\"default\")",
+                "function habitRadarLayerPositions",
+                "radarLayerForPositions(match.meta.map, radarPositions, \"default\")",
+                "syncRadarLayer(",
+                "radarImagePath(map, radarLayer)",
+            ],
+        )
+    )
+    if 'src={`/cs2lens-maps/${map}.png`}' in map_renderer:
+        errors.append("MapRenderer hard-codes the primary radar image and bypasses multi-level radar switching")
+    return errors
+
+
 def main() -> None:
     map_renderer = read(MAP_RENDERER)
     match_viewer = read(MATCH_VIEWER)
     replay_store = read(REPLAY_STORE)
+    maps = read(MAPS_TS)
 
     errors: list[str] = []
     errors.extend(assert_projectile_source_selection(map_renderer))
@@ -409,6 +452,7 @@ def main() -> None:
     errors.extend(assert_projectile_diagnostics(map_renderer))
     errors.extend(assert_projectile_shadow_depth(map_renderer))
     errors.extend(assert_weapon_fire_rendering(map_renderer))
+    errors.extend(assert_multi_level_radar_switching(map_renderer, maps))
 
     if errors:
         raise AssertionError("replay renderer contract audit failed: " + "; ".join(errors))

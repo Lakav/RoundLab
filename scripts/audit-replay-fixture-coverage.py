@@ -49,13 +49,16 @@ def lower_level_maps() -> set[str]:
 
 
 def renderer_supports_lower_level_maps() -> bool:
-    text = MAP_RENDERER.read_text(encoding="utf-8")
-    primary_only_dom_radar = 'src={`/cs2lens-maps/${map}.png`}' in text
+    renderer = MAP_RENDERER.read_text(encoding="utf-8")
+    maps = MAPS_TS.read_text(encoding="utf-8")
+    primary_only_dom_radar = 'src={`/cs2lens-maps/${map}.png`}' in renderer
     return (
         not primary_only_dom_radar
-        and "_lower.png" in text
-        and "cs2lens-maps" in text
-        and (".z" in text or "player.z" in text or "projectile.z" in text)
+        and "radarImagePath(map, radarLayer)" in renderer
+        and "radarLayerForPositions(match.meta.map, radarPositions, \"default\")" in renderer
+        and "MAP_VERTICAL_SECTIONS" in maps
+        and '{ layer: "lower", altitudeMin: -10000, altitudeMax: -495 }' in maps
+        and '{ layer: "lower", altitudeMin: -10000, altitudeMax: 11700 }' in maps
     )
 
 
