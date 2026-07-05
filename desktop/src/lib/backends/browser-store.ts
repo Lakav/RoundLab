@@ -94,6 +94,32 @@ function assertReadableStoredRound(matchId: string, number: number, item: Stored
   return item.round;
 }
 
+function assertLightweightMetadata(id: string, metadata: MatchData): MatchData {
+  if (!Array.isArray(metadata.rounds) || metadata.rounds.length === 0) {
+    throw new Error(`Stored match ${id} has no round metadata.`);
+  }
+  const seenRoundNumbers = new Set<number>();
+  for (const round of metadata.rounds) {
+    if (!Number.isInteger(round.number)) {
+      throw new Error(`Stored match ${id} has round metadata without an integer round number.`);
+    }
+    if (seenRoundNumbers.has(round.number)) {
+      throw new Error(`Stored match ${id} has duplicate round metadata ${round.number}.`);
+    }
+    seenRoundNumbers.add(round.number);
+    const hasPayload =
+      round.frames.length > 0 ||
+      round.events.length > 0 ||
+      (round.effects?.length ?? 0) > 0 ||
+      (round.weaponFires?.length ?? 0) > 0 ||
+      (round.projectileFrames?.length ?? 0) > 0;
+    if (hasPayload) {
+      throw new Error(`Stored match ${id} metadata contains full round payloads. Re-import the demo.`);
+    }
+  }
+  return metadata;
+}
+
 export async function listStoredMatches(): Promise<MatchSummary[]> {
   const db = await openDb();
   try {
@@ -116,7 +142,7 @@ export async function readStoredMetadata(id: string): Promise<MatchData> {
       tx.objectStore(MATCH_STORE).get(id) as IDBRequest<StoredMatch | undefined>,
     );
     if (!item) throw new Error(`Match not found: ${id}`);
-    return item.metadata;
+    return assertLightweightMetadata(id, item.metadata);
   } finally {
     db.close();
   }

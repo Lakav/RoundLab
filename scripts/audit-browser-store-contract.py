@@ -202,6 +202,47 @@ def assert_store_validates_read_round_payload(store: str) -> list[str]:
     return errors
 
 
+def assert_store_validates_lightweight_metadata_on_read(store: str) -> list[str]:
+    errors: list[str] = []
+    guard = function_body(store, "assertLightweightMetadata")
+    errors.extend(
+        assert_contains(
+            "assertLightweightMetadata",
+            guard,
+            [
+                "if (!Array.isArray(metadata.rounds) || metadata.rounds.length === 0)",
+                "has no round metadata.",
+                "const seenRoundNumbers = new Set<number>()",
+                "if (!Number.isInteger(round.number))",
+                "without an integer round number.",
+                "if (seenRoundNumbers.has(round.number))",
+                "has duplicate round metadata",
+                "round.frames.length > 0",
+                "round.events.length > 0",
+                "(round.effects?.length ?? 0) > 0",
+                "(round.weaponFires?.length ?? 0) > 0",
+                "(round.projectileFrames?.length ?? 0) > 0",
+                "metadata contains full round payloads. Re-import the demo.",
+                "return metadata",
+            ],
+        )
+    )
+    read_metadata = function_body(store, "readStoredMetadata")
+    errors.extend(
+        assert_contains(
+            "readStoredMetadata payload validation",
+            read_metadata,
+            [
+                "if (!item) throw new Error(`Match not found: ${id}`)",
+                "return assertLightweightMetadata(id, item.metadata)",
+            ],
+        )
+    )
+    if read_metadata.find("return assertLightweightMetadata(id, item.metadata)") < read_metadata.find("if (!item)"):
+        errors.append("readStoredMetadata must reject missing items before validating metadata shape")
+    return errors
+
+
 def assert_rounds_are_loaded_on_demand(store: str, backend: str, match_viewer: str, replay_store: str) -> list[str]:
     errors: list[str] = []
     read_metadata = function_body(store, "readStoredMetadata")
@@ -211,7 +252,7 @@ def assert_rounds_are_loaded_on_demand(store: str, backend: str, match_viewer: s
             read_metadata,
             [
                 "tx.objectStore(MATCH_STORE).get(id)",
-                "return item.metadata",
+                "return assertLightweightMetadata(id, item.metadata)",
             ],
         )
     )
@@ -363,6 +404,7 @@ def main() -> None:
     errors.extend(assert_metadata_is_light(store))
     errors.extend(assert_store_rejects_unplayable_matches(store))
     errors.extend(assert_store_validates_read_round_payload(store))
+    errors.extend(assert_store_validates_lightweight_metadata_on_read(store))
     errors.extend(assert_rounds_are_loaded_on_demand(store, backend, match_viewer, replay_store))
     errors.extend(assert_transaction_errors_propagate(store))
     errors.extend(assert_match_lifecycle(store))
