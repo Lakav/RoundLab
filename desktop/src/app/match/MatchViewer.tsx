@@ -330,9 +330,11 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
 
   const toggleFullscreen = useCallback(() => {
     const action = document.fullscreenElement ? exitMatchFullscreen : enterMatchFullscreen;
-    void action().catch(() => {
-      /* Browser fullscreen can be denied if the browser blocks the gesture. */
-    });
+    void action()
+      .catch(() => {
+        /* Browser fullscreen can be denied if the browser blocks the gesture. */
+      })
+      .finally(() => setIsFullscreen(Boolean(document.fullscreenElement)));
   }, []);
 
   const startMapPan = (event: React.PointerEvent<HTMLDivElement>) => {

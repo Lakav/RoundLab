@@ -70,7 +70,9 @@ def assert_fullscreen_is_user_initiated(errors: list[str]) -> None:
         toggle,
         [
             "document.fullscreenElement ? exitMatchFullscreen : enterMatchFullscreen",
-            "void action().catch(() =>",
+            "void action()",
+            ".catch(() =>",
+            ".finally(() => setIsFullscreen(Boolean(document.fullscreenElement)))",
         ],
         errors,
     )
