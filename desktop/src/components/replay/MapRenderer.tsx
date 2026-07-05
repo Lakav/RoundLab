@@ -16,6 +16,7 @@ type RadarLayerMode = RadarLayer | "auto";
 const BOMB_CARRIER_COLOR = 0xef4444;
 const BOMB_SECONDS = 40;
 const FIRE_EFFECT_MAX_DURATION = 7;
+const PROJECTILE_EFFECT_HANDOFF_LOOKBACK = 1.75;
 const bombFrameFallbackCache = new WeakMap<Round, Frame[]>();
 const PROJECTILE_DEBUG_KEY = "roundlab.debugProjectiles";
 let projectileDebugCache = { checkedAt: 0, enabled: false };
@@ -815,28 +816,38 @@ function drawHabitProjectile(
 ) {
   const first = projectile.samples[0];
   const last = projectile.samples[projectile.samples.length - 1];
-  if (!first || !last || time < first.t || time > last.t + 1.05) return;
+  if (!first || !last || time < first.t) return;
   const color = habitTrailColor(projectile.type);
   const kind = projectileTypeToEffect(projectile.type);
   const handoff = kind
     ? effects
-        .filter((effect) => effect.type === kind && time >= effect.start - 0.12 && time <= effect.start + 0.12)
+        .filter(
+          (effect) =>
+            effect.type === kind &&
+            time >= effect.start - PROJECTILE_EFFECT_HANDOFF_LOOKBACK &&
+            time <= projectileHideStart(effect as UtilityEffect),
+        )
         .map((effect) => {
           const distances = projectile.samples
-            .filter((sample) => sample.t >= effect.start - 0.45 && sample.t <= effect.start + 0.12)
+            .filter((sample) => sample.t >= effect.start - PROJECTILE_EFFECT_HANDOFF_LOOKBACK && sample.t <= effect.start + 0.12)
             .map((sample) => Math.hypot(sample.x - effect.x, sample.y - effect.y));
           return { effect, distance: distances.length ? Math.min(...distances) : Infinity };
         })
         .filter((match) => match.distance <= effectSuppressionRadius(kind))
         .sort((a, b) => a.distance - b.distance)[0]?.effect
     : undefined;
+  const handoffEnd = handoff ? projectileHideStart(handoff as UtilityEffect) : null;
+  if (time > Math.max(last.t + 1.05, handoffEnd ?? -Infinity)) return;
   const activeHandoff = Boolean(handoff && time >= handoff.start);
+  const bridgingHandoff = Boolean(handoff && time > last.t && !activeHandoff);
   const fade = activeHandoff && handoff
     ? Math.max(0, 1 - (time - handoff.start) / 0.12)
-    : time > last.t
+    : handoff
+      ? 1
+      : time > last.t
       ? Math.max(0, 1 - (time - last.t) / 1.05)
       : 1;
-  const visibleTime = Math.min(time, last.t);
+  const visibleTime = handoff && time > last.t ? last.t : Math.min(time, last.t);
   const groundZ = habitProjectileGroundZ(projectile);
   const points = habitTimedPoints(projectile.samples, first.t, visibleTime, toRadar, groundZ);
   const sampled = sampleHabitProjectile(projectile, visibleTime);
@@ -849,6 +860,17 @@ function drawHabitProjectile(
     const impact = toRadar(handoff.x, handoff.y, 0);
     const tail = points[points.length - 1];
     if (!tail || Math.hypot(impact.x - tail.x, impact.y - tail.y) > 0.5) points.push(impact);
+  } else if (bridgingHandoff && handoff) {
+    const impact = toRadar(handoff.x, handoff.y, 0);
+    const tail = points[points.length - 1];
+    if (tail) {
+      const progress = Math.max(0, Math.min(1, (time - last.t) / Math.max(0.08, handoff.start - last.t)));
+      const bridge = {
+        x: tail.x + (impact.x - tail.x) * progress,
+        y: tail.y + (impact.y - tail.y) * progress,
+      };
+      if (Math.hypot(bridge.x - tail.x, bridge.y - tail.y) > 0.5) points.push(bridge);
+    }
   }
   if (points.length < 2) return;
   const g = new Graphics();
@@ -864,7 +886,9 @@ function drawHabitProjectile(
   }
   g.circle(current.x, current.y, 3.4).fill({ color, alpha: 0.8 * fade });
   layer.addChild(g);
-  if (!activeHandoff && time <= last.t + 0.08) drawUtilityIcon(layer, projectile.type, current.x, current.y, color, 13);
+  if (!activeHandoff && (time <= last.t + 0.08 || bridgingHandoff)) {
+    drawUtilityIcon(layer, projectile.type, current.x, current.y, color, 13);
+  }
 }
 
 function drawHabitEffect(
@@ -1144,7 +1168,7 @@ function lastProjectileBeforeEffect(
 
   for (const frame of frames) {
     if (frame.t > effect.start) break;
-    if (frame.t < effect.start - 1.25) continue;
+    if (frame.t < effect.start - PROJECTILE_EFFECT_HANDOFF_LOOKBACK) continue;
     for (const projectile of frame.projectiles ?? []) {
       if (projectileTypeToEffect(projectile.type) !== effect.type) continue;
       const dx = projectile.x - effect.x;
@@ -1171,7 +1195,7 @@ function effectHandoffProjectile(
   if (time >= projectileHideStart(effect)) return null;
   if (liveProjectileForEffect(frames, effect, time, ignoredProjectileIds)) return null;
   const last = lastProjectileBeforeEffect(frames, effect);
-  if (!last || time < last.time || effect.start - last.time > 1.25) return null;
+  if (!last || time < last.time || effect.start - last.time > PROJECTILE_EFFECT_HANDOFF_LOOKBACK) return null;
   const span = Math.max(0.08, effect.start - last.time);
   const progress = Math.max(0, Math.min(1, (time - last.time) / span));
   return {
@@ -2732,7 +2756,7 @@ export function MapRenderer({
       const detonatedIds = new Set<number>();
       const detonatedEffectsById = new Map<number, { effect: UtilityEffect; distance: number; rule: string }>();
       const projectileEffects = roundEffects
-        .filter((e) => time >= e.start - (e.type === "he" ? 1.25 : 0.12))
+        .filter((e) => e.type !== "bomb_planted" && time >= e.start - PROJECTILE_EFFECT_HANDOFF_LOOKBACK)
         .slice()
         .sort((a, b) => a.start - b.start);
       const startedEffects = projectileEffects
@@ -2748,6 +2772,8 @@ export function MapRenderer({
           ...sampleProjectilesFixed(renderCache, Math.max(0, e.start - 0.32)),
         ];
         const sampledById = new Map(sampled.map((projectile) => [projectile.id, projectile]));
+        const delayed = lastProjectileBeforeEffect(projectileFrames, e);
+        if (delayed && !sampledById.has(delayed.projectile.id)) sampledById.set(delayed.projectile.id, delayed.projectile);
         let bestId: number | null = null;
         let bestDist = Infinity;
         for (const sp of sampledById.values()) {

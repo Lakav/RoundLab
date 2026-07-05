@@ -87,6 +87,15 @@ def assert_projectile_source_selection(map_renderer: str) -> list[str]:
 
 def assert_classic_projectile_handoff(map_renderer: str) -> list[str]:
     errors: list[str] = []
+    errors.extend(
+        assert_contains(
+            "MapRenderer delayed projectile handoff constant",
+            map_renderer,
+            [
+                "const PROJECTILE_EFFECT_HANDOFF_LOOKBACK = 1.75",
+            ],
+        )
+    )
     hide_body = function_body(map_renderer, "projectileHideStart")
     errors.extend(
         assert_contains(
@@ -117,7 +126,28 @@ def assert_classic_projectile_handoff(map_renderer: str) -> list[str]:
         )
     )
 
+    last_before_body = source_between(map_renderer, "function lastProjectileBeforeEffect", "function effectHandoffProjectile")
+    errors.extend(
+        assert_contains(
+            "lastProjectileBeforeEffect",
+            last_before_body,
+            [
+                "frame.t < effect.start - PROJECTILE_EFFECT_HANDOFF_LOOKBACK",
+            ],
+        )
+    )
+
     effect_handoff_body = function_body(map_renderer, "effectHandoffProjectile")
+    errors.extend(
+        assert_contains(
+            "effectHandoffProjectile",
+            effect_handoff_body,
+            [
+                "effect.start - last.time > PROJECTILE_EFFECT_HANDOFF_LOOKBACK",
+            ],
+        )
+    )
+
     errors.extend(
         assert_contains(
             "effectHandoffProjectile",
@@ -139,6 +169,19 @@ def assert_classic_projectile_handoff(map_renderer: str) -> list[str]:
                 "pair.b.t - time <= 0.16",
                 "effectHandoffProjectile(frames, effect, time, detonatedIds)",
                 "isSameVisualProjectile(current, handoff)",
+            ],
+        )
+    )
+
+    renderer_body = function_body(map_renderer, "MapRenderer")
+    errors.extend(
+        assert_contains(
+            "MapRenderer delayed projectile effects",
+            renderer_body,
+            [
+                'e.type !== "bomb_planted" && time >= e.start - PROJECTILE_EFFECT_HANDOFF_LOOKBACK',
+                "const delayed = lastProjectileBeforeEffect(projectileFrames, e)",
+                "sampledById.set(delayed.projectile.id, delayed.projectile)",
             ],
         )
     )
@@ -200,11 +243,18 @@ def assert_condensed_projectile_handoff(map_renderer: str, match_viewer: str, re
             habit_body,
             [
                 "effectSuppressionRadius(kind)",
+                "time >= effect.start - PROJECTILE_EFFECT_HANDOFF_LOOKBACK",
+                "time <= projectileHideStart(effect as UtilityEffect)",
+                "sample.t >= effect.start - PROJECTILE_EFFECT_HANDOFF_LOOKBACK",
+                "const handoffEnd = handoff ? projectileHideStart(handoff as UtilityEffect) : null",
                 "activeHandoff",
+                "bridgingHandoff",
                 "time >= handoff.start",
+                "const bridge =",
                 "points.push(impact)",
                 "drawSmoothTrail(g, points, color)",
                 "if (points.length < 2) return",
+                "time <= last.t + 0.08 || bridgingHandoff",
             ],
         )
     )
