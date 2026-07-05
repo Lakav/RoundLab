@@ -22,6 +22,8 @@ MAP_RENDERER = ROOT / "desktop" / "src" / "components" / "replay" / "MapRenderer
 
 PUBLIC_PATH_RE = re.compile(r"""["'`](/(?:icons|logo|app-icon|favicon|cs2lens-maps|radars)[^"'`$]*)["'`]""")
 ICON_MAP_VALUE_RE = re.compile(r"""["'][^"']+["']\s*:\s*["']([^"']+)["']""")
+ICON_LITERAL_RE = re.compile(r"""["'](/icons/[^"'`$]+\.svg)["']""")
+PRELOADABLE_ICON_SET_RE = re.compile(r"const PRELOADABLE_ICON_PATHS = new Set\(\[(?P<body>.*?)\]\);", re.S)
 CALIB_RE = re.compile(
     r"(de_[a-z0-9_]+):\s*\{\s*posX:\s*([-0-9.]+),\s*posY:\s*([-0-9.]+),\s*scale:\s*([-0-9.]+)\s*\}"
 )
@@ -71,7 +73,16 @@ def weapon_icon_paths() -> set[str]:
         raise AssertionError("could not parse WEAPON_ICON_MAP from desktop/src/lib/icons.ts")
     for value in ICON_MAP_VALUE_RE.findall(map_body_match.group("body")):
         paths.add(f"/icons/{value}.svg")
+    paths.update(ICON_LITERAL_RE.findall(icons))
     return paths
+
+
+def preloadable_icon_paths() -> set[str]:
+    renderer = read(MAP_RENDERER)
+    match = PRELOADABLE_ICON_SET_RE.search(renderer)
+    if not match:
+        raise AssertionError("could not parse PRELOADABLE_ICON_PATHS from MapRenderer.tsx")
+    return set(ICON_LITERAL_RE.findall(match.group("body")))
 
 
 def calibrated_map_paths() -> set[str]:
@@ -158,12 +169,24 @@ def assert_map_contract() -> list[str]:
     return errors
 
 
+def assert_icon_preload_contract() -> list[str]:
+    expected = weapon_icon_paths()
+    preloadable = preloadable_icon_paths()
+    missing = sorted(expected - preloadable)
+    if missing:
+        return [
+            "PRELOADABLE_ICON_PATHS is missing iconPathFor outputs: " + ", ".join(missing)
+        ]
+    return []
+
+
 def main() -> None:
     paths = source_public_paths() | weapon_icon_paths() | calibrated_map_paths()
     errors: list[str] = []
     for path in sorted(paths):
         errors.extend(assert_asset_exists(path))
     errors.extend(assert_map_contract())
+    errors.extend(assert_icon_preload_contract())
     if errors:
         raise AssertionError("public asset audit failed: " + "; ".join(errors))
     print(f"public asset audit passed: {len(paths)} referenced assets checked")
