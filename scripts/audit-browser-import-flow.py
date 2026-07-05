@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PAGE = ROOT / "desktop" / "src" / "app" / "page.tsx"
 BACKEND = ROOT / "desktop" / "src" / "lib" / "backends" / "browser.ts"
 WORKER = ROOT / "desktop" / "src" / "workers" / "web-parser.worker.ts"
+RUST_PARSER = ROOT / "parser" / "src" / "main.rs"
 
 FILE_LIMIT_RE = re.compile(r"(?:const\s+MAX_DEMO_SIZE\s*=\s*)?([0-9]+)\s*\*\s*([0-9]+)\s*\*\s*([0-9]+)")
 PROGRESS_RE = re.compile(r"postProgress\(\s*([0-9.]+)\s*,\s*([\"`])([^\"`]+)")
@@ -27,7 +28,7 @@ def read(path: Path) -> str:
 
 def demo_size_limits() -> list[tuple[str, int]]:
     out: list[tuple[str, int]] = []
-    for path in [PAGE, BACKEND, WORKER]:
+    for path in [PAGE, BACKEND, WORKER, RUST_PARSER]:
         text = read(path)
         for match in FILE_LIMIT_RE.finditer(text):
             value = int(match.group(1)) * int(match.group(2)) * int(match.group(3))
@@ -38,6 +39,16 @@ def demo_size_limits() -> list[tuple[str, int]]:
 
 def assert_file_limit_consistency() -> None:
     limits = demo_size_limits()
+    sources = {source for source, _ in limits}
+    required_sources = {
+        str(PAGE.relative_to(ROOT)),
+        str(BACKEND.relative_to(ROOT)),
+        str(WORKER.relative_to(ROOT)),
+        str(RUST_PARSER.relative_to(ROOT)),
+    }
+    missing_sources = sorted(required_sources - sources)
+    if missing_sources:
+        raise AssertionError(f"browser/parser file size limit missing from: {missing_sources}; found={limits}")
     values = {value for _, value in limits}
     if len(values) != 1:
         raise AssertionError(f"browser parser file size limits diverged: {limits}")
