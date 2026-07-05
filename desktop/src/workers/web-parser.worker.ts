@@ -66,6 +66,9 @@ async function parseDemo(request: ParseRequest): Promise<string> {
   if (isZstd(bytes, request.name)) {
     postProgress(0.08, "Loading local zstd decoder...", "decompressing");
     bytes = await decompressZstd(bytes);
+    if (bytes.byteLength > MAX_DEMO_SIZE) {
+      throw new Error("Decompressed demo is larger than the 1 GB browser parser limit.");
+    }
     const mb = Math.max(1, Math.round(bytes.byteLength / 1024 / 1024));
     postProgress(0.13, `Decompressed to ${mb} MB locally...`, "decompressing", bytes.byteLength);
   }

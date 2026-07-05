@@ -93,6 +93,21 @@ def assert_page_blocks_oversized_demo_before_parse() -> None:
         raise AssertionError(f"page oversized-demo guard is missing: {missing}")
 
 
+def assert_worker_blocks_oversized_decompressed_demo() -> None:
+    worker = read(WORKER)
+    required = [
+        "bytes = await decompressZstd(bytes)",
+        "if (bytes.byteLength > MAX_DEMO_SIZE)",
+        '"Decompressed demo is larger than the 1 GB browser parser limit."',
+        "postProgress(0.13, `Decompressed to ${mb} MB locally...`, \"decompressing\", bytes.byteLength)",
+    ]
+    missing = [snippet for snippet in required if snippet not in worker]
+    if missing:
+        raise AssertionError(f"worker decompressed-size guard is missing: {missing}")
+    if worker.find("if (bytes.byteLength > MAX_DEMO_SIZE)") > worker.find("postProgress(0.13"):
+        raise AssertionError("worker must reject oversized decompressed demos before reporting decompression success")
+
+
 def assert_worker_progress_is_monotonic() -> None:
     worker = read(WORKER)
     updates = [(float(value), message) for value, _, message in PROGRESS_RE.findall(worker)]
@@ -134,6 +149,7 @@ def main() -> None:
     assert_browser_capability_checks()
     assert_demo_extension_filters()
     assert_page_blocks_oversized_demo_before_parse()
+    assert_worker_blocks_oversized_decompressed_demo()
     assert_worker_progress_is_monotonic()
     assert_ui_estimate_uses_backend_progress()
     print("browser import flow audit passed")
