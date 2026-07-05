@@ -123,6 +123,13 @@ To catch accidental regressions back to desktop/Tauri-only code paths, run:
 python3 scripts/audit-web-portability.py
 ```
 
+To validate the match review map sizing and crop transform formulas across
+representative viewport sizes, run:
+
+```bash
+python3 scripts/audit-match-layout.py
+```
+
 ## Notes
 
 Demo files, parsed outputs, build artifacts, and local caches are intentionally
