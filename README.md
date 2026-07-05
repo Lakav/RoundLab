@@ -16,7 +16,7 @@ No demo is uploaded. The parser runs client-side in the browser.
 - Scrub the round timeline, play/pause, and change playback speed.
 - Draw annotations over the review.
 - Show player HP, armor, helmet, defuse kit, weapons, money, utility, kill feed, bomb, and effect timers.
-- Review utility habits by rendering all rounds for a player or team at once.
+- Review utility habits by playing every round for a selected player at once.
 
 ## Project Structure
 

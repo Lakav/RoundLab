@@ -15,6 +15,7 @@ BROWSER_API = ROOT / "desktop" / "src" / "lib" / "api.ts"
 BROWSER_BACKEND = ROOT / "desktop" / "src" / "lib" / "backends" / "browser.ts"
 BACKEND_TYPES = ROOT / "desktop" / "src" / "lib" / "backends" / "types.ts"
 REPLAY_STORE = ROOT / "desktop" / "src" / "lib" / "replay-store.ts"
+README = ROOT / "README.md"
 
 
 def read(path: Path) -> str:
@@ -184,6 +185,7 @@ def assert_keyboard_shortcuts_respect_review_mode(errors: list[str]) -> None:
 
 def assert_review_modes(errors: list[str]) -> None:
     viewer = read(MATCH_VIEWER)
+    readme = read(README)
     run_condensed = balanced_block_after(viewer, "const runCondensedOverlay = useCallback")
     require(
         "review mode state",
@@ -249,6 +251,16 @@ def assert_review_modes(errors: list[str]) -> None:
         ],
         errors,
     )
+    require(
+        "README condensed feature contract",
+        readme,
+        [
+            "Review utility habits by playing every round for a selected player at once.",
+        ],
+        errors,
+    )
+    if "player or team" in readme:
+        errors.append("README advertises team-wide condensed review, but the app only supports selected-player condensed review")
     require(
         "classic versus condensed surfaces",
         viewer,
