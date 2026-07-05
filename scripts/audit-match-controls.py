@@ -277,7 +277,7 @@ def assert_match_identity_resets(errors: list[str]) -> None:
         "replay store setMatch reset",
         replay_store,
         [
-            "setMatch: (id, m) => set({ matchId: id, match: m, currentRoundIdx: 0, time: 0, playing: false, durationOverride: null, habitOverlay: null })",
+            "setMatch: (id, m) => set({ matchId: id, match: m, currentRoundIdx: 0, time: 0, playing: false, speed: 1, durationOverride: null, habitOverlay: null })",
         ],
         errors,
     )

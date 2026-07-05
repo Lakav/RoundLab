@@ -79,7 +79,7 @@ export const useReplay = create<ReplayState>((set, get) => ({
   speed: 1,
   durationOverride: null,
   habitOverlay: null,
-  setMatch: (id, m) => set({ matchId: id, match: m, currentRoundIdx: 0, time: 0, playing: false, durationOverride: null, habitOverlay: null }),
+  setMatch: (id, m) => set({ matchId: id, match: m, currentRoundIdx: 0, time: 0, playing: false, speed: 1, durationOverride: null, habitOverlay: null }),
   setRoundData: (matchId, roundNumber, round) =>
     set((s) => {
       if (!s.match || s.matchId !== matchId) return s;
