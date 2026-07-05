@@ -57,6 +57,24 @@ SCAN_PATHS = {
     "desktop/src",
 }
 
+GITIGNORE_PATHS = {
+    ".gitignore",
+    "desktop/.gitignore",
+}
+
+REQUIRED_GITIGNORE_PATTERNS = {
+    ".gitignore": {
+        ".tauri-keys/",
+        "src-tauri/",
+        "desktop/src-tauri/",
+        "tauri.conf.json",
+    },
+    "desktop/.gitignore": {
+        "/src-tauri/",
+        "tauri.conf.json",
+    },
+}
+
 DIAGNOSTIC_CONTRACT_SNIPPETS = {
     "desktop/src/lib/backends/types.ts": [
         "writeDebugLog(source: string, message: string): Promise<void>;",
@@ -129,6 +147,27 @@ def assert_package_scripts_are_portable() -> None:
         raise AssertionError("; ".join(failures))
 
 
+def gitignore_patterns(path: str) -> set[str]:
+    text = read_text(path) or ""
+    patterns: set[str] = set()
+    for line in text.splitlines():
+        value = line.strip()
+        if not value or value.startswith("#"):
+            continue
+        patterns.add(value)
+    return patterns
+
+
+def assert_gitignore_blocks_legacy_tauri() -> list[str]:
+    errors: list[str] = []
+    for path, required in REQUIRED_GITIGNORE_PATTERNS.items():
+        actual = gitignore_patterns(path)
+        missing = sorted(required - actual)
+        if missing:
+            errors.append(f"{path} must ignore legacy Tauri artifacts: {missing}")
+    return errors
+
+
 def assert_browser_diagnostics_contract() -> list[str]:
     errors: list[str] = []
     for path, snippets in DIAGNOSTIC_CONTRACT_SNIPPETS.items():
@@ -161,6 +200,8 @@ def main() -> None:
         text = read_text(path)
         if text is None:
             continue
+        if path in GITIGNORE_PATHS:
+            continue
         lower_text = text.lower()
         for pattern in sorted(FORBIDDEN_TEXT_PATTERNS):
             if pattern in lower_text:
@@ -174,6 +215,7 @@ def main() -> None:
         assert_package_scripts_are_portable()
     except AssertionError as error:
         errors.append(str(error))
+    errors.extend(assert_gitignore_blocks_legacy_tauri())
     errors.extend(assert_browser_diagnostics_contract())
 
     if errors:

@@ -44,6 +44,12 @@ test.json.gz
 # compiled binaries
 parser/target/
 
+# legacy Tauri artifacts
+.tauri-keys/
+src-tauri/
+desktop/src-tauri/
+tauri.conf.json
+
 # temp / caches
 coverage/
 tmp/

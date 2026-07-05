@@ -20,6 +20,10 @@
 # production
 /build
 
+# legacy Tauri artifacts
+/src-tauri/
+tauri.conf.json
+
 # misc
 .DS_Store
 *.pem
