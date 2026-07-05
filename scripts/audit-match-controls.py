@@ -57,7 +57,9 @@ def require(label: str, text: str, snippets: list[str], errors: list[str]) -> No
 
 def assert_fullscreen_is_user_initiated(errors: list[str]) -> None:
     viewer = read(MATCH_VIEWER)
+    api = read(BROWSER_API)
     backend = read(BROWSER_BACKEND)
+    backend_types = read(BACKEND_TYPES)
     toggle = balanced_block_after(viewer, "const toggleFullscreen = useCallback")
 
     require(
@@ -81,6 +83,18 @@ def assert_fullscreen_is_user_initiated(errors: list[str]) -> None:
         errors,
     )
     require(
+        "fullscreen state sync",
+        viewer,
+        [
+            "const [isFullscreen, setIsFullscreen] = useState(false)",
+            "const onFullscreenChange = () => setIsFullscreen(Boolean(document.fullscreenElement))",
+            "onFullscreenChange();",
+            'document.addEventListener("fullscreenchange", onFullscreenChange)',
+            'document.removeEventListener("fullscreenchange", onFullscreenChange)',
+        ],
+        errors,
+    )
+    require(
         "browser fullscreen backend",
         backend,
         [
@@ -88,6 +102,26 @@ def assert_fullscreen_is_user_initiated(errors: list[str]) -> None:
             "document.exitFullscreen?.()",
             "if (document.fullscreenElement) return",
             "if (!document.fullscreenElement) return",
+        ],
+        errors,
+    )
+    require(
+        "fullscreen public API",
+        api,
+        [
+            "export async function enterMatchFullscreen(): Promise<void>",
+            "return getBackend().shell.enterMatchFullscreen();",
+            "export async function exitMatchFullscreen(): Promise<void>",
+            "return getBackend().shell.exitMatchFullscreen();",
+        ],
+        errors,
+    )
+    require(
+        "fullscreen backend type",
+        backend_types,
+        [
+            "enterMatchFullscreen(): Promise<void>;",
+            "exitMatchFullscreen(): Promise<void>;",
         ],
         errors,
     )
