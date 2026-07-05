@@ -62,6 +62,7 @@ class Track:
 class AuditStats:
     label: str
     map_name: str
+    source: str
     rounds: int = 0
     players: int = 0
     players_out: int = 0
@@ -97,6 +98,7 @@ class AuditStats:
         return {
             "label": self.label,
             "map": self.map_name,
+            "source": self.source,
             "rounds": self.rounds,
             "players": self.players,
             "playersOutPct": self.pct(self.players_out, self.players),
@@ -118,6 +120,7 @@ class AuditStats:
             "futureOnlyWindows": self.future_only_windows,
             "largeEffectGaps": self.large_effect_gaps,
             "activeEffectSuppressionRisks": self.active_effect_suppression_risks,
+            "hasUtilitySignal": self.effects > 0 and self.utility_tracks > 0,
             "maxEffectGap": round(self.max_effect_gap, 3),
             "radarBounds": {
                 "minX": None if math.isinf(self.min_x) else math.floor(self.min_x),
@@ -480,12 +483,13 @@ def audit_match_rounds(
     rounds: list[dict[str, Any]],
     calibrations: dict[str, Calibration],
     crops: dict[str, Crop],
+    source: str,
 ) -> AuditStats:
     calibration = calibrations.get(map_name)
     if calibration is None:
         raise AssertionError(f"{label} references unsupported map {map_name!r}")
     crop = crops.get(map_name, Crop(0, 0, RADAR_SIZE))
-    stats = AuditStats(label=label, map_name=map_name)
+    stats = AuditStats(label=label, map_name=map_name, source=source)
     if not rounds:
         raise AssertionError(f"{label} has no rounds")
     for round_obj in rounds:
@@ -508,7 +512,7 @@ def audit_split_fixture(
     if not round_paths:
         raise AssertionError(f"{round_dir} has no round-*.json.gz files")
     rounds = [load_json_gz(path) for path in round_paths]
-    return audit_match_rounds(round_dir.name, map_name, rounds, calibrations, crops)
+    return audit_match_rounds(round_dir.name, map_name, rounds, calibrations, crops, source="fixture")
 
 
 def audit_full_match(
@@ -521,7 +525,7 @@ def audit_full_match(
     rounds = data.get("rounds") or []
     if not isinstance(rounds, list):
         raise AssertionError(f"{match_path} rounds is not a list")
-    return audit_match_rounds(match_path.name, map_name, rounds, calibrations, crops)
+    return audit_match_rounds(match_path.name, map_name, rounds, calibrations, crops, source="parsed")
 
 
 def discover_split_fixtures(compare_dir: Path) -> list[tuple[Path, Path]]:
@@ -561,6 +565,8 @@ def audit_all(
 
 def assert_stats(stats: AuditStats, *, max_out_pct: float) -> None:
     errors: list[str] = []
+    if stats.source == "fixture" and (stats.effects == 0 or stats.utility_tracks == 0):
+        errors.append("fixture has no utility effect/projectile signal, so it does not prove replay utility rendering")
     if stats.invalid_projectiles:
         errors.append(f"{stats.invalid_projectiles} projectile samples have invalid coordinates")
     if stats.utility_tracks_missing_thrower:
@@ -611,8 +617,8 @@ def main() -> None:
             locations.append(str(parsed_dir))
         raise AssertionError(f"no replay audit fixtures found in {', '.join(locations)}")
 
-    covered_maps = {stats.map_name for stats in all_stats}
-    missing_fixture_maps = sorted(set(calibrations) - covered_maps)
+    fixture_maps = {stats.map_name for stats in all_stats if stats.source == "fixture"}
+    missing_fixture_maps = sorted(set(calibrations) - fixture_maps)
     if args.require_all_map_fixtures and missing_fixture_maps:
         raise AssertionError(f"missing replay fixtures for calibrated maps: {missing_fixture_maps}")
 
@@ -621,8 +627,10 @@ def main() -> None:
         if args.json:
             print(json.dumps(stats.as_dict(), sort_keys=True))
         else:
+            has_utility_signal = stats.effects > 0 and stats.utility_tracks > 0
+            status = "OK" if has_utility_signal else "WEAK"
             print(
-                f"OK {stats.label} map={stats.map_name} rounds={stats.rounds} "
+                f"{status} {stats.label} source={stats.source} map={stats.map_name} rounds={stats.rounds} "
                 f"effects={stats.effects} matched={stats.matched_effects} "
                 f"condensedUnique={stats.condensed_effects_unique_thrower} "
                 f"condensedAmbiguous={stats.condensed_effects_ambiguous} "
