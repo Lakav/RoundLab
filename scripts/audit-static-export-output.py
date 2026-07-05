@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "desktop" / "out"
 MAPS_TS = ROOT / "desktop" / "src" / "lib" / "maps.ts"
+PUBLIC_MAPS = ROOT / "desktop" / "public" / "cs2lens-maps"
 
 REF_RE = re.compile(r"""(?:href|src)=["']([^"']+)["']""")
 CALIB_RE = re.compile(r"(de_[a-z0-9_]+):\s*\{\s*posX:")
@@ -69,6 +70,9 @@ def assert_required_output(errors: list[str]) -> None:
         require_file(path, errors)
     for map_name in sorted(calibrated_maps()):
         require_file(OUT / "cs2lens-maps" / f"{map_name}.png", errors)
+        lower = PUBLIC_MAPS / f"{map_name}_lower.png"
+        if lower.exists():
+            require_file(OUT / "cs2lens-maps" / lower.name, errors)
 
     media = list((OUT / "_next" / "static" / "media").glob("*")) if (OUT / "_next" / "static" / "media").exists() else []
     if not any(path.name.endswith(".wasm") and "roundlab_parser_bg" in path.name for path in media):
