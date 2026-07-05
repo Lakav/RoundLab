@@ -159,6 +159,13 @@ filters, and parser progress estimate invariants, run:
 python3 scripts/audit-browser-import-flow.py
 ```
 
+To validate that parsed matches stay split between lightweight metadata and
+on-demand round payloads in IndexedDB, run:
+
+```bash
+python3 scripts/audit-browser-store-contract.py
+```
+
 To validate the match review map sizing, crop transform formulas, and round
 selector overflow guard across representative viewport sizes, run:
 
