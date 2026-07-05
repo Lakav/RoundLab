@@ -42,6 +42,10 @@ const FALLBACK_WEB_MS_PER_MB = 160;
 const FALLBACK_ZSTD_EXPANSION_RATIO = 1.6;
 const MIN_ZSTD_WEB_MS_PER_MB = 135;
 const MIN_WEB_PARSE_ESTIMATE_MS = 12_000;
+const MIN_WEB_MS_PER_MB = 20;
+const MAX_WEB_MS_PER_MB = 10_000;
+const MIN_ZSTD_EXPANSION_RATIO = 1.05;
+const MAX_ZSTD_EXPANSION_RATIO = 12;
 
 function formatDuration(ms: number) {
   const total = Math.max(0, Math.ceil(ms / 1000));
@@ -59,14 +63,24 @@ function sourceIsZstd(source: DemoSource): boolean {
   return lower.endsWith(".zst") || lower.endsWith(".dem.zst");
 }
 
+function boundedNumber(value: unknown, min: number, max: number): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= min && value <= max
+    ? value
+    : undefined;
+}
+
 function loadWebParseEstimate(): { webMsPerMb?: number; zstdExpansionRatio?: number } {
   if (typeof window === "undefined") return {};
   try {
     const parsed = JSON.parse(window.localStorage.getItem(PARSE_ESTIMATE_KEY) ?? "{}") as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    return parsed as {
+    const values = parsed as {
       webMsPerMb?: number;
       zstdExpansionRatio?: number;
+    };
+    return {
+      webMsPerMb: boundedNumber(values.webMsPerMb, MIN_WEB_MS_PER_MB, MAX_WEB_MS_PER_MB),
+      zstdExpansionRatio: boundedNumber(values.zstdExpansionRatio, MIN_ZSTD_EXPANSION_RATIO, MAX_ZSTD_EXPANSION_RATIO),
     };
   } catch {
     return {};
@@ -84,10 +98,7 @@ function webEstimateForBytes(bytes: number, minMsPerMb = 0): number {
     return Math.max(MIN_WEB_PARSE_ESTIMATE_MS, (bytes / 1024 / 1024) * Math.max(FALLBACK_WEB_MS_PER_MB, minMsPerMb));
   }
   const parsed = loadWebParseEstimate();
-  const msPerMb =
-    Number.isFinite(parsed.webMsPerMb) && parsed.webMsPerMb && parsed.webMsPerMb > 0
-      ? parsed.webMsPerMb
-      : FALLBACK_WEB_MS_PER_MB;
+  const msPerMb = parsed.webMsPerMb ?? FALLBACK_WEB_MS_PER_MB;
   return Math.max(MIN_WEB_PARSE_ESTIMATE_MS, (bytes / 1024 / 1024) * Math.max(msPerMb, minMsPerMb));
 }
 
@@ -96,7 +107,7 @@ function estimateForSource(source: DemoSource): number {
   if (!size) return loadLegacyParseEstimate();
   const parsed = loadWebParseEstimate();
   const expansionRatio =
-    sourceIsZstd(source) && Number.isFinite(parsed.zstdExpansionRatio) && parsed.zstdExpansionRatio && parsed.zstdExpansionRatio > 1
+    sourceIsZstd(source) && parsed.zstdExpansionRatio
       ? parsed.zstdExpansionRatio
       : sourceIsZstd(source)
         ? FALLBACK_ZSTD_EXPANSION_RATIO
@@ -110,21 +121,15 @@ function saveParseEstimate(source: DemoSource, durationMs: number, effectiveByte
   const size = effectiveBytes && effectiveBytes > 0 ? effectiveBytes : rawSize;
   try {
     if (size) {
-      const observed = durationMs / Math.max(1, size / 1024 / 1024);
+      const observed = boundedNumber(durationMs / Math.max(1, size / 1024 / 1024), MIN_WEB_MS_PER_MB, MAX_WEB_MS_PER_MB);
       const parsed = loadWebParseEstimate();
-      const prev =
-        Number.isFinite(parsed.webMsPerMb) && parsed.webMsPerMb && parsed.webMsPerMb > 0
-          ? parsed.webMsPerMb
-          : observed;
-      const next = prev * 0.65 + observed * 0.35;
+      const prev = parsed.webMsPerMb ?? observed ?? FALLBACK_WEB_MS_PER_MB;
+      const next = observed ? prev * 0.65 + observed * 0.35 : prev;
       const ratioObserved =
         sourceIsZstd(source) && rawSize && effectiveBytes && effectiveBytes > rawSize
-          ? effectiveBytes / rawSize
+          ? boundedNumber(effectiveBytes / rawSize, MIN_ZSTD_EXPANSION_RATIO, MAX_ZSTD_EXPANSION_RATIO)
           : null;
-      const previousRatio =
-        Number.isFinite(parsed.zstdExpansionRatio) && parsed.zstdExpansionRatio && parsed.zstdExpansionRatio > 1
-          ? parsed.zstdExpansionRatio
-          : ratioObserved ?? FALLBACK_ZSTD_EXPANSION_RATIO;
+      const previousRatio = parsed.zstdExpansionRatio ?? ratioObserved ?? FALLBACK_ZSTD_EXPANSION_RATIO;
       const zstdExpansionRatio = ratioObserved
         ? previousRatio * 0.65 + ratioObserved * 0.35
         : parsed.zstdExpansionRatio;

@@ -30,6 +30,10 @@ def load_constants() -> dict[str, float]:
         "FALLBACK_ZSTD_EXPANSION_RATIO",
         "MIN_ZSTD_WEB_MS_PER_MB",
         "MIN_WEB_PARSE_ESTIMATE_MS",
+        "MIN_WEB_MS_PER_MB",
+        "MAX_WEB_MS_PER_MB",
+        "MIN_ZSTD_EXPANSION_RATIO",
+        "MAX_ZSTD_EXPANSION_RATIO",
     }
     missing = sorted(required - set(constants))
     if missing:
@@ -73,6 +77,10 @@ def assert_constants_are_sane(constants: dict[str, float], errors: list[str]) ->
         errors.append("MIN_ZSTD_WEB_MS_PER_MB must be positive")
     if constants["MIN_ZSTD_WEB_MS_PER_MB"] > constants["FALLBACK_WEB_MS_PER_MB"]:
         errors.append("zstd minimum ms/MB must not exceed the fallback web ms/MB")
+    if not (0 < constants["MIN_WEB_MS_PER_MB"] <= constants["FALLBACK_WEB_MS_PER_MB"] <= constants["MAX_WEB_MS_PER_MB"]):
+        errors.append("web ms/MB bounds must contain the fallback estimate")
+    if not (1 < constants["MIN_ZSTD_EXPANSION_RATIO"] <= constants["FALLBACK_ZSTD_EXPANSION_RATIO"] <= constants["MAX_ZSTD_EXPANSION_RATIO"]):
+        errors.append("zstd expansion-ratio bounds must contain the fallback ratio")
 
 
 def assert_source_contract(errors: list[str]) -> None:
@@ -82,11 +90,15 @@ def assert_source_contract(errors: list[str]) -> None:
         "FALLBACK_ZSTD_EXPANSION_RATIO",
         "const parsed = JSON.parse(window.localStorage.getItem(PARSE_ESTIMATE_KEY) ?? \"{}\") as unknown",
         "if (!parsed || typeof parsed !== \"object\" || Array.isArray(parsed)) return {}",
+        "boundedNumber(values.webMsPerMb, MIN_WEB_MS_PER_MB, MAX_WEB_MS_PER_MB)",
+        "boundedNumber(values.zstdExpansionRatio, MIN_ZSTD_EXPANSION_RATIO, MAX_ZSTD_EXPANSION_RATIO)",
         "return webEstimateForBytes(size * expansionRatio",
         "effectiveBytes && effectiveBytes > 0 ? effectiveBytes : rawSize",
         "effectiveBytes && effectiveBytes > rawSize",
         "effectiveBytes / rawSize",
         "previousRatio * 0.65 + ratioObserved * 0.35",
+        "boundedNumber(durationMs / Math.max(1, size / 1024 / 1024), MIN_WEB_MS_PER_MB, MAX_WEB_MS_PER_MB)",
+        "boundedNumber(effectiveBytes / rawSize, MIN_ZSTD_EXPANSION_RATIO, MAX_ZSTD_EXPANSION_RATIO)",
         "parseEffectiveBytesRef.current = parseSourceSize(source)",
         "parseMinMsPerMbRef.current = sourceIsZstd(source) ? MIN_ZSTD_WEB_MS_PER_MB : 0",
         "progress.effectiveBytes && progress.effectiveBytes > 0",
