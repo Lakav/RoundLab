@@ -150,6 +150,11 @@ def main() -> None:
         action="store_true",
         help="Fail if the local .roundlab-compare fixtures are absent.",
     )
+    parser.add_argument(
+        "--require-all-maps",
+        action="store_true",
+        help="Fail if any calibrated map is still listed as missing replay fixture proof.",
+    )
     args = parser.parse_args()
 
     maps = calibrated_maps()
@@ -184,6 +189,8 @@ def main() -> None:
             )
     if errors:
         raise AssertionError("; ".join(errors))
+    if args.require_all_maps and missing:
+        raise AssertionError(f"missing replay fixture proof for calibrated maps: {format_map_list(missing)}")
 
     local = discover_local_fixtures(args.compare_dir)
     if args.require_local_fixtures and not local:
@@ -200,8 +207,9 @@ def main() -> None:
         proof = "manifest-only; local fixtures absent"
 
     covered_rounds = sum(int(fixture["rounds"]) for fixtures in covered.values() for fixture in fixtures)
+    status = "complete" if not missing else "incomplete"
     print(
-        "Replay fixture coverage passed: "
+        f"Replay fixture coverage manifest {status}: "
         f"{len(covered_maps)}/{len(maps)} maps covered, "
         f"{covered_rounds} local fixture rounds documented, "
         f"missing={format_map_list(missing)} ({proof})"

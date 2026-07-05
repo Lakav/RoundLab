@@ -147,6 +147,10 @@ fixtures when present, run:
 python3 scripts/audit-replay-fixture-coverage.py
 ```
 
+Use `--require-all-maps` when you need a hard proof gate for replay coverage
+across every calibrated map. That stricter mode is expected to fail until the
+maps listed under `missing` have local fixtures.
+
 Maps with committed `*_lower` radar assets, currently Nuke and Vertigo, must
 stay listed as missing until the renderer supports lower-level radar switching
 or dedicated replay proof is added.
