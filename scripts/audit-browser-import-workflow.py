@@ -14,6 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PAGE = ROOT / "desktop" / "src" / "app" / "page.tsx"
+BACKEND = ROOT / "desktop" / "src" / "lib" / "backends" / "browser.ts"
 
 
 def read(path: Path) -> str:
@@ -172,7 +173,7 @@ def assert_pick_file_and_drop_guards(page: str) -> list[str]:
     return errors
 
 
-def assert_parse_success_and_progress(page: str) -> list[str]:
+def assert_parse_success_progress_and_cancel(page: str, backend: str) -> list[str]:
     errors: list[str] = []
     parse = function_body(page, "parseSource")
     errors.extend(
@@ -193,10 +194,13 @@ def assert_parse_success_and_progress(page: str) -> list[str]:
                 "setPostParse(summary)",
                 "setUploading(false)",
                 "setParseStartedAt(null)",
+                "parseEffectiveBytesRef.current = null",
+                "parseMinMsPerMbRef.current = 0",
                 "setParseProgress({ phase: \"idle\", progress: 0, message: \"\" })",
             ],
         )
     )
+    errors.extend(assert_contains("parseSource cancel suppression", parse, ["if (!/cancel/i.test(message)) setError(message)"]))
     progress_effect = balanced_block_after(page, "onParseProgress((progress) =>")
     errors.extend(
         assert_contains(
@@ -212,6 +216,34 @@ def assert_parse_success_and_progress(page: str) -> list[str]:
     )
     cancel = function_body(page, "onCancelParse")
     errors.extend(assert_contains("onCancelParse", cancel, ["await cancelParse()", "setError(e instanceof Error ? e.message : String(e))"]))
+    backend_cancel = balanced_block_after(backend, "async cancelParse()")
+    errors.extend(
+        assert_contains(
+            "browser backend cancelParse",
+            backend_cancel,
+            [
+                "activeWorker?.terminate()",
+                'activeReject?.(new Error("Browser parse cancelled."))',
+                "activeWorker = null",
+                "activeReject = null",
+                'progressBus.emit({ phase: "cancelled", progress: 0, message: "Cancelled." })',
+            ],
+        )
+    )
+    backend_parse = balanced_block_after(backend, "async parseDemo(source: DemoSource, options)")
+    errors.extend(
+        assert_contains(
+            "browser backend parse cleanup",
+            backend_parse,
+            [
+                "activeWorker = worker",
+                "activeReject = reject",
+                "activeWorker = null",
+                "activeReject = null",
+                "worker.terminate()",
+            ],
+        )
+    )
     return errors
 
 
@@ -322,10 +354,11 @@ def assert_modals_keep_keyboard_flow(page: str) -> list[str]:
 
 def main() -> None:
     page = read(PAGE)
+    backend = read(BACKEND)
     errors: list[str] = []
     errors.extend(assert_import_surface(page))
     errors.extend(assert_pick_file_and_drop_guards(page))
-    errors.extend(assert_parse_success_and_progress(page))
+    errors.extend(assert_parse_success_progress_and_cancel(page, backend))
     errors.extend(assert_post_parse_open_rename_delete(page))
     errors.extend(assert_modals_keep_keyboard_flow(page))
     if errors:
