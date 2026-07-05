@@ -175,6 +175,13 @@ filters, and parser progress estimate invariants, run:
 python3 scripts/audit-browser-import-flow.py
 ```
 
+To validate parse-time ETA constants and simulated progress/remaining-time
+behavior, run:
+
+```bash
+python3 scripts/audit-parse-estimate.py
+```
+
 To validate the user-facing import workflow from file pick/drop through
 post-parse naming and match opening, run:
 
