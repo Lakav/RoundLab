@@ -35,11 +35,23 @@ SCAN_PATHS = {
     ".gitignore",
     "desktop/.gitignore",
     "desktop/package.json",
+    "desktop/pnpm-lock.yaml",
+    "desktop/pnpm-workspace.yaml",
     "desktop/src",
 }
 
 IGNORED_TEXT_PATHS = {
     "desktop/src/wasm",
+}
+
+DEPENDENCY_MANIFEST_NAMES = {
+    "package.json",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "yarn.lock",
+    "bun.lock",
+    "bun.lockb",
 }
 
 
@@ -60,6 +72,8 @@ def tracked_files() -> list[str]:
 def is_scan_target(path: str) -> bool:
     if any(path == ignored or path.startswith(f"{ignored}/") for ignored in IGNORED_TEXT_PATHS):
         return False
+    if Path(path).name in DEPENDENCY_MANIFEST_NAMES:
+        return True
     return any(path == target or path.startswith(f"{target}/") for target in SCAN_PATHS)
 
 
