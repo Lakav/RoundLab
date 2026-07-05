@@ -18,10 +18,16 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLIC = ROOT / "desktop" / "public"
 ICONS_TS = ROOT / "desktop" / "src" / "lib" / "icons.ts"
 MAPS_TS = ROOT / "desktop" / "src" / "lib" / "maps.ts"
+MAP_RENDERER = ROOT / "desktop" / "src" / "components" / "replay" / "MapRenderer.tsx"
 
 PUBLIC_PATH_RE = re.compile(r"""["'`](/(?:icons|logo|app-icon|favicon|cs2lens-maps|radars)[^"'`$]*)["'`]""")
 ICON_MAP_VALUE_RE = re.compile(r"""["'][^"']+["']\s*:\s*["']([^"']+)["']""")
-CALIB_RE = re.compile(r"(de_[a-z0-9_]+):\s*\{\s*posX:")
+CALIB_RE = re.compile(
+    r"(de_[a-z0-9_]+):\s*\{\s*posX:\s*([-0-9.]+),\s*posY:\s*([-0-9.]+),\s*scale:\s*([-0-9.]+)\s*\}"
+)
+CROP_RE = re.compile(
+    r"(de_[a-z0-9_]+):\s*\{\s*x:\s*([-0-9.]+),\s*y:\s*([-0-9.]+),\s*size:\s*([-0-9.]+)\s*\}"
+)
 
 
 def tracked_files() -> list[str]:
@@ -69,10 +75,24 @@ def weapon_icon_paths() -> set[str]:
 
 
 def calibrated_map_paths() -> set[str]:
-    maps = set(CALIB_RE.findall(read(MAPS_TS)))
+    maps = set(calibrated_maps())
     if not maps:
         raise AssertionError("could not parse calibrated maps from desktop/src/lib/maps.ts")
     return {f"/cs2lens-maps/{map_name}.png" for map_name in maps}
+
+
+def calibrated_maps() -> dict[str, tuple[float, float, float]]:
+    return {
+        name: (float(pos_x), float(pos_y), float(scale))
+        for name, pos_x, pos_y, scale in CALIB_RE.findall(read(MAPS_TS))
+    }
+
+
+def cropped_maps() -> dict[str, tuple[float, float, float]]:
+    return {
+        name: (float(x), float(y), float(size))
+        for name, x, y, size in CROP_RE.findall(read(MAPS_TS))
+    }
 
 
 def assert_asset_exists(path: str) -> list[str]:
@@ -96,11 +116,51 @@ def assert_asset_exists(path: str) -> list[str]:
     return errors
 
 
+def assert_map_contract() -> list[str]:
+    errors: list[str] = []
+    maps_text = read(MAPS_TS)
+    renderer = read(MAP_RENDERER)
+    calibrations = calibrated_maps()
+    crops = cropped_maps()
+    if set(calibrations) != set(crops):
+        errors.append(f"MAP_CALIBRATION and MAP_CROP map sets differ: calibration={sorted(calibrations)}, crop={sorted(crops)}")
+    if 'src={`/cs2lens-maps/${map}.png`}' not in renderer:
+        errors.append("MapRenderer must render calibrated maps from /cs2lens-maps/${map}.png")
+    for rel in tracked_files():
+        if rel.startswith("desktop/src/wasm/") or not rel.endswith((".ts", ".tsx", ".js", ".jsx")):
+            continue
+        text = read(ROOT / rel)
+        if "/radars/" in text:
+            errors.append(f"{rel} references legacy /radars assets; replay maps must use /cs2lens-maps")
+    for map_name, (pos_x, pos_y, scale) in sorted(calibrations.items()):
+        if scale <= 0:
+            errors.append(f"{map_name} calibration scale must be positive")
+        if not all(abs(value) < 10_000 for value in [pos_x, pos_y, scale]):
+            errors.append(f"{map_name} calibration values look implausible: posX={pos_x}, posY={pos_y}, scale={scale}")
+        asset = PUBLIC / "cs2lens-maps" / f"{map_name}.png"
+        if asset.exists():
+            width, height = png_size(asset)
+            if width != 1024 or height != 1024:
+                errors.append(f"/cs2lens-maps/{map_name}.png is {width}x{height}, expected 1024x1024")
+
+    cache = calibrations.get("de_cache")
+    if cache is None:
+        errors.append("de_cache calibration is missing")
+    else:
+        pos_x, pos_y, scale = cache
+        if (round(pos_x), round(pos_y)) != (-1964, 3250) or not (5.45 <= scale <= 5.47):
+            errors.append(f"de_cache calibration drifted from the CS2Lens-aligned values: posX={pos_x}, posY={pos_y}, scale={scale}")
+        if "CS2Lens stores Cache" not in maps_text:
+            errors.append("de_cache calibration must keep the CS2Lens conversion note")
+    return errors
+
+
 def main() -> None:
     paths = source_public_paths() | weapon_icon_paths() | calibrated_map_paths()
     errors: list[str] = []
     for path in sorted(paths):
         errors.extend(assert_asset_exists(path))
+    errors.extend(assert_map_contract())
     if errors:
         raise AssertionError("public asset audit failed: " + "; ".join(errors))
     print(f"public asset audit passed: {len(paths)} referenced assets checked")
