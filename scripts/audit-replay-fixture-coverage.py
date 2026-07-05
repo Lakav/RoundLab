@@ -59,6 +59,7 @@ def renderer_supports_lower_level_maps() -> bool:
         and "MAP_VERTICAL_SECTIONS" in maps
         and '{ layer: "lower", altitudeMin: -10000, altitudeMax: -495 }' in maps
         and '{ layer: "lower", altitudeMin: -10000, altitudeMax: 11700 }' in maps
+        and '{ layer: "lower", altitudeMin: -5000, altitudeMax: -50 }' in maps
     )
 
 

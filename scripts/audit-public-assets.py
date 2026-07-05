@@ -188,6 +188,10 @@ def assert_map_contract() -> list[str]:
             '{ layer: "default", altitudeMin: 11700, altitudeMax: 20000 }',
             '{ layer: "lower", altitudeMin: -10000, altitudeMax: 11700 }',
         ],
+        "de_train": [
+            '{ layer: "default", altitudeMin: -50, altitudeMax: 20000 }',
+            '{ layer: "lower", altitudeMin: -5000, altitudeMax: -50 }',
+        ],
     }
     for map_name, snippets in expected_sections.items():
         for snippet in snippets:

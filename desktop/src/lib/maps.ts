@@ -40,6 +40,10 @@ export const MAP_VERTICAL_SECTIONS: Partial<Record<string, MapVerticalSection[]>
     { layer: "default", altitudeMin: 11700, altitudeMax: 20000 },
     { layer: "lower", altitudeMin: -10000, altitudeMax: 11700 },
   ],
+  de_train: [
+    { layer: "default", altitudeMin: -50, altitudeMax: 20000 },
+    { layer: "lower", altitudeMin: -5000, altitudeMax: -50 },
+  ],
 };
 
 // Crop region in radar pixels (0..RADAR_SIZE) for each map, trimming the

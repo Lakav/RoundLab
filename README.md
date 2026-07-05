@@ -136,9 +136,9 @@ Add `--skip-parsed` to audit only the split `.roundlab-compare` fixtures, or
 `--assets-only` to run the CI-safe map asset/calibration check without local
 fixtures. Add `--require-all-map-fixtures` to fail when a calibrated map has no
 replay fixture coverage.
-For multi-level maps with committed `*_lower` radar assets, currently Nuke and
-Vertigo, fixture coverage must include observed player samples on every radar
-layer; a fixture that only touches one floor is not enough proof.
+For multi-level maps with committed `*_lower` radar assets, currently Nuke,
+Train, and Vertigo, fixture coverage must include observed player samples on
+every radar layer; a fixture that only touches one floor is not enough proof.
 
 The current replay fixture coverage is tracked in
 `docs/replay-fixture-coverage.json`. The manifest is deliberately explicit
@@ -154,9 +154,9 @@ Use `--require-all-maps` when you need a hard proof gate for replay coverage
 across every calibrated map. That stricter mode is expected to fail until the
 maps listed under `missing` have local fixtures.
 
-Maps with committed `*_lower` radar assets, currently Nuke and Vertigo, still
-need dedicated replay proof that exercises both the default and lower radar
-layers before they can be removed from `missing`.
+Maps with committed `*_lower` radar assets, currently Nuke, Train, and Vertigo,
+still need dedicated replay proof that exercises both the default and lower
+radar layers before they can be removed from `missing`.
 
 To catch accidental regressions back to desktop/Tauri-only code paths, run:
 
