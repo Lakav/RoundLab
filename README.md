@@ -133,6 +133,13 @@ import path, run:
 python3 scripts/audit-browser-parser-locality.py
 ```
 
+To validate browser import capability checks, file size limits, demo extension
+filters, and parser progress estimate invariants, run:
+
+```bash
+python3 scripts/audit-browser-import-flow.py
+```
+
 To validate the match review map sizing, crop transform formulas, and round
 selector overflow guard across representative viewport sizes, run:
 
