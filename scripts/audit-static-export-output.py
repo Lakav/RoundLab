@@ -35,6 +35,17 @@ def require_file(path: Path, errors: list[str]) -> None:
         errors.append(f"static export file {rel(path)} is empty")
 
 
+def static_chunks() -> list[Path]:
+    chunks_dir = OUT / "_next" / "static" / "chunks"
+    if not chunks_dir.exists():
+        return []
+    return sorted(path for path in chunks_dir.glob("*.js") if path.is_file())
+
+
+def any_chunk_contains(chunks: list[Path], snippet: str) -> bool:
+    return any(snippet in read(chunk) for chunk in chunks)
+
+
 def calibrated_maps() -> set[str]:
     text = read(MAPS_TS)
     maps = set(CALIB_RE.findall(text))
@@ -64,6 +75,32 @@ def assert_required_output(errors: list[str]) -> None:
         errors.append("static export is missing bundled roundlab_parser_bg WASM media")
     if not any("web-parser.worker" in path.name for path in media):
         errors.append("static export is missing bundled web-parser.worker media")
+
+
+def assert_parser_worker_bundle(errors: list[str]) -> None:
+    chunks = static_chunks()
+    if not chunks:
+        errors.append("static export is missing Next static JS chunks")
+        return
+
+    if not any(path.name.startswith("turbopack-worker") for path in chunks):
+        errors.append("static export is missing the Turbopack worker bootstrap chunk")
+    if not any_chunk_contains(chunks, "TURBOPACK_NEXT_CHUNK_URLS"):
+        errors.append("worker bootstrap chunk is missing the Turbopack worker chunk manifest")
+    if not any_chunk_contains(chunks, "web-parser.worker"):
+        errors.append("client chunks do not reference the parser worker entry asset")
+
+    for snippet in [
+        "Loading local zstd decoder",
+        "Decompressed demo is larger",
+        "parse_demo_bytes_to_json",
+        "Parser output stored",
+        "[parser-worker] parse failed",
+        "roundlab_parser_bg",
+        ".wasm",
+    ]:
+        if not any_chunk_contains(chunks, snippet):
+            errors.append(f"parser worker bundle is missing runtime signature {snippet!r}")
 
 
 def assert_html_content(errors: list[str]) -> None:
@@ -128,6 +165,7 @@ def assert_no_legacy_or_os_artifacts(errors: list[str]) -> None:
 def main() -> None:
     errors: list[str] = []
     assert_required_output(errors)
+    assert_parser_worker_bundle(errors)
     assert_html_content(errors)
     assert_internal_refs_resolve(errors)
     assert_no_server_routes(errors)
