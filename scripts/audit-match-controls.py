@@ -281,6 +281,17 @@ def assert_match_identity_resets(errors: list[str]) -> None:
         ],
         errors,
     )
+    require(
+        "replay store duration override clamp",
+        replay_store,
+        [
+            "setDurationOverride: (duration) => set((s) => {",
+            "const roundDuration = s.match?.rounds[s.currentRoundIdx]?.duration ?? s.time",
+            "const maxTime = duration ?? roundDuration",
+            "return { durationOverride: duration, time: Math.min(s.time, maxTime) }",
+        ],
+        errors,
+    )
 
 
 def main() -> None:

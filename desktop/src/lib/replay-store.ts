@@ -91,7 +91,11 @@ export const useReplay = create<ReplayState>((set, get) => ({
       };
     }),
   setHabitOverlay: (overlay) => set({ habitOverlay: overlay }),
-  setDurationOverride: (duration) => set((s) => ({ durationOverride: duration, time: Math.min(s.time, duration ?? s.time) })),
+  setDurationOverride: (duration) => set((s) => {
+    const roundDuration = s.match?.rounds[s.currentRoundIdx]?.duration ?? s.time;
+    const maxTime = duration ?? roundDuration;
+    return { durationOverride: duration, time: Math.min(s.time, maxTime) };
+  }),
   setRound: (idx) => set({ currentRoundIdx: idx, time: 0, playing: false }),
   setTime: (t) => set({ time: t }),
   setPlaying: (p) => set({ playing: p }),
