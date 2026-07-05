@@ -314,6 +314,67 @@ def assert_projectile_shadow_depth(map_renderer: str) -> list[str]:
     return errors
 
 
+def assert_weapon_fire_rendering(map_renderer: str) -> list[str]:
+    errors: list[str] = []
+    fire_body = function_body(map_renderer, "drawWeaponFire")
+    errors.extend(
+        assert_contains(
+            "drawWeaponFire",
+            fire_body,
+            [
+                "if (isUtilityWeapon(fire.weapon)) return",
+                "const duration = isKnifeWeapon(fire.weapon) ? 0.18 : 0.14",
+                "if (age < 0 || age > duration) return",
+                "const alpha = 1 - age / duration",
+                "const start = shooterLive",
+                "? toRadar(shooterLive.x, shooterLive.y, 0)",
+                ": toRadar(fire.x, fire.y, 0)",
+                "const yaw = shooterLive ? shooterLive.yaw : fire.yaw",
+                "const angle = (-yaw * Math.PI) / 180",
+                "const forward = PLAYER_ARROW_TIP_OFFSET + maxW / 2",
+                'const texturePath = isKnife ? "/icons/quick-slash.svg" : "/icons/shoot.svg"',
+                "if (!readyTexture)",
+                "fallback.position.set(start.x, start.y)",
+                "fallback.rotation = angle",
+                "sprite.position.set(px, py)",
+                "sprite.rotation = spriteAngle",
+                "fitSpriteBox(sprite, maxW, maxH)",
+                "const trueForward = PLAYER_ARROW_TIP_OFFSET + sprite.width / 2",
+                "loadIconTexture(texturePath)",
+            ],
+        )
+    )
+    renderer_body = function_body(map_renderer, "MapRenderer")
+    errors.extend(
+        assert_contains(
+            "MapRenderer weapon fire loop",
+            renderer_body,
+            [
+                "const visibleFires: WeaponFireEvent[] = (round.weaponFires ?? []).filter",
+                "fire.t <= time && time - fire.t <= 0.24",
+                "const liveById = new Map(positions.map((p) => [p.id, p]))",
+                "const live = fire.shooter ? liveById.get(fire.shooter) : undefined",
+                "drawWeaponFire(utilityLayer, fire, time, toRadar, live)",
+                "recentFireByShooter.set(fire.shooter, fire)",
+                "const shot = recentFireByShooter.get(p.id)",
+                "s.muzzleFlash.clear()",
+                "if (alive && shot && !isUtilityWeapon(shot.weapon))",
+                "s.arrowRotator.scale.set(1 + shotAlpha *",
+                "s.arrowRotator.scale.set(1)",
+            ],
+        )
+    )
+
+    def alpha(age: float, duration: float) -> float:
+        return 1 - age / duration
+
+    if not (0 < alpha(0.07, 0.14) < 1):
+        errors.append("weapon fire alpha simulation no longer fades during rifle/pistol shot duration")
+    if not math.isclose(alpha(0.18, 0.18), 0):
+        errors.append("knife shot alpha should reach zero at the end of its duration")
+    return errors
+
+
 def main() -> None:
     map_renderer = read(MAP_RENDERER)
     match_viewer = read(MATCH_VIEWER)
@@ -325,6 +386,7 @@ def main() -> None:
     errors.extend(assert_condensed_projectile_handoff(map_renderer, match_viewer, replay_store))
     errors.extend(assert_projectile_diagnostics(map_renderer))
     errors.extend(assert_projectile_shadow_depth(map_renderer))
+    errors.extend(assert_weapon_fire_rendering(map_renderer))
 
     if errors:
         raise AssertionError("replay renderer contract audit failed: " + "; ".join(errors))
