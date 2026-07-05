@@ -260,6 +260,10 @@ def assert_parse_success_progress_and_cancel(page: str, backend: str) -> list[st
             ],
         )
     )
+    if backend_parse.find("activeWorker = worker") > backend_parse.find("await source.file.arrayBuffer()"):
+        errors.append("browser backend must mark the worker active before file.arrayBuffer() so cancellation invalidates file reads")
+    if backend_parse.find("await source.file.arrayBuffer()") > backend_parse.find("if (activeParseRun !== runId || activeWorker !== worker)"):
+        errors.append("browser backend must re-check cancellation immediately after file.arrayBuffer() before posting bytes to the worker")
     errors.extend(
         assert_not_contains(
             "browser backend parse downgrade surface",
