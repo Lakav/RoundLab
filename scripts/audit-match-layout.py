@@ -17,6 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MATCH_VIEWER = ROOT / "desktop" / "src" / "app" / "match" / "MatchViewer.tsx"
+ROUND_LIST = ROOT / "desktop" / "src" / "components" / "replay" / "RoundList.tsx"
 MAPS_TS = ROOT / "desktop" / "src" / "lib" / "maps.ts"
 
 CONST_RE = re.compile(r"const\s+([A-Z_]+)\s*=\s*([-0-9.]+);")
@@ -157,6 +158,21 @@ def assert_crop_transform(radar_size: float, crops: dict[str, Crop], constants: 
         raise AssertionError("; ".join(errors))
 
 
+def assert_round_controls_can_overflow() -> None:
+    round_list = ROUND_LIST.read_text(encoding="utf-8")
+    match_viewer = MATCH_VIEWER.read_text(encoding="utf-8")
+    errors: list[str] = []
+    for token in ["overflow-x-auto", "overflow-y-hidden", "min-w-max"]:
+        if token not in round_list:
+            errors.append(f"RoundList is missing {token!r}; too many rounds may overflow instead of scrolling")
+    if "<RoundList />" not in match_viewer:
+        errors.append("MatchViewer no longer renders RoundList in the playback controls")
+    if "min-w-0 flex-1" not in match_viewer:
+        errors.append("MatchViewer bottom timeline is missing min-w-0 flex-1; controls may force horizontal overflow")
+    if errors:
+        raise AssertionError("; ".join(errors))
+
+
 def main() -> None:
     constants = load_constants()
     radar_size, crops = load_maps()
@@ -164,6 +180,7 @@ def main() -> None:
     assert_crops(radar_size, crops)
     assert_viewport_fit(constants)
     assert_crop_transform(radar_size, crops, constants)
+    assert_round_controls_can_overflow()
     print(f"match layout audit passed: {len(crops)} maps, {len(VIEWPORTS)} viewport probes")
 
 
