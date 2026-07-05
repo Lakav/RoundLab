@@ -81,6 +81,9 @@ cargo test
 cargo check --target wasm32-unknown-unknown --lib
 ```
 
+The CI runs both native parser tests and the `wasm32-unknown-unknown` library
+check so browser parser regressions fail before merge.
+
 For real replay-integrity coverage, point `ROUNDLAB_TEST_DEMOS` at local `.dem`
 or `.dem.zst` files. Use the platform path separator (`:` on macOS/Linux, `;`
 on Windows). Large demos must stay outside Git.
