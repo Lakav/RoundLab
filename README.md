@@ -138,6 +138,13 @@ To catch accidental regressions back to desktop/Tauri-only code paths, run:
 python3 scripts/audit-web-portability.py
 ```
 
+To catch accidental regressions back to server-required Next.js features such
+as API routes, middleware, server actions, or image optimization, run:
+
+```bash
+python3 scripts/audit-static-web-export.py
+```
+
 To ensure every `scripts/audit-*.py` check is compiled, run in CI, and listed
 here, run:
 

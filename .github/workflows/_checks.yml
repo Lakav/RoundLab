@@ -71,6 +71,7 @@ jobs:
             scripts/audit-replay-fixture-coverage.py \
             scripts/audit-replay-renderer-contract.py \
             scripts/audit-replay-rendering.py \
+            scripts/audit-static-web-export.py \
             scripts/audit-web-portability.py \
             scripts/validate-release-version.py
           python3 -m json.tool docs/replay-fixture-coverage.json >/dev/null
@@ -78,6 +79,9 @@ jobs:
 
       - name: Validate web portability
         run: python3 scripts/audit-web-portability.py
+
+      - name: Validate static web export
+        run: python3 scripts/audit-static-web-export.py
 
       - name: Validate CI audit coverage
         run: python3 scripts/audit-ci-coverage.py
