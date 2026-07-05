@@ -370,6 +370,25 @@ def assert_transaction_errors_propagate(store: str) -> list[str]:
 
 def assert_match_lifecycle(store: str) -> list[str]:
     errors: list[str] = []
+    errors.extend(
+        assert_contains(
+            "match summary normalizers",
+            store,
+            [
+                "function normalizeMatchName(name: unknown, fallback: string): string",
+                "typeof name === \"string\" && name.trim() ? name.trim() : fallback",
+                "function normalizeMatchSize(size: unknown): number",
+                "typeof size === \"number\" && Number.isFinite(size) && size >= 0 ? size : 0",
+                "function normalizeMatchCreatedAt(createdAt: unknown): number",
+                "typeof createdAt === \"number\" && Number.isFinite(createdAt) && createdAt > 0 ? createdAt : 0",
+                "function storedMatchSummary(item: StoredMatch): MatchSummary | null",
+                "if (typeof item.id !== \"string\" || !item.id) return null",
+                "name: normalizeMatchName(item.name, item.id.slice(0, 8))",
+                "createdAt: normalizeMatchCreatedAt(item.createdAt)",
+                "size: normalizeMatchSize(item.size)",
+            ],
+        )
+    )
     list_body = function_body(store, "listStoredMatches")
     errors.extend(
         assert_contains(
@@ -377,7 +396,8 @@ def assert_match_lifecycle(store: str) -> list[str]:
             list_body,
             [
                 "tx.objectStore(MATCH_STORE).getAll()",
-                "map(({ id, name, createdAt, size }) => ({ id, name, createdAt, size }))",
+                "map(storedMatchSummary)",
+                "filter((item): item is MatchSummary => Boolean(item))",
                 "sort((a, b) => b.createdAt - a.createdAt)",
             ],
         )
@@ -403,9 +423,20 @@ def assert_match_lifecycle(store: str) -> list[str]:
             "renameStoredMatch",
             rename_body,
             [
-                "const updated = { ...item, name }",
+                "const updated = { ...item, name: normalizeMatchName(name, item.name) }",
                 "store.put(updated)",
-                "return { id: updated.id, name: updated.name, createdAt: updated.createdAt, size: updated.size }",
+                "return storedMatchSummary(updated) ??",
+            ],
+        )
+    )
+    save_body = function_body(store, "saveParsedMatch")
+    errors.extend(
+        assert_contains(
+            "saveParsedMatch summary normalization",
+            save_body,
+            [
+                "name: normalizeMatchName(name, id.slice(0, 8))",
+                "size: normalizeMatchSize(size)",
             ],
         )
     )

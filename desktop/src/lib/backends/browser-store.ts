@@ -102,6 +102,28 @@ function metadataPayloadLength(id: string, roundNumber: number, field: string, v
   return value.length;
 }
 
+function normalizeMatchName(name: unknown, fallback: string): string {
+  return typeof name === "string" && name.trim() ? name.trim() : fallback;
+}
+
+function normalizeMatchSize(size: unknown): number {
+  return typeof size === "number" && Number.isFinite(size) && size >= 0 ? size : 0;
+}
+
+function normalizeMatchCreatedAt(createdAt: unknown): number {
+  return typeof createdAt === "number" && Number.isFinite(createdAt) && createdAt > 0 ? createdAt : 0;
+}
+
+function storedMatchSummary(item: StoredMatch): MatchSummary | null {
+  if (typeof item.id !== "string" || !item.id) return null;
+  return {
+    id: item.id,
+    name: normalizeMatchName(item.name, item.id.slice(0, 8)),
+    createdAt: normalizeMatchCreatedAt(item.createdAt),
+    size: normalizeMatchSize(item.size),
+  };
+}
+
 function assertLightweightMetadata(id: string, metadata: MatchData): MatchData {
   if (!Array.isArray(metadata.rounds) || metadata.rounds.length === 0) {
     throw new Error(`Stored match ${id} has no round metadata.`);
@@ -144,7 +166,8 @@ export async function listStoredMatches(): Promise<MatchSummary[]> {
       tx.objectStore(MATCH_STORE).getAll() as IDBRequest<StoredMatch[]>,
     );
     return matches
-      .map(({ id, name, createdAt, size }) => ({ id, name, createdAt, size }))
+      .map(storedMatchSummary)
+      .filter((item): item is MatchSummary => Boolean(item))
       .sort((a, b) => b.createdAt - a.createdAt);
   } finally {
     db.close();
@@ -201,10 +224,10 @@ export async function renameStoredMatch(id: string, name: string): Promise<Match
       store.get(id) as IDBRequest<StoredMatch | undefined>,
     );
     if (!item) throw new Error(`Match not found: ${id}`);
-    const updated = { ...item, name };
+    const updated = { ...item, name: normalizeMatchName(name, item.name) };
     store.put(updated);
     await txDone(tx);
-    return { id: updated.id, name: updated.name, createdAt: updated.createdAt, size: updated.size };
+    return storedMatchSummary(updated) ?? { id: updated.id, name: updated.name, createdAt: updated.createdAt, size: updated.size };
   } finally {
     db.close();
   }
@@ -213,7 +236,12 @@ export async function renameStoredMatch(id: string, name: string): Promise<Match
 export async function saveParsedMatch(id: string, name: string, size: number, data: MatchData): Promise<MatchSummary> {
   assertStorableMatch(data);
   const db = await openDb();
-  const summary: MatchSummary = { id, name, createdAt: Date.now(), size };
+  const summary: MatchSummary = {
+    id,
+    name: normalizeMatchName(name, id.slice(0, 8)),
+    createdAt: Date.now(),
+    size: normalizeMatchSize(size),
+  };
   const metadata: MatchData = {
     ...data,
     rounds: data.rounds.map(stripRoundPayload),
