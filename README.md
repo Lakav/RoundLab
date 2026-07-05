@@ -109,8 +109,9 @@ local parsed matches in `desktop/data/parsed` when present, run:
 python3 scripts/audit-replay-rendering.py
 ```
 
-This checks map assets, map calibration/crop, invalid projectile samples, and
-utility effects that have no plausible projectile trajectory near detonation.
+This checks map assets, map calibration/crop, invalid projectile samples,
+utility tracks without a player thrower, and utility effects that have no
+plausible player-owned projectile trajectory near detonation.
 Add `--skip-parsed` to audit only the split `.roundlab-compare` fixtures, or
 `--require-all-map-fixtures` to fail when a calibrated map has no replay
 fixture coverage.

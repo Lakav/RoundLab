@@ -54,6 +54,7 @@ class Track:
     projectile_id: int
     projectile_type: str
     thrower: int | None
+    thrower_conflict: bool = False
     samples: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -71,6 +72,10 @@ class AuditStats:
     projectiles: int = 0
     projectiles_out: int = 0
     invalid_projectiles: int = 0
+    utility_tracks: int = 0
+    utility_tracks_missing_thrower: int = 0
+    projectile_thrower_conflicts: int = 0
+    matched_effects_without_thrower: int = 0
     short_tracks: int = 0
     future_only_windows: int = 0
     large_effect_gaps: int = 0
@@ -99,6 +104,10 @@ class AuditStats:
             "projectiles": self.projectiles,
             "projectilesOutPct": self.pct(self.projectiles_out, self.projectiles),
             "invalidProjectiles": self.invalid_projectiles,
+            "utilityTracks": self.utility_tracks,
+            "utilityTracksMissingThrower": self.utility_tracks_missing_thrower,
+            "projectileThrowerConflicts": self.projectile_thrower_conflicts,
+            "matchedEffectsWithoutThrower": self.matched_effects_without_thrower,
             "shortTracks": self.short_tracks,
             "futureOnlyWindows": self.future_only_windows,
             "largeEffectGaps": self.large_effect_gaps,
@@ -189,6 +198,19 @@ def projectile_effect_type(projectile_type: str) -> str | None:
     return None
 
 
+def normalize_thrower(value: Any) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, float):
+        return int(value) if math.isfinite(value) and value > 0 and value.is_integer() else None
+    if isinstance(value, str) and value.isdigit():
+        parsed = int(value)
+        return parsed if parsed > 0 else None
+    return None
+
+
 def effect_radius(effect_type: str) -> float:
     if effect_type in {"fire", "smoke"}:
         return 900
@@ -218,14 +240,20 @@ def build_tracks(round_obj: dict[str, Any], stats: AuditStats, calibration: Cali
             if not in_crop(radar, crop, 90):
                 stats.projectiles_out += 1
             projectile_id = int(projectile["id"])
+            thrower = normalize_thrower(projectile.get("thrower"))
             track = tracks.get(projectile_id)
             if track is None:
                 track = Track(
                     projectile_id=projectile_id,
                     projectile_type=str(projectile.get("type") or ""),
-                    thrower=projectile.get("thrower"),
+                    thrower=thrower,
                 )
                 tracks[projectile_id] = track
+            elif thrower is not None:
+                if track.thrower is None:
+                    track.thrower = thrower
+                elif track.thrower != thrower:
+                    track.thrower_conflict = True
             track.samples.append(projectile | {"t": frame.get("t", 0)})
 
         if index + 1 < len(frames):
@@ -237,6 +265,31 @@ def build_tracks(round_obj: dict[str, Any], stats: AuditStats, calibration: Cali
                         stats.future_only_windows += 1
 
     for track in tracks.values():
+        if projectile_effect_type(track.projectile_type) is not None:
+            stats.utility_tracks += 1
+            if track.thrower is None:
+                stats.utility_tracks_missing_thrower += 1
+                if len(stats.examples) < 20:
+                    stats.examples.append(
+                        {
+                            "round": round_obj.get("number"),
+                            "kind": "utility-track-missing-thrower",
+                            "projectileId": track.projectile_id,
+                            "type": track.projectile_type,
+                            "samples": len(track.samples),
+                        }
+                    )
+            if track.thrower_conflict:
+                stats.projectile_thrower_conflicts += 1
+                if len(stats.examples) < 20:
+                    stats.examples.append(
+                        {
+                            "round": round_obj.get("number"),
+                            "kind": "projectile-thrower-conflict",
+                            "projectileId": track.projectile_id,
+                            "type": track.projectile_type,
+                        }
+                    )
         if len(track.samples) < 2:
             stats.short_tracks += 1
     return tracks
@@ -284,6 +337,7 @@ def audit_effects(
         best_distance2 = math.inf
         best_gap = math.inf
         best_track: Track | None = None
+        matched_with_thrower = False
         effect_start = float(effect["start"])
         for track in tracks.values():
             if projectile_effect_type(track.projectile_type) != effect_type:
@@ -299,9 +353,26 @@ def audit_effects(
                     best_distance2 = distance2
                     best_gap = abs(sample_t - effect_start)
                     best_track = track
+                if distance2 <= threshold2 and track.thrower is not None and not track.thrower_conflict:
+                    matched_with_thrower = True
 
         if best_distance2 <= threshold2:
             stats.matched_effects += 1
+            if not matched_with_thrower:
+                stats.matched_effects_without_thrower += 1
+                if len(stats.examples) < 20:
+                    stats.examples.append(
+                        {
+                            "round": round_obj.get("number"),
+                            "kind": "matched-effect-without-thrower",
+                            "type": effect_type,
+                            "start": round(effect_start, 3),
+                            "x": round(float(effect["x"])),
+                            "y": round(float(effect["y"])),
+                            "nearestDistance": round(math.sqrt(best_distance2)),
+                            "nearestGap": None if math.isinf(best_gap) else round(best_gap, 3),
+                        }
+                    )
         else:
             stats.unmatched_effects += 1
             if len(stats.examples) < 20:
@@ -432,6 +503,12 @@ def assert_stats(stats: AuditStats, *, max_out_pct: float) -> None:
     errors: list[str] = []
     if stats.invalid_projectiles:
         errors.append(f"{stats.invalid_projectiles} projectile samples have invalid coordinates")
+    if stats.utility_tracks_missing_thrower:
+        errors.append(f"{stats.utility_tracks_missing_thrower} utility projectile tracks have no thrower")
+    if stats.projectile_thrower_conflicts:
+        errors.append(f"{stats.projectile_thrower_conflicts} projectile tracks have conflicting throwers")
+    if stats.matched_effects_without_thrower:
+        errors.append(f"{stats.matched_effects_without_thrower} matched effects have no player-owned projectile track")
     if stats.unmatched_effects:
         errors.append(f"{stats.unmatched_effects} effects have no matching projectile track")
     if stats.pct(stats.players_out, stats.players) > max_out_pct:
@@ -478,6 +555,7 @@ def main() -> None:
             print(
                 f"OK {stats.label} map={stats.map_name} rounds={stats.rounds} "
                 f"effects={stats.effects} matched={stats.matched_effects} "
+                f"utilityTracks={stats.utility_tracks} unownedUtilityTracks={stats.utility_tracks_missing_thrower} "
                 f"futureOnly={stats.future_only_windows} suppressionRisks={stats.active_effect_suppression_risks} "
                 f"bounds={stats.as_dict()['radarBounds']}"
             )
