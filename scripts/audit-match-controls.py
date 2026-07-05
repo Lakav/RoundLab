@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MATCH_VIEWER = ROOT / "desktop" / "src" / "app" / "match" / "MatchViewer.tsx"
 MATCH_PAGE = ROOT / "desktop" / "src" / "app" / "match" / "page.tsx"
 CONTROLS = ROOT / "desktop" / "src" / "components" / "replay" / "Controls.tsx"
+TIMELINE = ROOT / "desktop" / "src" / "components" / "replay" / "Timeline.tsx"
 MAP_RENDERER = ROOT / "desktop" / "src" / "components" / "replay" / "MapRenderer.tsx"
 BROWSER_API = ROOT / "desktop" / "src" / "lib" / "api.ts"
 BROWSER_BACKEND = ROOT / "desktop" / "src" / "lib" / "backends" / "browser.ts"
@@ -383,6 +384,9 @@ def assert_match_identity_resets(errors: list[str]) -> None:
 
 def assert_placeholder_round_playback_guard(errors: list[str]) -> None:
     controls = read(CONTROLS)
+    timeline = read(TIMELINE)
+    viewer = read(MATCH_VIEWER)
+    keyboard = balanced_block_after(viewer, "const onKey = (e: KeyboardEvent) =>")
     replay_store = read(REPLAY_STORE)
     require(
         "placeholder round controls guard",
@@ -400,9 +404,31 @@ def assert_placeholder_round_playback_guard(errors: list[str]) -> None:
         "placeholder round playback guard",
         replay_store,
         [
-            "if (!round || round.frames.length === 0) return { playing: false }",
+            "function roundHasFrames(match: MatchData | null, roundIdx: number)",
+            "setPlaying: (p) => set((s) => ({ playing: p && roundHasFrames(s.match, s.currentRoundIdx) }))",
+            "if (!roundHasFrames(s.match, s.currentRoundIdx)) return { playing: false }",
             "if (!round || round.frames.length === 0) {",
             "if (s.playing) set({ playing: false })",
+            "set({ currentRoundIdx: nextIdx, time: 0, playing: roundHasFrames(s.match, nextIdx) })",
+        ],
+        errors,
+    )
+    require(
+        "placeholder round timeline guard",
+        timeline,
+        [
+            "const roundReady = Boolean(round?.frames.length)",
+            "if (!roundReady || !duration) return",
+            "disabled={!roundReady}",
+            "if (!roundReady) return",
+        ],
+        errors,
+    )
+    require(
+        "placeholder round keyboard guard",
+        keyboard,
+        [
+            "if (!round || round.frames.length === 0) return",
         ],
         errors,
     )

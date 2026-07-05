@@ -495,7 +495,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       const st = useReplay.getState();
       const round = st.match?.rounds[st.currentRoundIdx];
-      if (!round) return;
+      if (!round || round.frames.length === 0) return;
       const duration = st.durationOverride ?? round.duration;
       const drawingShortcutsEnabled = reviewMode !== "condensed";
       if (e.code === "Space") {

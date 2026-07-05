@@ -17,9 +17,10 @@ export function Timeline() {
   const currentRoundIdx = useReplay((s) => s.currentRoundIdx);
   const durationOverride = useReplay((s) => s.durationOverride);
   const round = match?.rounds[currentRoundIdx];
+  const roundReady = Boolean(round?.frames.length);
   const duration = durationOverride ?? round?.duration ?? 0;
   const seekFromPointer = (e: PointerEvent<HTMLDivElement>) => {
-    if (!duration) return;
+    if (!roundReady || !duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     setTime(ratio * duration);
@@ -39,7 +40,11 @@ export function Timeline() {
           min={0}
           max={duration || 1}
           step={0.05}
-          onValueChange={(v) => setTime(Array.isArray(v) ? v[0] : v)}
+          disabled={!roundReady}
+          onValueChange={(v) => {
+            if (!roundReady) return;
+            setTime(Array.isArray(v) ? v[0] : v);
+          }}
           className="flex-1 [&_[data-slot=slider-thumb]]:size-4 [&_[data-slot=slider-track]]:h-1.5"
         />
       </div>

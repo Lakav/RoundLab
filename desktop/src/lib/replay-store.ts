@@ -70,6 +70,10 @@ type ReplayState = {
   currentRound: () => Round | null;
 };
 
+function roundHasFrames(match: MatchData | null, roundIdx: number) {
+  return Boolean(match?.rounds[roundIdx]?.frames.length);
+}
+
 export const useReplay = create<ReplayState>((set, get) => ({
   match: null,
   matchId: null,
@@ -98,10 +102,9 @@ export const useReplay = create<ReplayState>((set, get) => ({
   }),
   setRound: (idx) => set({ currentRoundIdx: idx, time: 0, playing: false }),
   setTime: (t) => set({ time: t }),
-  setPlaying: (p) => set({ playing: p }),
+  setPlaying: (p) => set((s) => ({ playing: p && roundHasFrames(s.match, s.currentRoundIdx) })),
   togglePlay: () => set((s) => {
-    const round = s.match?.rounds[s.currentRoundIdx];
-    if (!round || round.frames.length === 0) return { playing: false };
+    if (!roundHasFrames(s.match, s.currentRoundIdx)) return { playing: false };
     return { playing: !s.playing };
   }),
   setSpeed: (s) => set({ speed: s }),
@@ -120,7 +123,7 @@ export const useReplay = create<ReplayState>((set, get) => ({
     } else if (next >= round.duration) {
       const nextIdx = s.currentRoundIdx + 1;
       if (nextIdx < s.match.rounds.length) {
-        set({ currentRoundIdx: nextIdx, time: 0, playing: true });
+        set({ currentRoundIdx: nextIdx, time: 0, playing: roundHasFrames(s.match, nextIdx) });
       } else {
         set({ time: round.duration, playing: false });
       }
