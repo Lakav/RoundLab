@@ -131,10 +131,81 @@ def assert_zoom_controls(errors: list[str]) -> None:
     )
 
 
+def assert_review_modes(errors: list[str]) -> None:
+    viewer = read(MATCH_VIEWER)
+    run_condensed = balanced_block_after(viewer, "const runCondensedOverlay = useCallback")
+    require(
+        "review mode state",
+        viewer,
+        [
+            'type ReviewMode = "classic" | "condensed"',
+            'const [reviewMode, setReviewMode] = useState<ReviewMode>("classic")',
+            'const condensedMode = reviewMode === "condensed"',
+            '["classic", "Classique"]',
+            '["condensed", "Condensé"]',
+            "setReviewMode(mode)",
+            'if (mode === "classic") clearHabitOverlay()',
+            "void runCondensedOverlay(effectiveCondensedPlayerValue)",
+        ],
+        errors,
+    )
+    require(
+        "condensed replay builder",
+        run_condensed,
+        [
+            'const [scopeKind, scopeId] = playerValue.split(":")',
+            'const playerId = scopeKind === "player" ? Number(scopeId) : NaN',
+            'setHabitStatus("Loading rounds…")',
+            "setPlaying(false)",
+            "setTime(0)",
+            "for (let i = 0; i < currentMatch.rounds.length; i++)",
+            "const round = await loadRoundForHabits(currentMatch.rounds[i])",
+            "const replay = buildHabitReplayRound(round, playerId, label, DEFAULT_HABIT_TYPES)",
+            "if (replay) replays.push(replay)",
+            'const overlay: HabitOverlay = { label, mode: "replay", trails: [], replays }',
+            "setDurationOverride(duration || null)",
+            'setHabitStatus(`${replays.length} rounds`)',
+        ],
+        errors,
+    )
+    require(
+        "condensed player selector",
+        viewer,
+        [
+            "const condensedPlayerOptions = match.players.map((player) => ({",
+            "value: `player:${player.steamId}`",
+            "const effectiveCondensedPlayerValue = condensedPlayerOptions.some",
+            "{condensedMode && (",
+            "<select",
+            "value={effectiveCondensedPlayerValue}",
+            "setCondensedPlayerValue(event.target.value)",
+            "void runCondensedOverlay(event.target.value)",
+            "condensedPlayerOptions.map((option)",
+        ],
+        errors,
+    )
+    require(
+        "classic versus condensed surfaces",
+        viewer,
+        [
+            "{!condensedMode && (",
+            '<PlayerHUD side="CT" />',
+            '<PlayerHUD side="T" />',
+            "{!condensedMode && <RoundClock />}",
+            "{!condensedMode && <KillFeed />}",
+            "<MapRenderer size={innerSize} condensed={condensedMode} />",
+            "habitOverlay.mode === \"replay\"",
+            '`${habitOverlay.replays?.length ?? 0} rounds`',
+        ],
+        errors,
+    )
+
+
 def main() -> None:
     errors: list[str] = []
     assert_fullscreen_is_user_initiated(errors)
     assert_zoom_controls(errors)
+    assert_review_modes(errors)
     if errors:
         raise AssertionError("match controls audit failed: " + "; ".join(errors))
     print("match controls audit passed")
