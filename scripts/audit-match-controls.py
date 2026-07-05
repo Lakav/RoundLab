@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MATCH_VIEWER = ROOT / "desktop" / "src" / "app" / "match" / "MatchViewer.tsx"
 MATCH_PAGE = ROOT / "desktop" / "src" / "app" / "match" / "page.tsx"
+CONTROLS = ROOT / "desktop" / "src" / "components" / "replay" / "Controls.tsx"
 MAP_RENDERER = ROOT / "desktop" / "src" / "components" / "replay" / "MapRenderer.tsx"
 BROWSER_API = ROOT / "desktop" / "src" / "lib" / "api.ts"
 BROWSER_BACKEND = ROOT / "desktop" / "src" / "lib" / "backends" / "browser.ts"
@@ -380,6 +381,33 @@ def assert_match_identity_resets(errors: list[str]) -> None:
     )
 
 
+def assert_placeholder_round_playback_guard(errors: list[str]) -> None:
+    controls = read(CONTROLS)
+    replay_store = read(REPLAY_STORE)
+    require(
+        "placeholder round controls guard",
+        controls,
+        [
+            "const roundReady = Boolean(round?.frames.length)",
+            "if (!round || !roundReady) return",
+            "disabled={!roundReady}",
+            'roundReady ? "Play/Pause (Space)" : "Loading round..."',
+            "disabled:pointer-events-none disabled:opacity-40",
+        ],
+        errors,
+    )
+    require(
+        "placeholder round playback guard",
+        replay_store,
+        [
+            "if (!round || round.frames.length === 0) return { playing: false }",
+            "if (!round || round.frames.length === 0) {",
+            "if (s.playing) set({ playing: false })",
+        ],
+        errors,
+    )
+
+
 def main() -> None:
     errors: list[str] = []
     assert_fullscreen_is_user_initiated(errors)
@@ -388,6 +416,7 @@ def main() -> None:
     assert_keyboard_shortcuts_respect_review_mode(errors)
     assert_review_modes(errors)
     assert_match_identity_resets(errors)
+    assert_placeholder_round_playback_guard(errors)
     if errors:
         raise AssertionError("match controls audit failed: " + "; ".join(errors))
     print("match controls audit passed")

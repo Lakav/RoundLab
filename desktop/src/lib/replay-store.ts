@@ -99,13 +99,20 @@ export const useReplay = create<ReplayState>((set, get) => ({
   setRound: (idx) => set({ currentRoundIdx: idx, time: 0, playing: false }),
   setTime: (t) => set({ time: t }),
   setPlaying: (p) => set({ playing: p }),
-  togglePlay: () => set((s) => ({ playing: !s.playing })),
+  togglePlay: () => set((s) => {
+    const round = s.match?.rounds[s.currentRoundIdx];
+    if (!round || round.frames.length === 0) return { playing: false };
+    return { playing: !s.playing };
+  }),
   setSpeed: (s) => set({ speed: s }),
   step: (dt) => {
     const s = get();
     if (!s.playing || !s.match) return;
     const round = s.match.rounds[s.currentRoundIdx];
-    if (!round) return;
+    if (!round || round.frames.length === 0) {
+      if (s.playing) set({ playing: false });
+      return;
+    }
     const duration = s.durationOverride ?? round.duration;
     const next = s.time + dt * s.speed;
     if (s.durationOverride !== null) {
