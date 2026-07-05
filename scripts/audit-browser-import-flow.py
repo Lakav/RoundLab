@@ -108,6 +108,28 @@ def assert_worker_blocks_oversized_decompressed_demo() -> None:
         raise AssertionError("worker must reject oversized decompressed demos before reporting decompression success")
 
 
+def assert_worker_errors_are_user_safe() -> None:
+    worker = read(WORKER)
+    required = [
+        'console.error("[parser-worker] parse failed", error)',
+        "const message = error instanceof Error ? error.message : String(error)",
+        'type: "error"',
+        "message,",
+    ]
+    missing = [snippet for snippet in required if snippet not in worker]
+    errors = [f"worker user-safe error contract is missing: {missing}"] if missing else []
+    forbidden = [
+        "error.stack",
+        ".filter(Boolean).join(\"\\n\")",
+        "[error.message, error.stack]",
+    ]
+    for snippet in forbidden:
+        if snippet in worker:
+            errors.append(f"worker error payload must not include stack detail {snippet!r}")
+    if errors:
+        raise AssertionError("; ".join(errors))
+
+
 def assert_worker_progress_is_monotonic() -> None:
     worker = read(WORKER)
     updates = [(float(value), message) for value, _, message in PROGRESS_RE.findall(worker)]
@@ -150,6 +172,7 @@ def main() -> None:
     assert_demo_extension_filters()
     assert_page_blocks_oversized_demo_before_parse()
     assert_worker_blocks_oversized_decompressed_demo()
+    assert_worker_errors_are_user_safe()
     assert_worker_progress_is_monotonic()
     assert_ui_estimate_uses_backend_progress()
     print("browser import flow audit passed")

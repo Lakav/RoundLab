@@ -99,10 +99,8 @@ self.onmessage = (event: MessageEvent<ParseRequest>) => {
   parseDemo(message)
     .then((id) => self.postMessage({ type: "done", id }))
     .catch((error) => {
-      const message =
-        error instanceof Error
-          ? [error.message, error.stack].filter(Boolean).join("\n")
-          : String(error);
+      console.error("[parser-worker] parse failed", error);
+      const message = error instanceof Error ? error.message : String(error);
       self.postMessage({
         type: "error",
         message,
