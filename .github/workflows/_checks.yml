@@ -60,6 +60,7 @@ jobs:
       - name: Validate Rust parser audit tooling
         run: |
           python3 -m py_compile \
+            scripts/audit-browser-parser-locality.py \
             scripts/audit-match-layout.py \
             scripts/audit-reference-snapshots.py \
             scripts/audit-replay-rendering.py \
@@ -69,6 +70,9 @@ jobs:
 
       - name: Validate web portability
         run: python3 scripts/audit-web-portability.py
+
+      - name: Validate browser parser locality
+        run: python3 scripts/audit-browser-parser-locality.py
 
       - name: Validate match layout sizing
         run: python3 scripts/audit-match-layout.py

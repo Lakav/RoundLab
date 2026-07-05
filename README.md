@@ -126,6 +126,13 @@ To catch accidental regressions back to desktop/Tauri-only code paths, run:
 python3 scripts/audit-web-portability.py
 ```
 
+To catch accidental demo upload or non-local parser regressions in the browser
+import path, run:
+
+```bash
+python3 scripts/audit-browser-parser-locality.py
+```
+
 To validate the match review map sizing, crop transform formulas, and round
 selector overflow guard across representative viewport sizes, run:
 
