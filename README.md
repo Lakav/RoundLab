@@ -113,10 +113,11 @@ local parsed matches in `desktop/data/parsed` when present, run:
 python3 scripts/audit-replay-rendering.py
 ```
 
-This checks map assets, map calibration/crop, invalid projectile samples,
-utility tracks without a player thrower, and utility effects that have no
-plausible player-owned projectile trajectory near detonation. It also checks
-that condensed replay effects resolve to a single best player-owned trajectory.
+This checks map assets, map calibration/crop, start-frame spawn positions,
+invalid projectile samples, utility tracks without a player thrower, and utility
+effects that have no plausible player-owned projectile trajectory near
+detonation. It also checks that condensed replay effects resolve to a single
+best player-owned trajectory.
 Split fixtures must contain utility effect/projectile signal to count as replay
 proof. Opportunistic parsed matches without that signal are reported as `WEAK`
 instead of `OK` so they are not mistaken for utility-rendering coverage.

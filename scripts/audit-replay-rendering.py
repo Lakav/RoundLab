@@ -64,8 +64,11 @@ class AuditStats:
     map_name: str
     source: str
     rounds: int = 0
+    rounds_without_start_players: int = 0
     players: int = 0
     players_out: int = 0
+    start_players: int = 0
+    start_players_out: int = 0
     effects: int = 0
     effects_out: int = 0
     matched_effects: int = 0
@@ -100,8 +103,12 @@ class AuditStats:
             "map": self.map_name,
             "source": self.source,
             "rounds": self.rounds,
+            "roundsWithoutStartPlayers": self.rounds_without_start_players,
             "players": self.players,
             "playersOutPct": self.pct(self.players_out, self.players),
+            "startPlayers": self.start_players,
+            "startPlayersOut": self.start_players_out,
+            "startPlayersOutPct": self.pct(self.start_players_out, self.start_players),
             "effects": self.effects,
             "effectsOutPct": self.pct(self.effects_out, self.effects),
             "matchedEffects": self.matched_effects,
@@ -318,8 +325,30 @@ def audit_positions(
     calibration: Calibration,
     crop: Crop,
 ) -> None:
+    saw_start_players = False
     for frame in round_obj.get("frames") or []:
-        for player in frame.get("players") or []:
+        players = frame.get("players") or []
+        if players and not saw_start_players:
+            saw_start_players = True
+            for player in players:
+                stats.start_players += 1
+                radar = world_to_radar(float(player["x"]), float(player["y"]), calibration)
+                if not in_crop(radar, crop, 40):
+                    stats.start_players_out += 1
+                    if len(stats.examples) < 20:
+                        stats.examples.append(
+                            {
+                                "round": round_obj.get("number"),
+                                "kind": "start-player-outside-crop",
+                                "steam64": player.get("steam64"),
+                                "side": player.get("side") or player.get("team"),
+                                "x": round(float(player["x"])),
+                                "y": round(float(player["y"])),
+                                "radarX": round(radar[0], 1),
+                                "radarY": round(radar[1], 1),
+                            }
+                        )
+        for player in players:
             stats.players += 1
             radar = world_to_radar(float(player["x"]), float(player["y"]), calibration)
             if not in_crop(radar, crop, 40):
@@ -328,6 +357,8 @@ def audit_positions(
             stats.min_y = min(stats.min_y, radar[1])
             stats.max_x = max(stats.max_x, radar[0])
             stats.max_y = max(stats.max_y, radar[1])
+    if not saw_start_players:
+        stats.rounds_without_start_players += 1
 
 
 def audit_effects(
@@ -567,6 +598,10 @@ def assert_stats(stats: AuditStats, *, max_out_pct: float) -> None:
     errors: list[str] = []
     if stats.source == "fixture" and (stats.effects == 0 or stats.utility_tracks == 0):
         errors.append("fixture has no utility effect/projectile signal, so it does not prove replay utility rendering")
+    if stats.rounds_without_start_players:
+        errors.append(f"{stats.rounds_without_start_players} rounds have no player positions in their first populated frame")
+    if stats.start_players_out:
+        errors.append(f"{stats.start_players_out} start-frame player positions are outside map crop")
     if stats.invalid_projectiles:
         errors.append(f"{stats.invalid_projectiles} projectile samples have invalid coordinates")
     if stats.utility_tracks_missing_thrower:
@@ -631,6 +666,7 @@ def main() -> None:
             status = "OK" if has_utility_signal else "WEAK"
             print(
                 f"{status} {stats.label} source={stats.source} map={stats.map_name} rounds={stats.rounds} "
+                f"startOut={stats.start_players_out}/{stats.start_players} "
                 f"effects={stats.effects} matched={stats.matched_effects} "
                 f"condensedUnique={stats.condensed_effects_unique_thrower} "
                 f"condensedAmbiguous={stats.condensed_effects_ambiguous} "
