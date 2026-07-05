@@ -80,6 +80,8 @@ def assert_source_contract(errors: list[str]) -> None:
     required = [
         "sourceIsZstd(source)",
         "FALLBACK_ZSTD_EXPANSION_RATIO",
+        "const parsed = JSON.parse(window.localStorage.getItem(PARSE_ESTIMATE_KEY) ?? \"{}\") as unknown",
+        "if (!parsed || typeof parsed !== \"object\" || Array.isArray(parsed)) return {}",
         "return webEstimateForBytes(size * expansionRatio",
         "effectiveBytes && effectiveBytes > 0 ? effectiveBytes : rawSize",
         "effectiveBytes && effectiveBytes > rawSize",

@@ -62,7 +62,9 @@ function sourceIsZstd(source: DemoSource): boolean {
 function loadWebParseEstimate(): { webMsPerMb?: number; zstdExpansionRatio?: number } {
   if (typeof window === "undefined") return {};
   try {
-    return JSON.parse(window.localStorage.getItem(PARSE_ESTIMATE_KEY) ?? "{}") as {
+    const parsed = JSON.parse(window.localStorage.getItem(PARSE_ESTIMATE_KEY) ?? "{}") as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return parsed as {
       webMsPerMb?: number;
       zstdExpansionRatio?: number;
     };
