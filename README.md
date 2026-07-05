@@ -173,6 +173,13 @@ on-demand round payloads in IndexedDB, run:
 python3 scripts/audit-browser-store-contract.py
 ```
 
+To validate that browser imports still use full-fidelity parser defaults and do
+not silently skip projectile or weapon-fire data, run:
+
+```bash
+python3 scripts/audit-parser-fidelity.py
+```
+
 To validate the match review map sizing, crop transform formulas, and round
 selector overflow guard across representative viewport sizes, run:
 

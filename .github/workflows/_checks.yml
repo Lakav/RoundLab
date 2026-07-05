@@ -66,6 +66,7 @@ jobs:
             scripts/audit-browser-store-contract.py \
             scripts/audit-ci-coverage.py \
             scripts/audit-match-layout.py \
+            scripts/audit-parser-fidelity.py \
             scripts/audit-reference-snapshots.py \
             scripts/audit-replay-fixture-coverage.py \
             scripts/audit-replay-renderer-contract.py \
@@ -95,6 +96,9 @@ jobs:
 
       - name: Validate match layout sizing
         run: python3 scripts/audit-match-layout.py
+
+      - name: Validate parser fidelity defaults
+        run: python3 scripts/audit-parser-fidelity.py
 
       - name: Validate reference parser snapshots
         run: python3 scripts/audit-reference-snapshots.py --reference-only

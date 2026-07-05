@@ -3,9 +3,8 @@
 import { useState } from "react";
 import { Settings, X } from "lucide-react";
 
-/** Renders a small gear button. Clicking it opens an inline panel where the
- *  user can tune parse-quality and capture toggles. Changes are persisted to
- *  localStorage immediately and will apply to the next parse. */
+/** Renders a small gear button. Parsing is intentionally locked to full capture
+ *  until lower-fidelity modes are proven not to break replay review. */
 export function SettingsPanel() {
   const [open, setOpen] = useState(false);
 
