@@ -159,6 +159,13 @@ filters, and parser progress estimate invariants, run:
 python3 scripts/audit-browser-import-flow.py
 ```
 
+To validate the user-facing import workflow from file pick/drop through
+post-parse naming and match opening, run:
+
+```bash
+python3 scripts/audit-browser-import-workflow.py
+```
+
 To validate that parsed matches stay split between lightweight metadata and
 on-demand round payloads in IndexedDB, run:
 

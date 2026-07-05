@@ -61,6 +61,7 @@ jobs:
         run: |
           python3 -m py_compile \
             scripts/audit-browser-import-flow.py \
+            scripts/audit-browser-import-workflow.py \
             scripts/audit-browser-parser-locality.py \
             scripts/audit-browser-store-contract.py \
             scripts/audit-ci-coverage.py \
@@ -85,6 +86,9 @@ jobs:
 
       - name: Validate browser import flow
         run: python3 scripts/audit-browser-import-flow.py
+
+      - name: Validate browser import workflow
+        run: python3 scripts/audit-browser-import-workflow.py
 
       - name: Validate browser store contract
         run: python3 scripts/audit-browser-store-contract.py
