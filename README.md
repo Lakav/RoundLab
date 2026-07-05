@@ -126,6 +126,13 @@ To catch accidental regressions back to desktop/Tauri-only code paths, run:
 python3 scripts/audit-web-portability.py
 ```
 
+To ensure every `scripts/audit-*.py` check is compiled, run in CI, and listed
+here, run:
+
+```bash
+python3 scripts/audit-ci-coverage.py
+```
+
 To catch accidental demo upload or non-local parser regressions in the browser
 import path, run:
 

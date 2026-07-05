@@ -62,6 +62,7 @@ jobs:
           python3 -m py_compile \
             scripts/audit-browser-import-flow.py \
             scripts/audit-browser-parser-locality.py \
+            scripts/audit-ci-coverage.py \
             scripts/audit-match-layout.py \
             scripts/audit-reference-snapshots.py \
             scripts/audit-replay-rendering.py \
@@ -71,6 +72,9 @@ jobs:
 
       - name: Validate web portability
         run: python3 scripts/audit-web-portability.py
+
+      - name: Validate CI audit coverage
+        run: python3 scripts/audit-ci-coverage.py
 
       - name: Validate browser parser locality
         run: python3 scripts/audit-browser-parser-locality.py
