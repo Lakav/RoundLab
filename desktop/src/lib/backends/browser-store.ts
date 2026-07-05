@@ -150,16 +150,20 @@ export async function saveParsedMatch(id: string, name: string, size: number, da
   };
   try {
     const tx = db.transaction([MATCH_STORE, ROUND_STORE], "readwrite");
-    tx.objectStore(MATCH_STORE).put({ ...summary, metadata });
     const rounds = tx.objectStore(ROUND_STORE);
-    for (const round of data.rounds) {
-      rounds.put({
-        key: roundKey(id, round.number),
-        matchId: id,
-        number: round.number,
-        round,
-      } satisfies StoredRound);
-    }
+    const existingKeys = rounds.index("matchId").getAllKeys(id);
+    existingKeys.onsuccess = () => {
+      for (const key of existingKeys.result) rounds.delete(key);
+      tx.objectStore(MATCH_STORE).put({ ...summary, metadata });
+      for (const round of data.rounds) {
+        rounds.put({
+          key: roundKey(id, round.number),
+          matchId: id,
+          number: round.number,
+          round,
+        } satisfies StoredRound);
+      }
+    };
     await txDone(tx);
     return summary;
   } finally {

@@ -123,8 +123,11 @@ def assert_metadata_is_light(store: str) -> list[str]:
             [
                 "rounds: data.rounds.map(stripRoundPayload)",
                 "db.transaction([MATCH_STORE, ROUND_STORE], \"readwrite\")",
-                "tx.objectStore(MATCH_STORE).put({ ...summary, metadata })",
                 "const rounds = tx.objectStore(ROUND_STORE)",
+                "const existingKeys = rounds.index(\"matchId\").getAllKeys(id)",
+                "existingKeys.onsuccess = () =>",
+                "for (const key of existingKeys.result) rounds.delete(key)",
+                "tx.objectStore(MATCH_STORE).put({ ...summary, metadata })",
                 "for (const round of data.rounds)",
                 "key: roundKey(id, round.number)",
                 "matchId: id",
