@@ -124,7 +124,8 @@ def assert_metadata_is_light(store: str) -> list[str]:
                 "rounds: data.rounds.map(stripRoundPayload)",
                 "db.transaction([MATCH_STORE, ROUND_STORE], \"readwrite\")",
                 "const rounds = tx.objectStore(ROUND_STORE)",
-                "const existingKeys = await requestResult<IDBValidKey[]>(rounds.index(\"matchId\").getAllKeys(id))",
+                "await requestResultWithTransactionWork<IDBValidKey[]>(",
+                "rounds.index(\"matchId\").getAllKeys(id)",
                 "for (const key of existingKeys) rounds.delete(key)",
                 "tx.objectStore(MATCH_STORE).put({ ...summary, metadata })",
                 "for (const round of data.rounds)",
@@ -348,6 +349,19 @@ def assert_transaction_errors_propagate(store: str) -> list[str]:
             ],
         )
     )
+    request_work = function_body(store, "requestResultWithTransactionWork")
+    errors.extend(
+        assert_contains(
+            "requestResultWithTransactionWork",
+            request_work,
+            [
+                "work(req.result)",
+                "resolve(req.result)",
+                "reject(error)",
+                "req.onerror = () => reject(req.error ?? new Error(\"IndexedDB request failed\"))",
+            ],
+        )
+    )
     open_db = function_body(store, "openDb")
     errors.extend(
         assert_contains(
@@ -411,7 +425,8 @@ def assert_match_lifecycle(store: str) -> list[str]:
                 "db.transaction([MATCH_STORE, ROUND_STORE], \"readwrite\")",
                 "tx.objectStore(MATCH_STORE).delete(id)",
                 "const rounds = tx.objectStore(ROUND_STORE)",
-                "const keys = await requestResult<IDBValidKey[]>(rounds.index(\"matchId\").getAllKeys(id))",
+                "await requestResultWithTransactionWork<IDBValidKey[]>(",
+                "rounds.index(\"matchId\").getAllKeys(id)",
                 "for (const key of keys) rounds.delete(key)",
                 "await txDone(tx)",
             ],
@@ -423,9 +438,14 @@ def assert_match_lifecycle(store: str) -> list[str]:
             "renameStoredMatch",
             rename_body,
             [
+                "let summary: MatchSummary | null = null",
+                "await requestResultWithTransactionWork<StoredMatch | undefined>(",
+                "if (!item) throw new Error(`Match not found: ${id}`)",
                 "const updated = { ...item, name: normalizeMatchName(name, item.name) }",
                 "store.put(updated)",
-                "return storedMatchSummary(updated) ??",
+                "summary = storedMatchSummary(updated) ??",
+                "if (!summary) throw new Error(`Match not found: ${id}`)",
+                "return summary",
             ],
         )
     )
@@ -437,9 +457,17 @@ def assert_match_lifecycle(store: str) -> list[str]:
             [
                 "name: normalizeMatchName(name, id.slice(0, 8))",
                 "size: normalizeMatchSize(size)",
+                "await requestResultWithTransactionWork<IDBValidKey[]>(",
+                "rounds.index(\"matchId\").getAllKeys(id)",
+                "for (const key of existingKeys) rounds.delete(key)",
+                "tx.objectStore(MATCH_STORE).put({ ...summary, metadata })",
             ],
         )
     )
+    for name in ["deleteStoredMatch", "saveParsedMatch"]:
+        body = function_body(store, name)
+        if "await requestResult<IDBValidKey[]>" in body:
+            errors.append(f"{name} must not await getAllKeys with requestResult before queuing transaction writes")
     return errors
 
 

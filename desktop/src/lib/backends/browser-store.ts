@@ -54,6 +54,20 @@ function requestResult<T>(req: IDBRequest<T>): Promise<T> {
   });
 }
 
+function requestResultWithTransactionWork<T>(req: IDBRequest<T>, work: (result: T) => void): Promise<T> {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => {
+      try {
+        work(req.result);
+        resolve(req.result);
+      } catch (error) {
+        reject(error);
+      }
+    };
+    req.onerror = () => reject(req.error ?? new Error("IndexedDB request failed"));
+  });
+}
+
 function stripRoundPayload(round: Round): Round {
   return {
     ...round,
@@ -207,8 +221,12 @@ export async function deleteStoredMatch(id: string): Promise<void> {
     const tx = db.transaction([MATCH_STORE, ROUND_STORE], "readwrite");
     tx.objectStore(MATCH_STORE).delete(id);
     const rounds = tx.objectStore(ROUND_STORE);
-    const keys = await requestResult<IDBValidKey[]>(rounds.index("matchId").getAllKeys(id));
-    for (const key of keys) rounds.delete(key);
+    await requestResultWithTransactionWork<IDBValidKey[]>(
+      rounds.index("matchId").getAllKeys(id),
+      (keys) => {
+        for (const key of keys) rounds.delete(key);
+      },
+    );
     await txDone(tx);
   } finally {
     db.close();
@@ -220,14 +238,19 @@ export async function renameStoredMatch(id: string, name: string): Promise<Match
   try {
     const tx = db.transaction(MATCH_STORE, "readwrite");
     const store = tx.objectStore(MATCH_STORE);
-    const item = await requestResult<StoredMatch | undefined>(
+    let summary: MatchSummary | null = null;
+    await requestResultWithTransactionWork<StoredMatch | undefined>(
       store.get(id) as IDBRequest<StoredMatch | undefined>,
+      (item) => {
+        if (!item) throw new Error(`Match not found: ${id}`);
+        const updated = { ...item, name: normalizeMatchName(name, item.name) };
+        store.put(updated);
+        summary = storedMatchSummary(updated) ?? { id: updated.id, name: updated.name, createdAt: updated.createdAt, size: updated.size };
+      },
     );
-    if (!item) throw new Error(`Match not found: ${id}`);
-    const updated = { ...item, name: normalizeMatchName(name, item.name) };
-    store.put(updated);
     await txDone(tx);
-    return storedMatchSummary(updated) ?? { id: updated.id, name: updated.name, createdAt: updated.createdAt, size: updated.size };
+    if (!summary) throw new Error(`Match not found: ${id}`);
+    return summary;
   } finally {
     db.close();
   }
@@ -249,17 +272,21 @@ export async function saveParsedMatch(id: string, name: string, size: number, da
   try {
     const tx = db.transaction([MATCH_STORE, ROUND_STORE], "readwrite");
     const rounds = tx.objectStore(ROUND_STORE);
-    const existingKeys = await requestResult<IDBValidKey[]>(rounds.index("matchId").getAllKeys(id));
-    for (const key of existingKeys) rounds.delete(key);
-    tx.objectStore(MATCH_STORE).put({ ...summary, metadata });
-    for (const round of data.rounds) {
-      rounds.put({
-        key: roundKey(id, round.number),
-        matchId: id,
-        number: round.number,
-        round,
-      } satisfies StoredRound);
-    }
+    await requestResultWithTransactionWork<IDBValidKey[]>(
+      rounds.index("matchId").getAllKeys(id),
+      (existingKeys) => {
+        for (const key of existingKeys) rounds.delete(key);
+        tx.objectStore(MATCH_STORE).put({ ...summary, metadata });
+        for (const round of data.rounds) {
+          rounds.put({
+            key: roundKey(id, round.number),
+            matchId: id,
+            number: round.number,
+            round,
+          } satisfies StoredRound);
+        }
+      },
+    );
     await txDone(tx);
     return summary;
   } finally {
