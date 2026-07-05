@@ -239,7 +239,9 @@ function buildHabitReplayRound(
 export default function MatchViewer({ id, visualTest = false }: { id: string; visualTest?: boolean }) {
   const setMatch = useReplay((s) => s.setMatch);
   const setRoundData = useReplay((s) => s.setRoundData);
-  const match = useReplay((s) => s.match);
+  const storedMatch = useReplay((s) => s.match);
+  const storedMatchId = useReplay((s) => s.matchId);
+  const match = storedMatchId === id ? storedMatch : null;
   const currentRoundIdx = useReplay((s) => s.currentRoundIdx);
   const setTime = useReplay((s) => s.setTime);
   const setPlaying = useReplay((s) => s.setPlaying);
@@ -280,10 +282,6 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
       document.removeEventListener("fullscreenchange", onFullscreenChange);
     };
   }, []);
-
-  useEffect(() => {
-    roundLoadPromisesRef.current.clear();
-  }, [id]);
 
   useEffect(() => {
     matchRef.current = match;
@@ -578,7 +576,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
     }
   }, [loadRoundForHabits, setDurationOverride, setHabitOverlay, setPlaying, setTime]);
 
-  if (loading) {
+  if (loading || (!err && storedMatchId !== id)) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-neutral-950">
         <Image

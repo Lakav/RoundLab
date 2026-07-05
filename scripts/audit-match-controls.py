@@ -10,9 +10,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MATCH_VIEWER = ROOT / "desktop" / "src" / "app" / "match" / "MatchViewer.tsx"
+MATCH_PAGE = ROOT / "desktop" / "src" / "app" / "match" / "page.tsx"
 BROWSER_API = ROOT / "desktop" / "src" / "lib" / "api.ts"
 BROWSER_BACKEND = ROOT / "desktop" / "src" / "lib" / "backends" / "browser.ts"
 BACKEND_TYPES = ROOT / "desktop" / "src" / "lib" / "backends" / "types.ts"
+REPLAY_STORE = ROOT / "desktop" / "src" / "lib" / "replay-store.ts"
 
 
 def read(path: Path) -> str:
@@ -235,11 +237,46 @@ def assert_review_modes(errors: list[str]) -> None:
     )
 
 
+def assert_match_identity_resets(errors: list[str]) -> None:
+    viewer = read(MATCH_VIEWER)
+    page = read(MATCH_PAGE)
+    replay_store = read(REPLAY_STORE)
+    require(
+        "match identity guard",
+        viewer,
+        [
+            "const storedMatch = useReplay((s) => s.match)",
+            "const storedMatchId = useReplay((s) => s.matchId)",
+            "const match = storedMatchId === id ? storedMatch : null",
+            "if (loading || (!err && storedMatchId !== id))",
+        ],
+        errors,
+    )
+    require(
+        "match page remount",
+        page,
+        [
+            "const id = params.get(\"id\") ?? \"\"",
+            "<MatchViewer key={id} id={id} visualTest={visualTest} />",
+        ],
+        errors,
+    )
+    require(
+        "replay store setMatch reset",
+        replay_store,
+        [
+            "setMatch: (id, m) => set({ matchId: id, match: m, currentRoundIdx: 0, time: 0, playing: false, durationOverride: null, habitOverlay: null })",
+        ],
+        errors,
+    )
+
+
 def main() -> None:
     errors: list[str] = []
     assert_fullscreen_is_user_initiated(errors)
     assert_zoom_controls(errors)
     assert_review_modes(errors)
+    assert_match_identity_resets(errors)
     if errors:
         raise AssertionError("match controls audit failed: " + "; ".join(errors))
     print("match controls audit passed")
