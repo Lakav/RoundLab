@@ -527,6 +527,7 @@ def main() -> None:
     parser.add_argument("--parsed-dir", type=Path, default=DEFAULT_PARSED_DIR)
     parser.add_argument("--public-dir", type=Path, default=DEFAULT_PUBLIC_DIR)
     parser.add_argument("--skip-parsed", action="store_true", help="Only audit .roundlab-compare split fixtures")
+    parser.add_argument("--assets-only", action="store_true", help="Only validate map calibrations and committed radar assets")
     parser.add_argument("--require-all-map-fixtures", action="store_true", help="Fail if any calibrated map has no local replay fixture")
     parser.add_argument("--max-out-pct", type=float, default=0.1)
     parser.add_argument("--json", action="store_true", help="Print newline-delimited JSON summaries")
@@ -534,6 +535,10 @@ def main() -> None:
 
     calibrations, crops = load_maps()
     assert_map_assets(calibrations, args.public_dir)
+    if args.assets_only:
+        if not args.json:
+            print(f"OK map assets and calibrations for {len(calibrations)} maps")
+        return
     parsed_dir = None if args.skip_parsed else args.parsed_dir
     all_stats = audit_all(args.compare_dir, parsed_dir, calibrations, crops)
     if not all_stats:

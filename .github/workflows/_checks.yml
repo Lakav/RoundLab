@@ -59,11 +59,15 @@ jobs:
         run: |
           python3 -m py_compile \
             scripts/audit-reference-snapshots.py \
+            scripts/audit-replay-rendering.py \
             scripts/validate-release-version.py
           python3 -m json.tool parser/reference_demos.json >/dev/null
 
       - name: Validate reference parser snapshots
         run: python3 scripts/audit-reference-snapshots.py --reference-only
+
+      - name: Validate replay map assets
+        run: python3 scripts/audit-replay-rendering.py --assets-only
 
       - name: Format Rust parser
         working-directory: parser
