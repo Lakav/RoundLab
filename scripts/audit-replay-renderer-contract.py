@@ -116,6 +116,17 @@ def assert_classic_projectile_handoff(map_renderer: str) -> list[str]:
         )
     )
 
+    effect_handoff_body = function_body(map_renderer, "effectHandoffProjectile")
+    errors.extend(
+        assert_contains(
+            "effectHandoffProjectile",
+            effect_handoff_body,
+            [
+                "liveProjectileForEffect(frames, effect, time, ignoredProjectileIds)",
+            ],
+        )
+    )
+
     visible_body = function_body(map_renderer, "visibleProjectiles")
     errors.extend(
         assert_contains(
@@ -125,8 +136,19 @@ def assert_classic_projectile_handoff(map_renderer: str) -> list[str]:
                 "detonatedIds.has(projectile.id)",
                 "projectileResolvedByEffect(projectile, startedEffects, time, frames)",
                 "pair.b.t - time <= 0.16",
-                "effectHandoffProjectile(frames, effect, time)",
+                "effectHandoffProjectile(frames, effect, time, detonatedIds)",
                 "isSameVisualProjectile(current, handoff)",
+            ],
+        )
+    )
+
+    live_body = function_body(map_renderer, "liveProjectileForEffect")
+    errors.extend(
+        assert_contains(
+            "liveProjectileForEffect",
+            live_body,
+            [
+                "ignoredProjectileIds?.has(projectile.id)",
             ],
         )
     )

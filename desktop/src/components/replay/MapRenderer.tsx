@@ -1092,7 +1092,12 @@ function projectileEffectHandoff(
   return best ? { effect: best.effect, active: time >= best.effect.start } : null;
 }
 
-function liveProjectileForEffect(frames: ProjectileSample[], effect: UtilityEffect, time: number): ProjectilePos | null {
+function liveProjectileForEffect(
+  frames: ProjectileSample[],
+  effect: UtilityEffect,
+  time: number,
+  ignoredProjectileIds?: Set<number>,
+): ProjectilePos | null {
   const samples = sampleProjectiles(frames, time);
   const threshold = effect.type === "he" ? 900 : effectSuppressionRadius(effect.type);
   const threshold2 = threshold * threshold;
@@ -1100,6 +1105,7 @@ function liveProjectileForEffect(frames: ProjectileSample[], effect: UtilityEffe
   let bestDist = Infinity;
 
   for (const projectile of samples) {
+    if (ignoredProjectileIds?.has(projectile.id)) continue;
     if (projectileTypeToEffect(projectile.type) !== effect.type) continue;
     const dx = projectile.x - effect.x;
     const dy = projectile.y - effect.y;
@@ -1142,9 +1148,14 @@ function lastProjectileBeforeEffect(
   return best ? { projectile: best, time: bestTime } : null;
 }
 
-function effectHandoffProjectile(frames: ProjectileSample[], effect: UtilityEffect, time: number): ProjectilePos | null {
+function effectHandoffProjectile(
+  frames: ProjectileSample[],
+  effect: UtilityEffect,
+  time: number,
+  ignoredProjectileIds?: Set<number>,
+): ProjectilePos | null {
   if (time >= projectileHideStart(effect)) return null;
-  if (liveProjectileForEffect(frames, effect, time)) return null;
+  if (liveProjectileForEffect(frames, effect, time, ignoredProjectileIds)) return null;
   const last = lastProjectileBeforeEffect(frames, effect);
   if (!last || time < last.time || effect.start - last.time > 1.25) return null;
   const span = Math.max(0.08, effect.start - last.time);
@@ -1332,7 +1343,7 @@ function visibleProjectiles(
   }
 
   for (const effect of startedEffects) {
-    const handoff = effectHandoffProjectile(frames, effect, time);
+    const handoff = effectHandoffProjectile(frames, effect, time, detonatedIds);
     if (!handoff) continue;
     if ([...out.values()].some((current) => isSameVisualProjectile(current, handoff))) continue;
     out.set(handoff.id, handoff);
