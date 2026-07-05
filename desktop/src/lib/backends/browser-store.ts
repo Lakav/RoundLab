@@ -65,6 +65,22 @@ function stripRoundPayload(round: Round): Round {
   };
 }
 
+function assertStorableMatch(data: MatchData): void {
+  if (!Array.isArray(data.rounds) || data.rounds.length === 0) {
+    throw new Error("Cannot store a match without playable rounds.");
+  }
+  const seenRoundNumbers = new Set<number>();
+  for (const round of data.rounds) {
+    if (seenRoundNumbers.has(round.number)) {
+      throw new Error(`Cannot store duplicate round number ${round.number}.`);
+    }
+    seenRoundNumbers.add(round.number);
+    if (!Array.isArray(round.frames) || round.frames.length === 0) {
+      throw new Error(`Cannot store round ${round.number} without frame data.`);
+    }
+  }
+}
+
 export async function listStoredMatches(): Promise<MatchSummary[]> {
   const db = await openDb();
   try {
@@ -140,6 +156,7 @@ export async function renameStoredMatch(id: string, name: string): Promise<Match
 }
 
 export async function saveParsedMatch(id: string, name: string, size: number, data: MatchData): Promise<MatchSummary> {
+  assertStorableMatch(data);
   const db = await openDb();
   const summary: MatchSummary = { id, name, createdAt: Date.now(), size };
   const metadata: MatchData = {

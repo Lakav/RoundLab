@@ -141,6 +141,33 @@ def assert_metadata_is_light(store: str) -> list[str]:
     return errors
 
 
+def assert_store_rejects_unplayable_matches(store: str) -> list[str]:
+    errors: list[str] = []
+    guard = function_body(store, "assertStorableMatch")
+    errors.extend(
+        assert_contains(
+            "assertStorableMatch",
+            guard,
+            [
+                "if (!Array.isArray(data.rounds) || data.rounds.length === 0)",
+                '"Cannot store a match without playable rounds."',
+                "const seenRoundNumbers = new Set<number>()",
+                "if (seenRoundNumbers.has(round.number))",
+                "Cannot store duplicate round number",
+                "if (!Array.isArray(round.frames) || round.frames.length === 0)",
+                "without frame data.",
+            ],
+        )
+    )
+    save_body = function_body(store, "saveParsedMatch")
+    errors.extend(assert_contains("saveParsedMatch storable guard", save_body, ["assertStorableMatch(data)"]))
+    if save_body.find("assertStorableMatch(data)") > save_body.find("const db = await openDb()"):
+        errors.append("saveParsedMatch must validate match payload before opening IndexedDB")
+    if save_body.find("assertStorableMatch(data)") > save_body.find("tx.objectStore(MATCH_STORE).put"):
+        errors.append("saveParsedMatch must validate match payload before writing metadata")
+    return errors
+
+
 def assert_rounds_are_loaded_on_demand(store: str, backend: str, match_viewer: str, replay_store: str) -> list[str]:
     errors: list[str] = []
     read_metadata = function_body(store, "readStoredMetadata")
@@ -300,6 +327,7 @@ def main() -> None:
     errors: list[str] = []
     errors.extend(assert_store_schema(store))
     errors.extend(assert_metadata_is_light(store))
+    errors.extend(assert_store_rejects_unplayable_matches(store))
     errors.extend(assert_rounds_are_loaded_on_demand(store, backend, match_viewer, replay_store))
     errors.extend(assert_transaction_errors_propagate(store))
     errors.extend(assert_match_lifecycle(store))
