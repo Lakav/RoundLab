@@ -14,8 +14,10 @@ from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "desktop" / "out"
+MAPS_TS = ROOT / "desktop" / "src" / "lib" / "maps.ts"
 
 REF_RE = re.compile(r"""(?:href|src)=["']([^"']+)["']""")
+CALIB_RE = re.compile(r"(de_[a-z0-9_]+):\s*\{\s*posX:")
 
 
 def rel(path: Path) -> str:
@@ -33,6 +35,14 @@ def require_file(path: Path, errors: list[str]) -> None:
         errors.append(f"static export file {rel(path)} is empty")
 
 
+def calibrated_maps() -> set[str]:
+    text = read(MAPS_TS)
+    maps = set(CALIB_RE.findall(text))
+    if not maps:
+        raise AssertionError(f"no calibrated maps parsed from {rel(MAPS_TS)}")
+    return maps
+
+
 def assert_required_output(errors: list[str]) -> None:
     if not OUT.exists():
         raise AssertionError("desktop/out is missing; run `cd desktop && pnpm build` before this audit")
@@ -44,10 +54,10 @@ def assert_required_output(errors: list[str]) -> None:
         OUT / "favicon.ico",
         OUT / "icons" / "p90.svg",
         OUT / "icons" / "sg556.svg",
-        OUT / "cs2lens-maps" / "de_cache.png",
-        OUT / "cs2lens-maps" / "de_mirage.png",
     ]:
         require_file(path, errors)
+    for map_name in sorted(calibrated_maps()):
+        require_file(OUT / "cs2lens-maps" / f"{map_name}.png", errors)
 
     media = list((OUT / "_next" / "static" / "media").glob("*")) if (OUT / "_next" / "static" / "media").exists() else []
     if not any(path.name.endswith(".wasm") and "roundlab_parser_bg" in path.name for path in media):
@@ -104,12 +114,24 @@ def assert_no_server_routes(errors: list[str]) -> None:
             errors.append(f"static export contains server-looking file {rel(path)}")
 
 
+def assert_no_legacy_or_os_artifacts(errors: list[str]) -> None:
+    for path in OUT.rglob("*"):
+        if not path.is_file():
+            continue
+        parts = path.relative_to(OUT).parts
+        if path.name == ".DS_Store":
+            errors.append(f"static export contains macOS metadata file {rel(path)}")
+        if parts and parts[0] == "radars":
+            errors.append(f"static export contains legacy radar asset {rel(path)}; replay maps must use cs2lens-maps")
+
+
 def main() -> None:
     errors: list[str] = []
     assert_required_output(errors)
     assert_html_content(errors)
     assert_internal_refs_resolve(errors)
     assert_no_server_routes(errors)
+    assert_no_legacy_or_os_artifacts(errors)
     if errors:
         raise AssertionError("static export output audit failed: " + "; ".join(errors))
     print("static export output audit passed")

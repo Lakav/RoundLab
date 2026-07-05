@@ -132,6 +132,9 @@ def assert_map_contract() -> list[str]:
         text = read(ROOT / rel)
         if "/radars/" in text:
             errors.append(f"{rel} references legacy /radars assets; replay maps must use /cs2lens-maps")
+    legacy_radars = sorted((PUBLIC / "radars").glob("*.png")) if (PUBLIC / "radars").exists() else []
+    for asset in legacy_radars:
+        errors.append(f"{asset.relative_to(ROOT)} is a legacy radar asset; replay maps must use desktop/public/cs2lens-maps")
     for map_name, (pos_x, pos_y, scale) in sorted(calibrations.items()):
         if scale <= 0:
             errors.append(f"{map_name} calibration scale must be positive")
