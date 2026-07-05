@@ -529,11 +529,15 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
     const [scopeKind, scopeId] = playerValue.split(":");
     const playerId = scopeKind === "player" ? Number(scopeId) : NaN;
     if (!Number.isFinite(playerId)) {
+      invalidateHabitRun();
+      setHabitLoading(false);
       setHabitStatus("Select a player");
       return;
     }
     const runId = habitRunRef.current + 1;
     habitRunRef.current = runId;
+    setHabitOverlay(null);
+    setDurationOverride(null);
     setHabitLoading(true);
     setHabitStatus("Loading rounds…");
     setPlaying(false);
@@ -574,7 +578,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
         setHabitLoading(false);
       }
     }
-  }, [loadRoundForHabits, setDurationOverride, setHabitOverlay, setPlaying, setTime]);
+  }, [invalidateHabitRun, loadRoundForHabits, setDurationOverride, setHabitOverlay, setPlaying, setTime]);
 
   if (loading || (!err && storedMatchId !== id)) {
     return (

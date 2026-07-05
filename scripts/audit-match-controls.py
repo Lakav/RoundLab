@@ -191,7 +191,11 @@ def assert_review_modes(errors: list[str]) -> None:
         [
             'const [scopeKind, scopeId] = playerValue.split(":")',
             'const playerId = scopeKind === "player" ? Number(scopeId) : NaN',
+            "invalidateHabitRun()",
+            "setHabitLoading(false)",
             'setHabitStatus("Loading rounds…")',
+            "setHabitOverlay(null)",
+            "setDurationOverride(null)",
             "setPlaying(false)",
             "setTime(0)",
             "for (let i = 0; i < currentMatch.rounds.length; i++)",
@@ -201,6 +205,14 @@ def assert_review_modes(errors: list[str]) -> None:
             'const overlay: HabitOverlay = { label, mode: "replay", trails: [], replays }',
             "setDurationOverride(duration || null)",
             'setHabitStatus(`${replays.length} rounds`)',
+        ],
+        errors,
+    )
+    require(
+        "condensed replay dependencies",
+        viewer,
+        [
+            "}, [invalidateHabitRun, loadRoundForHabits, setDurationOverride, setHabitOverlay, setPlaying, setTime]);",
         ],
         errors,
     )
