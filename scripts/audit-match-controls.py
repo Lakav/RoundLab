@@ -374,9 +374,9 @@ def assert_match_identity_resets(errors: list[str]) -> None:
         replay_store,
         [
             "setDurationOverride: (duration) => set((s) => {",
-            "const roundDuration = s.match?.rounds[s.currentRoundIdx]?.duration ?? s.time",
-            "const maxTime = duration ?? roundDuration",
-            "return { durationOverride: duration, time: Math.min(s.time, maxTime) }",
+            "const nextDuration = safeDurationOverride(duration)",
+            "durationOverride: nextDuration",
+            "time: clampReplayTime(s.time, s.match, s.currentRoundIdx, nextDuration)",
         ],
         errors,
     )
@@ -462,6 +462,41 @@ def assert_replay_store_round_state_guards(errors: list[str]) -> None:
     )
 
 
+def assert_replay_store_time_state_guards(errors: list[str]) -> None:
+    replay_store = read(REPLAY_STORE)
+    require(
+        "replay store time clamp helpers",
+        replay_store,
+        [
+            "function activeDuration(match: MatchData | null, roundIdx: number, durationOverride: number | null, fallback = 0)",
+            "return Number.isFinite(raw) ? Math.max(0, raw) : 0",
+            "function clampReplayTime(value: number, match: MatchData | null, roundIdx: number, durationOverride: number | null)",
+            "if (!Number.isFinite(value)) return 0",
+            "return Math.max(0, Math.min(activeDuration(match, roundIdx, durationOverride), value))",
+            "function safeDurationOverride(duration: number | null)",
+            "duration !== null && Number.isFinite(duration) ? Math.max(0, duration) : null",
+            "function safeReplaySpeed(speed: number)",
+            "[0.25, 0.5, 1, 2, 4].includes(speed) ? speed : 1",
+        ],
+        errors,
+    )
+    require(
+        "replay store time mutation guards",
+        replay_store,
+        [
+            "setTime: (t) => set((s) => ({ time: clampReplayTime(t, s.match, s.currentRoundIdx, s.durationOverride) }))",
+            "setSpeed: (s) => set({ speed: safeReplaySpeed(s) })",
+            "if (!Number.isFinite(dt) || dt <= 0) return",
+            "const roundDuration = activeDuration(s.match, s.currentRoundIdx, null)",
+            "const duration = activeDuration(s.match, s.currentRoundIdx, s.durationOverride)",
+            "const next = clampReplayTime(s.time + dt * safeReplaySpeed(s.speed), s.match, s.currentRoundIdx, s.durationOverride)",
+            "set({ time: next, playing: next < duration })",
+            "set({ time: roundDuration, playing: false })",
+        ],
+        errors,
+    )
+
+
 def main() -> None:
     errors: list[str] = []
     assert_fullscreen_is_user_initiated(errors)
@@ -472,6 +507,7 @@ def main() -> None:
     assert_match_identity_resets(errors)
     assert_placeholder_round_playback_guard(errors)
     assert_replay_store_round_state_guards(errors)
+    assert_replay_store_time_state_guards(errors)
     if errors:
         raise AssertionError("match controls audit failed: " + "; ".join(errors))
     print("match controls audit passed")

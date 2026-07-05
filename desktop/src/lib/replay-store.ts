@@ -79,6 +79,24 @@ function isLoadedRoundPayload(roundNumber: number, round: Round) {
   return round.number === roundNumber && Array.isArray(round.frames) && round.frames.length > 0;
 }
 
+function activeDuration(match: MatchData | null, roundIdx: number, durationOverride: number | null, fallback = 0) {
+  const raw = durationOverride ?? match?.rounds[roundIdx]?.duration ?? fallback;
+  return Number.isFinite(raw) ? Math.max(0, raw) : 0;
+}
+
+function clampReplayTime(value: number, match: MatchData | null, roundIdx: number, durationOverride: number | null) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(activeDuration(match, roundIdx, durationOverride), value));
+}
+
+function safeDurationOverride(duration: number | null) {
+  return duration !== null && Number.isFinite(duration) ? Math.max(0, duration) : null;
+}
+
+function safeReplaySpeed(speed: number) {
+  return [0.25, 0.5, 1, 2, 4].includes(speed) ? speed : 1;
+}
+
 export const useReplay = create<ReplayState>((set, get) => ({
   match: null,
   matchId: null,
@@ -103,40 +121,44 @@ export const useReplay = create<ReplayState>((set, get) => ({
     }),
   setHabitOverlay: (overlay) => set({ habitOverlay: overlay }),
   setDurationOverride: (duration) => set((s) => {
-    const roundDuration = s.match?.rounds[s.currentRoundIdx]?.duration ?? s.time;
-    const maxTime = duration ?? roundDuration;
-    return { durationOverride: duration, time: Math.min(s.time, maxTime) };
+    const nextDuration = safeDurationOverride(duration);
+    return {
+      durationOverride: nextDuration,
+      time: clampReplayTime(s.time, s.match, s.currentRoundIdx, nextDuration),
+    };
   }),
   setRound: (idx) => set((s) => (
     s.match && idx >= 0 && idx < s.match.rounds.length
       ? { currentRoundIdx: idx, time: 0, playing: false }
       : { playing: false }
   )),
-  setTime: (t) => set({ time: t }),
+  setTime: (t) => set((s) => ({ time: clampReplayTime(t, s.match, s.currentRoundIdx, s.durationOverride) })),
   setPlaying: (p) => set((s) => ({ playing: p && roundHasFrames(s.match, s.currentRoundIdx) })),
   togglePlay: () => set((s) => {
     if (!roundHasFrames(s.match, s.currentRoundIdx)) return { playing: false };
     return { playing: !s.playing };
   }),
-  setSpeed: (s) => set({ speed: s }),
+  setSpeed: (s) => set({ speed: safeReplaySpeed(s) }),
   step: (dt) => {
     const s = get();
+    if (!Number.isFinite(dt) || dt <= 0) return;
     if (!s.playing || !s.match) return;
     const round = s.match.rounds[s.currentRoundIdx];
     if (!round || round.frames.length === 0) {
       if (s.playing) set({ playing: false });
       return;
     }
-    const duration = s.durationOverride ?? round.duration;
-    const next = s.time + dt * s.speed;
+    const roundDuration = activeDuration(s.match, s.currentRoundIdx, null);
+    const duration = activeDuration(s.match, s.currentRoundIdx, s.durationOverride);
+    const next = clampReplayTime(s.time + dt * safeReplaySpeed(s.speed), s.match, s.currentRoundIdx, s.durationOverride);
     if (s.durationOverride !== null) {
-      set({ time: Math.min(duration, next), playing: next < duration });
-    } else if (next >= round.duration) {
+      set({ time: next, playing: next < duration });
+    } else if (next >= roundDuration) {
       const nextIdx = s.currentRoundIdx + 1;
       if (nextIdx < s.match.rounds.length) {
         set({ currentRoundIdx: nextIdx, time: 0, playing: roundHasFrames(s.match, nextIdx) });
       } else {
-        set({ time: round.duration, playing: false });
+        set({ time: roundDuration, playing: false });
       }
     } else {
       set({ time: next });
