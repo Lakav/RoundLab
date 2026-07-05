@@ -152,6 +152,8 @@ def assert_store_rejects_unplayable_matches(store: str) -> list[str]:
                 "if (!Array.isArray(data.rounds) || data.rounds.length === 0)",
                 '"Cannot store a match without playable rounds."',
                 "const seenRoundNumbers = new Set<number>()",
+                "if (!Number.isInteger(round.number))",
+                '"Cannot store a round without an integer round number."',
                 "if (seenRoundNumbers.has(round.number))",
                 "Cannot store duplicate round number",
                 "if (!Array.isArray(round.frames) || round.frames.length === 0)",
@@ -165,6 +167,38 @@ def assert_store_rejects_unplayable_matches(store: str) -> list[str]:
         errors.append("saveParsedMatch must validate match payload before opening IndexedDB")
     if save_body.find("assertStorableMatch(data)") > save_body.find("tx.objectStore(MATCH_STORE).put"):
         errors.append("saveParsedMatch must validate match payload before writing metadata")
+    return errors
+
+
+def assert_store_validates_read_round_payload(store: str) -> list[str]:
+    errors: list[str] = []
+    guard = function_body(store, "assertReadableStoredRound")
+    errors.extend(
+        assert_contains(
+            "assertReadableStoredRound",
+            guard,
+            [
+                "item.matchId !== matchId || item.number !== number || item.round.number !== number",
+                "does not match its IndexedDB key.",
+                "if (!Array.isArray(item.round.frames) || item.round.frames.length === 0)",
+                "has no frame data.",
+                "return item.round",
+            ],
+        )
+    )
+    read_round = function_body(store, "readStoredRound")
+    errors.extend(
+        assert_contains(
+            "readStoredRound payload validation",
+            read_round,
+            [
+                "if (!item) throw new Error(`Round not found: ${number}`)",
+                "return assertReadableStoredRound(matchId, number, item)",
+            ],
+        )
+    )
+    if read_round.find("return assertReadableStoredRound(matchId, number, item)") < read_round.find("if (!item)"):
+        errors.append("readStoredRound must reject missing items before validating payload shape")
     return errors
 
 
@@ -188,7 +222,7 @@ def assert_rounds_are_loaded_on_demand(store: str, backend: str, match_viewer: s
             read_round,
             [
                 "tx.objectStore(ROUND_STORE).get(roundKey(matchId, number))",
-                "return item.round",
+                "return assertReadableStoredRound(matchId, number, item)",
             ],
         )
     )
@@ -328,6 +362,7 @@ def main() -> None:
     errors.extend(assert_store_schema(store))
     errors.extend(assert_metadata_is_light(store))
     errors.extend(assert_store_rejects_unplayable_matches(store))
+    errors.extend(assert_store_validates_read_round_payload(store))
     errors.extend(assert_rounds_are_loaded_on_demand(store, backend, match_viewer, replay_store))
     errors.extend(assert_transaction_errors_propagate(store))
     errors.extend(assert_match_lifecycle(store))

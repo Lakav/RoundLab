@@ -71,6 +71,9 @@ function assertStorableMatch(data: MatchData): void {
   }
   const seenRoundNumbers = new Set<number>();
   for (const round of data.rounds) {
+    if (!Number.isInteger(round.number)) {
+      throw new Error("Cannot store a round without an integer round number.");
+    }
     if (seenRoundNumbers.has(round.number)) {
       throw new Error(`Cannot store duplicate round number ${round.number}.`);
     }
@@ -79,6 +82,16 @@ function assertStorableMatch(data: MatchData): void {
       throw new Error(`Cannot store round ${round.number} without frame data.`);
     }
   }
+}
+
+function assertReadableStoredRound(matchId: string, number: number, item: StoredRound): Round {
+  if (item.matchId !== matchId || item.number !== number || item.round.number !== number) {
+    throw new Error(`Stored round ${number} does not match its IndexedDB key.`);
+  }
+  if (!Array.isArray(item.round.frames) || item.round.frames.length === 0) {
+    throw new Error(`Stored round ${number} has no frame data.`);
+  }
+  return item.round;
 }
 
 export async function listStoredMatches(): Promise<MatchSummary[]> {
@@ -117,7 +130,7 @@ export async function readStoredRound(matchId: string, number: number): Promise<
       tx.objectStore(ROUND_STORE).get(roundKey(matchId, number)) as IDBRequest<StoredRound | undefined>,
     );
     if (!item) throw new Error(`Round not found: ${number}`);
-    return item.round;
+    return assertReadableStoredRound(matchId, number, item);
   } finally {
     db.close();
   }
