@@ -204,6 +204,19 @@ def assert_store_validates_read_round_payload(store: str) -> list[str]:
 
 def assert_store_validates_lightweight_metadata_on_read(store: str) -> list[str]:
     errors: list[str] = []
+    payload_length = function_body(store, "metadataPayloadLength")
+    errors.extend(
+        assert_contains(
+            "metadataPayloadLength",
+            payload_length,
+            [
+                "if (value === undefined || value === null) return 0",
+                "if (!Array.isArray(value))",
+                "metadata field ${field} is not an array.",
+                "return value.length",
+            ],
+        )
+    )
     guard = function_body(store, "assertLightweightMetadata")
     errors.extend(
         assert_contains(
@@ -217,13 +230,18 @@ def assert_store_validates_lightweight_metadata_on_read(store: str) -> list[str]
                 "without an integer round number.",
                 "if (seenRoundNumbers.has(round.number))",
                 "has duplicate round metadata",
-                "round.frames.length > 0",
-                "round.events.length > 0",
-                "(round.effects?.length ?? 0) > 0",
-                "(round.weaponFires?.length ?? 0) > 0",
-                "(round.projectileFrames?.length ?? 0) > 0",
+                'metadataPayloadLength(id, round.number, "frames", round.frames)',
+                'metadataPayloadLength(id, round.number, "events", round.events)',
+                'metadataPayloadLength(id, round.number, "effects", round.effects)',
+                'metadataPayloadLength(id, round.number, "weaponFires", round.weaponFires)',
+                'metadataPayloadLength(id, round.number, "projectileFrames", round.projectileFrames)',
+                "frames > 0",
+                "events > 0",
+                "effects > 0",
+                "weaponFires > 0",
+                "projectileFrames > 0",
                 "metadata contains full round payloads. Re-import the demo.",
-                "return metadata",
+                "rounds: metadata.rounds.map(stripRoundPayload)",
             ],
         )
     )

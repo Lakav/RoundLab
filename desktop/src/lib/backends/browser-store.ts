@@ -94,6 +94,14 @@ function assertReadableStoredRound(matchId: string, number: number, item: Stored
   return item.round;
 }
 
+function metadataPayloadLength(id: string, roundNumber: number, field: string, value: unknown): number {
+  if (value === undefined || value === null) return 0;
+  if (!Array.isArray(value)) {
+    throw new Error(`Stored match ${id} round ${roundNumber} metadata field ${field} is not an array.`);
+  }
+  return value.length;
+}
+
 function assertLightweightMetadata(id: string, metadata: MatchData): MatchData {
   if (!Array.isArray(metadata.rounds) || metadata.rounds.length === 0) {
     throw new Error(`Stored match ${id} has no round metadata.`);
@@ -107,17 +115,25 @@ function assertLightweightMetadata(id: string, metadata: MatchData): MatchData {
       throw new Error(`Stored match ${id} has duplicate round metadata ${round.number}.`);
     }
     seenRoundNumbers.add(round.number);
+    const frames = metadataPayloadLength(id, round.number, "frames", round.frames);
+    const events = metadataPayloadLength(id, round.number, "events", round.events);
+    const effects = metadataPayloadLength(id, round.number, "effects", round.effects);
+    const weaponFires = metadataPayloadLength(id, round.number, "weaponFires", round.weaponFires);
+    const projectileFrames = metadataPayloadLength(id, round.number, "projectileFrames", round.projectileFrames);
     const hasPayload =
-      round.frames.length > 0 ||
-      round.events.length > 0 ||
-      (round.effects?.length ?? 0) > 0 ||
-      (round.weaponFires?.length ?? 0) > 0 ||
-      (round.projectileFrames?.length ?? 0) > 0;
+      frames > 0 ||
+      events > 0 ||
+      effects > 0 ||
+      weaponFires > 0 ||
+      projectileFrames > 0;
     if (hasPayload) {
       throw new Error(`Stored match ${id} metadata contains full round payloads. Re-import the demo.`);
     }
   }
-  return metadata;
+  return {
+    ...metadata,
+    rounds: metadata.rounds.map(stripRoundPayload),
+  };
 }
 
 export async function listStoredMatches(): Promise<MatchSummary[]> {
