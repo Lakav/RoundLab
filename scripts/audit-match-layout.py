@@ -158,6 +158,29 @@ def assert_crop_transform(radar_size: float, crops: dict[str, Crop], constants: 
         raise AssertionError("; ".join(errors))
 
 
+def assert_match_viewer_uses_crop_transform() -> None:
+    match_viewer = MATCH_VIEWER.read_text(encoding="utf-8")
+    errors: list[str] = []
+    required = [
+        "import { cropFor, MAP_CALIBRATION, RADAR_SIZE } from \"@/lib/maps\";",
+        "const crop = cropFor(match.meta.map);",
+        "const cropScale = RADAR_SIZE / crop.size;",
+        "const innerSize = mapSize * cropScale;",
+        "const cropTx = -crop.x * (mapSize / crop.size);",
+        "const cropTy = -crop.y * (mapSize / crop.size);",
+        "width: innerSize,",
+        "height: innerSize,",
+        "transform: `translate(${displayMapPan.x}px, ${displayMapPan.y}px) scale(${mapZoom}) translate(${cropTx}px, ${cropTy}px)`",
+        "<MapRenderer size={innerSize} condensed={condensedMode} />",
+        "size={innerSize}",
+    ]
+    for token in required:
+        if token not in match_viewer:
+            errors.append(f"MatchViewer crop rendering contract is missing {token!r}")
+    if errors:
+        raise AssertionError("; ".join(errors))
+
+
 def assert_round_controls_can_overflow() -> None:
     round_list = ROUND_LIST.read_text(encoding="utf-8")
     match_viewer = MATCH_VIEWER.read_text(encoding="utf-8")
@@ -180,6 +203,7 @@ def main() -> None:
     assert_crops(radar_size, crops)
     assert_viewport_fit(constants)
     assert_crop_transform(radar_size, crops, constants)
+    assert_match_viewer_uses_crop_transform()
     assert_round_controls_can_overflow()
     print(f"match layout audit passed: {len(crops)} maps, {len(VIEWPORTS)} viewport probes")
 
