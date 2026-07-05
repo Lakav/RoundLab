@@ -20,7 +20,7 @@ import { cropFor, MAP_CALIBRATION, RADAR_SIZE } from "@/lib/maps";
 import { enterMatchFullscreen, exitMatchFullscreen, getMatchMetadata, getRound, writeDebugLog } from "@/lib/api";
 
 const DRAW_WIDTH = 3;
-const BASE_MAP_VIEW_SCALE = 0.75;
+const BASE_MAP_VIEW_SCALE = 1;
 const MIN_MAP = 280;
 const MAX_MAP = 860;
 const MIN_MAP_ZOOM = 1;
@@ -766,7 +766,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
           >
             <div
               data-testid="match-map-viewport"
-              className="relative overflow-hidden"
+              className="relative overflow-visible"
               style={{
                 width: mapSize,
                 height: mapSize,
@@ -782,7 +782,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
                 style={{
                   width: mapSize,
                   height: mapSize,
-                  overflow: "hidden",
+                  overflow: "visible",
                   contain: "layout style",
                 }}
               >

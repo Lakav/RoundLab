@@ -964,11 +964,14 @@ function effectSuppressionRadius(type: string): number {
 }
 
 function projectileHideStart(effect: UtilityEffect): number {
-  // Keep a short visual handoff after detonation. Without it, projectiles can
-  // vanish exactly when the viewer expects the impact/bounce trail to explain
-  // what happened.
-  if (effect.type === "he") return effect.start + 0.12;
-  return effect.start + 0.1;
+  // Keep the terminal trajectory visible briefly after the effect starts.
+  // Some demos stop emitting projectile samples before the detonation event,
+  // so without this handoff the viewer can show only the final smoke/fire/etc.
+  if (effect.type === "smoke" || effect.type === "fire") return effect.start + 0.65;
+  if (effect.type === "decoy") return effect.start + 0.5;
+  if (effect.type === "flash") return effect.start + 0.32;
+  if (effect.type === "he") return effect.start + 0.22;
+  return effect.start + 0.25;
 }
 
 type ProjectileEffectHandoff = {
@@ -1008,10 +1011,10 @@ function projectileTouchesEffect(
     if (dx * dx + dy * dy <= threshold2) return true;
   }
 
-  // HE projectiles can land near an older HE explosion. If the same projectile
-  // was not present around that older effect's timestamp, do not let the older
-  // effect suppress it only because the current X/Y happens to be nearby.
-  if (type === "he" && !matchedOwnTrack && time - effect.start > 0.25) return false;
+  // If this projectile was not present when an older effect started, do not let
+  // that effect suppress it only because the current X/Y passes nearby. This is
+  // common on Cache where later smokes fly through existing smoke radii.
+  if (!matchedOwnTrack && time - effect.start > 0.25) return false;
 
   const dx = projectile.x - effect.x;
   const dy = projectile.y - effect.y;
@@ -1135,7 +1138,6 @@ function lastProjectileBeforeEffect(
 }
 
 function effectHandoffProjectile(frames: ProjectileSample[], effect: UtilityEffect, time: number): ProjectilePos | null {
-  if (effect.type !== "he") return null;
   if (time >= projectileHideStart(effect)) return null;
   if (liveProjectileForEffect(frames, effect, time)) return null;
   const last = lastProjectileBeforeEffect(frames, effect);
@@ -1143,7 +1145,7 @@ function effectHandoffProjectile(frames: ProjectileSample[], effect: UtilityEffe
   const span = Math.max(0.08, effect.start - last.time);
   const progress = Math.max(0, Math.min(1, (time - last.time) / span));
   return {
-    id: -10_000_000 - Math.round(effect.start * 1000),
+    id: last.projectile.id,
     type: last.projectile.type ?? projectileTypeForEffect(effect),
     x: last.projectile.x + (effect.x - last.projectile.x) * progress,
     y: last.projectile.y + (effect.y - last.projectile.y) * progress,
@@ -1662,6 +1664,7 @@ function isPistolWeapon(name?: string) {
 
 const SHOOT_ROTATION_OFFSET = 0;
 const PLAYER_ARROW_TIP_OFFSET = 9;
+const WEAPON_FIRE_SCALE = 0.64;
 
 function teamColor(team?: number) {
   if (team === 3) return 0x5ab0ff;
@@ -1973,7 +1976,7 @@ function drawEffect(
   unitsToPx: number,
   contextualEffects: UtilityEffect[] = [],
 ) {
-  const p = toRadar(effect.x, effect.y, effect.z);
+  const p = toRadar(effect.x, effect.y, 0);
   const age = Math.max(0, time - effect.start);
   const total = Math.max(0.1, effect.end - effect.start);
   const life = Math.max(0, Math.min(1, age / total));
@@ -2083,7 +2086,7 @@ function drawProjectile(
   const color = teamColor(throwerTeam);
   const raw = projectileHistoryFromTrack(projectileTrack, projectile, time, toRadar);
   if (handoff?.active) {
-    const impact = toRadar(handoff.effect.x, handoff.effect.y, handoff.effect.z);
+    const impact = toRadar(handoff.effect.x, handoff.effect.y, 0);
     const tail = raw[raw.length - 1];
     if (!tail || Math.hypot(impact.x - tail.x, impact.y - tail.y) > 0.5) raw.push(impact);
   }
@@ -2099,7 +2102,7 @@ function drawProjectile(
 
   const heightAboveGround = projectileHeightAboveGround(projectile, projectileTrack);
   const p = handoff?.active
-    ? toRadar(handoff.effect.x, handoff.effect.y, handoff.effect.z)
+    ? toRadar(handoff.effect.x, handoff.effect.y, 0)
     : toRadar(projectile.x, projectile.y, heightAboveGround);
   const shadow = toRadar(projectile.x, projectile.y, 0);
   const shadowDistance = Math.hypot(p.x - shadow.x, p.y - shadow.y);
@@ -2146,8 +2149,8 @@ function drawWeaponFire(
 
   // Target box for this weapon.
   const pistol = !isKnife && isPistolWeapon(fire.weapon);
-  const maxW = isKnife ? 26 : pistol ? 22 : 30;
-  const maxH = isKnife ? 18 : pistol ? 13 : 16;
+  const maxW = (isKnife ? 26 : pistol ? 22 : 30) * WEAPON_FIRE_SCALE;
+  const maxH = (isKnife ? 18 : pistol ? 13 : 16) * WEAPON_FIRE_SCALE;
 
   // Compute the final forward offset synchronously so the sprite is
   // correctly placed on the very first frame, even before the texture
@@ -2165,10 +2168,10 @@ function drawWeaponFire(
     fallback.rotation = angle;
     if (isKnife) {
       fallback
-        .moveTo(PLAYER_ARROW_TIP_OFFSET + 2, -6)
+        .moveTo(PLAYER_ARROW_TIP_OFFSET + 2, -6 * WEAPON_FIRE_SCALE)
         .lineTo(PLAYER_ARROW_TIP_OFFSET + maxW + 4, 0)
-        .lineTo(PLAYER_ARROW_TIP_OFFSET + 2, 6)
-        .stroke({ color: 0xf8fafc, width: 2.2, alpha: 0.85 * alpha });
+        .lineTo(PLAYER_ARROW_TIP_OFFSET + 2, 6 * WEAPON_FIRE_SCALE)
+        .stroke({ color: 0xf8fafc, width: 1.7, alpha: 0.85 * alpha });
     } else {
       const tip = PLAYER_ARROW_TIP_OFFSET + maxW + 7;
       fallback
@@ -2177,7 +2180,7 @@ function drawWeaponFire(
         .lineTo(tip - 5, 0)
         .lineTo(tip, maxH * 0.32)
         .fill({ color: 0xfff2a6, alpha: 0.55 * alpha });
-      fallback.circle(PLAYER_ARROW_TIP_OFFSET + 4, 0, 2.2).fill({ color: 0xffffff, alpha: 0.75 * alpha });
+      fallback.circle(PLAYER_ARROW_TIP_OFFSET + 3, 0, 1.5).fill({ color: 0xffffff, alpha: 0.75 * alpha });
     }
     layer.addChild(fallback);
   }
@@ -3070,25 +3073,25 @@ export function MapRenderer({ size = 800, condensed = false }: { size?: number; 
           const shotAge = Math.max(0, time - shot.t);
           const shotDuration = isKnifeWeapon(shot.weapon) ? 0.18 : 0.14;
           const shotAlpha = Math.max(0, 1 - shotAge / shotDuration);
-          s.arrowRotator.scale.set(1 + shotAlpha * (isKnifeWeapon(shot.weapon) ? 0.05 : 0.03));
+          s.arrowRotator.scale.set(1 + shotAlpha * (isKnifeWeapon(shot.weapon) ? 0.025 : 0.015));
           if (isKnifeWeapon(shot.weapon)) {
             s.muzzleFlash
-              .moveTo(PLAYER_ARROW_TIP_OFFSET + 1, -7)
-              .lineTo(PLAYER_ARROW_TIP_OFFSET + 30, 0)
-              .lineTo(PLAYER_ARROW_TIP_OFFSET + 1, 7)
-              .stroke({ color: 0xf8fafc, width: 2.4, alpha: 0.95 * shotAlpha });
+              .moveTo(PLAYER_ARROW_TIP_OFFSET + 1, -4.5)
+              .lineTo(PLAYER_ARROW_TIP_OFFSET + 21, 0)
+              .lineTo(PLAYER_ARROW_TIP_OFFSET + 1, 4.5)
+              .stroke({ color: 0xf8fafc, width: 1.6, alpha: 0.86 * shotAlpha });
           } else {
-            const tip = PLAYER_ARROW_TIP_OFFSET + 33;
+            const tip = PLAYER_ARROW_TIP_OFFSET + 22;
             s.muzzleFlash
               .moveTo(PLAYER_ARROW_TIP_OFFSET + 1, 0)
-              .lineTo(tip, -6)
-              .lineTo(tip - 7, 0)
-              .lineTo(tip, 6)
-              .fill({ color: 0xffd166, alpha: 0.78 * shotAlpha });
+              .lineTo(tip, -3.8)
+              .lineTo(tip - 4.5, 0)
+              .lineTo(tip, 3.8)
+              .fill({ color: 0xffd166, alpha: 0.62 * shotAlpha });
             s.muzzleFlash
-              .moveTo(PLAYER_ARROW_TIP_OFFSET + 4, 0)
-              .lineTo(tip + 4, 0)
-              .stroke({ color: 0xffffff, width: 1.6, alpha: 0.95 * shotAlpha });
+              .moveTo(PLAYER_ARROW_TIP_OFFSET + 3, 0)
+              .lineTo(tip + 2.5, 0)
+              .stroke({ color: 0xffffff, width: 1.1, alpha: 0.82 * shotAlpha });
           }
         } else {
           s.arrowRotator.scale.set(1);
