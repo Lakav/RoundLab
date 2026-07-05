@@ -166,6 +166,14 @@ selector overflow guard across representative viewport sizes, run:
 python3 scripts/audit-match-layout.py
 ```
 
+To validate that the Pixi replay renderer still keeps projectile trajectories
+visible through effect handoff/future-frame fallbacks in both classic and
+condensed replay modes, run:
+
+```bash
+python3 scripts/audit-replay-renderer-contract.py
+```
+
 ## Notes
 
 Demo files, parsed outputs, build artifacts, and local caches are intentionally

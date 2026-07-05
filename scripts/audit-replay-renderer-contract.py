@@ -1,0 +1,252 @@
+#!/usr/bin/env python3
+"""Audit replay renderer safeguards that are easy to regress silently.
+
+The data-level replay audit proves that parsed effects can be matched to
+projectile tracks. This source-level audit checks that the React/Pixi renderer
+still contains the handoff, future-frame, and condensed-replay paths needed to
+show those trajectories instead of only showing the final utility effect.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+MAP_RENDERER = ROOT / "desktop" / "src" / "components" / "replay" / "MapRenderer.tsx"
+MATCH_VIEWER = ROOT / "desktop" / "src" / "app" / "match" / "MatchViewer.tsx"
+REPLAY_STORE = ROOT / "desktop" / "src" / "lib" / "replay-store.ts"
+
+
+def read(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def function_body(source: str, name: str) -> str:
+    match = re.search(rf"function\s+{re.escape(name)}\s*\(", source)
+    if not match:
+        raise AssertionError(f"missing function {name}")
+    paren = source.find("(", match.end() - 1)
+    if paren < 0:
+        raise AssertionError(f"missing parameter list for {name}")
+    depth = 0
+    end_paren = -1
+    for index in range(paren, len(source)):
+        char = source[index]
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                end_paren = index
+                break
+    if end_paren < 0:
+        raise AssertionError(f"unterminated parameter list for {name}")
+    brace = source.find("{", end_paren)
+    if brace < 0:
+        raise AssertionError(f"missing function body for {name}")
+    depth = 0
+    for index in range(brace, len(source)):
+        char = source[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return source[brace + 1:index]
+    raise AssertionError(f"unterminated function body for {name}")
+
+
+def assert_contains(label: str, source: str, tokens: list[str]) -> list[str]:
+    return [f"{label} is missing {token!r}" for token in tokens if token not in source]
+
+
+def assert_projectile_source_selection(map_renderer: str) -> list[str]:
+    body = function_body(map_renderer, "projectileSamples")
+    return assert_contains(
+        "projectileSamples",
+        body,
+        [
+            "round.projectileFrames?.length ? round.projectileFrames : round.frames",
+        ],
+    )
+
+
+def assert_classic_projectile_handoff(map_renderer: str) -> list[str]:
+    errors: list[str] = []
+    hide_body = function_body(map_renderer, "projectileHideStart")
+    errors.extend(
+        assert_contains(
+            "projectileHideStart",
+            hide_body,
+            [
+                'effect.type === "smoke"',
+                "effect.start + 0.65",
+                'effect.type === "fire"',
+                'effect.type === "flash"',
+                'effect.type === "he"',
+            ],
+        )
+    )
+
+    handoff_body = function_body(map_renderer, "projectileEffectHandoff")
+    errors.extend(
+        assert_contains(
+            "projectileEffectHandoff",
+            handoff_body,
+            [
+                "projectileTouchesEffect(projectile, effect, frames, time)",
+                "projectileSeenNearEffect(projectile, effect, frames)",
+                "time < effect.start - 0.12",
+                "time > projectileHideStart(effect)",
+                "active: time >= best.effect.start",
+            ],
+        )
+    )
+
+    visible_body = function_body(map_renderer, "visibleProjectiles")
+    errors.extend(
+        assert_contains(
+            "visibleProjectiles",
+            visible_body,
+            [
+                "detonatedIds.has(projectile.id)",
+                "projectileResolvedByEffect(projectile, startedEffects, time, frames)",
+                "pair.b.t - time <= 0.16",
+                "effectHandoffProjectile(frames, effect, time)",
+                "isSameVisualProjectile(current, handoff)",
+            ],
+        )
+    )
+
+    draw_body = function_body(map_renderer, "drawProjectile")
+    errors.extend(
+        assert_contains(
+            "drawProjectile",
+            draw_body,
+            [
+                "projectileHistoryFromTrack(projectileTrack, projectile, time, toRadar)",
+                "handoff?.active",
+                "raw.push(impact)",
+                "toRadar(handoff.effect.x, handoff.effect.y, 0)",
+                "if (handoff?.active) return;",
+            ],
+        )
+    )
+    return errors
+
+
+def assert_condensed_projectile_handoff(map_renderer: str, match_viewer: str, replay_store: str) -> list[str]:
+    errors: list[str] = []
+    replay_types = ["HabitReplayProjectile", "HabitReplayEffect", "HabitReplayRound"]
+    errors.extend(assert_contains("replay-store condensed types", replay_store, replay_types))
+
+    builder_body = function_body(match_viewer, "buildHabitReplayRound")
+    errors.extend(
+        assert_contains(
+            "buildHabitReplayRound",
+            builder_body,
+            [
+                "const allTracks = new Map",
+                "const usableTracks = [...allTracks.entries()]",
+                ".filter((track) => track.samples.length >= 2)",
+                "const projectiles = usableTracks.filter((track) => track.thrower === playerId)",
+                "let bestDistance = Infinity",
+                "let bestThrower: number | undefined",
+                "if (bestDistance <= radius2 && bestThrower === playerId) effects.push(effect)",
+            ],
+        )
+    )
+
+    habit_body = function_body(map_renderer, "drawHabitProjectile")
+    errors.extend(
+        assert_contains(
+            "drawHabitProjectile",
+            habit_body,
+            [
+                "effectSuppressionRadius(kind)",
+                "activeHandoff",
+                "time >= handoff.start",
+                "points.push(impact)",
+                "drawSmoothTrail(g, points, color)",
+                "if (points.length < 2) return",
+            ],
+        )
+    )
+
+    overlay_body = function_body(map_renderer, "drawHabitReplayOverlay")
+    errors.extend(
+        assert_contains(
+            "drawHabitReplayOverlay",
+            overlay_body,
+            [
+                "drawHabitProjectile(layer, projectile, time, toRadar, replay.effects)",
+                "drawHabitEffect(layer, effect, time, toRadar, unitsToPx, replay.effects)",
+                "drawHabitGhostPlayer(layer, replay, time, toRadar)",
+            ],
+        )
+    )
+
+    match_viewer_body = function_body(match_viewer, "MatchViewer")
+    errors.extend(
+        assert_contains(
+            "MatchViewer condensed playback",
+            match_viewer_body,
+            [
+                'reviewMode === "condensed"',
+                "runCondensedOverlay",
+                "setDurationOverride(duration || null)",
+                "<MapRenderer size={innerSize} condensed={condensedMode} />",
+            ],
+        )
+    )
+
+    renderer_body = function_body(map_renderer, "MapRenderer")
+    errors.extend(
+        assert_contains(
+            "MapRenderer condensed branch",
+            renderer_body,
+            [
+                "if (condensed)",
+                "drawHabitReplayOverlay(habitLayer, currentHabitOverlay.replays, time, toRadar, unitsToPx)",
+                "return;",
+            ],
+        )
+    )
+    return errors
+
+
+def assert_projectile_diagnostics(map_renderer: str) -> list[str]:
+    renderer_body = function_body(map_renderer, "MapRenderer")
+    return assert_contains(
+        "MapRenderer projectile diagnostics",
+        renderer_body,
+        [
+            "trajectory-not-drawn",
+            "projectileRenderIssueDebug(projectile, raw, current, utilityLayer, size)",
+            "trajectoriesNotDrawn",
+            "projectile-hidden",
+            "projectile-visible-reason",
+        ],
+    )
+
+
+def main() -> None:
+    map_renderer = read(MAP_RENDERER)
+    match_viewer = read(MATCH_VIEWER)
+    replay_store = read(REPLAY_STORE)
+
+    errors: list[str] = []
+    errors.extend(assert_projectile_source_selection(map_renderer))
+    errors.extend(assert_classic_projectile_handoff(map_renderer))
+    errors.extend(assert_condensed_projectile_handoff(map_renderer, match_viewer, replay_store))
+    errors.extend(assert_projectile_diagnostics(map_renderer))
+
+    if errors:
+        raise AssertionError("replay renderer contract audit failed: " + "; ".join(errors))
+    print("replay renderer contract audit passed")
+
+
+if __name__ == "__main__":
+    main()

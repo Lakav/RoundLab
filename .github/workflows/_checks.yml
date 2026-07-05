@@ -66,6 +66,7 @@ jobs:
             scripts/audit-match-layout.py \
             scripts/audit-reference-snapshots.py \
             scripts/audit-replay-fixture-coverage.py \
+            scripts/audit-replay-renderer-contract.py \
             scripts/audit-replay-rendering.py \
             scripts/audit-web-portability.py \
             scripts/validate-release-version.py
@@ -92,6 +93,9 @@ jobs:
 
       - name: Validate replay fixture coverage manifest
         run: python3 scripts/audit-replay-fixture-coverage.py
+
+      - name: Validate replay renderer contract
+        run: python3 scripts/audit-replay-renderer-contract.py
 
       - name: Validate replay map assets
         run: python3 scripts/audit-replay-rendering.py --assets-only
