@@ -68,6 +68,7 @@ jobs:
             scripts/audit-browser-parser-locality.py \
             scripts/audit-browser-store-contract.py \
             scripts/audit-ci-coverage.py \
+            scripts/audit-home-accessibility.py \
             scripts/audit-match-layout.py \
             scripts/audit-parser-fidelity.py \
             scripts/audit-public-assets.py \
@@ -102,6 +103,9 @@ jobs:
 
       - name: Validate browser store contract
         run: python3 scripts/audit-browser-store-contract.py
+
+      - name: Validate home accessibility contract
+        run: python3 scripts/audit-home-accessibility.py
 
       - name: Validate match layout sizing
         run: python3 scripts/audit-match-layout.py

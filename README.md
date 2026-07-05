@@ -189,6 +189,13 @@ on-demand round payloads in IndexedDB, run:
 python3 scripts/audit-browser-store-contract.py
 ```
 
+To validate the home import screen accessibility contract, including the demo
+file input and the settings panel semantics, run:
+
+```bash
+python3 scripts/audit-home-accessibility.py
+```
+
 To validate that browser imports still use full-fidelity parser defaults and do
 not silently skip projectile or weapon-fire data, run:
 
