@@ -81,6 +81,7 @@ jobs:
             scripts/audit-static-web-export.py \
             scripts/audit-static-export-output.py \
             scripts/audit-web-portability.py \
+            scripts/run-local-ci-checks.py \
             scripts/validate-release-version.py
           python3 -m json.tool docs/replay-fixture-coverage.json >/dev/null
           python3 -m json.tool parser/reference_demos.json >/dev/null

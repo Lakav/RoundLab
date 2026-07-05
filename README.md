@@ -85,6 +85,17 @@ The CI runs both native parser tests and the `wasm32-unknown-unknown` library
 check, then regenerates the committed browser WASM artifacts and fails if
 `desktop/src/wasm/roundlab_parser` is stale.
 
+For the local browser/static check suite, use the CI-safe runner:
+
+```bash
+python3 scripts/run-local-ci-checks.py
+```
+
+This runs the frontend checks, rebuilds `desktop/out`, then runs the portable
+audit suite with the same safe modes as CI. Do not replace it with
+`for f in scripts/audit-*.py; do python3 "$f"; done`: some audit scripts have
+deep modes that require private local comparison outputs.
+
 For real replay-integrity coverage, point `ROUNDLAB_TEST_DEMOS` at local `.dem`
 or `.dem.zst` files. Use the platform path separator (`:` on macOS/Linux, `;`
 on Windows). Large demos must stay outside Git.
