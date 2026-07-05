@@ -41,7 +41,7 @@ jobs:
 
   rust:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -102,6 +102,20 @@ jobs:
       - name: Check browser WASM parser build
         working-directory: parser
         run: cargo check --target wasm32-unknown-unknown --lib
+
+      - name: Install wasm-bindgen CLI
+        run: cargo install wasm-bindgen-cli --version 0.2.126 --locked
+
+      - name: Verify committed browser WASM artifacts
+        run: |
+          cd parser
+          cargo build --target wasm32-unknown-unknown --release --lib
+          wasm-bindgen target/wasm32-unknown-unknown/release/roundlab_parser.wasm \
+            --target web \
+            --out-dir ../desktop/src/wasm/roundlab_parser \
+            --out-name roundlab_parser
+          cd ..
+          git diff --exit-code -- desktop/src/wasm/roundlab_parser
 
       - name: Clippy Rust parser
         working-directory: parser
