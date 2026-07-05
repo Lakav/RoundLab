@@ -194,11 +194,16 @@ export default function Home() {
   // looks frozen even though the parser is making progress.
   const blended = backendPct > 0.95 ? backendPct : Math.max(backendPct, timePct);
   const shownProgress = uploading ? Math.max(0.03, Math.min(0.99, blended)) : 0;
+  const backendEstimatedTotalMs =
+    uploading && parseStartedAt && backendPct >= 0.35
+      ? Math.max(elapsedMs, elapsedMs / backendPct)
+      : null;
+  const effectiveEstimateMs = backendEstimatedTotalMs ?? parseEstimateMs;
   const remainingMs =
     uploading && parseStartedAt
-      ? Math.max(0, parseEstimateMs - elapsedMs)
+      ? Math.max(0, effectiveEstimateMs - elapsedMs)
       : parseEstimateMs;
-  const estimateExceeded = uploading && parseStartedAt && elapsedMs >= parseEstimateMs && backendPct < 0.95;
+  const estimateExceeded = uploading && parseStartedAt && elapsedMs >= effectiveEstimateMs && backendPct < 0.95;
 
   const refreshMatches = useCallback(async (cancelled?: () => boolean) => {
     listMatches()

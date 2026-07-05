@@ -102,6 +102,19 @@ For a fast snapshot check that does not require parser outputs, run:
 python3 scripts/audit-reference-snapshots.py --reference-only
 ```
 
+For replay rendering invariants on local `.roundlab-compare` fixtures and
+local parsed matches in `desktop/data/parsed` when present, run:
+
+```bash
+python3 scripts/audit-replay-rendering.py
+```
+
+This checks map assets, map calibration/crop, invalid projectile samples, and
+utility effects that have no plausible projectile trajectory near detonation.
+Add `--skip-parsed` to audit only the split `.roundlab-compare` fixtures, or
+`--require-all-map-fixtures` to fail when a calibrated map has no replay
+fixture coverage.
+
 ## Notes
 
 Demo files, parsed outputs, build artifacts, and local caches are intentionally

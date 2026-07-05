@@ -694,11 +694,13 @@ function habitTimedPoints<T extends { t: number; x: number; y: number; z: number
   start: number,
   end: number,
   toRadar: (x: number, y: number, z?: number) => { x: number; y: number },
+  groundZ?: number,
 ): { x: number; y: number }[] {
   const points: { x: number; y: number }[] = [];
   for (const sample of samples) {
     if (sample.t < start || sample.t > end) continue;
-    const p = toRadar(sample.x, sample.y, sample.z);
+    const z = groundZ === undefined ? sample.z : Math.max(0, sample.z - groundZ);
+    const p = toRadar(sample.x, sample.y, z);
     const last = points[points.length - 1];
     if (!last || Math.hypot(p.x - last.x, p.y - last.y) >= 2.5) points.push(p);
   }
@@ -818,16 +820,16 @@ function drawHabitProjectile(
       ? Math.max(0, 1 - (time - last.t) / 1.05)
       : 1;
   const visibleTime = Math.min(time, last.t);
-  const points = habitTimedPoints(projectile.samples, first.t, visibleTime, toRadar);
+  const groundZ = habitProjectileGroundZ(projectile);
+  const points = habitTimedPoints(projectile.samples, first.t, visibleTime, toRadar, groundZ);
   const sampled = sampleHabitProjectile(projectile, visibleTime);
   if (sampled) {
-    const groundZ = habitProjectileGroundZ(projectile);
     const sampledPoint = toRadar(sampled.x, sampled.y, Math.max(0, sampled.z - groundZ));
     const tail = points[points.length - 1];
     if (!tail || Math.hypot(sampledPoint.x - tail.x, sampledPoint.y - tail.y) > 0.5) points.push(sampledPoint);
   }
   if (activeHandoff && handoff) {
-    const impact = toRadar(handoff.x, handoff.y, handoff.z);
+    const impact = toRadar(handoff.x, handoff.y, 0);
     const tail = points[points.length - 1];
     if (!tail || Math.hypot(impact.x - tail.x, impact.y - tail.y) > 0.5) points.push(impact);
   }
@@ -1317,7 +1319,7 @@ function visibleProjectiles(
 
   const pair = framePair(frames, time);
   if (pair && pair.a !== pair.b && pair.b.t - time <= 0.16) {
-    for (const projectile of pair.a.projectiles ?? []) {
+    for (const projectile of pair.b.projectiles ?? []) {
       if (out.has(projectile.id) || detonatedIds.has(projectile.id)) continue;
       if (projectileResolvedByEffect(projectile, startedEffects, time, frames)) continue;
 
