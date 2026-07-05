@@ -222,6 +222,7 @@ def assert_parse_success_progress_and_cancel(page: str, backend: str) -> list[st
             "browser backend cancelParse",
             backend_cancel,
             [
+                "activeParseRun += 1",
                 "activeWorker?.terminate()",
                 'activeReject?.(new Error("Browser parse cancelled."))',
                 "activeWorker = null",
@@ -236,10 +237,18 @@ def assert_parse_success_progress_and_cancel(page: str, backend: str) -> list[st
             "browser backend parse cleanup",
             backend_parse,
             [
+                "activeWorker?.terminate()",
+                'activeReject?.(new Error("Browser parse cancelled."))',
+                "const runId = activeParseRun + 1",
+                "activeParseRun = runId",
                 "activeWorker = worker",
+                "if (activeParseRun !== runId || activeWorker !== worker)",
+                'throw new Error("Browser parse cancelled.")',
                 "activeReject = reject",
+                "if (activeParseRun !== runId || activeWorker !== worker) return",
                 "activeWorker = null",
                 "activeReject = null",
+                "if (activeParseRun === runId)",
                 "worker.terminate()",
             ],
         )

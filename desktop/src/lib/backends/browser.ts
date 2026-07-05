@@ -23,6 +23,7 @@ class BrowserProgressBus {
 const progressBus = new BrowserProgressBus();
 let activeWorker: Worker | null = null;
 let activeReject: ((error: Error) => void) | null = null;
+let activeParseRun = 0;
 
 function isDemoFile(file: File): boolean {
   const lower = file.name.toLowerCase();
@@ -33,6 +34,12 @@ export function createBrowserBackend(): RoundLabBackend {
   return {
     parser: {
       async parseDemo(source: DemoSource, options): Promise<string> {
+        activeWorker?.terminate();
+        activeReject?.(new Error("Browser parse cancelled."));
+        activeWorker = null;
+        activeReject = null;
+        const runId = activeParseRun + 1;
+        activeParseRun = runId;
         if (!isDemoFile(source.file)) {
           throw new Error("Choose a .dem or .dem.zst file.");
         }
@@ -50,9 +57,13 @@ export function createBrowserBackend(): RoundLabBackend {
         activeWorker = worker;
         try {
           const buffer = await source.file.arrayBuffer();
+          if (activeParseRun !== runId || activeWorker !== worker) {
+            throw new Error("Browser parse cancelled.");
+          }
           return await new Promise<string>((resolve, reject) => {
             activeReject = reject;
             worker.onmessage = (event: MessageEvent) => {
+              if (activeParseRun !== runId || activeWorker !== worker) return;
               const data = event.data as
                 | { type: "progress"; payload: ParseProgress }
                 | { type: "done"; id: string }
@@ -61,7 +72,10 @@ export function createBrowserBackend(): RoundLabBackend {
               else if (data.type === "done") resolve(data.id);
               else if (data.type === "error") reject(new Error(data.message));
             };
-            worker.onerror = (event) => reject(new Error(event.message));
+            worker.onerror = (event) => {
+              if (activeParseRun !== runId || activeWorker !== worker) return;
+              reject(new Error(event.message));
+            };
             worker.postMessage(
               {
                 type: "parse",
@@ -74,12 +88,15 @@ export function createBrowserBackend(): RoundLabBackend {
             );
           });
         } finally {
-          activeWorker = null;
-          activeReject = null;
+          if (activeParseRun === runId) {
+            activeWorker = null;
+            activeReject = null;
+          }
           worker.terminate();
         }
       },
       async cancelParse(): Promise<void> {
+        activeParseRun += 1;
         activeWorker?.terminate();
         activeReject?.(new Error("Browser parse cancelled."));
         activeWorker = null;
