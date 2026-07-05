@@ -65,9 +65,11 @@ jobs:
             scripts/audit-ci-coverage.py \
             scripts/audit-match-layout.py \
             scripts/audit-reference-snapshots.py \
+            scripts/audit-replay-fixture-coverage.py \
             scripts/audit-replay-rendering.py \
             scripts/audit-web-portability.py \
             scripts/validate-release-version.py
+          python3 -m json.tool docs/replay-fixture-coverage.json >/dev/null
           python3 -m json.tool parser/reference_demos.json >/dev/null
 
       - name: Validate web portability
@@ -87,6 +89,9 @@ jobs:
 
       - name: Validate reference parser snapshots
         run: python3 scripts/audit-reference-snapshots.py --reference-only
+
+      - name: Validate replay fixture coverage manifest
+        run: python3 scripts/audit-replay-fixture-coverage.py
 
       - name: Validate replay map assets
         run: python3 scripts/audit-replay-rendering.py --assets-only

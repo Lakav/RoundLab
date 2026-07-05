@@ -122,6 +122,16 @@ Add `--skip-parsed` to audit only the split `.roundlab-compare` fixtures, or
 fixtures. Add `--require-all-map-fixtures` to fail when a calibrated map has no
 replay fixture coverage.
 
+The current replay fixture coverage is tracked in
+`docs/replay-fixture-coverage.json`. The manifest is deliberately explicit
+about maps that are not yet proven by local replay fixtures. To validate the
+manifest against calibrated maps, and against local `.roundlab-compare`
+fixtures when present, run:
+
+```bash
+python3 scripts/audit-replay-fixture-coverage.py
+```
+
 To catch accidental regressions back to desktop/Tauri-only code paths, run:
 
 ```bash

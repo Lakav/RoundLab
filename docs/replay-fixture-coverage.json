@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "description": "Replay rendering fixture coverage for calibrated maps. Fixtures are local-only and intentionally ignored by Git; this manifest makes the current proof coverage explicit.",
+  "covered": {
+    "de_ancient": [
+      {
+        "manifest": "ancient4-13-audit.json.gz",
+        "rounds": 17
+      }
+    ],
+    "de_anubis": [
+      {
+        "manifest": "anubis16-19-audit.json.gz",
+        "rounds": 35
+      }
+    ],
+    "de_cache": [
+      {
+        "manifest": "cache11-13-audit.json.gz",
+        "rounds": 24
+      }
+    ],
+    "de_dust2": [
+      {
+        "manifest": "dust-buffered-json.json.gz",
+        "rounds": 14
+      },
+      {
+        "manifest": "dust-rust-gzip1.json.gz",
+        "rounds": 14
+      }
+    ],
+    "de_inferno": [
+      {
+        "manifest": "inferno-audit.json.gz",
+        "rounds": 21
+      }
+    ]
+  },
+  "missing": [
+    "de_mirage",
+    "de_nuke",
+    "de_overpass",
+    "de_train",
+    "de_vertigo"
+  ]
+}
