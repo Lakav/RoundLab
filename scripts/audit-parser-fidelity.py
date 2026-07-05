@@ -79,34 +79,32 @@ def assert_not_contains(label: str, source: str, tokens: list[str]) -> list[str]
 
 def assert_api_defaults(api: str) -> list[str]:
     errors: list[str] = []
-    defaults = balanced_block_after(api, "export const DEFAULT_PARSE_OPTIONS")
-    errors.extend(
-        assert_contains(
-            "DEFAULT_PARSE_OPTIONS",
-            defaults,
-            [
-                'quality: "full"',
-                "skipProjectiles: false",
-                "skipWeaponFires: false",
-            ],
-        )
-    )
     parse_demo = function_body(api, "parseDemo")
     errors.extend(
         assert_contains(
             "api parseDemo",
             parse_demo,
             [
-                "getBackend().parser.parseDemo(source,",
-                "...DEFAULT_PARSE_OPTIONS",
-                "...options",
+                "return getBackend().parser.parseDemo(source)",
             ],
         )
     )
-    load_options = function_body(api, "loadParseOptions")
-    save_options = function_body(api, "saveParseOptions")
-    errors.extend(assert_contains("loadParseOptions", load_options, ["return { ...DEFAULT_PARSE_OPTIONS, ...(parsed ?? {}) }"]))
-    errors.extend(assert_contains("saveParseOptions", save_options, ["JSON.stringify({ ...DEFAULT_PARSE_OPTIONS, ...opts })"]))
+    errors.extend(
+        assert_not_contains(
+            "browser parser public API downgrade surface",
+            api,
+            [
+                "DEFAULT_PARSE_OPTIONS",
+                "loadParseOptions",
+                "saveParseOptions",
+                "PARSE_OPTIONS_KEY",
+                "options?:",
+                "...options",
+                "skipProjectiles",
+                "skipWeaponFires",
+            ],
+        )
+    )
     return errors
 
 
@@ -173,14 +171,13 @@ def assert_worker_wasm_defaults(worker: str) -> list[str]:
             parse_demo,
             [
                 "parse_demo_bytes_to_json(",
-                'request.options?.quality ?? "full"',
-                "Boolean(request.options?.skipProjectiles)",
-                "Boolean(request.options?.skipWeaponFires)",
+                'bytes, "full", false, false',
                 "JSON.parse(json) as MatchData",
                 "await saveParsedMatch(id, displayName(request.name), request.size, data)",
             ],
         )
     )
+    errors.extend(assert_not_contains("worker parser downgrade surface", worker, ["ParseOptions", "request.options"]))
     errors.extend(
         assert_contains(
             "worker progress fidelity path",

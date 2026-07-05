@@ -11,41 +11,6 @@ export type MatchSummary = {
   size: number;
 };
 
-/** User-tunable parse options. Defaults mirror the Rust side (`full` quality,
- *  everything captured). Stored in localStorage under `roundlab.parseOptions`. */
-export type ParseOptions = {
-  quality?: "full" | "high" | "medium" | "low";
-  skipProjectiles?: boolean;
-  skipWeaponFires?: boolean;
-};
-
-export const DEFAULT_PARSE_OPTIONS: ParseOptions = {
-  quality: "full",
-  skipProjectiles: false,
-  skipWeaponFires: false,
-};
-
-const PARSE_OPTIONS_KEY = "roundlab.parseOptions";
-
-export function loadParseOptions(): ParseOptions {
-  if (typeof window === "undefined") return { ...DEFAULT_PARSE_OPTIONS };
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(PARSE_OPTIONS_KEY) ?? "null") as ParseOptions | null;
-    return { ...DEFAULT_PARSE_OPTIONS, ...(parsed ?? {}) };
-  } catch {
-    return { ...DEFAULT_PARSE_OPTIONS };
-  }
-}
-
-export function saveParseOptions(opts: ParseOptions): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(PARSE_OPTIONS_KEY, JSON.stringify({ ...DEFAULT_PARSE_OPTIONS, ...opts }));
-  } catch {
-    /* ignore quota / private-mode errors */
-  }
-}
-
 export async function listMatches(): Promise<MatchSummary[]> {
   return getBackend().matches.listMatches();
 }
@@ -74,14 +39,8 @@ export async function renameMatch(
 }
 
 /** Parse a local .dem or .dem.zst file. Returns the new match id. */
-export async function parseDemo(
-  source: DemoSource,
-  options?: ParseOptions,
-): Promise<string> {
-  return getBackend().parser.parseDemo(source, {
-    ...DEFAULT_PARSE_OPTIONS,
-    ...options,
-  });
+export async function parseDemo(source: DemoSource): Promise<string> {
+  return getBackend().parser.parseDemo(source);
 }
 
 export async function cancelParse(): Promise<void> {

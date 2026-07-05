@@ -69,6 +69,10 @@ def assert_contains(label: str, source: str, tokens: list[str]) -> list[str]:
     return [f"{label} is missing {token!r}" for token in tokens if token not in source]
 
 
+def assert_not_contains(label: str, source: str, tokens: list[str]) -> list[str]:
+    return [f"{label} must not contain {token!r}" for token in tokens if token in source]
+
+
 def assert_import_surface(page: str) -> list[str]:
     errors: list[str] = []
     errors.extend(
@@ -234,7 +238,7 @@ def assert_parse_success_progress_and_cancel(page: str, backend: str) -> list[st
             ],
         )
     )
-    backend_parse = balanced_block_after(backend, "async parseDemo(source: DemoSource, options)")
+    backend_parse = balanced_block_after(backend, "async parseDemo(source: DemoSource)")
     errors.extend(
         assert_contains(
             "browser backend parse cleanup",
@@ -253,6 +257,17 @@ def assert_parse_success_progress_and_cancel(page: str, backend: str) -> list[st
                 "activeReject = null",
                 "if (activeParseRun === runId)",
                 "worker.terminate()",
+            ],
+        )
+    )
+    errors.extend(
+        assert_not_contains(
+            "browser backend parse downgrade surface",
+            backend_parse,
+            [
+                "options",
+                "skipProjectiles",
+                "skipWeaponFires",
             ],
         )
     )

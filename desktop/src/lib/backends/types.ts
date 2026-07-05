@@ -1,5 +1,5 @@
 import type { MatchData, Round } from "@/lib/types";
-import type { MatchSummary, ParseOptions } from "@/lib/api";
+import type { MatchSummary } from "@/lib/api";
 
 export type DemoSource = { kind: "file"; file: File };
 
@@ -13,7 +13,7 @@ export type ParseProgress = {
 export type ProgressListener = (progress: ParseProgress) => void;
 
 export type ParserBackend = {
-  parseDemo(source: DemoSource, options?: ParseOptions): Promise<string>;
+  parseDemo(source: DemoSource): Promise<string>;
   cancelParse(): Promise<void>;
   onProgress(listener: ProgressListener): Promise<() => void>;
 };

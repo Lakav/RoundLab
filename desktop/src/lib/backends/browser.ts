@@ -33,7 +33,7 @@ function isDemoFile(file: File): boolean {
 export function createBrowserBackend(): RoundLabBackend {
   return {
     parser: {
-      async parseDemo(source: DemoSource, options): Promise<string> {
+      async parseDemo(source: DemoSource): Promise<string> {
         activeWorker?.terminate();
         activeReject?.(new Error("Browser parse cancelled."));
         activeWorker = null;
@@ -81,7 +81,6 @@ export function createBrowserBackend(): RoundLabBackend {
                 type: "parse",
                 name: source.file.name,
                 size: source.file.size,
-                options,
                 buffer,
               },
               [buffer],

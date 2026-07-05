@@ -1,7 +1,6 @@
 import { ZSTDDecoder } from "zstddec";
 import initParser, { parse_demo_bytes_to_json } from "../wasm/roundlab_parser/roundlab_parser.js";
 import { saveParsedMatch } from "@/lib/backends/browser-store";
-import type { ParseOptions } from "@/lib/api";
 import type { MatchData } from "@/lib/types";
 
 const ZSTD_MAGIC = [0x28, 0xb5, 0x2f, 0xfd] as const;
@@ -11,7 +10,6 @@ type ParseRequest = {
   type: "parse";
   name: string;
   size: number;
-  options?: ParseOptions;
   buffer: ArrayBuffer;
 };
 
@@ -77,12 +75,7 @@ async function parseDemo(request: ParseRequest): Promise<string> {
   await initParser();
 
   postProgress(0.22, "Parsing demo locally...", "parsing", bytes.byteLength);
-  const json = parse_demo_bytes_to_json(
-    bytes,
-    request.options?.quality ?? "full",
-    Boolean(request.options?.skipProjectiles),
-    Boolean(request.options?.skipWeaponFires),
-  );
+  const json = parse_demo_bytes_to_json(bytes, "full", false, false);
 
   postProgress(0.86, "Storing parsed match locally...", "storing");
   const data = JSON.parse(json) as MatchData;
