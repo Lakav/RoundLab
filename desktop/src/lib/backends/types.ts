@@ -28,27 +28,6 @@ export type MatchStore = {
 
 export type DiagnosticsBackend = {
   getDebugInfo(): Promise<Record<string, unknown>>;
-  getLogFilePath(): Promise<string>;
-  readLogTail(lines?: number): Promise<string>;
-  readProjectileDebugLogs(lines?: number): Promise<{
-    lines: string;
-    rawTail: string;
-    scannedLines: number;
-    matchedLines: number;
-    paths: string[];
-    writtenPath: string;
-    projectilePath: string;
-    projectileSizeBytes: number;
-    projectileLines: number;
-  }>;
-  getProjectileLogInfo(): Promise<{
-    path: string;
-    sizeBytes: number;
-    lines: number;
-  }>;
-  openLogsFolder(): Promise<void>;
-  openProjectileLogsFolder(): Promise<void>;
-  openProjectileLogFile(): Promise<void>;
   writeDebugLog(source: string, message: string): Promise<string>;
 };
 

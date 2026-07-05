@@ -96,52 +96,6 @@ export async function getDebugInfo(): Promise<Record<string, unknown>> {
   return getBackend().diagnostics.getDebugInfo();
 }
 
-export async function getLogFilePath(): Promise<string> {
-  return getBackend().diagnostics.getLogFilePath();
-}
-
-export async function readLogTail(lines = 200): Promise<string> {
-  return getBackend().diagnostics.readLogTail(lines);
-}
-
-export type ProjectileDebugLogScan = {
-  lines: string;
-  rawTail: string;
-  scannedLines: number;
-  matchedLines: number;
-  paths: string[];
-  writtenPath: string;
-  projectilePath: string;
-  projectileSizeBytes: number;
-  projectileLines: number;
-};
-
-export async function readProjectileDebugLogs(lines = 2000): Promise<ProjectileDebugLogScan> {
-  return getBackend().diagnostics.readProjectileDebugLogs(lines);
-}
-
-export type ProjectileLogInfo = {
-  path: string;
-  sizeBytes: number;
-  lines: number;
-};
-
-export async function getProjectileLogInfo(): Promise<ProjectileLogInfo> {
-  return getBackend().diagnostics.getProjectileLogInfo();
-}
-
-export async function openLogsFolder(): Promise<void> {
-  await getBackend().diagnostics.openLogsFolder();
-}
-
-export async function openProjectileLogsFolder(): Promise<void> {
-  await getBackend().diagnostics.openProjectileLogsFolder();
-}
-
-export async function openProjectileLogFile(): Promise<void> {
-  await getBackend().diagnostics.openProjectileLogFile();
-}
-
 export async function writeDebugLog(source: string, message: string): Promise<string> {
   return getBackend().diagnostics.writeDebugLog(source, message);
 }

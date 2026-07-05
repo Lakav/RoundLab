@@ -29,6 +29,22 @@ FORBIDDEN_TEXT_PATTERNS = {
     "tauri ",
 }
 
+FORBIDDEN_BROWSER_DIAGNOSTIC_PATTERNS = {
+    "getLogFilePath",
+    "readLogTail",
+    "readProjectileDebugLogs",
+    "getProjectileLogInfo",
+    "openLogsFolder",
+    "openProjectileLogsFolder",
+    "openProjectileLogFile",
+    "Persistent log file",
+    "Open logs folder",
+    "Open projectile log file",
+    "Open projectile logs folder",
+    "Copy log path",
+    "Copy last 500 app logs",
+}
+
 SCAN_PATHS = {
     ".github/workflows/_checks.yml",
     ".github/workflows/ci.yml",
@@ -118,6 +134,10 @@ def main() -> None:
         for pattern in sorted(FORBIDDEN_TEXT_PATTERNS):
             if pattern in lower_text:
                 errors.append(f"{path} contains forbidden desktop-only pattern {pattern!r}")
+        if path.startswith("desktop/src/"):
+            for pattern in sorted(FORBIDDEN_BROWSER_DIAGNOSTIC_PATTERNS):
+                if pattern in text:
+                    errors.append(f"{path} contains forbidden desktop diagnostics pattern {pattern!r}")
 
     try:
         assert_package_scripts_are_portable()

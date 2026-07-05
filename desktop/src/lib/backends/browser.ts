@@ -118,39 +118,8 @@ export function createBrowserBackend(): RoundLabBackend {
       async getDebugInfo() {
         return { runtime: "browser", storage: "indexeddb" };
       },
-      async getLogFilePath() {
-        return "";
-      },
-      async readLogTail() {
-        return "";
-      },
-      async readProjectileDebugLogs() {
-        return {
-          lines: "",
-          rawTail: "",
-          scannedLines: 0,
-          matchedLines: 0,
-          paths: [],
-          writtenPath: "",
-          projectilePath: "",
-          projectileSizeBytes: 0,
-          projectileLines: 0,
-        };
-      },
-      async getProjectileLogInfo() {
-        return { path: "", sizeBytes: 0, lines: 0 };
-      },
-      async openLogsFolder() {
-        throw new Error("Log folders are not available in the browser app.");
-      },
-      async openProjectileLogsFolder() {
-        throw new Error("Projectile log folders are not available in the browser app.");
-      },
-      async openProjectileLogFile() {
-        throw new Error("Projectile log files are not available in the browser app.");
-      },
       async writeDebugLog(source: string, message: string) {
-        console.debug(`[${source}] ${message}`);
+        console.log(`[${source}] ${message}`);
         return "";
       },
     },
