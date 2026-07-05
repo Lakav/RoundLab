@@ -25,7 +25,7 @@ def read(path: Path) -> str:
 
 
 def function_body(source: str, name: str) -> str:
-    match = re.search(rf"(?:export\s+async\s+)?function\s+{re.escape(name)}\s*\(", source)
+    match = re.search(rf"(?:export\s+async\s+)?function\s+{re.escape(name)}(?:<[^>]+>)?\s*\(", source)
     if not match:
         raise AssertionError(f"missing function {name}")
     paren = source.find("(", match.end() - 1)
@@ -204,6 +204,51 @@ def assert_rounds_are_loaded_on_demand(store: str, backend: str, match_viewer: s
     return errors
 
 
+def assert_transaction_errors_propagate(store: str) -> list[str]:
+    errors: list[str] = []
+    tx_done = function_body(store, "txDone")
+    errors.extend(
+        assert_contains(
+            "txDone",
+            tx_done,
+            [
+                "tx.oncomplete = () => resolve()",
+                "tx.onerror = () => reject(tx.error ?? new Error(\"IndexedDB transaction failed\"))",
+                "tx.onabort = () => reject(tx.error ?? new Error(\"IndexedDB transaction aborted\"))",
+            ],
+        )
+    )
+    request_result = function_body(store, "requestResult")
+    errors.extend(
+        assert_contains(
+            "requestResult",
+            request_result,
+            [
+                "req.onsuccess = () => resolve(req.result)",
+                "req.onerror = () => reject(req.error ?? new Error(\"IndexedDB request failed\"))",
+            ],
+        )
+    )
+    open_db = function_body(store, "openDb")
+    errors.extend(
+        assert_contains(
+            "openDb error propagation",
+            open_db,
+            [
+                "req.onsuccess = () => resolve(req.result)",
+                "req.onerror = () => reject(req.error ?? new Error(\"IndexedDB open failed\"))",
+            ],
+        )
+    )
+    for name in ["listStoredMatches", "readStoredMetadata", "readStoredRound", "deleteStoredMatch", "renameStoredMatch", "saveParsedMatch"]:
+        body = function_body(store, name)
+        errors.extend(assert_contains(f"{name} closes db", body, ["finally", "db.close()"]))
+    for name in ["deleteStoredMatch", "renameStoredMatch", "saveParsedMatch"]:
+        body = function_body(store, name)
+        errors.extend(assert_contains(f"{name} awaits transaction completion", body, ["await txDone(tx)"]))
+    return errors
+
+
 def assert_match_lifecycle(store: str) -> list[str]:
     errors: list[str] = []
     list_body = function_body(store, "listStoredMatches")
@@ -257,6 +302,7 @@ def main() -> None:
     errors.extend(assert_store_schema(store))
     errors.extend(assert_metadata_is_light(store))
     errors.extend(assert_rounds_are_loaded_on_demand(store, backend, match_viewer, replay_store))
+    errors.extend(assert_transaction_errors_propagate(store))
     errors.extend(assert_match_lifecycle(store))
     if errors:
         raise AssertionError("browser store contract audit failed: " + "; ".join(errors))
