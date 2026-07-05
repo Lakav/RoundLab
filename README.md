@@ -115,7 +115,8 @@ python3 scripts/audit-replay-rendering.py
 
 This checks map assets, map calibration/crop, invalid projectile samples,
 utility tracks without a player thrower, and utility effects that have no
-plausible player-owned projectile trajectory near detonation.
+plausible player-owned projectile trajectory near detonation. It also checks
+that condensed replay effects resolve to a single best player-owned trajectory.
 Add `--skip-parsed` to audit only the split `.roundlab-compare` fixtures, or
 `--assets-only` to run the CI-safe map asset/calibration check without local
 fixtures. Add `--require-all-map-fixtures` to fail when a calibrated map has no

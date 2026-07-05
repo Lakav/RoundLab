@@ -76,6 +76,9 @@ class AuditStats:
     utility_tracks_missing_thrower: int = 0
     projectile_thrower_conflicts: int = 0
     matched_effects_without_thrower: int = 0
+    condensed_effects_unique_thrower: int = 0
+    condensed_effects_unassigned: int = 0
+    condensed_effects_ambiguous: int = 0
     short_tracks: int = 0
     future_only_windows: int = 0
     large_effect_gaps: int = 0
@@ -108,6 +111,9 @@ class AuditStats:
             "utilityTracksMissingThrower": self.utility_tracks_missing_thrower,
             "projectileThrowerConflicts": self.projectile_thrower_conflicts,
             "matchedEffectsWithoutThrower": self.matched_effects_without_thrower,
+            "condensedEffectsUniqueThrower": self.condensed_effects_unique_thrower,
+            "condensedEffectsUnassigned": self.condensed_effects_unassigned,
+            "condensedEffectsAmbiguous": self.condensed_effects_ambiguous,
             "shortTracks": self.short_tracks,
             "futureOnlyWindows": self.future_only_windows,
             "largeEffectGaps": self.large_effect_gaps,
@@ -217,6 +223,14 @@ def effect_radius(effect_type: str) -> float:
     if effect_type == "decoy":
         return 700
     return 520
+
+
+def condensed_effect_radius(effect_type: str) -> float:
+    if effect_type == "he":
+        return 1500
+    if effect_type == "flash":
+        return 1100
+    return 950
 
 
 def projectile_frames(round_obj: dict[str, Any]) -> list[dict[str, Any]]:
@@ -334,10 +348,13 @@ def audit_effects(
         stats.max_y = max(stats.max_y, radar[1])
 
         threshold2 = effect_radius(effect_type) ** 2
+        condensed_threshold2 = condensed_effect_radius(effect_type) ** 2
         best_distance2 = math.inf
         best_gap = math.inf
         best_track: Track | None = None
         matched_with_thrower = False
+        condensed_best_distance2 = math.inf
+        condensed_throwers: set[int] = set()
         effect_start = float(effect["start"])
         for track in tracks.values():
             if projectile_effect_type(track.projectile_type) != effect_type:
@@ -355,9 +372,52 @@ def audit_effects(
                     best_track = track
                 if distance2 <= threshold2 and track.thrower is not None and not track.thrower_conflict:
                     matched_with_thrower = True
+                if (
+                    len(track.samples) >= 2
+                    and distance2 <= condensed_threshold2
+                    and track.thrower is not None
+                    and not track.thrower_conflict
+                ):
+                    if distance2 < condensed_best_distance2:
+                        condensed_best_distance2 = distance2
+                        condensed_throwers = {track.thrower}
+                    elif distance2 == condensed_best_distance2:
+                        condensed_throwers.add(track.thrower)
 
         if best_distance2 <= threshold2:
             stats.matched_effects += 1
+            if len(condensed_throwers) == 1:
+                stats.condensed_effects_unique_thrower += 1
+            elif not condensed_throwers:
+                stats.condensed_effects_unassigned += 1
+                if len(stats.examples) < 20:
+                    stats.examples.append(
+                        {
+                            "round": round_obj.get("number"),
+                            "kind": "condensed-effect-unassigned",
+                            "type": effect_type,
+                            "start": round(effect_start, 3),
+                            "x": round(float(effect["x"])),
+                            "y": round(float(effect["y"])),
+                            "nearestDistance": round(math.sqrt(best_distance2)),
+                            "nearestGap": None if math.isinf(best_gap) else round(best_gap, 3),
+                        }
+                    )
+            else:
+                stats.condensed_effects_ambiguous += 1
+                if len(stats.examples) < 20:
+                    stats.examples.append(
+                        {
+                            "round": round_obj.get("number"),
+                            "kind": "condensed-effect-ambiguous",
+                            "type": effect_type,
+                            "start": round(effect_start, 3),
+                            "throwers": sorted(condensed_throwers),
+                            "distance": round(math.sqrt(condensed_best_distance2)),
+                            "x": round(float(effect["x"])),
+                            "y": round(float(effect["y"])),
+                        }
+                    )
             if not matched_with_thrower:
                 stats.matched_effects_without_thrower += 1
                 if len(stats.examples) < 20:
@@ -509,6 +569,10 @@ def assert_stats(stats: AuditStats, *, max_out_pct: float) -> None:
         errors.append(f"{stats.projectile_thrower_conflicts} projectile tracks have conflicting throwers")
     if stats.matched_effects_without_thrower:
         errors.append(f"{stats.matched_effects_without_thrower} matched effects have no player-owned projectile track")
+    if stats.condensed_effects_unassigned:
+        errors.append(f"{stats.condensed_effects_unassigned} matched effects cannot be assigned to a condensed player replay")
+    if stats.condensed_effects_ambiguous:
+        errors.append(f"{stats.condensed_effects_ambiguous} matched effects have tied best condensed player tracks")
     if stats.unmatched_effects:
         errors.append(f"{stats.unmatched_effects} effects have no matching projectile track")
     if stats.pct(stats.players_out, stats.players) > max_out_pct:
@@ -560,6 +624,8 @@ def main() -> None:
             print(
                 f"OK {stats.label} map={stats.map_name} rounds={stats.rounds} "
                 f"effects={stats.effects} matched={stats.matched_effects} "
+                f"condensedUnique={stats.condensed_effects_unique_thrower} "
+                f"condensedAmbiguous={stats.condensed_effects_ambiguous} "
                 f"utilityTracks={stats.utility_tracks} unownedUtilityTracks={stats.utility_tracks_missing_thrower} "
                 f"futureOnly={stats.future_only_windows} suppressionRisks={stats.active_effect_suppression_risks} "
                 f"bounds={stats.as_dict()['radarBounds']}"

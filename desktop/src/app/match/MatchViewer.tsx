@@ -167,22 +167,21 @@ function buildHabitReplayRound(
 
   if (!positions.length) return null;
 
-  const tracks = new Map<
+  const allTracks = new Map<
     number,
     { type: string; thrower?: number; samples: Array<{ t: number; x: number; y: number; z: number }> }
   >();
   for (const frame of projectileSamplesForHabits(round)) {
     for (const projectile of frame.projectiles ?? []) {
-      if (projectile.thrower !== playerId) continue;
       const kind = habitProjectileKind(projectile.type);
       if (!kind || !enabledTypes[kind]) continue;
-      const track = tracks.get(projectile.id) ?? { type: projectile.type, thrower: projectile.thrower, samples: [] };
+      const track = allTracks.get(projectile.id) ?? { type: projectile.type, thrower: projectile.thrower, samples: [] };
       track.samples.push({ t: frame.t, x: projectile.x, y: projectile.y, z: projectile.z });
-      tracks.set(projectile.id, track);
+      allTracks.set(projectile.id, track);
     }
   }
 
-  const projectiles = [...tracks.entries()]
+  const usableTracks = [...allTracks.entries()]
     .map(([projectileId, track]) => ({
       id: `${round.number}:${projectileId}`,
       roundNumber: round.number,
@@ -192,6 +191,7 @@ function buildHabitReplayRound(
       samples: track.samples,
     }))
     .filter((track) => track.samples.length >= 2);
+  const projectiles = usableTracks.filter((track) => track.thrower === playerId);
 
   const effects: HabitReplayEffect[] = [];
   for (const effect of round.effects ?? []) {
@@ -200,7 +200,8 @@ function buildHabitReplayRound(
     const radius = habitEffectMatchRadius(kind);
     const radius2 = radius * radius;
     let bestDistance = Infinity;
-    for (const track of projectiles) {
+    let bestThrower: number | undefined;
+    for (const track of usableTracks) {
       if (habitProjectileKind(track.type) !== kind) continue;
       for (let i = track.samples.length - 1; i >= 0; i--) {
         const sample = track.samples[i];
@@ -209,10 +210,13 @@ function buildHabitReplayRound(
         const dx = sample.x - effect.x;
         const dy = sample.y - effect.y;
         const distance = dx * dx + dy * dy;
-        if (distance < bestDistance) bestDistance = distance;
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestThrower = track.thrower;
+        }
       }
     }
-    if (bestDistance <= radius2) effects.push(effect);
+    if (bestDistance <= radius2 && bestThrower === playerId) effects.push(effect);
   }
 
   const deathEvent = round.events.find((event) => event.type === "kill" && event.victim === playerId);
