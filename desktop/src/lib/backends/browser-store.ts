@@ -112,11 +112,9 @@ export async function deleteStoredMatch(id: string): Promise<void> {
   try {
     const tx = db.transaction([MATCH_STORE, ROUND_STORE], "readwrite");
     tx.objectStore(MATCH_STORE).delete(id);
-    const index = tx.objectStore(ROUND_STORE).index("matchId");
-    const keysReq = index.getAllKeys(id);
-    keysReq.onsuccess = () => {
-      for (const key of keysReq.result) tx.objectStore(ROUND_STORE).delete(key);
-    };
+    const rounds = tx.objectStore(ROUND_STORE);
+    const keys = await requestResult<IDBValidKey[]>(rounds.index("matchId").getAllKeys(id));
+    for (const key of keys) rounds.delete(key);
     await txDone(tx);
   } finally {
     db.close();
@@ -151,19 +149,17 @@ export async function saveParsedMatch(id: string, name: string, size: number, da
   try {
     const tx = db.transaction([MATCH_STORE, ROUND_STORE], "readwrite");
     const rounds = tx.objectStore(ROUND_STORE);
-    const existingKeys = rounds.index("matchId").getAllKeys(id);
-    existingKeys.onsuccess = () => {
-      for (const key of existingKeys.result) rounds.delete(key);
-      tx.objectStore(MATCH_STORE).put({ ...summary, metadata });
-      for (const round of data.rounds) {
-        rounds.put({
-          key: roundKey(id, round.number),
-          matchId: id,
-          number: round.number,
-          round,
-        } satisfies StoredRound);
-      }
-    };
+    const existingKeys = await requestResult<IDBValidKey[]>(rounds.index("matchId").getAllKeys(id));
+    for (const key of existingKeys) rounds.delete(key);
+    tx.objectStore(MATCH_STORE).put({ ...summary, metadata });
+    for (const round of data.rounds) {
+      rounds.put({
+        key: roundKey(id, round.number),
+        matchId: id,
+        number: round.number,
+        round,
+      } satisfies StoredRound);
+    }
     await txDone(tx);
     return summary;
   } finally {
