@@ -167,6 +167,21 @@ def assert_zoom_controls(errors: list[str]) -> None:
     )
 
 
+def assert_keyboard_shortcuts_respect_review_mode(errors: list[str]) -> None:
+    viewer = read(MATCH_VIEWER)
+    require(
+        "match keyboard shortcuts",
+        viewer,
+        [
+            'const drawingShortcutsEnabled = reviewMode !== "condensed"',
+            'drawingShortcutsEnabled && e.key === "v"',
+            'drawingShortcutsEnabled && e.key === "p"',
+            "}, [reviewMode, togglePlay, setTime]);",
+        ],
+        errors,
+    )
+
+
 def assert_review_modes(errors: list[str]) -> None:
     viewer = read(MATCH_VIEWER)
     run_condensed = balanced_block_after(viewer, "const runCondensedOverlay = useCallback")
@@ -304,6 +319,7 @@ def main() -> None:
     errors: list[str] = []
     assert_fullscreen_is_user_initiated(errors)
     assert_zoom_controls(errors)
+    assert_keyboard_shortcuts_respect_review_mode(errors)
     assert_review_modes(errors)
     assert_match_identity_resets(errors)
     if errors:

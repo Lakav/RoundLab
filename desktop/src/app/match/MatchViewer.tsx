@@ -493,6 +493,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
       const round = st.match?.rounds[st.currentRoundIdx];
       if (!round) return;
       const duration = st.durationOverride ?? round.duration;
+      const drawingShortcutsEnabled = reviewMode !== "condensed";
       if (e.code === "Space") {
         e.preventDefault();
         togglePlay();
@@ -502,12 +503,12 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
         setTime(Math.min(duration, (st.time ?? 0) + 5));
       } else if (e.key === "k") {
         togglePlay();
-      } else if (e.key === "v") setTool("none");
-      else if (e.key === "p") setTool("pen");
+      } else if (drawingShortcutsEnabled && e.key === "v") setTool("none");
+      else if (drawingShortcutsEnabled && e.key === "p") setTool("pen");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [togglePlay, setTime]);
+  }, [reviewMode, togglePlay, setTime]);
 
   const invalidateHabitRun = useCallback(() => {
     habitRunRef.current += 1;
