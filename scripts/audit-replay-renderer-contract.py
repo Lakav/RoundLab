@@ -231,7 +231,7 @@ def assert_condensed_projectile_handoff(map_renderer: str, match_viewer: str, re
                 'reviewMode === "condensed"',
                 "runCondensedOverlay",
                 "setDurationOverride(duration || null)",
-                "<MapRenderer size={innerSize} condensed={condensedMode} />",
+                "<MapRenderer size={innerSize} condensed={condensedMode} radarLayerMode={radarLayerMode} />",
             ],
         )
     )
@@ -430,8 +430,11 @@ def assert_multi_level_radar_switching(map_renderer: str, maps: str) -> list[str
             [
                 "useState<RadarLayer>(\"default\")",
                 "const radarLayerRef = useRef<RadarLayer>(\"default\")",
+                'type RadarLayerMode = RadarLayer | "auto"',
+                'radarLayerMode = "auto"',
                 "function habitRadarLayerPositions",
-                "radarLayerForPositions(match.meta.map, radarPositions, \"default\")",
+                "const autoRadarLayer = radarLayerForPositions(match.meta.map, radarPositions, \"default\")",
+                'syncRadarLayer(radarLayerMode === "auto" ? autoRadarLayer : radarLayerMode)',
                 "syncRadarLayer(",
                 "radarImagePath(map, radarLayer)",
             ],

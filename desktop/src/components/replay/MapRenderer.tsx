@@ -12,6 +12,7 @@ import { smokeBlastClearAlpha } from "@/lib/replay-logic";
 const iconTextureCache = new Map<string, Promise<Texture>>();
 const iconTextureReadyCache = new Map<string, Texture>();
 const roundIconPreloadCache = new WeakMap<Round, string[]>();
+type RadarLayerMode = RadarLayer | "auto";
 const BOMB_CARRIER_COLOR = 0xef4444;
 const BOMB_SECONDS = 40;
 const FIRE_EFFECT_MAX_DURATION = 7;
@@ -2257,7 +2258,15 @@ function drawDeathMarker(layer: Container, x: number, y: number, age: number) {
   layer.addChild(g);
 }
 
-export function MapRenderer({ size = 800, condensed = false }: { size?: number; condensed?: boolean }) {
+export function MapRenderer({
+  size = 800,
+  condensed = false,
+  radarLayerMode = "auto",
+}: {
+  size?: number;
+  condensed?: boolean;
+  radarLayerMode?: RadarLayerMode;
+}) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sizeRef = useRef(size);
   const [radarLayer, setRadarLayer] = useState<RadarLayer>("default");
@@ -2475,7 +2484,8 @@ export function MapRenderer({ size = 800, condensed = false }: { size?: number; 
         condensed && overlay?.mode === "replay" && overlay.replays?.length
           ? habitRadarLayerPositions(overlay.replays, time)
           : positions;
-      syncRadarLayer(radarLayerForPositions(match.meta.map, radarPositions, "default"));
+      const autoRadarLayer = radarLayerForPositions(match.meta.map, radarPositions, "default");
+      syncRadarLayer(radarLayerMode === "auto" ? autoRadarLayer : radarLayerMode);
       const frame = nearestFrame(bombFrames, time);
       const bombPair = framePair(bombFrames, time);
       const smoothBomb = (() => {
@@ -3298,7 +3308,7 @@ export function MapRenderer({ size = 800, condensed = false }: { size?: number; 
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [condensed, size]);
+  }, [condensed, radarLayerMode, size]);
 
   return (
     <div

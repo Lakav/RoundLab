@@ -162,7 +162,7 @@ def assert_match_viewer_uses_crop_transform() -> None:
     match_viewer = MATCH_VIEWER.read_text(encoding="utf-8")
     errors: list[str] = []
     required = [
-        "import { cropFor, MAP_CALIBRATION, RADAR_SIZE } from \"@/lib/maps\";",
+        "import { cropFor, MAP_CALIBRATION, MAP_VERTICAL_SECTIONS, RADAR_SIZE, type RadarLayer } from \"@/lib/maps\";",
         "const crop = cropFor(match.meta.map);",
         "const cropScale = RADAR_SIZE / crop.size;",
         "const innerSize = mapSize * cropScale;",
@@ -171,7 +171,7 @@ def assert_match_viewer_uses_crop_transform() -> None:
         "width: innerSize,",
         "height: innerSize,",
         "transform: `translate(${displayMapPan.x}px, ${displayMapPan.y}px) scale(${mapZoom}) translate(${cropTx}px, ${cropTy}px)`",
-        "<MapRenderer size={innerSize} condensed={condensedMode} />",
+        "<MapRenderer size={innerSize} condensed={condensedMode} radarLayerMode={radarLayerMode} />",
         "size={innerSize}",
     ]
     for token in required:

@@ -16,7 +16,7 @@ import { KillFeed } from "@/components/replay/KillFeed";
 import { Loader2, Maximize2, Minimize2, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { MatchData, PlayerPos, Round, UtilityEffect } from "@/lib/types";
-import { cropFor, MAP_CALIBRATION, RADAR_SIZE } from "@/lib/maps";
+import { cropFor, MAP_CALIBRATION, MAP_VERTICAL_SECTIONS, RADAR_SIZE, type RadarLayer } from "@/lib/maps";
 import { enterMatchFullscreen, exitMatchFullscreen, getMatchMetadata, getRound, writeDebugLog } from "@/lib/api";
 
 const DRAW_WIDTH = 3;
@@ -30,6 +30,7 @@ const PROJECTILE_DEBUG_KEY = "roundlab.debugProjectiles";
 
 type HabitProjectileKind = "smoke" | "flash" | "he" | "fire" | "decoy";
 type ReviewMode = "classic" | "condensed";
+type RadarLayerMode = RadarLayer | "auto";
 
 const DEFAULT_HABIT_TYPES: Record<HabitProjectileKind, boolean> = {
   smoke: true,
@@ -266,6 +267,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
   const habitRunRef = useRef(0);
   const [mapSize, setMapSize] = useState(600);
   const [mapZoom, setMapZoom] = useState(1);
+  const [radarLayerMode, setRadarLayerMode] = useState<RadarLayerMode>("auto");
   const [mapPan, setMapPan] = useState({ x: 0, y: 0 });
   const [mapDrag, setMapDrag] = useState<{ pointerId: number; startX: number; startY: number; startPanX: number; startPanY: number } | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -633,6 +635,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
   const effectiveCondensedPlayerValue = condensedPlayerOptions.some((option) => option.value === condensedPlayerValue)
     ? condensedPlayerValue
     : condensedPlayerOptions[0]?.value ?? "";
+  const hasRadarLayerControl = Boolean(MAP_VERTICAL_SECTIONS[match.meta.map]?.some((section) => section.layer === "lower"));
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-[#101212] text-neutral-100">
@@ -693,6 +696,30 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
           ))}
         </div>
         <div className="flex items-center gap-1 rounded-[3px] border border-white/10 bg-[#151717] px-1 py-0.5">
+          {hasRadarLayerControl && (
+            <div className="flex rounded-[3px] border border-white/10 bg-black/20 p-0.5">
+              {([
+                ["auto", "Auto"],
+                ["default", "Upper"],
+                ["lower", "Lower"],
+              ] as const).map(([layer, label]) => (
+                <button
+                  key={layer}
+                  type="button"
+                  onClick={() => setRadarLayerMode(layer)}
+                  className={[
+                    "h-6 rounded-[2px] px-2 text-[10px] font-semibold transition-colors",
+                    radarLayerMode === layer
+                      ? "bg-emerald-300 text-[#06100b]"
+                      : "text-neutral-500 hover:bg-white/[0.05] hover:text-neutral-200",
+                  ].join(" ")}
+                  title={`Radar layer: ${label}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           <button
             type="button"
             onClick={() => setClampedZoom(mapZoom - MAP_ZOOM_STEP)}
@@ -809,7 +836,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
                     transformOrigin: "center",
                   }}
                 >
-                  <MapRenderer size={innerSize} condensed={condensedMode} />
+                  <MapRenderer size={innerSize} condensed={condensedMode} radarLayerMode={radarLayerMode} />
                   {!condensedMode && (
                     <DrawingLayer
                       size={innerSize}

@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MATCH_VIEWER = ROOT / "desktop" / "src" / "app" / "match" / "MatchViewer.tsx"
 MATCH_PAGE = ROOT / "desktop" / "src" / "app" / "match" / "page.tsx"
+MAP_RENDERER = ROOT / "desktop" / "src" / "components" / "replay" / "MapRenderer.tsx"
 BROWSER_API = ROOT / "desktop" / "src" / "lib" / "api.ts"
 BROWSER_BACKEND = ROOT / "desktop" / "src" / "lib" / "backends" / "browser.ts"
 BACKEND_TYPES = ROOT / "desktop" / "src" / "lib" / "backends" / "types.ts"
@@ -170,6 +171,52 @@ def assert_zoom_controls(errors: list[str]) -> None:
     )
 
 
+def assert_radar_layer_controls(errors: list[str]) -> None:
+    viewer = read(MATCH_VIEWER)
+    renderer = read(MAP_RENDERER)
+    maps = read(ROOT / "desktop" / "src" / "lib" / "maps.ts")
+    require(
+        "manual radar layer controls",
+        viewer,
+        [
+            "MAP_VERTICAL_SECTIONS",
+            'type RadarLayerMode = RadarLayer | "auto"',
+            'const [radarLayerMode, setRadarLayerMode] = useState<RadarLayerMode>("auto")',
+            "const hasRadarLayerControl = Boolean(MAP_VERTICAL_SECTIONS[match.meta.map]?.some((section) => section.layer === \"lower\"))",
+            "{hasRadarLayerControl && (",
+            '["auto", "Auto"]',
+            '["default", "Upper"]',
+            '["lower", "Lower"]',
+            "onClick={() => setRadarLayerMode(layer)}",
+            "radarLayerMode === layer",
+            "<MapRenderer size={innerSize} condensed={condensedMode} radarLayerMode={radarLayerMode} />",
+        ],
+        errors,
+    )
+    require(
+        "MapRenderer radar layer override",
+        renderer,
+        [
+            'type RadarLayerMode = RadarLayer | "auto"',
+            'radarLayerMode = "auto"',
+            "radarLayerMode?: RadarLayerMode",
+            'syncRadarLayer(radarLayerMode === "auto" ? autoRadarLayer : radarLayerMode)',
+            "}, [condensed, radarLayerMode, size])",
+        ],
+        errors,
+    )
+    require(
+        "multi-level radar maps",
+        maps,
+        [
+            "de_nuke:",
+            "de_train:",
+            "de_vertigo:",
+        ],
+        errors,
+    )
+
+
 def assert_keyboard_shortcuts_respect_review_mode(errors: list[str]) -> None:
     viewer = read(MATCH_VIEWER)
     require(
@@ -273,7 +320,7 @@ def assert_review_modes(errors: list[str]) -> None:
             "{!condensedMode && <RoundClock />}",
             "{!condensedMode && <KillFeed />}",
             "{!condensedMode && <RoundList />}",
-            "<MapRenderer size={innerSize} condensed={condensedMode} />",
+            "<MapRenderer size={innerSize} condensed={condensedMode} radarLayerMode={radarLayerMode} />",
             "{!condensedMode && (",
             "<DrawingLayer",
             "<DrawingToolbar",
@@ -333,6 +380,7 @@ def main() -> None:
     errors: list[str] = []
     assert_fullscreen_is_user_initiated(errors)
     assert_zoom_controls(errors)
+    assert_radar_layer_controls(errors)
     assert_keyboard_shortcuts_respect_review_mode(errors)
     assert_review_modes(errors)
     assert_match_identity_resets(errors)
