@@ -120,13 +120,9 @@ export function createBrowserBackend(): RoundLabBackend {
       },
       async writeDebugLog(source: string, message: string) {
         console.log(`[${source}] ${message}`);
-        return "";
       },
     },
     shell: {
-      async getAppVersion() {
-        return "";
-      },
       async enterMatchFullscreen() {
         if (typeof document === "undefined") return;
         if (document.fullscreenElement) return;

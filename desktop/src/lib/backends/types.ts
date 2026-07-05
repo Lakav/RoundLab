@@ -28,11 +28,10 @@ export type MatchStore = {
 
 export type DiagnosticsBackend = {
   getDebugInfo(): Promise<Record<string, unknown>>;
-  writeDebugLog(source: string, message: string): Promise<string>;
+  writeDebugLog(source: string, message: string): Promise<void>;
 };
 
 export type ShellBackend = {
-  getAppVersion(): Promise<string>;
   enterMatchFullscreen(): Promise<void>;
   exitMatchFullscreen(): Promise<void>;
 };

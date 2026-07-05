@@ -30,6 +30,7 @@ FORBIDDEN_TEXT_PATTERNS = {
 }
 
 FORBIDDEN_BROWSER_DIAGNOSTIC_PATTERNS = {
+    "getAppVersion",
     "getLogFilePath",
     "readLogTail",
     "readProjectileDebugLogs",
@@ -54,6 +55,20 @@ SCAN_PATHS = {
     "desktop/pnpm-lock.yaml",
     "desktop/pnpm-workspace.yaml",
     "desktop/src",
+}
+
+DIAGNOSTIC_CONTRACT_SNIPPETS = {
+    "desktop/src/lib/backends/types.ts": [
+        "writeDebugLog(source: string, message: string): Promise<void>;",
+    ],
+    "desktop/src/lib/api.ts": [
+        "export async function writeDebugLog(source: string, message: string): Promise<void>",
+        "await getBackend().diagnostics.writeDebugLog(source, message);",
+    ],
+    "desktop/src/lib/backends/browser.ts": [
+        "async writeDebugLog(source: string, message: string)",
+        "console.log(`[${source}] ${message}`);",
+    ],
 }
 
 IGNORED_TEXT_PATHS = {
@@ -114,6 +129,22 @@ def assert_package_scripts_are_portable() -> None:
         raise AssertionError("; ".join(failures))
 
 
+def assert_browser_diagnostics_contract() -> list[str]:
+    errors: list[str] = []
+    for path, snippets in DIAGNOSTIC_CONTRACT_SNIPPETS.items():
+        text = read_text(path) or ""
+        for snippet in snippets:
+            if snippet not in text:
+                errors.append(f"{path} is missing browser diagnostics contract {snippet!r}")
+    browser_backend = read_text("desktop/src/lib/backends/browser.ts") or ""
+    write_debug_start = browser_backend.find("async writeDebugLog")
+    if write_debug_start >= 0:
+        write_debug_block = browser_backend[write_debug_start:browser_backend.find("},", write_debug_start)]
+        if 'return ""' in write_debug_block or "Promise<string>" in write_debug_block:
+            errors.append("browser writeDebugLog must not return a desktop log path string")
+    return errors
+
+
 def main() -> None:
     files = tracked_files()
     errors: list[str] = []
@@ -143,6 +174,7 @@ def main() -> None:
         assert_package_scripts_are_portable()
     except AssertionError as error:
         errors.append(str(error))
+    errors.extend(assert_browser_diagnostics_contract())
 
     if errors:
         raise AssertionError("web portability audit failed: " + "; ".join(errors))

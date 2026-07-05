@@ -17,7 +17,6 @@ import {
 import {
   cancelParse,
   deleteMatch,
-  getAppVersion,
   getMatchMetadata,
   listMatches,
   onParseProgress,
@@ -185,7 +184,6 @@ export default function Home() {
   // before it lands in the recent list.
   const [postParse, setPostParse] = useState<MatchSummary | null>(null);
   const [postParseName, setPostParseName] = useState("");
-  const [appVersion, setAppVersion] = useState("");
   const [parseEstimateMs, setParseEstimateMs] = useState(FALLBACK_PARSE_ESTIMATE_MS);
   const parseEffectiveBytesRef = useRef<number | null>(null);
   const parseMinMsPerMbRef = useRef(0);
@@ -280,20 +278,6 @@ export default function Home() {
     const timer = window.setInterval(() => setParseNow(Date.now()), 250);
     return () => window.clearInterval(timer);
   }, [uploading]);
-
-  useEffect(() => {
-    let cancelled = false;
-    getAppVersion()
-      .then((v) => {
-        if (!cancelled) setAppVersion(v);
-      })
-      .catch(() => {
-        /* version metadata is optional in the browser app */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -519,9 +503,6 @@ export default function Home() {
             className="h-auto w-9 object-contain"
           />
           <span className="text-sm font-semibold">RoundLab</span>
-          {appVersion && (
-            <span className="text-[11px] text-neutral-500">v{appVersion}</span>
-          )}
         </div>
         <SettingsPanel />
       </header>

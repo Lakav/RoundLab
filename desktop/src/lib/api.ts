@@ -96,12 +96,8 @@ export async function getDebugInfo(): Promise<Record<string, unknown>> {
   return getBackend().diagnostics.getDebugInfo();
 }
 
-export async function writeDebugLog(source: string, message: string): Promise<string> {
-  return getBackend().diagnostics.writeDebugLog(source, message);
-}
-
-export async function getAppVersion(): Promise<string> {
-  return getBackend().shell.getAppVersion();
+export async function writeDebugLog(source: string, message: string): Promise<void> {
+  await getBackend().diagnostics.writeDebugLog(source, message);
 }
 
 export async function enterMatchFullscreen(): Promise<void> {
