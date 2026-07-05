@@ -39,6 +39,9 @@ jobs:
         working-directory: desktop
         run: pnpm build
 
+      - name: Validate static export output
+        run: python3 scripts/audit-static-export-output.py
+
   rust:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -73,6 +76,7 @@ jobs:
             scripts/audit-replay-renderer-contract.py \
             scripts/audit-replay-rendering.py \
             scripts/audit-static-web-export.py \
+            scripts/audit-static-export-output.py \
             scripts/audit-web-portability.py \
             scripts/validate-release-version.py
           python3 -m json.tool docs/replay-fixture-coverage.json >/dev/null

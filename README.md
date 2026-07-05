@@ -145,6 +145,15 @@ as API routes, middleware, server actions, or image optimization, run:
 python3 scripts/audit-static-web-export.py
 ```
 
+After a production build, validate the generated static export artifact:
+
+```bash
+cd desktop
+pnpm build
+cd ..
+python3 scripts/audit-static-export-output.py
+```
+
 To ensure every `scripts/audit-*.py` check is compiled, run in CI, and listed
 here, run:
 
