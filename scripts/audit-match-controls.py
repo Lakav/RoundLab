@@ -155,6 +155,10 @@ def assert_zoom_controls(errors: list[str]) -> None:
         "map zoom controls",
         viewer,
         [
+            "fixed left-4 right-4 top-14",
+            "max-w-[calc(100vw-2rem)]",
+            "overflow-x-auto",
+            "sm:left-28 sm:right-auto sm:top-4 sm:max-w-[calc(100vw-8rem)]",
             "const [mapZoom, setMapZoom] = useState(1)",
             "const [mapPan, setMapPan] = useState({ x: 0, y: 0 })",
             "const setClampedZoom = useCallback",

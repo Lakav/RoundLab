@@ -663,7 +663,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
           Home
         </Button>
       </Link>
-      <div className="fixed left-28 top-4 z-50 flex items-center gap-2 rounded-md border border-white/10 bg-[#0b0d0d]/75 px-2 py-1.5 shadow-xl shadow-black/30 backdrop-blur-md">
+      <div className="fixed left-4 right-4 top-14 z-50 flex max-w-[calc(100vw-2rem)] items-center gap-2 overflow-x-auto rounded-md border border-white/10 bg-[#0b0d0d]/75 px-2 py-1.5 shadow-xl shadow-black/30 backdrop-blur-md sm:left-28 sm:right-auto sm:top-4 sm:max-w-[calc(100vw-8rem)]">
         <div className="flex rounded-[3px] border border-white/10 bg-[#151717] p-0.5">
           {([
             ["classic", "Classique"],

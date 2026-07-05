@@ -173,6 +173,10 @@ def assert_match_viewer_uses_crop_transform() -> None:
         "transform: `translate(${displayMapPan.x}px, ${displayMapPan.y}px) scale(${mapZoom}) translate(${cropTx}px, ${cropTy}px)`",
         "<MapRenderer size={innerSize} condensed={condensedMode} radarLayerMode={radarLayerMode} />",
         "size={innerSize}",
+        "fixed left-4 right-4 top-14",
+        "max-w-[calc(100vw-2rem)]",
+        "overflow-x-auto",
+        "sm:left-28 sm:right-auto sm:top-4 sm:max-w-[calc(100vw-8rem)]",
     ]
     for token in required:
         if token not in match_viewer:
