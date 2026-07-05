@@ -803,14 +803,16 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
                   }}
                 >
                   <MapRenderer size={innerSize} condensed={condensedMode} />
-                  <DrawingLayer
-                    size={innerSize}
-                    tool={tool}
-                    color={color}
-                    width={DRAW_WIDTH}
-                    strokes={strokes}
-                    setStrokes={setStrokes}
-                  />
+                  {!condensedMode && (
+                    <DrawingLayer
+                      size={innerSize}
+                      tool={tool}
+                      color={color}
+                      width={DRAW_WIDTH}
+                      strokes={strokes}
+                      setStrokes={setStrokes}
+                    />
+                  )}
                 </div>
               </div>
             </div>
@@ -818,20 +820,22 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
         </div>
 
         <div className="absolute inset-x-4 bottom-4 z-40 shrink-0 rounded-md border border-white/10 bg-[#0b0d0d]/78 px-4 pb-3 pt-1 shadow-2xl shadow-black/35 backdrop-blur-md">
-          <RoundList />
+          {!condensedMode && <RoundList />}
           <div className="flex items-center gap-3">
             <Controls />
             <div className="min-w-0 flex-1">
               <Timeline />
             </div>
-            <DrawingToolbar
-              tool={tool}
-              setTool={setTool}
-              color={color}
-              setColor={setColor}
-              strokes={strokes}
-              setStrokes={setStrokes}
-            />
+            {!condensedMode && (
+              <DrawingToolbar
+                tool={tool}
+                setTool={setTool}
+                color={color}
+                setColor={setColor}
+                strokes={strokes}
+                setStrokes={setStrokes}
+              />
+            )}
           </div>
         </div>
       </main>
