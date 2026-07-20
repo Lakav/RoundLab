@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import subprocess
+import tempfile
 from pathlib import Path
 
 
@@ -25,17 +26,17 @@ def run(command: list[str], cwd: Path) -> None:
     subprocess.run(command, cwd=cwd, check=True)
 
 
-def hashes() -> dict[str, str]:
+def hashes(output: Path) -> dict[str, str]:
     result: dict[str, str] = {}
     for name in ARTIFACTS:
-        path = OUTPUT / name
+        path = output / name
         if not path.is_file():
             raise FileNotFoundError(path)
         result[name] = hashlib.sha256(path.read_bytes()).hexdigest()
     return result
 
 
-def build_once() -> dict[str, str]:
+def build_once(output: Path) -> dict[str, str]:
     run(["cargo", "clean", "--target", "wasm32-unknown-unknown", "--release"], PARSER)
     run(["cargo", "build", "--target", "wasm32-unknown-unknown", "--release", "--lib"], PARSER)
     run(
@@ -45,7 +46,7 @@ def build_once() -> dict[str, str]:
             "--target",
             "web",
             "--out-dir",
-            "../desktop/src/wasm/roundlab_parser",
+            str(output),
             "--out-name",
             "roundlab_parser",
             "--remove-name-section",
@@ -53,7 +54,7 @@ def build_once() -> dict[str, str]:
         ],
         PARSER,
     )
-    return hashes()
+    return hashes(output)
 
 
 def main() -> None:
@@ -66,17 +67,25 @@ def main() -> None:
         raise AssertionError(f"expected wasm-bindgen 0.2.126, got {version!r}")
     print(version)
 
-    first = build_once()
-    second = build_once()
-    for name in ARTIFACTS:
-        print(f"{name} {second[name]}")
-    if first != second:
-        raise AssertionError(f"WASM outputs differ between clean builds: first={first}, second={second}")
-    print("two clean WASM builds produced byte-identical artifacts")
+    with tempfile.TemporaryDirectory(prefix="roundlab-wasm-repro-") as temporary:
+        temporary_root = Path(temporary)
+        first_output = temporary_root / "first"
+        second_output = temporary_root / "second"
+        first_output.mkdir()
+        second_output.mkdir()
+        first = build_once(first_output)
+        second = build_once(second_output)
+        for name in ARTIFACTS:
+            print(f"{name} {second[name]}")
+        if first != second:
+            raise AssertionError(f"WASM outputs differ between clean builds: first={first}, second={second}")
+        print("two clean WASM builds produced byte-identical artifacts")
 
-    if args.check_git:
-        run(["git", "diff", "--exit-code", "--", str(OUTPUT.relative_to(ROOT))], ROOT)
-        print("generated WASM artifacts match Git")
+        if args.check_git:
+            mismatches = [name for name in ARTIFACTS if (second_output / name).read_bytes() != (OUTPUT / name).read_bytes()]
+            if mismatches:
+                raise AssertionError(f"generated WASM artifacts differ from Git: {', '.join(mismatches)}")
+            print("generated WASM artifacts match Git")
 
 
 if __name__ == "__main__":
