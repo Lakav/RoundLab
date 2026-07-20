@@ -48,6 +48,8 @@ def build_once() -> dict[str, str]:
             "../desktop/src/wasm/roundlab_parser",
             "--out-name",
             "roundlab_parser",
+            "--remove-name-section",
+            "--remove-producers-section",
         ],
         PARSER,
     )
