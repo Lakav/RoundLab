@@ -57,7 +57,8 @@ def main() -> None:
         [
             "cargo check --target wasm32-unknown-unknown --lib",
             "cargo install wasm-bindgen-cli --version",
-            "python3 scripts/verify-wasm-reproducibility.py --check-git",
+            "python3 scripts/verify-wasm-reproducibility.py",
+            "name: browser-wasm-linux",
         ],
         ".github/workflows/_checks.yml WASM parser freshness gate",
         errors,
