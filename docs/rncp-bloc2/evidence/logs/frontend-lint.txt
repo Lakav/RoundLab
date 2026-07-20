@@ -1,0 +1,5 @@
+$ pnpm lint
+
+$ eslint
+
+exit_code=0

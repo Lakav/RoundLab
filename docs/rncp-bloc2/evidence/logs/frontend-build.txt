@@ -1,0 +1,27 @@
+$ pnpm build
+
+$ next build
+▲ Next.js 16.2.10 (Turbopack)
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 1900ms
+  Running TypeScript ...
+  Finished TypeScript in 1835ms ...
+  Collecting page data using 6 workers ...
+  Generating static pages using 6 workers (0/5) ...
+  Generating static pages using 6 workers (1/5) 
+  Generating static pages using 6 workers (2/5) 
+  Generating static pages using 6 workers (3/5) 
+✓ Generating static pages using 6 workers (5/5) in 208ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+└ ○ /match
+
+
+○  (Static)  prerendered as static content
+
+
+exit_code=0

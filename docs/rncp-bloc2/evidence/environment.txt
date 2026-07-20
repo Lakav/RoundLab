@@ -1,0 +1,13 @@
+generated_at=2026-07-20T14:58:02+02:00
+platform=macOS-26.5-arm64-arm-64bit-Mach-O
+git_base_head=8bb94511a4d5c5821840734eab4d4ee05694bea0
+git_worktree=dirty
+node=v24.14.0
+pnpm=11.9.0
+rustc=rustc 1.95.0 (59807616e 2026-04-14)
+cargo=cargo 1.95.0 (f2d3ce0bd 2026-03-21)
+cargo_audit=cargo-audit-audit 0.22.2
+cargo_llvm_cov=cargo-llvm-cov 0.8.7
+git_status_short_begin
+?? docs/rncp-bloc2/
+git_status_short_end
