@@ -1,5 +1,6 @@
 "use client";
 
+import "pixi.js/unsafe-eval";
 import { useEffect, useRef, useState } from "react";
 import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
 import { type HabitOverlayTrail, type HabitReplayEffect, type HabitReplayPlayerSample, type HabitReplayProjectile, type HabitReplayRound, useReplay } from "@/lib/replay-store";
@@ -8,6 +9,7 @@ import type { BombState, Frame, MatchEvent, PlayerPos, ProjectileFrame, Projecti
 import { iconPathFor } from "@/lib/icons";
 import { writeDebugLog } from "@/lib/api";
 import { smokeBlastClearAlpha } from "@/lib/replay-logic";
+import { assetPath } from "@/lib/paths";
 
 const iconTextureCache = new Map<string, Promise<Texture>>();
 const iconTextureReadyCache = new Map<string, Texture>();
@@ -128,9 +130,10 @@ function loadIconTexture(path: string): Promise<Texture> {
   if (ready) return Promise.resolve(ready);
   let p = iconTextureCache.get(path);
   if (!p) {
+    const resolvedPath = assetPath(path);
     const loader = path.toLowerCase().endsWith(".svg")
-      ? loadSvgTextureDirect(path)
-      : (Assets.load(path) as Promise<Texture>);
+      ? loadSvgTextureDirect(resolvedPath)
+      : (Assets.load(resolvedPath) as Promise<Texture>);
     // Don't poison the cache with a rejected promise — drop it so the next
     // call gets a fresh attempt instead of replaying the failure forever.
     p = loader
@@ -2286,10 +2289,12 @@ export function MapRenderer({
   size = 800,
   condensed = false,
   radarLayerMode = "auto",
+  descriptionId,
 }: {
   size?: number;
   condensed?: boolean;
   radarLayerMode?: RadarLayerMode;
+  descriptionId?: string;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sizeRef = useRef(size);
@@ -3339,6 +3344,9 @@ export function MapRenderer({
   return (
     <div
       ref={hostRef}
+      role="img"
+      aria-label="Interactive replay radar"
+      aria-describedby={descriptionId}
       style={{ width: size, height: size }}
       className="relative overflow-visible bg-transparent"
     >

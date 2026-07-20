@@ -142,6 +142,14 @@ def assert_internal_refs_resolve(errors: list[str]) -> None:
                 continue
             target = OUT / parsed.path.lstrip("/")
             if not target.exists():
+                # GitHub Pages project sites expose the export below /<repository>.
+                # The prefix is a hosting concern and is not part of desktop/out.
+                parts = Path(parsed.path.lstrip("/")).parts
+                if len(parts) > 1:
+                    prefixed_target = OUT.joinpath(*parts[1:])
+                    if prefixed_target.exists():
+                        target = prefixed_target
+            if not target.exists():
                 errors.append(f"{rel(html)} references missing static asset {ref}")
 
 

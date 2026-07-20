@@ -11,6 +11,7 @@ CHECKS = ROOT / ".github" / "workflows" / "_checks.yml"
 README = ROOT / "README.md"
 PACKAGE = ROOT / "desktop" / "package.json"
 SCRIPTS = ROOT / "scripts"
+WASM_REPRODUCIBILITY = SCRIPTS / "verify-wasm-reproducibility.py"
 
 
 def audit_scripts() -> list[str]:
@@ -27,6 +28,7 @@ def main() -> None:
     checks = CHECKS.read_text(encoding="utf-8")
     readme = README.read_text(encoding="utf-8")
     package = PACKAGE.read_text(encoding="utf-8")
+    wasm_reproducibility = WASM_REPRODUCIBILITY.read_text(encoding="utf-8")
     errors: list[str] = []
 
     for script in audit_scripts():
@@ -55,13 +57,23 @@ def main() -> None:
         [
             "cargo check --target wasm32-unknown-unknown --lib",
             "cargo install wasm-bindgen-cli --version",
-            "cargo build --target wasm32-unknown-unknown --release --lib",
-            "wasm-bindgen target/wasm32-unknown-unknown/release/roundlab_parser.wasm",
-            "--out-dir ../desktop/src/wasm/roundlab_parser",
-            "--out-name roundlab_parser",
-            "git diff --exit-code -- desktop/src/wasm/roundlab_parser",
+            "python3 scripts/verify-wasm-reproducibility.py --check-git",
+            "name: browser-wasm-linux",
         ],
         ".github/workflows/_checks.yml WASM parser freshness gate",
+        errors,
+    )
+    require_snippets(
+        wasm_reproducibility,
+        [
+            '"cargo", "clean", "--target", "wasm32-unknown-unknown", "--release"',
+            '"cargo", "build", "--target", "wasm32-unknown-unknown", "--release", "--lib"',
+            '"wasm-bindgen"',
+            '"--out-dir"',
+            'tempfile.TemporaryDirectory',
+            'generated WASM artifacts differ from Git',
+        ],
+        "scripts/verify-wasm-reproducibility.py",
         errors,
     )
     require_snippets(

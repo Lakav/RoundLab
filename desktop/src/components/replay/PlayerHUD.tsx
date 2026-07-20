@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import type { Frame, PlayerPos } from "@/lib/types";
 import { iconPathFor } from "@/lib/icons";
 import { THEME, sideColors } from "@/lib/theme";
+import { assetPath } from "@/lib/paths";
 
 const BOMB_CARRIER_COLOR = "#ef4444";
 
@@ -70,6 +71,7 @@ export function PlayerHUD({ side }: { side: "CT" | "T" }) {
 
   return (
     <aside
+      aria-label={`${teamName || side} player status`}
       className={cn(
         "pointer-events-none absolute top-1/2 z-40 flex w-[258px] -translate-y-[48%] flex-col gap-1.5 rounded-md border border-white/10 bg-[#070909]/62 p-2 shadow-2xl shadow-black/35 backdrop-blur-md",
         side === "CT" ? "left-5" : "right-5"
@@ -357,6 +359,7 @@ function Icon({
   size?: "gear" | "weapon" | "sidearm" | "utility";
 }) {
   if (!src) return null;
+  const resolvedSrc = assetPath(src);
   return (
     <span
       aria-hidden="true"
@@ -369,8 +372,8 @@ function Icon({
       )}
       style={{
         backgroundColor: active ? color : THEME.textDead,
-        WebkitMaskImage: `url(${src})`,
-        maskImage: `url(${src})`,
+        WebkitMaskImage: `url(${resolvedSrc})`,
+        maskImage: `url(${resolvedSrc})`,
         WebkitMaskRepeat: "no-repeat",
         maskRepeat: "no-repeat",
         WebkitMaskPosition: "center",

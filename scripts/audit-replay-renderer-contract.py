@@ -281,7 +281,10 @@ def assert_condensed_projectile_handoff(map_renderer: str, match_viewer: str, re
                 'reviewMode === "condensed"',
                 "runCondensedOverlay",
                 "setDurationOverride(duration || null)",
-                "<MapRenderer size={innerSize} condensed={condensedMode} radarLayerMode={radarLayerMode} />",
+                "<MapRenderer",
+                "size={innerSize}",
+                "condensed={condensedMode}",
+                "radarLayerMode={radarLayerMode}",
             ],
         )
     )
@@ -469,7 +472,7 @@ def assert_multi_level_radar_switching(map_renderer: str, maps: str) -> list[str
                 "export function radarLayerForZ",
                 "export function radarLayerForPositions",
                 "export function radarImagePath",
-                'return `/cs2lens-maps/${map}${suffix}.png`',
+                'return assetPath(`/cs2lens-maps/${map}${suffix}.png`)',
             ],
         )
     )

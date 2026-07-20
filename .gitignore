@@ -52,6 +52,10 @@ tauri.conf.json
 
 # temp / caches
 coverage/
+!docs/rncp-bloc2/evidence/coverage/
+!docs/rncp-bloc2/evidence/coverage/**
+!docs/rncp-bloc2/evidence/logs/
+!docs/rncp-bloc2/evidence/logs/**
 tmp/
 temp/
 __pycache__/

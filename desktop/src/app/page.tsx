@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ import {
   type MatchSummary,
   type ParseProgress,
 } from "@/lib/api";
+import { assetPath } from "@/lib/paths";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import {
   DropdownMenu,
@@ -450,7 +451,11 @@ export default function Home() {
       style={{ background: "#1d1f1f" }}
     >
       {opening && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+        >
           <div className="flex flex-col items-center gap-3">
             <Loader2 className="size-7 animate-spin text-emerald-300" />
             <div className="text-[12px] text-neutral-300">Loading match…</div>
@@ -459,12 +464,18 @@ export default function Home() {
       )}
 
       {uploading && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/75 p-6 backdrop-blur-sm">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="parse-dialog-title"
+          aria-describedby="parse-dialog-description"
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/75 p-6 backdrop-blur-sm"
+        >
           <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#171a1a] p-5 shadow-2xl">
             <div className="mb-4 flex items-start justify-between gap-4">
               <div>
-                <div className="text-[13px] font-semibold text-neutral-100">Parsing demo</div>
-                <div className="mt-1 text-[11px] text-neutral-500">
+                <div id="parse-dialog-title" className="text-[13px] font-semibold text-neutral-100">Parsing demo</div>
+                <div id="parse-dialog-description" className="mt-1 text-[11px] text-neutral-400">
                   Interactions are locked until parsing finishes or is cancelled.
                 </div>
               </div>
@@ -480,7 +491,7 @@ export default function Home() {
               <span>{parseProgress.message || "Parsing…"}</span>
               <span>{Math.round(shownProgress * 100)}%</span>
             </div>
-            <div className="mt-1 flex items-center justify-between text-[11px] text-neutral-500">
+            <div className="mt-1 flex items-center justify-between text-[11px] text-neutral-400">
               <span>Elapsed {formatDuration(elapsedMs)}</span>
               <span>{estimateExceeded ? "Still parsing" : `About ${formatDuration(remainingMs)} left`}</span>
             </div>
@@ -502,14 +513,14 @@ export default function Home() {
       <header className="flex items-center justify-between border-b border-white/[0.06] px-6 py-3">
         <div className="flex items-center gap-3">
           <Image
-            src="/logo.png"
+            src={assetPath("/logo.png")}
             alt="RoundLab"
             width={36}
             height={37}
             loading="eager"
-            className="h-auto w-9 object-contain"
+            className="object-contain"
           />
-          <span className="text-sm font-semibold">RoundLab</span>
+          <h1 className="text-sm font-semibold">RoundLab</h1>
         </div>
         <SettingsPanel />
       </header>
@@ -520,6 +531,7 @@ export default function Home() {
           data-testid="demo-file-input"
           type="file"
           accept=".dem,.zst,.dem.zst"
+          aria-label="Choose a local CS2 demo file"
           className="sr-only"
           tabIndex={-1}
           onChange={onFileSelected}
@@ -541,6 +553,8 @@ export default function Home() {
           }}
           onDrop={onBrowserDrop}
           role="button"
+          aria-label="Open a local CS2 demo file"
+          aria-disabled={uploading}
           tabIndex={0}
           className={[
             "flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border px-6 py-12 text-center transition-colors",
@@ -562,7 +576,7 @@ export default function Home() {
                     style={{ width: `${Math.round(shownProgress * 100)}%` }}
                   />
                 </div>
-                <div className="mt-2 text-[11px] text-neutral-500">
+                <div className="mt-2 text-[11px] text-neutral-400">
                   {formatDuration(elapsedMs)} elapsed · {estimateExceeded ? "still parsing" : `about ${formatDuration(remainingMs)} left`}
                 </div>
               </div>
@@ -574,7 +588,7 @@ export default function Home() {
                 <div className="text-[14px] font-medium text-neutral-100">
                   {dragging ? "Drop to parse" : "Open a CS2 demo"}
                 </div>
-                <div className="mt-1 text-[12px] text-neutral-500">
+                <div className="mt-1 text-[12px] text-neutral-400">
                   Drop a .dem or .dem.zst, or click to browse
                 </div>
               </div>
@@ -583,14 +597,14 @@ export default function Home() {
         </div>
 
         {error && (
-          <div className="whitespace-pre-wrap rounded-md border border-red-500/30 bg-red-500/[0.06] px-3 py-2 text-[12px] text-red-200">
+          <div role="alert" className="whitespace-pre-wrap rounded-md border border-red-500/30 bg-red-500/[0.06] px-3 py-2 text-[12px] text-red-200">
             {error}
           </div>
         )}
 
         {matches.length > 0 && (
           <section className="space-y-2">
-            <h2 className="px-1 text-[11px] font-medium uppercase tracking-wider text-neutral-500">
+            <h2 className="px-1 text-[11px] font-medium uppercase tracking-wider text-neutral-400">
               Recent matches
             </h2>
             <div className="overflow-hidden rounded-lg border border-white/[0.08]">
@@ -665,7 +679,7 @@ export default function Home() {
 
       {postParse && (
         <Modal onClose={() => setPostParse(null)} title="Match parsed">
-          <p className="mb-3 text-[11px] text-neutral-500">
+          <p className="mb-3 text-[11px] text-neutral-400">
             Give it a name so it&rsquo;s easy to find later. Leave empty to
             skip.
           </p>
@@ -717,6 +731,7 @@ function Modal({
   onClose: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
 
   useEffect(() => {
     panelRef.current?.focus();
@@ -736,12 +751,15 @@ function Modal({
     >
       <div
         ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         tabIndex={-1}
         className="w-full max-w-sm rounded-xl border p-5"
         style={{ background: "var(--rl-panel)", borderColor: "var(--rl-border)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="mb-3 text-[13px] font-semibold text-neutral-100">{title}</h3>
+        <h3 id={titleId} className="mb-3 text-[13px] font-semibold text-neutral-100">{title}</h3>
         {children}
       </div>
     </div>
@@ -772,12 +790,12 @@ function MatchRow({
         first ? "" : "border-t border-white/[0.05]",
       ].join(" ")}
     >
-      <FileArchive className="size-4 shrink-0 text-neutral-500 group-hover:text-emerald-300" />
+      <FileArchive className="size-4 shrink-0 text-neutral-400 group-hover:text-emerald-300" />
       <div className="min-w-0 flex-1">
         <div className="truncate text-[13px] font-medium text-neutral-100">
           {m.name}
         </div>
-        <div className="mt-0.5 text-[11px] text-neutral-500">
+        <div className="mt-0.5 text-[11px] text-neutral-400">
           {date.toLocaleString()} · {(m.size / 1024 / 1024).toFixed(1)} MB
         </div>
       </div>
@@ -796,7 +814,7 @@ function MatchRow({
               aria-label="Match actions"
               variant="ghost"
               size="icon-sm"
-              className="text-neutral-500 hover:bg-white/[0.04] hover:text-neutral-100"
+              className="text-neutral-400 hover:bg-white/[0.04] hover:text-neutral-100"
             />
           }
         >

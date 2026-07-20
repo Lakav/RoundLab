@@ -31,7 +31,7 @@ export function DrawingToolbar({
   setStrokes,
 }: Props) {
   return (
-    <div className="flex shrink-0 items-center gap-1 text-neutral-500">
+    <div className="flex shrink-0 items-center gap-1 text-neutral-400">
       <div className="flex items-center gap-0.5">
         {TOOLS.map(({ value, icon: Icon, title }) => (
           <button
@@ -42,7 +42,7 @@ export function DrawingToolbar({
               "flex size-7 items-center justify-center rounded-[2px] transition-colors",
               tool === value
                 ? "text-[#d45aff]"
-                : "text-neutral-500 hover:bg-white/[0.05] hover:text-neutral-200"
+                : "text-neutral-400 hover:bg-white/[0.05] hover:text-neutral-200"
             )}
           >
             <Icon className="size-3.5" />
@@ -55,6 +55,8 @@ export function DrawingToolbar({
           <button
             key={c}
             onClick={() => setColor(c)}
+            aria-label={`Drawing color ${c}`}
+            aria-pressed={color === c}
             style={{ background: c }}
             className={cn(
               "size-3.5 rounded-full ring-1 transition-all",
@@ -70,7 +72,7 @@ export function DrawingToolbar({
         onClick={() => setStrokes(strokes.slice(0, -1))}
         disabled={strokes.length === 0}
         title="Undo (Cmd+Z)"
-        className="size-7 rounded-[2px] text-neutral-500 hover:bg-white/[0.05] hover:text-neutral-200 disabled:opacity-30"
+        className="size-7 rounded-[2px] text-neutral-400 hover:bg-white/[0.05] hover:text-neutral-200 disabled:opacity-30"
       >
         <Undo2 className="size-3.5" />
       </Button>
@@ -80,7 +82,7 @@ export function DrawingToolbar({
         onClick={() => setStrokes([])}
         disabled={strokes.length === 0}
         title="Clear all"
-        className="size-7 rounded-[2px] text-neutral-500 hover:bg-white/[0.05] hover:text-red-400 disabled:opacity-30"
+        className="size-7 rounded-[2px] text-neutral-400 hover:bg-white/[0.05] hover:text-red-400 disabled:opacity-30"
       >
         <Trash2 className="size-3.5" />
       </Button>

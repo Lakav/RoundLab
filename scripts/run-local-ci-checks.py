@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DESKTOP = ROOT / "desktop"
 
 PY_COMPILE_TARGETS = [
+    "scripts/collect-rncp-bloc2-evidence.py",
     "scripts/audit-browser-import-flow.py",
     "scripts/audit-browser-import-workflow.py",
     "scripts/audit-browser-parser-locality.py",
@@ -33,6 +34,7 @@ PY_COMPILE_TARGETS = [
     "scripts/audit-replay-fixture-coverage.py",
     "scripts/audit-replay-renderer-contract.py",
     "scripts/audit-replay-rendering.py",
+    "scripts/audit-security-baseline.py",
     "scripts/audit-static-web-export.py",
     "scripts/audit-static-export-output.py",
     "scripts/audit-web-portability.py",
@@ -58,6 +60,7 @@ CI_SAFE_AUDITS = [
     ["python3", "scripts/audit-replay-fixture-coverage.py"],
     ["python3", "scripts/audit-replay-renderer-contract.py"],
     ["python3", "scripts/audit-replay-rendering.py", "--assets-only"],
+    ["python3", "scripts/audit-security-baseline.py"],
     ["python3", "scripts/audit-static-export-output.py"],
 ]
 
@@ -82,9 +85,12 @@ def main() -> int:
     args = parser.parse_args()
 
     if not args.skip_frontend:
+        run(["pnpm", "audit", "--audit-level", "high"], DESKTOP)
         run(["pnpm", "lint"], DESKTOP)
         run(["pnpm", "exec", "tsc", "--noEmit"], DESKTOP)
+        run(["pnpm", "test:coverage"], DESKTOP)
         run(["pnpm", "build"], DESKTOP)
+        run(["pnpm", "test:e2e:a11y"], DESKTOP)
 
     run(["python3", "-m", "py_compile", *PY_COMPILE_TARGETS])
     run_quiet(["python3", "-m", "json.tool", "docs/replay-fixture-coverage.json"])

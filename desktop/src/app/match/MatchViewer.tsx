@@ -13,11 +13,13 @@ import { RoundList } from "@/components/replay/RoundList";
 import { PlayerHUD } from "@/components/replay/PlayerHUD";
 import { RoundClock } from "@/components/replay/RoundClock";
 import { KillFeed } from "@/components/replay/KillFeed";
+import { ReplayAccessibilitySummary } from "@/components/replay/ReplayAccessibilitySummary";
 import { Loader2, Maximize2, Minimize2, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { MatchData, PlayerPos, Round, UtilityEffect } from "@/lib/types";
 import { cropFor, MAP_CALIBRATION, MAP_VERTICAL_SECTIONS, RADAR_SIZE, type RadarLayer } from "@/lib/maps";
 import { enterMatchFullscreen, exitMatchFullscreen, getMatchMetadata, getRound, writeDebugLog } from "@/lib/api";
+import { assetPath } from "@/lib/paths";
 
 const DRAW_WIDTH = 3;
 const BASE_MAP_VIEW_SCALE = 1;
@@ -589,12 +591,12 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-neutral-950">
         <Image
-          src="/logo.png"
+          src={assetPath("/logo.png")}
           alt="RoundLab"
           width={72}
           height={74}
           loading="eager"
-          className="h-auto w-16 object-contain opacity-90"
+          className="object-contain opacity-90"
         />
         <Loader2 className="size-5 animate-spin text-neutral-400" />
       </div>
@@ -604,12 +606,12 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-neutral-950 text-neutral-100">
         <Image
-          src="/logo.png"
+          src={assetPath("/logo.png")}
           alt="RoundLab"
           width={72}
           height={74}
           loading="eager"
-          className="h-auto w-16 object-contain opacity-90"
+          className="object-contain opacity-90"
         />
         <p className="max-w-md text-center text-sm text-red-400">
           {err ?? "Match not found."}
@@ -639,31 +641,33 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-[#101212] text-neutral-100">
-      {match.meta.partial && (
-        <div className="bg-yellow-950/50 border-b border-yellow-700/30 px-4 py-2 text-sm text-yellow-200">
-          ⚠️ Partial parse: This replay was truncated during parsing. Data may be incomplete.
-          {match.meta.parseError && <span className="text-yellow-300 ml-2">({match.meta.parseError})</span>}
-        </div>
-      )}
-      {visualTest && <VisualTestPanel match={match} currentRoundIdx={currentRoundIdx} />}
-      <Link href="/" className="fixed left-4 top-4 z-50">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 gap-1.5 border border-white/10 bg-black/40 px-2.5 text-[11px] font-semibold text-neutral-300 hover:bg-black/60 hover:text-neutral-100"
-        >
-          <Image
-            src="/logo.png"
-            alt=""
-            width={20}
-            height={21}
-            loading="eager"
-            className="h-auto w-5 object-contain"
-          />
-          Home
-        </Button>
-      </Link>
-      <div className="fixed left-4 right-4 top-14 z-50 flex max-w-[calc(100vw-2rem)] items-center gap-2 overflow-x-auto rounded-md border border-white/10 bg-[#0b0d0d]/75 px-2 py-1.5 shadow-xl shadow-black/30 backdrop-blur-md sm:left-28 sm:right-auto sm:top-4 sm:max-w-[calc(100vw-8rem)]">
+      <ReplayAccessibilitySummary />
+      <header>
+        {match.meta.partial && (
+          <div role="status" className="bg-yellow-950/50 border-b border-yellow-700/30 px-4 py-2 text-sm text-yellow-200">
+            Partial parse: This replay was truncated during parsing. Data may be incomplete.
+            {match.meta.parseError && <span className="text-yellow-300 ml-2">({match.meta.parseError})</span>}
+          </div>
+        )}
+        {visualTest && <VisualTestPanel match={match} currentRoundIdx={currentRoundIdx} />}
+        <Link href="/" className="fixed left-4 top-4 z-50">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1.5 border border-white/10 bg-black/40 px-2.5 text-[11px] font-semibold text-neutral-300 hover:bg-black/60 hover:text-neutral-100"
+          >
+            <Image
+              src={assetPath("/logo.png")}
+              alt=""
+              width={20}
+              height={21}
+              loading="eager"
+              className="object-contain"
+            />
+            Home
+          </Button>
+        </Link>
+        <nav aria-label="Replay display controls" className="fixed left-4 right-4 top-14 z-50 flex max-w-[calc(100vw-2rem)] items-center gap-2 overflow-x-auto rounded-md border border-white/10 bg-[#0b0d0d]/75 px-2 py-1.5 shadow-xl shadow-black/30 backdrop-blur-md sm:left-28 sm:right-auto sm:top-4 sm:max-w-[calc(100vw-8rem)]">
         <div className="flex rounded-[3px] border border-white/10 bg-[#151717] p-0.5">
           {([
             ["classic", "Classique"],
@@ -688,7 +692,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
                 "h-7 rounded-[2px] px-2.5 text-[11px] font-semibold transition-colors",
                 reviewMode === mode
                   ? "bg-white text-neutral-950"
-                  : "text-neutral-500 hover:bg-white/[0.05] hover:text-neutral-200",
+                  : "text-neutral-400 hover:bg-white/[0.05] hover:text-neutral-200",
               ].join(" ")}
             >
               {label}
@@ -711,7 +715,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
                     "h-6 rounded-[2px] px-2 text-[10px] font-semibold transition-colors",
                     radarLayerMode === layer
                       ? "bg-emerald-300 text-[#06100b]"
-                      : "text-neutral-500 hover:bg-white/[0.05] hover:text-neutral-200",
+                      : "text-neutral-400 hover:bg-white/[0.05] hover:text-neutral-200",
                   ].join(" ")}
                   title={`Radar layer: ${label}`}
                 >
@@ -723,7 +727,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
           <button
             type="button"
             onClick={() => setClampedZoom(mapZoom - MAP_ZOOM_STEP)}
-            className="flex size-7 items-center justify-center rounded-[2px] text-neutral-500 transition-colors hover:bg-white/[0.05] hover:text-neutral-200"
+            className="flex size-7 items-center justify-center rounded-[2px] text-neutral-400 transition-colors hover:bg-white/[0.05] hover:text-neutral-200"
             title="Zoom out"
           >
             <ZoomOut className="size-3.5" />
@@ -734,7 +738,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
           <button
             type="button"
             onClick={() => setClampedZoom(mapZoom + MAP_ZOOM_STEP)}
-            className="flex size-7 items-center justify-center rounded-[2px] text-neutral-500 transition-colors hover:bg-white/[0.05] hover:text-neutral-200"
+            className="flex size-7 items-center justify-center rounded-[2px] text-neutral-400 transition-colors hover:bg-white/[0.05] hover:text-neutral-200"
             title="Zoom in"
           >
             <ZoomIn className="size-3.5" />
@@ -766,7 +770,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
         )}
         {condensedMode && (habitStatus || habitOverlay) && (
           <span
-            className="whitespace-nowrap text-[11px] text-neutral-500"
+            className="whitespace-nowrap text-[11px] text-neutral-400"
             title={
               habitOverlay
                 ? habitOverlay.mode === "replay"
@@ -784,8 +788,10 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
                 : habitStatus}
           </span>
         )}
-      </div>
+        </nav>
+      </header>
       <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        <h1 className="sr-only">RoundLab match replay</h1>
         {!condensedMode && (
           <>
             <PlayerHUD side="CT" />
@@ -836,7 +842,12 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
                     transformOrigin: "center",
                   }}
                 >
-                  <MapRenderer size={innerSize} condensed={condensedMode} radarLayerMode={radarLayerMode} />
+                  <MapRenderer
+                    size={innerSize}
+                    condensed={condensedMode}
+                    radarLayerMode={radarLayerMode}
+                    descriptionId="replay-text-alternative"
+                  />
                   {!condensedMode && (
                     <DrawingLayer
                       size={innerSize}
@@ -900,7 +911,7 @@ function VisualTestPanel({
     <div className="fixed right-4 top-4 z-50 w-52 rounded-md border border-sky-300/20 bg-black/70 p-3 text-[11px] text-neutral-200 shadow-xl backdrop-blur">
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="font-semibold text-sky-100">Visual test</span>
-        <span className="text-neutral-500">R{currentRoundIdx + 1}</span>
+        <span className="text-neutral-400">R{currentRoundIdx + 1}</span>
       </div>
       <div className="grid grid-cols-2 gap-x-3 gap-y-1">
         {checks.map(([label, ok]) => (

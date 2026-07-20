@@ -1,0 +1,51 @@
+$ python3 scripts/run-local-ci-checks.py --skip-frontend
+
+$ python3 -m py_compile scripts/collect-rncp-bloc2-evidence.py scripts/audit-browser-import-flow.py scripts/audit-browser-import-workflow.py scripts/audit-browser-parser-locality.py scripts/audit-browser-store-contract.py scripts/audit-ci-coverage.py scripts/audit-home-accessibility.py scripts/audit-match-controls.py scripts/audit-match-layout.py scripts/audit-parse-estimate.py scripts/audit-parser-fidelity.py scripts/audit-public-assets.py scripts/audit-reference-snapshots.py scripts/audit-replay-fixture-coverage.py scripts/audit-replay-renderer-contract.py scripts/audit-replay-rendering.py scripts/audit-security-baseline.py scripts/audit-static-web-export.py scripts/audit-static-export-output.py scripts/audit-web-portability.py scripts/run-local-ci-checks.py scripts/validate-release-version.py
+$ python3 -m json.tool docs/replay-fixture-coverage.json >/dev/null
+$ python3 -m json.tool parser/reference_demos.json >/dev/null
+$ python3 scripts/audit-web-portability.py
+web portability audit passed: 443 tracked files checked
+$ python3 scripts/audit-static-web-export.py
+static web export audit passed
+$ python3 scripts/audit-ci-coverage.py
+CI audit coverage passed: 19 audit scripts covered
+$ python3 scripts/audit-browser-parser-locality.py
+browser parser locality audit passed: 6 files checked
+$ python3 scripts/audit-browser-import-flow.py
+browser import flow audit passed
+$ python3 scripts/audit-browser-import-workflow.py
+browser import workflow audit passed
+$ python3 scripts/audit-browser-store-contract.py
+browser store contract audit passed
+$ python3 scripts/audit-home-accessibility.py
+home accessibility audit passed
+$ python3 scripts/audit-match-controls.py
+match controls audit passed
+$ python3 scripts/audit-match-layout.py
+match layout audit passed: 10 maps, 5 viewport probes
+$ python3 scripts/audit-parse-estimate.py
+parse estimate audit passed
+$ python3 scripts/audit-parser-fidelity.py
+parser fidelity audit passed
+$ python3 scripts/audit-public-assets.py
+public asset audit passed: 87 referenced assets checked
+$ python3 scripts/audit-reference-snapshots.py --reference-only
+reference snapshot shape audit passed: 5 demos
+- dust1-13.dem.zst
+- ancient4-13.dem.zst
+- anubis16-19.dem.zst
+- cache11-13.dem.zst
+- inferno8-13.dem.zst
+$ python3 scripts/audit-replay-fixture-coverage.py
+Replay fixture coverage manifest incomplete: 5/10 maps covered, 125 local fixture rounds documented, missing=de_mirage, de_nuke, de_overpass, de_train, de_vertigo (with local fixture proof)
+$ python3 scripts/audit-replay-renderer-contract.py
+replay renderer contract audit passed
+$ python3 scripts/audit-replay-rendering.py --assets-only
+OK map assets and calibrations for 10 maps
+$ python3 scripts/audit-security-baseline.py
+security baseline audit passed: 40 application source files checked
+$ python3 scripts/audit-static-export-output.py
+static export output audit passed
+local CI-safe checks passed
+
+exit_code=0

@@ -15,17 +15,21 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 11.9.0
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           cache: pnpm
           cache-dependency-path: desktop/pnpm-lock.yaml
 
       - name: Install web app dependencies
         working-directory: desktop
         run: pnpm install --frozen-lockfile
+
+      - name: Audit web dependencies
+        working-directory: desktop
+        run: pnpm audit --audit-level high
 
       - name: Lint web app
         working-directory: desktop
@@ -35,12 +39,36 @@ jobs:
         working-directory: desktop
         run: pnpm exec tsc --noEmit
 
+      - name: Test web app with coverage thresholds
+        working-directory: desktop
+        run: pnpm test:coverage
+
       - name: Build web app
         working-directory: desktop
         run: pnpm build
 
+      - name: Run browser accessibility checks
+        working-directory: desktop
+        run: pnpm test:e2e:a11y
+
       - name: Validate static export output
         run: python3 scripts/audit-static-export-output.py
+
+      - name: Upload frontend coverage evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: docs/rncp-bloc2/evidence/coverage/frontend
+          if-no-files-found: error
+
+      - name: Upload browser accessibility evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-accessibility-report
+          path: docs/rncp-bloc2/evidence/playwright-report
+          if-no-files-found: error
 
   rust:
     runs-on: ubuntu-latest
@@ -50,6 +78,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: 1.95.0
           targets: wasm32-unknown-unknown
 
       - uses: arduino/setup-protoc@v3
@@ -63,6 +92,7 @@ jobs:
       - name: Validate Rust parser audit tooling
         run: |
           python3 -m py_compile \
+            scripts/collect-rncp-bloc2-evidence.py \
             scripts/audit-browser-import-flow.py \
             scripts/audit-browser-import-workflow.py \
             scripts/audit-browser-parser-locality.py \
@@ -78,10 +108,12 @@ jobs:
             scripts/audit-replay-fixture-coverage.py \
             scripts/audit-replay-renderer-contract.py \
             scripts/audit-replay-rendering.py \
+            scripts/audit-security-baseline.py \
             scripts/audit-static-web-export.py \
             scripts/audit-static-export-output.py \
             scripts/audit-web-portability.py \
             scripts/run-local-ci-checks.py \
+            scripts/verify-wasm-reproducibility.py \
             scripts/validate-release-version.py
           python3 -m json.tool docs/replay-fixture-coverage.json >/dev/null
           python3 -m json.tool parser/reference_demos.json >/dev/null
@@ -137,6 +169,21 @@ jobs:
       - name: Validate replay map assets
         run: python3 scripts/audit-replay-rendering.py --assets-only
 
+      - name: Validate security baseline
+        run: python3 scripts/audit-security-baseline.py
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Audit Rust dependencies
+        working-directory: parser
+        run: cargo audit
+
       - name: Format Rust parser
         working-directory: parser
         run: cargo fmt --check
@@ -144,6 +191,20 @@ jobs:
       - name: Test Rust parser
         working-directory: parser
         run: cargo test
+
+      - name: Measure portable Rust coverage
+        working-directory: parser
+        run: |
+          mkdir -p ../docs/rncp-bloc2/evidence/coverage/rust
+          cargo llvm-cov --workspace --json \
+            --output-path ../docs/rncp-bloc2/evidence/coverage/rust/coverage-summary.json
+
+      - name: Upload portable Rust coverage evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-coverage-portable
+          path: docs/rncp-bloc2/evidence/coverage/rust/coverage-summary.json
+          if-no-files-found: error
 
       - name: Check browser WASM parser build
         working-directory: parser
@@ -153,15 +214,14 @@ jobs:
         run: cargo install wasm-bindgen-cli --version 0.2.126 --locked
 
       - name: Verify committed browser WASM artifacts
-        run: |
-          cd parser
-          cargo build --target wasm32-unknown-unknown --release --lib
-          wasm-bindgen target/wasm32-unknown-unknown/release/roundlab_parser.wasm \
-            --target web \
-            --out-dir ../desktop/src/wasm/roundlab_parser \
-            --out-name roundlab_parser
-          cd ..
-          git diff --exit-code -- desktop/src/wasm/roundlab_parser
+        run: python3 scripts/verify-wasm-reproducibility.py --check-git
+
+      - name: Upload Linux browser WASM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-wasm-linux
+          path: desktop/src/wasm/roundlab_parser
+          if-no-files-found: error
 
       - name: Clippy Rust parser
         working-directory: parser
