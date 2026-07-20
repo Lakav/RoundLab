@@ -36,6 +36,7 @@ export function Timeline() {
         onPointerDown={seekFromPointer}
       >
         <Slider
+          thumbLabel="Replay time"
           value={[time]}
           min={0}
           max={duration || 1}

@@ -1,3 +1,5 @@
+import { assetPath } from "@/lib/paths";
+
 export type MapCalibration = {
   posX: number;
   posY: number;
@@ -109,5 +111,5 @@ export function radarLayerForPositions(
 export function radarImagePath(map: string, layer: RadarLayer = "default"): string {
   const hasLayer = MAP_VERTICAL_SECTIONS[map]?.some((section) => section.layer === layer);
   const suffix = layer === "lower" && hasLayer ? "_lower" : "";
-  return `/cs2lens-maps/${map}${suffix}.png`;
+  return assetPath(`/cs2lens-maps/${map}${suffix}.png`);
 }

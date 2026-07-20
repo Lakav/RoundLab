@@ -68,8 +68,10 @@ Frontend checks:
 
 ```bash
 cd desktop
+pnpm audit --audit-level high
 pnpm lint
 pnpm exec tsc --noEmit
+pnpm test:coverage
 pnpm build
 ```
 
@@ -110,6 +112,14 @@ Known reference demos are listed in `parser/reference_demos.json`. For those
 files, tests enforce exact map and score identity plus snapshots for rounds,
 players, frames, kills, bomb events, bomb state, utility effects, weapon fires,
 and projectile frames.
+
+The reproducible RNCP Bloc 2 evidence pack is stored in
+`docs/rncp-bloc2/evidence/`. Regenerate its raw logs with a local reference
+demo using:
+
+```bash
+python3 scripts/collect-rncp-bloc2-evidence.py --demo demos/dust1-13.dem.zst
+```
 
 For a fast snapshot check that does not require parser outputs, run:
 
@@ -227,6 +237,14 @@ file input and the settings panel semantics, run:
 
 ```bash
 python3 scripts/audit-home-accessibility.py
+```
+
+To validate the static security baseline (CSP, referrer policy, dangerous HTML
+or dynamic-code sinks, read-only CI permissions, and dependency-audit wiring),
+run:
+
+```bash
+python3 scripts/audit-security-baseline.py
 ```
 
 To validate that browser imports still use full-fidelity parser defaults and do

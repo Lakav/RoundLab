@@ -2438,6 +2438,12 @@ fn clamp_fire_effects_from_expire(
     span: &RoundSpan,
     effects: &mut [UtilityEffect],
 ) {
+    // An inferno is made of several flame cells. Their `inferno_expire`
+    // events do not arrive in a guaranteed order and the first cell to expire
+    // is not the end of the whole area. Collect the latest matching expiry for
+    // each effect before mutating it; otherwise the first event shortens
+    // `effect.end` and makes every later cell ineligible.
+    let mut latest_expire_by_effect = vec![None::<f64>; effects.len()];
     for event in events {
         if get_str(event, "event_name") != Some("inferno_expire") {
             continue;
@@ -2461,7 +2467,7 @@ fn clamp_fire_effects_from_expire(
         let mut best_idx = None;
         let mut best_dist = f64::INFINITY;
         for (idx, effect) in effects.iter().enumerate() {
-            if effect.kind != "fire" || effect.start > expire || effect.end <= expire {
+            if effect.kind != "fire" || effect.start > expire || effect.end < expire {
                 continue;
             }
             let d = squared_distance(effect.x, effect.y, effect.z, x, y, z);
@@ -2471,7 +2477,13 @@ fn clamp_fire_effects_from_expire(
             }
         }
         if let Some(idx) = best_idx {
-            effects[idx].end = expire.max(effects[idx].start + 0.25);
+            latest_expire_by_effect[idx] =
+                Some(latest_expire_by_effect[idx].map_or(expire, |current| current.max(expire)));
+        }
+    }
+    for (effect, expire) in effects.iter_mut().zip(latest_expire_by_effect) {
+        if let Some(expire) = expire {
+            effect.end = expire.max(effect.start + 0.25);
         }
     }
 }
@@ -4429,6 +4441,44 @@ mod tests {
 
         assert_eq!(effects.len(), 1);
         assert!((effects[0].end - (effects[0].start + 7.0)).abs() < 0.001);
+    }
+
+    #[test]
+    fn fire_effect_uses_latest_nearby_cell_expire() {
+        let span = RoundSpan {
+            start: 100,
+            end: 900,
+            round_end: 900,
+            winner: "CT".into(),
+        };
+        let events = vec![
+            json!({
+                "event_name": "inferno_startburn",
+                "tick": 164,
+                "x": 100.0,
+                "y": 200.0,
+                "z": 20.0,
+            }),
+            json!({
+                "event_name": "inferno_expire",
+                "tick": 516,
+                "x": 108.0,
+                "y": 196.0,
+                "z": 20.0,
+            }),
+            json!({
+                "event_name": "inferno_expire",
+                "tick": 612,
+                "x": 112.0,
+                "y": 204.0,
+                "z": 20.0,
+            }),
+        ];
+
+        let effects = round_effects(&events, &span, &BTreeMap::new());
+
+        assert_eq!(effects.len(), 1);
+        assert!((effects[0].end - seconds_since(span.start, 612)).abs() < 0.001);
     }
 
     #[test]

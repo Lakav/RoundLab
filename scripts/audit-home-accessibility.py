@@ -39,6 +39,14 @@ def main() -> None:
         'accept=".dem,.zst,.dem.zst"',
         "Open a CS2 demo",
         "Drop a .dem or .dem.zst",
+        '<h1 className="text-sm font-semibold">RoundLab</h1>',
+        'aria-label="Open a local CS2 demo file"',
+        'role="status"',
+        'aria-live="polite"',
+        'role="alert"',
+        'aria-modal="true"',
+        "aria-labelledby={titleId}",
+        "const titleId = useId()",
     ]:
         require(home, snippet, HOME_PAGE, errors)
 
