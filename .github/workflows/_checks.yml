@@ -118,6 +118,7 @@ jobs:
             scripts/audit-security-baseline.py \
             scripts/audit-static-web-export.py \
             scripts/audit-static-export-output.py \
+            scripts/audit-user-validation.py \
             scripts/audit-web-portability.py \
             scripts/benchmark-native-parser.py \
             scripts/check-performance-budgets.py \
@@ -185,6 +186,9 @@ jobs:
 
       - name: Validate security baseline
         run: python3 scripts/audit-security-baseline.py
+
+      - name: Validate user-session evidence
+        run: python3 scripts/audit-user-validation.py
 
       - uses: taiki-e/install-action@v2
         with:

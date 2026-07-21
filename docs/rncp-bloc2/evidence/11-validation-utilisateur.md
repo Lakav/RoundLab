@@ -43,3 +43,12 @@ Statut au 21 juillet 2026 : **BLOQUÉ — aucun participant humain réel n'a ét
 | — | — | — | — | — | — |
 
 Aucun taux de réussite, aucune durée moyenne et aucune conclusion d'utilisabilité ne doivent être ajoutés tant que les lignes réelles ne sont pas renseignées.
+
+## Fichiers structurés et contrôle
+
+- `validation-utilisateur-participants.csv` reçoit une ligne par participant anonymisé, uniquement après consentement et session réelle.
+- `validation-utilisateur-taches.csv` reçoit exactement les huit tâches `UT-01` à `UT-08` pour chaque participant.
+- les durées sont saisies en secondes ; `duree_totale_secondes` doit être la somme des huit durées ; `taches_reussies` doit correspondre aux huit résultats `oui` ou `non`.
+- `aide_fournie`, `difficultes` et `observation` doivent contenir une observation réelle ; écrire `aucune` lorsque c'est factuellement le cas plutôt que laisser le champ vide.
+
+`python3 scripts/audit-user-validation.py` vérifie la structure sans transformer les fichiers vides en preuve. Après au moins une session réelle complète, `python3 scripts/audit-user-validation.py --require-complete` doit réussir avant de calculer un taux ou de présenter la validation comme acquise.

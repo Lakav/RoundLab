@@ -253,6 +253,21 @@ before computing a compliance rate:
 python3 scripts/audit-rgaa-grid.py --require-complete
 ```
 
+To validate the anonymized user-session evidence without treating empty files
+as completed sessions, run:
+
+```bash
+python3 scripts/audit-user-validation.py
+```
+
+After at least one real participant has completed the eight protocol tasks,
+require a coherent participant summary and task journal before reporting a
+success rate:
+
+```bash
+python3 scripts/audit-user-validation.py --require-complete
+```
+
 To validate the static security baseline (CSP, referrer policy, dangerous HTML
 or dynamic-code sinks, read-only CI permissions, and dependency-audit wiring),
 run:

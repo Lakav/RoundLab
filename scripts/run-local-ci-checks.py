@@ -38,6 +38,7 @@ PY_COMPILE_TARGETS = [
     "scripts/audit-security-baseline.py",
     "scripts/audit-static-web-export.py",
     "scripts/audit-static-export-output.py",
+    "scripts/audit-user-validation.py",
     "scripts/audit-web-portability.py",
     "scripts/benchmark-native-parser.py",
     "scripts/check-performance-budgets.py",
@@ -68,6 +69,7 @@ CI_SAFE_AUDITS = [
     ["python3", "scripts/audit-replay-rendering.py", "--assets-only"],
     ["python3", "scripts/audit-security-baseline.py"],
     ["python3", "scripts/audit-static-export-output.py"],
+    ["python3", "scripts/audit-user-validation.py"],
 ]
 
 
