@@ -111,12 +111,14 @@ jobs:
             scripts/audit-parser-fidelity.py \
             scripts/audit-public-assets.py \
             scripts/audit-reference-snapshots.py \
+            scripts/audit-rgaa-grid.py \
             scripts/audit-replay-fixture-coverage.py \
             scripts/audit-replay-renderer-contract.py \
             scripts/audit-replay-rendering.py \
             scripts/audit-security-baseline.py \
             scripts/audit-static-web-export.py \
             scripts/audit-static-export-output.py \
+            scripts/audit-user-validation.py \
             scripts/audit-web-portability.py \
             scripts/benchmark-native-parser.py \
             scripts/check-performance-budgets.py \
@@ -170,6 +172,9 @@ jobs:
       - name: Validate reference parser snapshots
         run: python3 scripts/audit-reference-snapshots.py --reference-only
 
+      - name: Validate RGAA audit grid
+        run: python3 scripts/audit-rgaa-grid.py
+
       - name: Validate replay fixture coverage manifest
         run: python3 scripts/audit-replay-fixture-coverage.py
 
@@ -181,6 +186,9 @@ jobs:
 
       - name: Validate security baseline
         run: python3 scripts/audit-security-baseline.py
+
+      - name: Validate user-session evidence
+        run: python3 scripts/audit-user-validation.py
 
       - uses: taiki-e/install-action@v2
         with:

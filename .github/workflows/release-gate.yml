@@ -1,0 +1,34 @@
+name: release-gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Candidate release tag (vMAJOR.MINOR.PATCH)
+        required: true
+        default: v0.1.40
+
+concurrency:
+  group: release-gate-${{ inputs.tag }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    uses: ./.github/workflows/_checks.yml
+
+  evidence:
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require complete recipe and human evidence
+        run: python3 scripts/validate-release-version.py --tag "$RELEASE_TAG"

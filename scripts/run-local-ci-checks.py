@@ -31,12 +31,14 @@ PY_COMPILE_TARGETS = [
     "scripts/audit-parser-fidelity.py",
     "scripts/audit-public-assets.py",
     "scripts/audit-reference-snapshots.py",
+    "scripts/audit-rgaa-grid.py",
     "scripts/audit-replay-fixture-coverage.py",
     "scripts/audit-replay-renderer-contract.py",
     "scripts/audit-replay-rendering.py",
     "scripts/audit-security-baseline.py",
     "scripts/audit-static-web-export.py",
     "scripts/audit-static-export-output.py",
+    "scripts/audit-user-validation.py",
     "scripts/audit-web-portability.py",
     "scripts/benchmark-native-parser.py",
     "scripts/check-performance-budgets.py",
@@ -61,11 +63,13 @@ CI_SAFE_AUDITS = [
     ["python3", "scripts/audit-parser-fidelity.py"],
     ["python3", "scripts/audit-public-assets.py"],
     ["python3", "scripts/audit-reference-snapshots.py", "--reference-only"],
+    ["python3", "scripts/audit-rgaa-grid.py"],
     ["python3", "scripts/audit-replay-fixture-coverage.py"],
     ["python3", "scripts/audit-replay-renderer-contract.py"],
     ["python3", "scripts/audit-replay-rendering.py", "--assets-only"],
     ["python3", "scripts/audit-security-baseline.py"],
     ["python3", "scripts/audit-static-export-output.py"],
+    ["python3", "scripts/audit-user-validation.py"],
 ]
 
 

@@ -12,7 +12,7 @@ Sa préparation a été réalisée sur `rncp-bloc2-final` avec des commits sépa
 
 La candidate v0.1.40 a été préparée dans `de30fd8`, fusionnée sur `main` par la PR #2 dans `2dc622d`, puis validée par CI de PR et de `main`. Elle a été déployée, contrôlée publiquement, rollbackée vers `2e51eaf`, contrôlée, restaurée sur `2dc622d` et contrôlée une dernière fois. La séquence et ses cinq runs sont détaillés dans `deployment-runs-2026-07-21.md`.
 
-`package.json` vaut `0.1.40`, mais **aucun tag v0.1.40 n'est créé** : REC-14 et REC-15 restent BLOQUÉS faute de cinq fixtures réelles et de parcours humain VoiceOver/RGAA. Une valeur de package et un déploiement technique ne suffisent pas à déclarer l'ensemble de la recette acquis.
+`package.json` vaut `0.1.40`, mais **aucun tag v0.1.40 n'est créé** : REC-14 est désormais OK grâce à la fixture CS2 Vertigo vérifiée, tandis que REC-15 reste BLOQUÉ faute de parcours humain VoiceOver/RGAA et de sessions utilisateurs. Une valeur de package et un déploiement technique ne suffisent pas à déclarer l'ensemble de la recette acquis.
 
 Commandes de preuve :
 
@@ -23,3 +23,7 @@ git status --short
 ```
 
 Une release ne doit pas être déduite de la seule valeur de `package.json`.
+
+Avant toute création de tag, `python3 scripts/validate-release-version.py --tag v0.1.40` doit réussir. Cette commande vérifie l'alignement des manifests, les 16 scénarios `OK`, la grille RGAA complète et au moins une session utilisateur réelle de huit tâches. Le mode `--manifest-only` sert uniquement au diagnostic de version et ne donne jamais l'autorisation de créer le tag.
+
+Le workflow manuel `release-gate.yml` est la porte distante correspondante : il exécute d'abord la totalité du workflow réutilisable `_checks.yml`, récupère l'historique et les tags, puis lance le validateur strict sur le même commit. Il refuse un tag déjà existant afin d'empêcher sa réutilisation ou son déplacement. Il ne crée pas le tag ; son succès est une condition préalable vérifiable, pas une release automatique.

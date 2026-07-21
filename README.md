@@ -161,12 +161,12 @@ python3 scripts/audit-replay-fixture-coverage.py
 ```
 
 Use `--require-all-maps` when you need a hard proof gate for replay coverage
-across every calibrated map. That stricter mode is expected to fail until the
-maps listed under `missing` have local fixtures.
+across every calibrated map. The current local fixture set passes that stricter
+mode with all ten calibrated maps represented.
 
-Maps with committed `*_lower` radar assets, currently Nuke, Train, and Vertigo,
-still need dedicated replay proof that exercises both the default and lower
-radar layers before they can be removed from `missing`.
+Maps with committed `*_lower` radar assets need dedicated replay proof that
+exercises both the default and lower radar layers. Nuke, Train, and Vertigo now
+have that proof.
 
 To catch accidental regressions back to desktop/Tauri-only code paths, run:
 
@@ -238,6 +238,52 @@ file input and the settings panel semantics, run:
 ```bash
 python3 scripts/audit-home-accessibility.py
 ```
+
+To validate the exhaustive RGAA 4.1.2 grid without treating empty rows as real
+results, run:
+
+```bash
+python3 scripts/audit-rgaa-grid.py
+```
+
+After the human audit, require all 106 criteria to be coherently documented
+before computing a compliance rate:
+
+```bash
+python3 scripts/audit-rgaa-grid.py --require-complete
+```
+
+To validate the anonymized user-session evidence without treating empty files
+as completed sessions, run:
+
+```bash
+python3 scripts/audit-user-validation.py
+```
+
+After at least one real participant has completed the eight protocol tasks,
+require a coherent participant summary and task journal before reporting a
+success rate:
+
+```bash
+python3 scripts/audit-user-validation.py --require-complete
+```
+
+Immediately before creating a release tag, run the strict release gate. A
+matching package version is insufficient: all 16 recipe scenarios, the RGAA
+grid, and the real user-session evidence must also pass.
+
+```bash
+python3 scripts/validate-release-version.py --tag v0.1.40
+```
+
+`--manifest-only` deliberately skips those evidence gates and must never be
+used to authorize a tag.
+
+For the remote pre-release check, manually dispatch `.github/workflows/release-gate.yml`
+on the candidate commit with the expected tag. It runs the full reusable CI
+suite first and the strict evidence gate second. It deliberately does not
+create or push the tag, and it rejects an existing tag instead of allowing it
+to be moved or reused.
 
 To validate the static security baseline (CSP, referrer policy, dangerous HTML
 or dynamic-code sinks, read-only CI permissions, and dependency-audit wiring),

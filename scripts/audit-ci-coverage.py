@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKS = ROOT / ".github" / "workflows" / "_checks.yml"
+RELEASE_GATE = ROOT / ".github" / "workflows" / "release-gate.yml"
 README = ROOT / "README.md"
 PACKAGE = ROOT / "desktop" / "package.json"
 SCRIPTS = ROOT / "scripts"
@@ -26,6 +27,7 @@ def require_snippets(source: str, snippets: list[str], label: str, errors: list[
 
 def main() -> None:
     checks = CHECKS.read_text(encoding="utf-8")
+    release_gate = RELEASE_GATE.read_text(encoding="utf-8")
     readme = README.read_text(encoding="utf-8")
     package = PACKAGE.read_text(encoding="utf-8")
     wasm_reproducibility = WASM_REPRODUCIBILITY.read_text(encoding="utf-8")
@@ -87,6 +89,25 @@ def main() -> None:
         "README.md WASM parser freshness docs",
         errors,
     )
+    require_snippets(
+        release_gate,
+        [
+            "workflow_dispatch:",
+            "permissions:\n  contents: read",
+            "uses: ./.github/workflows/_checks.yml",
+            "needs: checks",
+            "fetch-depth: 0",
+            'python3 scripts/validate-release-version.py --tag "$RELEASE_TAG"',
+        ],
+        ".github/workflows/release-gate.yml strict pre-release gate",
+        errors,
+    )
+    for forbidden in ["contents: write", "git tag", "git push", "gh release"]:
+        if forbidden in release_gate:
+            errors.append(
+                ".github/workflows/release-gate.yml must validate without publishing; "
+                f"found forbidden snippet: {forbidden}"
+            )
 
     if errors:
         raise AssertionError("CI audit coverage failed: " + "; ".join(errors))

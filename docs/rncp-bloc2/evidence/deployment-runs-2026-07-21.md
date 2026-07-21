@@ -47,4 +47,4 @@ Après rollback, les mêmes contrôles fonctionnels restaient verts et le manife
 
 Après restauration, les contrôles fonctionnels étaient toujours verts et `3gzjaewd3cdr_.js` était revenu. Cette alternance, associée aux SHA de checkout présents dans les logs, démontre le rollback puis la restauration effectifs ; elle ne repose pas uniquement sur le statut SUCCESS du workflow.
 
-Les annotations GitHub relatives au runtime Node 20 interne de certaines actions sont des avis de dépréciation ; aucun job n'a échoué. Aucun tag v0.1.40 n'est créé tant que REC-14 et REC-15 restent BLOQUÉS.
+Les annotations GitHub relatives au runtime Node 20 interne de certaines actions sont des avis de dépréciation ; aucun job n'a échoué. REC-14 a depuis été validé par les dix fixtures réelles. Aucun tag v0.1.40 n'est créé tant que REC-15 reste BLOQUÉ.

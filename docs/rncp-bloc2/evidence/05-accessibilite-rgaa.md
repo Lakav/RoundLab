@@ -37,7 +37,23 @@ Le premier passage étendu a détecté un contraste de 3,93:1 et une timeline é
 | focus visible et ordre complet | oui | observation visuelle + Tab/Shift+Tab | NON DÉMONTRÉ | aucune session enregistrée | intervention humaine requise |
 | zoom navigateur réel à 200 % et 400 % | oui | zoom Chrome/Safari réel | NON DÉMONTRÉ | aucun procès-verbal manuel | intervention humaine requise |
 | contrastes internes au canvas PixiJS | oui | mesure visuelle/colorimétrique sur états réels | NON DÉMONTRÉ | axe exclut l'intérieur du canvas | intervention humaine requise |
-| audit exhaustif des 106 critères RGAA | selon pages | audit manuel complet | NON DÉMONTRÉ | grille exhaustive absente | audit dédié requis |
+| audit exhaustif des 106 critères RGAA | selon pages | audit manuel complet | NON DÉMONTRÉ | grille exhaustive vierge préparée ; 0 résultat manuel sur 106 | audit dédié requis |
+
+## Grille exhaustive prête à renseigner
+
+Le fichier `rgaa-4.1.2-grille.csv` contient les 106 critères du référentiel officiel RGAA 4.1.2 et les colonnes `critere`, `description`, `applicable`, `methode`, `resultat`, `preuve`, `correction`, `auditeur` et `date`. Les champs d'audit sont volontairement vides : leur présence ne constitue pas une validation.
+
+Pour chaque critère, l'auditeur doit :
+
+1. indiquer `oui` ou `non` dans `applicable` et justifier toute non-applicabilité dans `methode` ;
+2. décrire la vérification réellement effectuée, sur les pages et états concernés ;
+3. utiliser uniquement `CONFORME`, `NON CONFORME` ou `NON APPLICABLE` dans `resultat` ;
+4. relier une preuve vérifiable et, pour tout écart, une correction ou une anomalie suivie ;
+5. renseigner son identifiant, la date et conserver les versions du navigateur, de macOS et des technologies d'assistance dans le procès-verbal.
+
+Le taux de conformité ne doit être calculé qu'après renseignement des 106 lignes, sur les seuls critères applicables, selon la méthode officielle. Dès qu'un élément testé invalide un critère sur une page de l'échantillon, ce critère n'est pas conforme. Source : [RGAA 4.1.2 — critères et tests](https://accessibilite.numerique.gouv.fr/methode/criteres-et-tests/).
+
+Le contrôle portable `python3 scripts/audit-rgaa-grid.py` vérifie dès maintenant la structure de la grille et la cohérence de toute ligne partiellement renseignée. Après l'audit humain, `python3 scripts/audit-rgaa-grid.py --require-complete` doit réussir avant de publier un taux ou de passer REC-15 à `OK`. Le script ne calcule `complianceRate` que lorsque les 106 critères sont renseignés ; il renvoie sinon `null`.
 
 ## Protocole VoiceOver à exécuter sur macOS
 

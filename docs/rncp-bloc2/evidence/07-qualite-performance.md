@@ -2,7 +2,7 @@
 
 ## Portes de qualité
 
-| Porte | Attendu | Résultat du 20/07/2026 |
+| Porte | Attendu | Résultat du 21/07/2026 |
 | --- | --- | --- |
 | ESLint / TypeScript | 0 erreur | PASS |
 | Vitest | 70 tests verts et seuils 60/50/60/60 | 70 tests, PASS |
@@ -20,7 +20,7 @@ Le périmètre frontend comprend `src/lib/**/*.ts`, la page d'accueil, `MatchVie
 | Couverture frontend globale | Couvert / total | Pourcentage |
 | --- | --- | --- |
 | Statements | 2257 / 3659 | 61,68 % |
-| Branches | 1380 / 2633 | 52,41 % |
+| Branches | 1382 / 2635 | 52,44 % |
 | Fonctions | 430 / 593 | 72,51 % |
 | Lignes | 1957 / 3072 | 63,70 % |
 

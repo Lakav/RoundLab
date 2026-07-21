@@ -13,18 +13,18 @@ Les statuts sont strictement `OK`, `NOK` ou `BLOQUÉ`. La date distingue l'exéc
 | REC-07 | calibrations livrées | cartes multi-niveaux | choisir couche selon altitude et au clavier | couche correcte, état annoncé | calculs valides et contrôle `aria-pressed` | OK | 2026-07-21 | tests maps + Playwright commandes |
 | REC-08 | parser `release` | `demos/dust1-13.dem.zst`, 135 076 363 o | parser et comparer références | carte, score, signatures exacts | test réel vert | OK | 2026-07-20 | `rust-real-demo-reference.txt` |
 | REC-09 | Node/pnpm attendus | build normal et `/RoundLab` | construire l'export | routes statiques, assets résolus | builds local, PR, `main` et Pages v0.1.40 verts | OK | 2026-07-21 | build + audit output + runs 29826700102/29826905878/29827081068 |
-| REC-10 | périmètre Vitest global | code frontend incluant `MapRenderer` | exécuter la couverture | ≥ 60/50/60/60 et CI bloquante | 61,68/52,41/72,51/63,70 ; `MapRenderer` 52,72 % statements | OK | 2026-07-21 | HTML, JSON, LCOV, log couverture ; RL-2026-005 |
+| REC-10 | périmètre Vitest global | code frontend incluant `MapRenderer` | exécuter la couverture | ≥ 60/50/60/60 et CI bloquante | 61,68/52,44/72,51/63,70 ; `MapRenderer` 52,72 % statements | OK | 2026-07-21 | HTML, JSON, LCOV, log couverture ; RL-2026-005 |
 | REC-11 | lockfiles courants | dépendances web/Rust | lancer audits | aucune vulnérabilité bloquante | dernier contrôle collecté vert, warnings Rust documentés | OK | 2026-07-20 | logs d'audit |
 | REC-12 | Chrome système | accueil, erreur, bibliothèque, dialogues, replay, commandes | lancer 5 scénarios axe/clavier/reflow | 0 violation axe, contrôles nommés | écart contraste détecté puis corrigé ; campagne finale 5/5 verte | OK | 2026-07-21 | rapport Playwright ; RL-2026-006 à 008 |
 | REC-13 | replay seedé | alternative DOM et état courant | lire la région reliée au radar | joueurs, événements, bombe disponibles | région accessible synchronisée et testée | OK | 2026-07-21 | test replay accessibility |
-| REC-14 | 10 cartes calibrées | vraies fixtures disponibles | exécuter une fixture par carte | preuve réelle pour chaque carte livrée | Ancient, Anubis, Cache, Dust2, Inferno seulement ; recherche étendue à Desktop/Documents/Downloads sans candidat Mirage, Nuke, Overpass, Train ou Vertigo | BLOQUÉ | 2026-07-21 | `docs/replay-fixture-coverage.json`, `fixture-search-2026-07-21.json` |
+| REC-14 | 10 cartes calibrées | vraies fixtures disponibles | exécuter une fixture par carte | preuve réelle pour chaque carte livrée | 10/10 cartes prouvées sur 206 rounds locaux ; la démo Vertigo officielle ajoutée passe le parsing `full` et l'audit de rendu, avec les deux couches observées | OK | 2026-07-21 | `docs/replay-fixture-coverage.json`, `fixture-acquisition-2026-07-21.json`, `logs/replay-fixtures-public.txt` |
 | REC-15 | macOS + VoiceOver | accueil, import, progression, bibliothèque, replay, dialogues | exécuter le protocole manuel | restitution et focus compréhensibles | VoiceOver activé réellement sur l'accueil local, mais raccourcis VO et annonces non observables par l'outil ; aucune session humaine | BLOQUÉ | 2026-07-21 | `05-accessibilite-rgaa.md` |
 | REC-16 | v0.1.40 fusionnée avec CI verte | workflow Pages et SHA v0.1.40 | déployer, smoke, rollback, restaurer | révision v0.1.40 restaurable | CI PR et `main` vertes ; déploiement `2dc622d`, smoke public, rollback `2e51eaf`, smoke, restauration `2dc622d` et smoke réussis | OK | 2026-07-21 | `deployment-runs-2026-07-21.md` |
 
 ## Synthèse générée
 
-- OK : 14
+- OK : 15
 - NOK : 0
-- BLOQUÉ : 2
+- BLOQUÉ : 1
 
-REC-14 et REC-15 ne doivent changer de statut qu'après exécution avec leurs données réelles respectives. Le tag v0.1.40 reste interdit tant que ces contrôles requis sont bloqués.
+REC-14 est validé par les dix fixtures réelles. REC-15 ne doit changer de statut qu'après exécution humaine VoiceOver/RGAA et sessions utilisateurs. Le tag v0.1.40 reste interdit tant que ce contrôle requis est bloqué.

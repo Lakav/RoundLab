@@ -35,13 +35,37 @@
         "manifest": "inferno-audit.json.gz",
         "rounds": 21
       }
+    ],
+    "de_mirage": [
+      {
+        "manifest": "mirage-full.json.gz",
+        "rounds": 9
+      }
+    ],
+    "de_nuke": [
+      {
+        "manifest": "nuke-full.json.gz",
+        "rounds": 18
+      }
+    ],
+    "de_overpass": [
+      {
+        "manifest": "overpass-full.json.gz",
+        "rounds": 16
+      }
+    ],
+    "de_train": [
+      {
+        "manifest": "train-full.json.gz",
+        "rounds": 16
+      }
+    ],
+    "de_vertigo": [
+      {
+        "manifest": "vertigo-full.json.gz",
+        "rounds": 22
+      }
     ]
   },
-  "missing": [
-    "de_mirage",
-    "de_nuke",
-    "de_overpass",
-    "de_train",
-    "de_vertigo"
-  ]
+  "missing": []
 }
