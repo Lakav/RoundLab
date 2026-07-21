@@ -53,6 +53,8 @@ Pour chaque critère, l'auditeur doit :
 
 Le taux de conformité ne doit être calculé qu'après renseignement des 106 lignes, sur les seuls critères applicables, selon la méthode officielle. Dès qu'un élément testé invalide un critère sur une page de l'échantillon, ce critère n'est pas conforme. Source : [RGAA 4.1.2 — critères et tests](https://accessibilite.numerique.gouv.fr/methode/criteres-et-tests/).
 
+Le contrôle portable `python3 scripts/audit-rgaa-grid.py` vérifie dès maintenant la structure de la grille et la cohérence de toute ligne partiellement renseignée. Après l'audit humain, `python3 scripts/audit-rgaa-grid.py --require-complete` doit réussir avant de publier un taux ou de passer REC-15 à `OK`. Le script ne calcule `complianceRate` que lorsque les 106 critères sont renseignés ; il renvoie sinon `null`.
+
 ## Protocole VoiceOver à exécuter sur macOS
 
 ### Tentative outillée du 21 juillet 2026

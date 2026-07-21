@@ -239,6 +239,20 @@ file input and the settings panel semantics, run:
 python3 scripts/audit-home-accessibility.py
 ```
 
+To validate the exhaustive RGAA 4.1.2 grid without treating empty rows as real
+results, run:
+
+```bash
+python3 scripts/audit-rgaa-grid.py
+```
+
+After the human audit, require all 106 criteria to be coherently documented
+before computing a compliance rate:
+
+```bash
+python3 scripts/audit-rgaa-grid.py --require-complete
+```
+
 To validate the static security baseline (CSP, referrer policy, dangerous HTML
 or dynamic-code sinks, read-only CI permissions, and dependency-audit wiring),
 run:
