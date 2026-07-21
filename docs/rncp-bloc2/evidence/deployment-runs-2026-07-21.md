@@ -49,12 +49,12 @@ Après restauration, les contrôles fonctionnels étaient toujours verts et `3gz
 
 Les annotations GitHub relatives au runtime Node 20 interne de certaines actions sont des avis de dépréciation ; aucun job n'a échoué. REC-14 a depuis été validé par les dix fixtures réelles. Aucun tag v0.1.40 n'est créé tant que REC-15 reste BLOQUÉ.
 
-## Révision courante après renforcement des preuves
+## Révision applicative candidate après renforcement des preuves
 
 La PR #4 a ajouté les cinq fixtures publiques manquantes, verrouillé les preuves RGAA et utilisateur structurées, puis introduit une porte de release stricte. Elle a été fusionnée après CI verte :
 
 - tête de branche : `58076d4548e17082b1bd1e0119fc7f5681d54511` ;
-- merge courant sur `main` : `07fb59a84a9c96444f80e07e190a797f4495193f` ;
+- merge applicatif candidat sur `main` : `07fb59a84a9c96444f80e07e190a797f4495193f` ;
 - révision de rollback : `2e51eafabba2e8672b83911d1e2cf9ac6ae51b2a` (v0.1.39).
 
 | Étape | Révision vérifiée | Run | Résultat |
@@ -69,3 +69,5 @@ La PR #4 a ajouté les cinq fixtures publiques manquantes, verrouillé les preuv
 Le rollback du run 29836670660 contient explicitement `ref: 2e51eaf...` et `HEAD is now at 2e51eaf`. Le HTML public exposait alors `0g-6joqzacvgb.js`. Le run 29836787032 contient `ref: 07fb59a...`, `HEAD is now at 07fb59a` et `pages_build_version: 07fb59a...` ; le HTML public a réexposé `3gzjaewd3cdr_.js`. Cette variation confirme que le contenu servi a réellement basculé puis été restauré.
 
 Le garde-fou distant n'a créé aucun tag. Son échec ne vient pas de la CI : ses jobs frontend et Rust sont intégralement verts. Il refuse uniquement les preuves humaines manquantes, conformément aux règles de publication. Au 21 juillet 2026, `v0.1.40` est toujours absent du dépôt local et du dépôt distant.
+
+Les commits postérieurs limités à la documentation de preuve et à son générateur peuvent changer le SHA de `main` sans changer l'artefact applicatif contrôlé ci-dessus. Toute modification future du code, des dépendances ou de la construction invaliderait en revanche cette équivalence et imposerait une nouvelle séquence complète.

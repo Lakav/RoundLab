@@ -12,7 +12,7 @@ Sa préparation a été réalisée sur `rncp-bloc2-final` avec des commits sépa
 
 Une première candidate v0.1.40 a été préparée dans `de30fd8`, fusionnée sur `main` par la PR #2 dans `2dc622d`, puis validée par CI de PR et de `main`. Elle a été déployée, contrôlée publiquement, rollbackée vers `2e51eaf`, contrôlée, restaurée sur `2dc622d` et contrôlée une dernière fois.
 
-Les preuves ont ensuite été renforcées jusqu'à `58076d4`, puis fusionnées par la PR #4 dans la révision courante `07fb59a`. La CI de PR, la CI de `main` et le déploiement automatique ont réussi. Un nouveau rollback réel vers `2e51eaf` a exposé le chunk historique `0g-6joqzacvgb.js`, puis la restauration de `07fb59a` a rétabli `3gzjaewd3cdr_.js`, avec HTTP 200 dans les deux états. Les deux séquences et leurs runs sont détaillés dans `deployment-runs-2026-07-21.md`.
+Les preuves ont ensuite été renforcées jusqu'à `58076d4`, puis fusionnées par la PR #4 dans la révision applicative candidate `07fb59a`. La CI de PR, la CI de `main` et le déploiement automatique ont réussi. Un nouveau rollback réel vers `2e51eaf` a exposé le chunk historique `0g-6joqzacvgb.js`, puis la restauration de `07fb59a` a rétabli `3gzjaewd3cdr_.js`, avec HTTP 200 dans les deux états. Les commits ultérieurs qui ne modifient que ces preuves n'altèrent pas cet artefact applicatif. Les deux séquences et leurs runs sont détaillés dans `deployment-runs-2026-07-21.md`.
 
 `package.json` vaut `0.1.40`, mais **aucun tag v0.1.40 n'est créé** : REC-14 est désormais OK grâce à la fixture CS2 Vertigo vérifiée, tandis que REC-15 reste BLOQUÉ faute de parcours humain VoiceOver/RGAA et de sessions utilisateurs. Une valeur de package et un déploiement technique ne suffisent pas à déclarer l'ensemble de la recette acquis.
 
