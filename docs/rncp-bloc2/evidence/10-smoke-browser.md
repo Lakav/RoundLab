@@ -15,10 +15,13 @@ Dates : 20 et 21 juillet 2026. Navigateurs : Chrome système piloté par Playwri
 | GitHub Pages | `https://lakav.github.io/RoundLab/` | HTTP 200, titre et `h1` RoundLab, import nommé, logo et chunks chargés | PASS distant le 21/07 |
 | rollback v0.1.40 | `2dc622d` → `2e51eaf` | checkout prouvé, site fonctionnel, manifeste de chunks modifié | PASS distant le 21/07 |
 | restauration v0.1.40 | `2e51eaf` → `2dc622d` | checkout prouvé, site fonctionnel, chunk v0.1.40 revenu | PASS distant le 21/07 |
+| déploiement candidate applicative | `07fb59a` | checkout prouvé, HTTP 200, chunk `3gzjaewd3cdr_.js` | PASS distant le 21/07 |
+| rollback candidate applicative | `07fb59a` → `2e51eaf` | checkout prouvé, HTTP 200, chunk remplacé par `0g-6joqzacvgb.js` | PASS distant le 21/07 |
+| restauration candidate applicative | `2e51eaf` → `07fb59a` | checkout prouvé, HTTP 200, chunk `3gzjaewd3cdr_.js` rétabli | PASS distant le 21/07 |
 | dialogues | erreur, renommage, suppression, focus, Échap | annonces et focus vérifiés | PASS |
 | commandes replay | lecture, vitesse, couche, zoom, mode, timeline | noms, états et activation clavier vérifiés | PASS |
 | reflow | largeurs 640 px et 320 px | radar, lecture, timeline et alternative DOM disponibles | PASS automatisé limité |
 
 Le smoke d'accessibilité seed IndexedDB avec une fixture synthétique. Séparément, le benchmark production a réellement importé Dust2, Ancient et Cache trois fois chacun dans Chrome puis ouvert et mesuré le replay ; ses résultats sont dans `performance/`. VoiceOver a été activé réellement sur l'accueil local, mais l'outil n'a pas pu piloter les raccourcis VO ni observer les annonces. Le parcours VoiceOver, le zoom navigateur manuel à 400 % et les contrastes internes au canvas restent donc non démontrés.
 
-La séquence v0.1.39 est détaillée dans `deployment-runs-2026-07-20.md`. La séquence complète v0.1.40 est détaillée dans `deployment-runs-2026-07-21.md`.
+La séquence v0.1.39 est détaillée dans `deployment-runs-2026-07-20.md`. Les deux séquences successives de la candidate v0.1.40, dont le rollback et la restauration de la révision applicative `07fb59a`, sont détaillées dans `deployment-runs-2026-07-21.md`.

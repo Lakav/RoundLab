@@ -41,7 +41,7 @@ Ces chiffres passent les quatre seuils de garde. `MapRenderer` est à 52,72 % st
 
 Avec `demos/dust1-13.dem.zst`, le parser Rust atteint 4867/5231 lignes (93,04 %), 389/452 fonctions (86,06 %) et 6868/7627 régions (90,05 %). Cette mesure dépend d'une fixture locale de 128,8 Mio ignorée par Git ; l'artefact de couverture portable de la CI n'inclut pas cette démo.
 
-La CI cible Node 24 conformément au manifeste. La collecte locale a tourné sous Node 25.1.0, hors plage `>=24 <25` ; ses résultats sont utiles et verts, mais ils ne remplacent pas la future exécution CI v0.1.40 sous Node 24.
+La CI cible Node 24 conformément au manifeste. La collecte locale a tourné sous Node 25.1.0, hors plage `>=24 <25` ; ses résultats restent utiles, mais la preuve canonique sous Node 24 est désormais la CI verte de la PR #4 puis de `main`, référencée dans `deployment-runs-2026-07-21.md`.
 
 ## Performance réellement observée
 

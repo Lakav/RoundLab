@@ -158,6 +158,10 @@ def main() -> int:
         *[f"| `{name}` | **{status}** | `{proof}` |" for name, status, proof in results],
         "",
         "`BLOQUÉ` signifie que le contrôle n’a pas été exécuté ; il ne vaut jamais succès.",
+        "",
+        "## Vérifications distantes",
+        "",
+        "Les CI de PR et de `main`, les déploiements, les smokes publics, les rollbacks, les restaurations et le garde-fou strict sont consignés avec leurs URL et SHA dans `deployment-runs-2026-07-21.md`. Cette synthèse locale ne duplique pas leurs statuts et ne transforme pas l'échec attendu du garde-fou en échec technique.",
     ]
     (EVIDENCE / "execution-tests.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return 1 if failed else 0
