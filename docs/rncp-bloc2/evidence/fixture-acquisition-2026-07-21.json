@@ -1,0 +1,176 @@
+{
+  "version": 1,
+  "recordedAt": "2026-07-21T14:36:17+02:00",
+  "baseCommit": "642d56aac3992826595a76d3b34402ab752a93e2",
+  "parser": {
+    "path": "parser/target/release/roundlab-parser",
+    "sha256": "7e5a1ba3e0134303a6e1b6aee8719d20a199534dac13b731eafc9917450a1707",
+    "quality": "full"
+  },
+  "policy": {
+    "largeFilesCommitted": false,
+    "localFixtureDirectory": ".roundlab-compare",
+    "localFixtureDirectoryIgnoredByGit": true,
+    "acceptance": "Le nom de fichier ne vaut pas preuve : la carte, les rounds et les joueurs doivent être lus par le parseur, puis la sortie split doit réussir l'audit de rendu."
+  },
+  "fixtures": [
+    {
+      "map": "de_mirage",
+      "source": "https://github.com/LaihoE/demoparser/blob/main/src/parser/test_demo.dem",
+      "inputBytes": 60601900,
+      "inputSha256": "84a1a4191302bdd2a3bbb5a727842093744b1fb1a228aeec630369e44b622cb2",
+      "manifest": "mirage-full.json.gz",
+      "parserResult": "OK[rust] map=de_mirage rounds=9 players=10",
+      "stats": {
+        "rounds": 9,
+        "players": 10,
+        "frames": 44415,
+        "events": 84,
+        "kills": 64,
+        "effects": 154,
+        "weaponFires": 1590,
+        "projectileSamples": 87024
+      },
+      "renderingAudit": {
+        "status": "OK",
+        "playersOutPct": 0.0,
+        "effectsOutPct": 0.0,
+        "projectilesOutPct": 0.0,
+        "unmatchedEffects": 0,
+        "invalidProjectiles": 0,
+        "utilityTracksMissingThrower": 0
+      }
+    },
+    {
+      "map": "de_nuke",
+      "source": "https://huggingface.co/datasets/aldigobbler/cs2demos/blob/main/astral-vs-havens-m3-nuke.dem",
+      "inputBytes": 290514078,
+      "inputSha256": "ef20dbcb956c3c7fc74fb204baa14da55decb8a6e542a826e12ded7c190976f3",
+      "manifest": "nuke-full.json.gz",
+      "parserResult": "OK[rust] map=de_nuke rounds=18 players=10",
+      "stats": {
+        "rounds": 18,
+        "players": 10,
+        "frames": 88345,
+        "events": 155,
+        "kills": 130,
+        "effects": 229,
+        "weaponFires": 2724,
+        "projectileSamples": 144785
+      },
+      "renderingAudit": {
+        "status": "OK",
+        "playersOutPct": 0.0,
+        "effectsOutPct": 0.0,
+        "projectilesOutPct": 0.0,
+        "unmatchedEffects": 0,
+        "invalidProjectiles": 0,
+        "utilityTracksMissingThrower": 0,
+        "radarLayers": {
+          "default": 524180,
+          "lower": 86705
+        }
+      }
+    },
+    {
+      "map": "de_overpass",
+      "source": "https://huggingface.co/datasets/cs2povarchive/cs2-demos/blob/main/cac2026/2394215-m80-vs-mouz/m80-vs-mouz-m1-overpass.dem",
+      "inputBytes": 304733697,
+      "inputSha256": "ed16547edf68382ef8383c798fb0c5430a92103141cf2e0369fc404a13d0a233",
+      "manifest": "overpass-full.json.gz",
+      "parserResult": "OK[rust] map=de_overpass rounds=16 players=10",
+      "stats": {
+        "rounds": 16,
+        "players": 10,
+        "frames": 97303,
+        "events": 129,
+        "kills": 105,
+        "effects": 345,
+        "weaponFires": 2109,
+        "projectileSamples": 190932
+      },
+      "renderingAudit": {
+        "status": "OK",
+        "playersOutPct": 0.0,
+        "effectsOutPct": 0.0,
+        "projectilesOutPct": 0.0,
+        "unmatchedEffects": 0,
+        "invalidProjectiles": 0,
+        "utilityTracksMissingThrower": 0
+      }
+    },
+    {
+      "map": "de_train",
+      "source": "https://huggingface.co/datasets/aldigobbler/cs2demos/blob/main/fluxo-vs-incontrol-m1-train.dem",
+      "inputBytes": 244738269,
+      "inputSha256": "d00daa9c6b3c37334927393244dd36c2fd368fd665449a598d9a41fef053a331",
+      "manifest": "train-full.json.gz",
+      "parserResult": "OK[rust] map=de_train rounds=16 players=10",
+      "stats": {
+        "rounds": 16,
+        "players": 10,
+        "frames": 62630,
+        "events": 131,
+        "kills": 112,
+        "effects": 263,
+        "weaponFires": 2488,
+        "projectileSamples": 148350
+      },
+      "renderingAudit": {
+        "status": "OK",
+        "playersOutPct": 0.0,
+        "effectsOutPct": 0.0,
+        "projectilesOutPct": 0.0,
+        "unmatchedEffects": 0,
+        "invalidProjectiles": 0,
+        "utilityTracksMissingThrower": 0,
+        "radarLayers": {
+          "default": 25534,
+          "lower": 445656
+        }
+      }
+    }
+  ],
+  "coverageAfterAcquisition": {
+    "coveredMaps": 9,
+    "calibratedMaps": 10,
+    "missing": [
+      "de_vertigo"
+    ],
+    "status": "INCOMPLETE"
+  },
+  "rejectedVertigoCandidates": [
+    {
+      "match": "https://bo3.gg/matches/boss-vs-nrg-08-12-2024",
+      "metadata": "https://api.bo3.gg/api/v1/games/113559",
+      "demoUrl": "https://files.bo3.gg/demos/6755aff1608ccb2de005083e/boss-vs-nrg-m1-vertigo.dem",
+      "metadataMap": "de_vertigo",
+      "downloadResult": "HTTP 404",
+      "accepted": false
+    },
+    {
+      "match": "https://bo3.gg/matches/falcons-esports-vs-tyloo-cs-go-25-04-2024",
+      "metadata": "https://api.bo3.gg/api/v1/games/87796",
+      "demoUrl": "https://files.bo3.gg/demos/662b65b8b686cf3fb6c5bdb3/tyloo-vs-falcons-m2-vertigo.dem",
+      "metadataMap": "de_vertigo",
+      "downloadResult": "HTTP 404",
+      "accepted": false
+    },
+    {
+      "match": "https://bo3.gg/matches/rooster-vs-talon-esports-cs-29-08-2024",
+      "metadata": "https://api.bo3.gg/api/v1/games/100998",
+      "demoUrl": "https://files.bo3.gg/demos/66d0664551f8152a64ed6145/rooster-vs-talon-m1-vertigo.dem",
+      "metadataMap": "de_vertigo",
+      "downloadResult": "HTTP 404",
+      "accepted": false
+    },
+    {
+      "match": "https://bo3.gg/matches/boss-vs-wildcard-gaming-25-02-2024",
+      "metadata": "https://api.bo3.gg/api/v1/games/83139",
+      "demoUrl": "https://files.bo3.gg/demos/65dc675ee5f2d5f8eb40c345/boss-vs-wildcard-m2-vertigo.dem",
+      "metadataMap": "de_vertigo",
+      "downloadResult": "HTTP 404",
+      "accepted": false
+    }
+  ]
+}
