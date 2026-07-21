@@ -37,7 +37,7 @@ Le premier passage étendu a détecté un contraste de 3,93:1 et une timeline é
 | focus visible et ordre complet | oui | observation visuelle + Tab/Shift+Tab | NON DÉMONTRÉ | aucune session enregistrée | intervention humaine requise |
 | zoom navigateur réel à 200 % et 400 % | oui | zoom Chrome/Safari réel | NON DÉMONTRÉ | aucun procès-verbal manuel | intervention humaine requise |
 | contrastes internes au canvas PixiJS | oui | mesure visuelle/colorimétrique sur états réels | NON DÉMONTRÉ | axe exclut l'intérieur du canvas | intervention humaine requise |
-| audit exhaustif des 106 critères RGAA | selon pages | audit manuel complet | NON DÉMONTRÉ | grille exhaustive absente | audit dédié requis |
+| audit exhaustif des 106 critères RGAA | selon pages | audit manuel complet | NON DÉMONTRÉ | grille exhaustive vierge préparée ; 0 résultat manuel sur 106 | audit dédié requis |
 
 ## Grille exhaustive prête à renseigner
 
