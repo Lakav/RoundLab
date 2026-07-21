@@ -19,7 +19,9 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reportsDirectory: "../docs/rncp-bloc2/evidence/coverage/frontend",
-      reporter: ["text", "json-summary", "lcovonly"],
+      // `lcov` already emits the browsable `lcov-report/`; adding `html`
+      // duplicates the same source pages at the coverage root.
+      reporter: ["text", "json", "json-summary", "lcov"],
       include: [
         "src/lib/**/*.ts",
         "src/app/page.tsx",
@@ -32,10 +34,10 @@ export default defineConfig({
         "src/wasm/**",
       ],
       thresholds: {
-        statements: 30,
-        branches: 25,
-        functions: 50,
-        lines: 30,
+        statements: 60,
+        branches: 50,
+        functions: 60,
+        lines: 60,
       },
     },
   },

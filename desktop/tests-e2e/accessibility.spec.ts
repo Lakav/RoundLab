@@ -83,6 +83,34 @@ test("home, import and library expose accessible controls", async ({ page }) => 
   expect(results.violations).toEqual([]);
 });
 
+test("import errors and library dialogs announce state and manage focus", async ({ page }) => {
+  await seedReplay(page);
+
+  await page.getByTestId("demo-file-input").setInputFiles({
+    name: "not-a-demo.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("invalid"),
+  });
+  await expect(page.getByText("Choose a .dem or .dem.zst file.", { exact: true })).toHaveAttribute("role", "alert");
+
+  await page.getByRole("button", { name: "Match actions" }).click();
+  await page.getByRole("menuitem", { name: "Rename" }).click();
+  const renameDialog = page.getByRole("dialog", { name: "Rename match" });
+  await expect(renameDialog).toBeVisible();
+  await expect(renameDialog.getByRole("textbox")).toBeFocused();
+  expect((await new AxeBuilder({ page }).include('[role="dialog"]').analyze()).violations).toEqual([]);
+  await page.keyboard.press("Escape");
+  await expect(renameDialog).toBeHidden();
+
+  await page.getByRole("button", { name: "Match actions" }).click();
+  await page.getByRole("menuitem", { name: "Delete" }).click();
+  const deleteDialog = page.getByRole("dialog", { name: "Delete match?" });
+  await expect(deleteDialog).toBeVisible();
+  await expect(deleteDialog.getByRole("button", { name: "Cancel" })).toBeVisible();
+  await deleteDialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(deleteDialog).toBeHidden();
+});
+
 test("replay canvas has a keyboard-readable text alternative", async ({ page }) => {
   const renderingErrors: string[] = [];
   page.on("console", (message) => {
@@ -103,4 +131,88 @@ test("replay canvas has a keyboard-readable text alternative", async ({ page }) 
     .analyze();
   expect(results.violations).toEqual([]);
   expect(renderingErrors).toEqual([]);
+});
+
+test("all replay command groups expose names, states and keyboard operation", async ({ page }) => {
+  await seedReplay(page);
+  await page.goto(`./match/?id=${matchId}`);
+  await expect(page.getByRole("heading", { level: 1, name: "RoundLab match replay" })).toBeAttached();
+
+  const play = page.getByTitle("Play/Pause (Space)");
+  const timeline = page.getByRole("slider", { name: "Replay time" });
+  await expect(play).toBeEnabled();
+  await expect(timeline).toBeEnabled();
+  await play.focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => Number(await timeline.getAttribute("aria-valuenow"))).toBeGreaterThan(0);
+  await page.keyboard.press("Space");
+
+  const doubleSpeed = page.getByRole("button", { name: "Playback speed 2 times" });
+  await doubleSpeed.focus();
+  await page.keyboard.press("Enter");
+  await expect(doubleSpeed).toHaveAttribute("aria-pressed", "true");
+
+  const lowerLayer = page.getByTitle("Radar layer: Lower");
+  await lowerLayer.focus();
+  await page.keyboard.press("Enter");
+  await expect(lowerLayer).toHaveAttribute("aria-pressed", "true");
+
+  const zoomIn = page.getByTitle("Zoom in");
+  await zoomIn.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("125%", { exact: true })).toBeVisible();
+
+  const pen = page.getByTitle("Pen (P)");
+  await pen.focus();
+  await page.keyboard.press("Enter");
+  await expect(pen).toHaveAttribute("aria-pressed", "true");
+  const drawingCanvas = page.locator("canvas").last();
+  const drawingBox = await drawingCanvas.boundingBox();
+  if (!drawingBox) throw new Error("Drawing canvas has no pointer bounds");
+  await page.mouse.move(drawingBox.x + drawingBox.width * 0.35, drawingBox.y + drawingBox.height * 0.35);
+  await page.mouse.down();
+  await page.mouse.move(drawingBox.x + drawingBox.width * 0.55, drawingBox.y + drawingBox.height * 0.55, { steps: 4 });
+  await page.mouse.up();
+  const undo = page.getByTitle("Undo (Cmd+Z)");
+  await expect(undo).toBeEnabled();
+  await undo.focus();
+  await page.keyboard.press("Enter");
+  await expect(undo).toBeDisabled();
+
+  const select = page.getByTitle("Select (V)");
+  await select.focus();
+  await page.keyboard.press("Enter");
+  await expect(select).toHaveAttribute("aria-pressed", "true");
+  const viewport = page.getByTestId("match-map-viewport");
+  const content = page.getByTestId("match-map-content");
+  const transformBeforePan = await content.evaluate((element) => (element as HTMLElement).style.transform);
+  const viewportBox = await viewport.boundingBox();
+  if (!viewportBox) throw new Error("Replay viewport has no pointer bounds");
+  await page.mouse.move(viewportBox.x + viewportBox.width / 2, viewportBox.y + viewportBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(viewportBox.x + viewportBox.width / 2 + 30, viewportBox.y + viewportBox.height / 2 + 20);
+  await page.mouse.up();
+  await expect.poll(() => content.evaluate((element) => (element as HTMLElement).style.transform)).not.toBe(transformBeforePan);
+
+  const condensed = page.getByRole("button", { name: "Condensé" });
+  await condensed.focus();
+  await page.keyboard.press("Enter");
+  await expect(condensed).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("combobox", { name: "Compared player" })).toBeVisible();
+
+  expect((await new AxeBuilder({ page }).exclude("canvas").analyze()).violations).toEqual([]);
+});
+
+test("replay retains essential controls in narrow reflow viewports", async ({ page }) => {
+  await seedReplay(page);
+  await page.setViewportSize({ width: 640, height: 720 });
+  await page.goto(`./match/?id=${matchId}`);
+  await expect(page.getByTitle("Play/Pause (Space)")).toBeVisible();
+  await expect(page.getByRole("slider", { name: "Replay time" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "Interactive replay radar" })).toBeVisible();
+
+  await page.setViewportSize({ width: 320, height: 720 });
+  await expect(page.getByTitle("Play/Pause (Space)")).toBeVisible();
+  await expect(page.getByRole("slider", { name: "Replay time" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Text alternative for the replay radar" })).toBeAttached();
 });

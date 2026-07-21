@@ -38,7 +38,11 @@ PY_COMPILE_TARGETS = [
     "scripts/audit-static-web-export.py",
     "scripts/audit-static-export-output.py",
     "scripts/audit-web-portability.py",
+    "scripts/benchmark-native-parser.py",
+    "scripts/check-performance-budgets.py",
     "scripts/run-local-ci-checks.py",
+    "scripts/summarize-browser-benchmark.py",
+    "scripts/summarize-recipe.py",
     "scripts/validate-release-version.py",
 ]
 

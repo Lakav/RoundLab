@@ -8,6 +8,8 @@ allowBuilds:
   # platform-specific native binding already pinned in pnpm-lock.yaml.
   unrs-resolver: true
 overrides:
+  # Patched release for GHSA-3jxr-9vmj-r5cp, pulled transitively by ESLint/minimatch.
+  brace-expansion: 1.1.16
   # Next.js 16.2.10 pins PostCSS 8.4.31, affected by GHSA-qx2v-qp2m-jg93.
   # The patched 8.5.10 release is API-compatible and is validated by the full build.
   postcss: 8.5.10

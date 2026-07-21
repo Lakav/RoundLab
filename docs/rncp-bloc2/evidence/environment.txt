@@ -1,13 +1,71 @@
-generated_at=2026-07-20T14:58:02+02:00
+generated_at=2026-07-21T13:08:24+02:00
 platform=macOS-26.5-arm64-arm-64bit-Mach-O
-git_base_head=8bb94511a4d5c5821840734eab4d4ee05694bea0
+git_base_head=924d1d97ec2eac29d67dae12d8260736414bfba9
 git_worktree=dirty
-node=v24.14.0
+node=v25.1.0
 pnpm=11.9.0
 rustc=rustc 1.95.0 (59807616e 2026-04-14)
 cargo=cargo 1.95.0 (f2d3ce0bd 2026-03-21)
 cargo_audit=cargo-audit-audit 0.22.2
 cargo_llvm_cov=cargo-llvm-cov 0.8.7
 git_status_short_begin
-?? docs/rncp-bloc2/
+M .github/workflows/_checks.yml
+ M .github/workflows/ci.yml
+ M desktop/package.json
+ M desktop/playwright.config.ts
+ M desktop/pnpm-lock.yaml
+ M desktop/pnpm-workspace.yaml
+ M desktop/src/app/match/MatchViewer.tsx
+ M desktop/src/app/page.tsx
+ M desktop/src/components/replay/Controls.tsx
+ M desktop/src/components/replay/DrawingToolbar.tsx
+ M desktop/src/components/replay/MapRenderer.tsx
+ M desktop/tests-e2e/accessibility.spec.ts
+ M desktop/tests/replay-components.test.tsx
+ M desktop/tests/setup.ts
+ M desktop/vitest.config.ts
+ M docs/rncp-bloc2/evidence/01-matrice-rncp.md
+ M docs/rncp-bloc2/evidence/03-plan-tests-recette.md
+ M docs/rncp-bloc2/evidence/05-accessibilite-rgaa.md
+ M docs/rncp-bloc2/evidence/06-exploitation.md
+ M docs/rncp-bloc2/evidence/07-qualite-performance.md
+ M docs/rncp-bloc2/evidence/08-anomalies-corrections.md
+ M docs/rncp-bloc2/evidence/09-historique-versions.md
+ M docs/rncp-bloc2/evidence/10-smoke-browser.md
+ M docs/rncp-bloc2/evidence/README.md
+ M docs/rncp-bloc2/evidence/coverage/frontend/coverage-summary.json
+ M docs/rncp-bloc2/evidence/coverage/frontend/lcov.info
+ M docs/rncp-bloc2/evidence/environment.txt
+ M docs/rncp-bloc2/evidence/execution-tests.md
+ M docs/rncp-bloc2/evidence/logs/frontend-build.txt
+ M docs/rncp-bloc2/evidence/logs/frontend-coverage.txt
+ M docs/rncp-bloc2/evidence/logs/frontend-e2e-accessibility.txt
+ M docs/rncp-bloc2/evidence/logs/frontend-pages-build.txt
+ M docs/rncp-bloc2/evidence/logs/portable-audits.txt
+ M docs/rncp-bloc2/evidence/logs/rust-clippy.txt
+ M docs/rncp-bloc2/evidence/logs/rust-coverage.txt
+ M docs/rncp-bloc2/evidence/logs/rust-real-demo-reference.txt
+ M docs/rncp-bloc2/evidence/logs/rust-tests.txt
+ M docs/rncp-bloc2/evidence/logs/rust-wasm-check.txt
+ M docs/rncp-bloc2/evidence/logs/wasm-reproducibility.txt
+ M docs/rncp-bloc2/evidence/playwright-report/index.html
+ M scripts/audit-browser-import-workflow.py
+ M scripts/collect-rncp-bloc2-evidence.py
+ M scripts/run-local-ci-checks.py
+?? desktop/tests-e2e/performance.spec.ts
+?? desktop/tests/map-renderer-logic.test.ts
+?? docs/rncp-bloc2/evidence/11-validation-utilisateur.md
+?? docs/rncp-bloc2/evidence/coverage/frontend/coverage-final.json
+?? docs/rncp-bloc2/evidence/coverage/frontend/lcov-report/
+?? docs/rncp-bloc2/evidence/deployment-runs-2026-07-20.md
+?? docs/rncp-bloc2/evidence/fixture-search-2026-07-21.json
+?? docs/rncp-bloc2/evidence/logs/browser-benchmark-evidence.txt
+?? docs/rncp-bloc2/evidence/logs/frontend-performance-budgets.txt
+?? docs/rncp-bloc2/evidence/logs/recipe-summary.txt
+?? docs/rncp-bloc2/evidence/performance/
+?? docs/rncp-bloc2/evidence/recipe-summary.json
+?? scripts/benchmark-native-parser.py
+?? scripts/check-performance-budgets.py
+?? scripts/summarize-browser-benchmark.py
+?? scripts/summarize-recipe.py
 git_status_short_end

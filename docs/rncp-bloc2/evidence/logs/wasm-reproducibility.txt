@@ -1,60 +1,6 @@
 $ python3 scripts/verify-wasm-reproducibility.py
 
-     Removed 333 files, 75.4MiB total
-   Compiling proc-macro2 v1.0.106
-   Compiling unicode-ident v1.0.24
-   Compiling quote v1.0.45
-   Compiling wasm-bindgen-shared v0.2.126
-   Compiling rustversion v1.0.22
-   Compiling bumpalo v3.20.3
-   Compiling anyhow v1.0.102
-   Compiling crossbeam-utils v0.8.21
-   Compiling zerocopy v0.8.48
-   Compiling siphasher v1.0.2
-   Compiling crossbeam-epoch v0.9.20
-   Compiling rand_core v0.6.4
-   Compiling phf_shared v0.11.3
-   Compiling rand v0.8.6
-   Compiling either v1.15.0
-   Compiling serde_core v1.0.228
-   Compiling phf_generator v0.11.3
-   Compiling itertools v0.14.0
-   Compiling heck v0.5.0
-   Compiling getrandom v0.3.4
-   Compiling rayon-core v1.13.0
-   Compiling version_check v0.9.5
-   Compiling wasm-bindgen v0.2.126
-   Compiling ahash v0.8.12
-   Compiling snap v1.1.1
-   Compiling syn v2.0.117
-   Compiling crc32fast v1.5.0
-   Compiling zmij v1.0.21
-   Compiling libc v0.2.186
-   Compiling serde v1.0.228
-   Compiling crossbeam-deque v0.8.6
-   Compiling convert_case v0.4.0
-   Compiling serde_json v1.0.149
-   Compiling rayon v1.12.0
-   Compiling wasm-bindgen-macro-support v0.2.126
-   Compiling flate2 v1.1.9
-   Compiling ppv-lite86 v0.2.21
-   Compiling strum_macros v0.26.4
-   Compiling prost-derive v0.13.5
-   Compiling phf_macros v0.11.3
-   Compiling serde_derive v1.0.228
-   Compiling derive_more v0.99.20
-   Compiling phf v0.11.3
-   Compiling prost v0.13.5
-   Compiling strum v0.26.3
-   Compiling wasm-bindgen-macro v0.2.126
-   Compiling csgoproto v0.1.5 (/Users/julescavanier/Desktop/gotvanalyser/vendor/demoparser/csgoproto)
-   Compiling js-sys v0.3.103
-   Compiling getrandom v0.2.17
-   Compiling rand_chacha v0.3.1
-   Compiling parser v0.1.1 (/Users/julescavanier/Desktop/gotvanalyser/vendor/demoparser/parser)
-   Compiling roundlab-parser v0.1.0 (/Users/julescavanier/Desktop/gotvanalyser/parser)
-    Finished `release` profile [optimized] target(s) in 15.86s
-     Removed 333 files, 75.4MiB total
+     Removed 1038 files, 308.6MiB total
    Compiling proc-macro2 v1.0.106
    Compiling unicode-ident v1.0.24
    Compiling quote v1.0.45
@@ -64,57 +10,111 @@ $ python3 scripts/verify-wasm-reproducibility.py
    Compiling anyhow v1.0.102
    Compiling zerocopy v0.8.48
    Compiling crossbeam-utils v0.8.21
-   Compiling siphasher v1.0.2
    Compiling crossbeam-epoch v0.9.20
+   Compiling siphasher v1.0.2
    Compiling rand_core v0.6.4
    Compiling phf_shared v0.11.3
    Compiling rand v0.8.6
    Compiling serde_core v1.0.228
    Compiling either v1.15.0
-   Compiling itertools v0.14.0
    Compiling phf_generator v0.11.3
-   Compiling getrandom v0.3.4
-   Compiling rayon-core v1.13.0
-   Compiling version_check v0.9.5
+   Compiling itertools v0.14.0
    Compiling heck v0.5.0
-   Compiling snap v1.1.1
+   Compiling rayon-core v1.13.0
+   Compiling getrandom v0.3.4
+   Compiling version_check v0.9.5
    Compiling ahash v0.8.12
    Compiling crc32fast v1.5.0
    Compiling serde v1.0.228
-   Compiling zmij v1.0.21
-   Compiling libc v0.2.186
    Compiling syn v2.0.117
    Compiling wasm-bindgen v0.2.126
+   Compiling snap v1.1.1
+   Compiling zmij v1.0.21
+   Compiling libc v0.2.186
    Compiling crossbeam-deque v0.8.6
-   Compiling convert_case v0.4.0
    Compiling serde_json v1.0.149
+   Compiling convert_case v0.4.0
    Compiling rayon v1.12.0
-   Compiling wasm-bindgen-macro-support v0.2.126
    Compiling flate2 v1.1.9
    Compiling ppv-lite86 v0.2.21
+   Compiling wasm-bindgen-macro-support v0.2.126
    Compiling phf_macros v0.11.3
-   Compiling strum_macros v0.26.4
    Compiling prost-derive v0.13.5
+   Compiling strum_macros v0.26.4
    Compiling serde_derive v1.0.228
    Compiling derive_more v0.99.20
    Compiling phf v0.11.3
    Compiling prost v0.13.5
    Compiling strum v0.26.3
-   Compiling wasm-bindgen-macro v0.2.126
    Compiling csgoproto v0.1.5 (/Users/julescavanier/Desktop/gotvanalyser/vendor/demoparser/csgoproto)
+   Compiling wasm-bindgen-macro v0.2.126
    Compiling js-sys v0.3.103
    Compiling getrandom v0.2.17
    Compiling rand_chacha v0.3.1
    Compiling parser v0.1.1 (/Users/julescavanier/Desktop/gotvanalyser/vendor/demoparser/parser)
    Compiling roundlab-parser v0.1.0 (/Users/julescavanier/Desktop/gotvanalyser/parser)
-    Finished `release` profile [optimized] target(s) in 15.30s
+    Finished `release` profile [optimized] target(s) in 17.93s
+     Removed 333 files, 75.4MiB total
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.45
+   Compiling wasm-bindgen-shared v0.2.126
+   Compiling rustversion v1.0.22
+   Compiling bumpalo v3.20.3
+   Compiling anyhow v1.0.102
+   Compiling zerocopy v0.8.48
+   Compiling crossbeam-utils v0.8.21
+   Compiling siphasher v1.0.2
+   Compiling crossbeam-epoch v0.9.20
+   Compiling rand_core v0.6.4
+   Compiling rand v0.8.6
+   Compiling phf_shared v0.11.3
+   Compiling either v1.15.0
+   Compiling serde_core v1.0.228
+   Compiling phf_generator v0.11.3
+   Compiling itertools v0.14.0
+   Compiling version_check v0.9.5
+   Compiling getrandom v0.3.4
+   Compiling rayon-core v1.13.0
+   Compiling heck v0.5.0
+   Compiling crossbeam-deque v0.8.6
+   Compiling syn v2.0.117
+   Compiling wasm-bindgen v0.2.126
+   Compiling ahash v0.8.12
+   Compiling zmij v1.0.21
+   Compiling serde v1.0.228
+   Compiling snap v1.1.1
+   Compiling libc v0.2.186
+   Compiling crc32fast v1.5.0
+   Compiling convert_case v0.4.0
+   Compiling serde_json v1.0.149
+   Compiling rayon v1.12.0
+   Compiling flate2 v1.1.9
+   Compiling wasm-bindgen-macro-support v0.2.126
+   Compiling strum_macros v0.26.4
+   Compiling phf_macros v0.11.3
+   Compiling prost-derive v0.13.5
+   Compiling serde_derive v1.0.228
+   Compiling derive_more v0.99.20
+   Compiling ppv-lite86 v0.2.21
+   Compiling phf v0.11.3
+   Compiling prost v0.13.5
+   Compiling strum v0.26.3
+   Compiling csgoproto v0.1.5 (/Users/julescavanier/Desktop/gotvanalyser/vendor/demoparser/csgoproto)
+   Compiling wasm-bindgen-macro v0.2.126
+   Compiling js-sys v0.3.103
+   Compiling getrandom v0.2.17
+   Compiling rand_chacha v0.3.1
+   Compiling parser v0.1.1 (/Users/julescavanier/Desktop/gotvanalyser/vendor/demoparser/parser)
+   Compiling roundlab-parser v0.1.0 (/Users/julescavanier/Desktop/gotvanalyser/parser)
+    Finished `release` profile [optimized] target(s) in 16.71s
 wasm-bindgen 0.2.126
 $ cargo clean --target wasm32-unknown-unknown --release
 $ cargo build --target wasm32-unknown-unknown --release --lib
-$ wasm-bindgen target/wasm32-unknown-unknown/release/roundlab_parser.wasm --target web --out-dir /var/folders/vb/9fv8q6jd4t71pzg7lt245llw0000gn/T/roundlab-wasm-repro-m2kd_zwq/first --out-name roundlab_parser --remove-name-section --remove-producers-section
+$ wasm-bindgen target/wasm32-unknown-unknown/release/roundlab_parser.wasm --target web --out-dir /var/folders/vb/9fv8q6jd4t71pzg7lt245llw0000gn/T/roundlab-wasm-repro-ynjxlakp/first --out-name roundlab_parser --remove-name-section --remove-producers-section
 $ cargo clean --target wasm32-unknown-unknown --release
 $ cargo build --target wasm32-unknown-unknown --release --lib
-$ wasm-bindgen target/wasm32-unknown-unknown/release/roundlab_parser.wasm --target web --out-dir /var/folders/vb/9fv8q6jd4t71pzg7lt245llw0000gn/T/roundlab-wasm-repro-m2kd_zwq/second --out-name roundlab_parser --remove-name-section --remove-producers-section
+$ wasm-bindgen target/wasm32-unknown-unknown/release/roundlab_parser.wasm --target web --out-dir /var/folders/vb/9fv8q6jd4t71pzg7lt245llw0000gn/T/roundlab-wasm-repro-ynjxlakp/second --out-name roundlab_parser --remove-name-section --remove-producers-section
 roundlab_parser.d.ts 9bc0f3a8f94f2a557630acc3877f24fb29027d7d36a808f80131ebd386a8b294
 roundlab_parser.js 14e5748da6087ad6de8a1d06852f4565fe23a6791945003be84d76bf91e474ec
 roundlab_parser_bg.wasm 260f9383d90b1a58b85dbf8e20a2bd73c34a231698be520aff8245abc63a55ae

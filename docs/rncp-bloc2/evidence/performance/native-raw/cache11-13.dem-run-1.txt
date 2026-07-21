@@ -1,0 +1,73 @@
+ROUNDLAB_PROGRESS 0.9000 Writing parser output...
+ROUNDLAB_FINAL start step=write_json_gz
+ROUNDLAB_PROGRESS 0.9400 Serializing split parser JSON...
+ROUNDLAB_FINAL start step=manifest:File::create
+ROUNDLAB_FINAL done step=manifest:File::create duration_ms=0
+ROUNDLAB_FINAL start step=manifest:serde_json::to_writer
+ROUNDLAB_FINAL done step=manifest:serde_json::to_writer duration_ms=0
+ROUNDLAB_FINAL start step=manifest:gz.flush
+ROUNDLAB_FINAL done step=manifest:gz.flush duration_ms=0
+ROUNDLAB_FINAL start step=manifest:gz.finish
+ROUNDLAB_FINAL done step=manifest:gz.finish duration_ms=0
+ROUNDLAB_FINAL start step=manifest:File::sync_all
+ROUNDLAB_FINAL done step=manifest:File::sync_all duration_ms=2
+ROUNDLAB_FINAL start step=commit_split_output
+ROUNDLAB_FINAL done step=commit_split_output duration_ms=0
+ROUNDLAB_FINAL done step=write_json_gz duration_ms=380
+ROUNDLAB_STATS input_bytes=253484029
+ROUNDLAB_STATS decompressed_bytes=382190847
+ROUNDLAB_STATS read_demo_ms=469
+ROUNDLAB_STATS create_huffman_ms=0
+ROUNDLAB_STATS parse_header_ms=0
+ROUNDLAB_STATS parse_players_ms=75
+ROUNDLAB_STATS parse_events_ms=321
+ROUNDLAB_STATS sample_ticks_ms=1
+ROUNDLAB_STATS parse_ticks_ms=5360
+ROUNDLAB_STATS group_ticks_ms=88
+ROUNDLAB_STATS parse_teams_ms=317
+ROUNDLAB_STATS parse_projectiles_ms=769
+ROUNDLAB_STATS group_projectiles_ms=34
+ROUNDLAB_STATS build_rounds_ms=847
+ROUNDLAB_STATS write_output_ms=380
+ROUNDLAB_STATS serialize_json_ms=214
+ROUNDLAB_STATS raw_json_bytes=296426019
+ROUNDLAB_STATS gz_flush_ms=0
+ROUNDLAB_STATS gzip_finish_ms=0
+ROUNDLAB_STATS fsync_ms=9
+ROUNDLAB_STATS output_gzip_bytes=23750853
+ROUNDLAB_STATS rounds=24
+ROUNDLAB_STATS players=10
+ROUNDLAB_STATS frames=134086
+ROUNDLAB_STATS frame_players=959645
+ROUNDLAB_STATS events=224
+ROUNDLAB_STATS kills=175
+ROUNDLAB_STATS bomb_events=25
+ROUNDLAB_STATS effects=392
+ROUNDLAB_STATS weapon_fires=3337
+ROUNDLAB_STATS projectile_frames=96711
+ROUNDLAB_STATS projectile_samples=245700
+ROUNDLAB_STATS tick_rows=1358070
+ROUNDLAB_STATS c4_records=107982
+ROUNDLAB_STATS projectile_rows=245700
+ROUNDLAB_PROGRESS 0.9990 Emitting parser OK on stderr...
+ROUNDLAB_FINAL start step=emit-ok
+OK[rust] map=de_cache rounds=24 players=10
+ROUNDLAB_FINAL done step=emit-ok duration_ms=0
+        8.84 real        20.67 user         0.84 sys
+          2588983296  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              270343  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                 138  voluntary context switches
+               46928  involuntary context switches
+        281971446228  instructions retired
+         74379769585  cycles elapsed
+          2883046208  peak memory footprint

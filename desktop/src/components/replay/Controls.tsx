@@ -61,13 +61,16 @@ export function Controls() {
         {SPEEDS.map((s) => (
           <button
             key={s}
+            type="button"
+            aria-label={`Playback speed ${s} ${s === 1 ? "time" : "times"}`}
+            aria-pressed={speed === s}
             onClick={() => setSpeed(s)}
             disabled={!roundReady}
             className={cn(
               "h-6 min-w-8 rounded-[3px] px-1.5 text-[11px] font-semibold tabular-nums transition-colors disabled:pointer-events-none disabled:opacity-40",
               speed === s
                 ? "bg-white text-neutral-950"
-                : "text-neutral-400 hover:bg-white/[0.05] hover:text-neutral-200"
+                : "text-neutral-300 hover:bg-white/[0.05] hover:text-white"
             )}
           >
             {s}×

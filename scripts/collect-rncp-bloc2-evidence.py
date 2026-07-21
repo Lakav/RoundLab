@@ -32,7 +32,10 @@ def run_check(name: str, command: list[str], cwd: Path, env: dict[str, str] | No
         stderr=subprocess.STDOUT,
         check=False,
     )
-    log = f"$ {command_text(command)}\n\n{result.stdout}\nexit_code={result.returncode}\n"
+    # Preserve the command output while removing terminal padding that would
+    # otherwise make the generated evidence fail `git diff --check`.
+    clean_stdout = "\n".join(line.rstrip() for line in result.stdout.splitlines())
+    log = f"$ {command_text(command)}\n\n{clean_stdout}\n\nexit_code={result.returncode}\n"
     (LOGS / f"{name}.txt").write_text(log, encoding="utf-8")
     return ("PASS" if result.returncode == 0 else "FAIL", result.returncode)
 
@@ -72,6 +75,8 @@ def main() -> int:
         ("frontend-typecheck", ["pnpm", "exec", "tsc", "--noEmit"], DESKTOP, None),
         ("frontend-coverage", ["pnpm", "test:coverage"], DESKTOP, None),
         ("frontend-build", ["pnpm", "build"], DESKTOP, None),
+        ("frontend-performance-budgets", ["python3", "scripts/check-performance-budgets.py"], ROOT, None),
+        ("browser-benchmark-evidence", ["python3", "scripts/summarize-browser-benchmark.py"], ROOT, None),
         ("frontend-e2e-accessibility", ["pnpm", "test:e2e:a11y"], DESKTOP, None),
         (
             "frontend-pages-build",
@@ -85,6 +90,7 @@ def main() -> int:
         ("rust-clippy", ["cargo", "clippy", "--all-targets", "--", "-D", "warnings"], PARSER, None),
         ("rust-dependency-audit", ["cargo", "audit"], PARSER, None),
         ("portable-audits", ["python3", "scripts/run-local-ci-checks.py", "--skip-frontend"], ROOT, None),
+        ("recipe-summary", ["python3", "scripts/summarize-recipe.py"], ROOT, None),
         ("wasm-reproducibility", ["python3", "scripts/verify-wasm-reproducibility.py"], ROOT, None),
     ]
 

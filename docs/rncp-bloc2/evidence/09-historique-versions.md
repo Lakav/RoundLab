@@ -1,6 +1,8 @@
 # Historique et gestion des versions
 
-La préparation de `v0.1.39` est réalisée sur `rncp-bloc2-final` sans supprimer les modifications initiales. Les commits sont séparés pour rendre les corrections auditables :
+`v0.1.39` existe réellement : tag annoté sur `2e51eafabba2e8672b83911d1e2cf9ac6ae51b2a`, daté du 20/07/2026. Sa CI, son déploiement, un rollback vers `8bb9451`, puis la restauration de `main` sont documentés dans `deployment-runs-2026-07-20.md`.
+
+Sa préparation a été réalisée sur `rncp-bloc2-final` avec des commits séparés :
 
 - `3d2b54d` : tests, accessibilité, sécurité, CI/CD, version et preuves techniques ;
 - `e0ce74c` : politique de scripts pnpm validée sous Linux ;
@@ -8,7 +10,7 @@ La préparation de `v0.1.39` est réalisée sur `rncp-bloc2-final` sans supprime
 - `2171da4` : publication temporaire de l'artefact Linux de référence ;
 - `8bb9451` : artefact Linux canonique et comparaison sans mutation locale.
 
-Le dépôt possédait les tags incrémentaux jusqu'à `v0.1.38`. Le tag annoté `v0.1.39` ne doit être créé qu'après CI distante verte sur le commit final. Le dossier Word doit distinguer le SHA du commit ciblé, le tag et l'état du worktree au moment de la collecte.
+La candidate suivante est préparée sur `codex/rncp-bloc2-v0.1.40`. `package.json` vaut `0.1.40`, mais **aucun tag v0.1.40 n'est créé** : la CI distante, le déploiement, le smoke distant et le rollback de cette révision n'ont pas encore eu lieu. Une valeur de package n'est pas une release.
 
 Commandes de preuve :
 

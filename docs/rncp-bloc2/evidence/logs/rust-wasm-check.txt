@@ -1,5 +1,5 @@
 $ cargo check --target wasm32-unknown-unknown --lib
 
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.06s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.07s
 
 exit_code=0
