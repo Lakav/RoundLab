@@ -9,6 +9,7 @@ Ce dossier rassemble les preuves techniques du bloc `RNCP39583BC02 — Concevoir
 - `03-plan-tests-recette.md` : stratégie de tests et cahier de recette.
 - `04-securite-owasp.md` : analyse OWASP Top 10:2025 et mesures appliquées.
 - `05-accessibilite-rgaa.md` : référentiel retenu, améliorations et limites.
+- `rgaa-4.1.2-grille.csv` : grille exhaustive vierge des 106 critères, à renseigner par l'auditeur sans préjuger du résultat.
 - `06-exploitation.md` : installation, construction, mise à jour et utilisation.
 - `07-qualite-performance.md` : critères mesurables et périmètres de couverture.
 - `08-anomalies-corrections.md` : anomalies observées et corrections vérifiées.
