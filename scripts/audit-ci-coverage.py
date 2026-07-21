@@ -96,6 +96,7 @@ def main() -> None:
             "permissions:\n  contents: read",
             "uses: ./.github/workflows/_checks.yml",
             "needs: checks",
+            "fetch-depth: 0",
             'python3 scripts/validate-release-version.py --tag "$RELEASE_TAG"',
         ],
         ".github/workflows/release-gate.yml strict pre-release gate",

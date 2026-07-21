@@ -26,4 +26,4 @@ Une release ne doit pas être déduite de la seule valeur de `package.json`.
 
 Avant toute création de tag, `python3 scripts/validate-release-version.py --tag v0.1.40` doit réussir. Cette commande vérifie l'alignement des manifests, les 16 scénarios `OK`, la grille RGAA complète et au moins une session utilisateur réelle de huit tâches. Le mode `--manifest-only` sert uniquement au diagnostic de version et ne donne jamais l'autorisation de créer le tag.
 
-Le workflow manuel `release-gate.yml` est la porte distante correspondante : il exécute d'abord la totalité du workflow réutilisable `_checks.yml`, puis le validateur strict sur le même commit. Il ne crée pas le tag ; son succès est une condition préalable vérifiable, pas une release automatique.
+Le workflow manuel `release-gate.yml` est la porte distante correspondante : il exécute d'abord la totalité du workflow réutilisable `_checks.yml`, récupère l'historique et les tags, puis lance le validateur strict sur le même commit. Il refuse un tag déjà existant afin d'empêcher sa réutilisation ou son déplacement. Il ne crée pas le tag ; son succès est une condition préalable vérifiable, pas une release automatique.

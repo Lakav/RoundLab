@@ -27,6 +27,8 @@ jobs:
       RELEASE_TAG: ${{ inputs.tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Require complete recipe and human evidence
         run: python3 scripts/validate-release-version.py --tag "$RELEASE_TAG"

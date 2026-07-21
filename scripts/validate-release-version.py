@@ -46,6 +46,22 @@ def validate_manifests(root: Path, expected: str) -> int:
     return failed
 
 
+def validate_tag_absent(root: Path, tag: str) -> int:
+    result = subprocess.run(
+        ["git", "show-ref", "--verify", "--quiet", f"refs/tags/{tag}"],
+        cwd=root,
+        check=False,
+    )
+    if result.returncode == 0:
+        print(f"::error::release tag {tag} already exists and must not be moved or reused")
+        return 1
+    if result.returncode != 1:
+        print(f"::error::could not determine whether release tag {tag} already exists")
+        return 1
+    print(f"release tag availability: {tag} is absent")
+    return 0
+
+
 def validate_recipe(root: Path) -> int:
     source_name = "docs/rncp-bloc2/evidence/03-plan-tests-recette.md"
     source = root / source_name
@@ -117,6 +133,7 @@ def main() -> int:
     root = Path(args.root).resolve()
     failed = validate_manifests(root, expected)
     if not args.manifest_only:
+        failed |= validate_tag_absent(root, tag)
         failed |= validate_recipe(root)
         failed |= validate_human_evidence(root)
     return failed
