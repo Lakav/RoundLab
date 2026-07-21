@@ -73,7 +73,7 @@ La CI échoue désormais au-delà de 2 000 000 octets de JavaScript total, de 3 
 | temps natif total, démo compressée jusqu'à 255 Mio | ≤ 10 s | PASS, pire valeur 9,176 s |
 | lecture + décompression native | ≤ 500 ms | PASS, pire valeur 469 ms |
 | RSS maximal natif | ≤ 4 Gio | PASS, pire valeur 2,980 Go |
-| JavaScript de production | ≤ 2 000 000 o | PASS, pire export 1 812 104 o |
+| JavaScript de production | ≤ 2 000 000 o | PASS, pire export 1 812 199 o |
 | WASM de production | ≤ 3 500 000 o | PASS, 2 925 102 o |
 | décompression dans Chrome | ≤ 1 s | PASS, pire valeur 820 ms |
 | chargement WASM dans Chrome | ≤ 250 ms | PASS, pire valeur 14 ms |

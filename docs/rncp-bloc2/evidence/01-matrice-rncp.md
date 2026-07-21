@@ -14,7 +14,7 @@
 
 ## Limites à conserver dans le dossier
 
-- Couverture frontend globale : 61,68 % statements, 52,41 % branches, 72,51 % fonctions et 63,70 % lignes. Les seuils de garde sont 60/50/60/60.
+- Couverture frontend globale : 61,68 % statements, 52,44 % branches, 72,51 % fonctions et 63,70 % lignes. Les seuils de garde sont 60/50/60/60.
 - Couverture Rust avec Dust2 réel : 93,04 % des lignes, 86,06 % des fonctions et 90,05 % des régions. La CI sans fixture privée mesure un périmètre portable plus faible.
 - Fixtures réelles disponibles et auditées pour 10 cartes sur 10, soit 206 rounds locaux. Nuke, Train et Vertigo exercent chacune leurs deux couches radar.
 - Axe-core et 5 scénarios clavier/reflow ne remplacent pas un audit des 106 critères RGAA 4.1.2. VoiceOver a été activé réellement, mais ses raccourcis et annonces n'étaient pas observables par l'outil ; le parcours VoiceOver, le zoom navigateur réel à 200/400 %, le contraste du canvas et la revue manuelle exhaustive restent donc non démontrés.
