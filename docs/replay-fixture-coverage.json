@@ -59,9 +59,13 @@
         "manifest": "train-full.json.gz",
         "rounds": 16
       }
+    ],
+    "de_vertigo": [
+      {
+        "manifest": "vertigo-full.json.gz",
+        "rounds": 22
+      }
     ]
   },
-  "missing": [
-    "de_vertigo"
-  ]
+  "missing": []
 }

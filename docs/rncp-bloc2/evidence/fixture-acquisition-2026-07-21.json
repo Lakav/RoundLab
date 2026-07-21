@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-07-21T14:36:17+02:00",
+  "recordedAt": "2026-07-21T15:08:19+02:00",
   "baseCommit": "642d56aac3992826595a76d3b34402ab752a93e2",
   "parser": {
     "path": "parser/target/release/roundlab-parser",
@@ -129,15 +129,52 @@
           "lower": 445656
         }
       }
+    },
+    {
+      "map": "de_vertigo",
+      "source": "https://www.hltv.org/matches/2371495/tyloo-vs-falcons-esl-pro-league-season-19",
+      "archiveUrl": "https://r2-demos.hltv.org/demos/104290/esl-pro-league-season-19-tyloo-vs-falcons-bo3-bpdNnTZsFZwKMIUUW3DtFX.rar",
+      "archiveBytes": 509899671,
+      "archiveSha256": "eb0ff6776948db3952016e53fe3e2417ddbc9ee626f6b51a3636433a7fb08b84",
+      "archiveEntry": "tyloo-vs-falcons-m2-vertigo.dem",
+      "inputBytes": 283922961,
+      "inputSha256": "b1bb75e0e33f7bdbc279e05579ac5edec5990dbbb5d3134b3f1651ea5b33ada0",
+      "manifest": "vertigo-full.json.gz",
+      "parserResult": "OK[rust] map=de_vertigo rounds=22 players=10",
+      "stats": {
+        "rounds": 22,
+        "players": 10,
+        "frames": 130029,
+        "events": 183,
+        "kills": 133,
+        "effects": 464,
+        "weaponFires": 3138,
+        "projectileSamples": 250966
+      },
+      "renderingAudit": {
+        "status": "OK",
+        "playersOutPct": 0.0,
+        "effectsOutPct": 0.0,
+        "projectilesOutPct": 0.0,
+        "unmatchedEffects": 0,
+        "invalidProjectiles": 0,
+        "utilityTracksMissingThrower": 0,
+        "radarLayers": {
+          "default": 650366,
+          "lower": 343925
+        },
+        "startRadarLayers": {
+          "default": 110,
+          "lower": 110
+        }
+      }
     }
   ],
   "coverageAfterAcquisition": {
-    "coveredMaps": 9,
+    "coveredMaps": 10,
     "calibratedMaps": 10,
-    "missing": [
-      "de_vertigo"
-    ],
-    "status": "INCOMPLETE"
+    "missing": [],
+    "status": "COMPLETE"
   },
   "rejectedVertigoCandidates": [
     {

@@ -12,7 +12,7 @@ Sa préparation a été réalisée sur `rncp-bloc2-final` avec des commits sépa
 
 La candidate v0.1.40 a été préparée dans `de30fd8`, fusionnée sur `main` par la PR #2 dans `2dc622d`, puis validée par CI de PR et de `main`. Elle a été déployée, contrôlée publiquement, rollbackée vers `2e51eaf`, contrôlée, restaurée sur `2dc622d` et contrôlée une dernière fois. La séquence et ses cinq runs sont détaillés dans `deployment-runs-2026-07-21.md`.
 
-`package.json` vaut `0.1.40`, mais **aucun tag v0.1.40 n'est créé** : REC-14 et REC-15 restent BLOQUÉS faute d'une fixture CS2 Vertigo vérifiée et de parcours humain VoiceOver/RGAA. Une valeur de package et un déploiement technique ne suffisent pas à déclarer l'ensemble de la recette acquis.
+`package.json` vaut `0.1.40`, mais **aucun tag v0.1.40 n'est créé** : REC-14 est désormais OK grâce à la fixture CS2 Vertigo vérifiée, tandis que REC-15 reste BLOQUÉ faute de parcours humain VoiceOver/RGAA et de sessions utilisateurs. Une valeur de package et un déploiement technique ne suffisent pas à déclarer l'ensemble de la recette acquis.
 
 Commandes de preuve :
 

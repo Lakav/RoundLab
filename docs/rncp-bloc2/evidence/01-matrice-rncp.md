@@ -8,7 +8,7 @@
 | C2.2.2 Tests unitaires majoritaires | 70 tests frontend, logique du renderer isolée et couverture Rust avec une vraie démo | rapports HTML/JSON/LCOV, logs et `map-renderer-logic.test.ts` | ACQUIS sur le périmètre mesuré : 61,68 % statements et 63,70 % lignes frontend ; Rust majoritaire avec Dust2 |
 | C2.2.3 Évolutivité, sécurité, accessibilité | frontières modulaires, CSP, audits, axe-core et alternative DOM au canvas | `04-securite-owasp.md`, `05-accessibilite-rgaa.md` | PARTIEL : activation VoiceOver réelle tentée, mais parcours et audit RGAA manuel non réalisés |
 | C2.2.4 Déploiement progressif | export sous `/RoundLab`, workflow Pages après CI verte, rollback par révision | workflow `deploy-pages.yml`, `deployment-runs-2026-07-21.md` | ACQUIS : v0.1.40 déployée, rollbackée puis restaurée |
-| C2.3.1 Cahier de recette | 16 scénarios avec préconditions, données, étapes, attendu, observé, statut et preuve | `03-plan-tests-recette.md`, `recipe-summary.json`, `execution-tests.md` | PARTIEL : 14 OK, 0 NOK, 2 BLOQUÉS |
+| C2.3.1 Cahier de recette | 16 scénarios avec préconditions, données, étapes, attendu, observé, statut et preuve | `03-plan-tests-recette.md`, `recipe-summary.json`, `execution-tests.md` | PARTIEL : 15 OK, 0 NOK, 1 BLOQUÉ |
 | C2.3.2 Correction des bogues | anomalies reliées à un scénario, cause, correction, commit et re-test | `08-anomalies-corrections.md` | ACQUIS pour les anomalies consignées |
 | C2.4.1 Documentation | installation, utilisation, déploiement, rollback et mise à jour WASM/IndexedDB | `06-exploitation.md`, README | ACQUIS |
 
@@ -16,7 +16,7 @@
 
 - Couverture frontend globale : 61,68 % statements, 52,41 % branches, 72,51 % fonctions et 63,70 % lignes. Les seuils de garde sont 60/50/60/60.
 - Couverture Rust avec Dust2 réel : 93,04 % des lignes, 86,06 % des fonctions et 90,05 % des régions. La CI sans fixture privée mesure un périmètre portable plus faible.
-- Fixtures disponibles pour 5 cartes sur 10 ; `de_mirage`, `de_nuke`, `de_overpass`, `de_train` et `de_vertigo` restent bloquées.
+- Fixtures réelles disponibles et auditées pour 10 cartes sur 10, soit 206 rounds locaux. Nuke, Train et Vertigo exercent chacune leurs deux couches radar.
 - Axe-core et 5 scénarios clavier/reflow ne remplacent pas un audit des 106 critères RGAA 4.1.2. VoiceOver a été activé réellement, mais ses raccourcis et annonces n'étaient pas observables par l'outil ; le parcours VoiceOver, le zoom navigateur réel à 200/400 %, le contraste du canvas et la revue manuelle exhaustive restent donc non démontrés.
 - Aucune session avec participant réel n'a été menée : le protocole existe, les résultats utilisateurs n'existent pas encore.
 - Le benchmark navigateur production est démontré sur 9 imports réels avec mesure des phases, du RSS Chrome total, de l'ouverture et du rendu. Les budgets sont une baseline interne sur Apple M4, pas un SLA multi-machines.

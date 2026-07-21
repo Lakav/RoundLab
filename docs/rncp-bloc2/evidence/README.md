@@ -18,7 +18,7 @@ Ce dossier rassemble les preuves techniques du bloc `RNCP39583BC02 — Concevoir
 - `deployment-runs-2026-07-20.md` : CI, déploiement, rollback et restauration réellement observés pour v0.1.39.
 - `deployment-runs-2026-07-21.md` : CI de PR et `main`, déploiement, smokes, rollback et restauration réellement observés pour v0.1.40.
 - `fixture-search-2026-07-21.json` : recherche locale initiale bornée des cinq cartes alors sans fixture, sans candidat trouvé.
-- `fixture-acquisition-2026-07-21.json` : provenance, empreintes et résultats vérifiés des quatre démos CS2 publiques ajoutant Mirage, Nuke, Overpass et Train.
+- `fixture-acquisition-2026-07-21.json` : provenance, empreintes et résultats vérifiés des cinq démos CS2 publiques ajoutant Mirage, Nuke, Overpass, Train et Vertigo.
 - `logs/replay-fixtures-public.txt` : commandes et sorties factuelles de parsing `full`, d'audit de rendu et de contrôle du manifeste local.
 - `performance/` : protocoles et résultats natifs/navigateur, chacun sur 3 démos × 3 répétitions, résumés machine et rapports dédiés.
 - `recipe-summary.json` : décompte machine des statuts du cahier de recette.

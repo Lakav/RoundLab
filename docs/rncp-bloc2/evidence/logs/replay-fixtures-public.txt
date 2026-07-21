@@ -29,4 +29,20 @@ de_train: OK; 16 rounds; couches default=25534, lower=445656; 0 % joueurs/effets
 $ python3 scripts/audit-replay-fixture-coverage.py
 Replay fixture coverage manifest incomplete: 9/10 maps covered, 184 local fixture rounds documented, missing=de_vertigo (with local fixture proof)
 
+$ shasum -a 256 /Users/julescavanier/Downloads/esl-pro-league-season-19-tyloo-vs-falcons-bo3-bpdNnTZsFZwKMIUUW3DtFX.rar
+eb0ff6776948db3952016e53fe3e2417ddbc9ee626f6b51a3636433a7fb08b84  archive officielle, 509899671 octets
+$ bsdtar -tf /Users/julescavanier/Downloads/esl-pro-league-season-19-tyloo-vs-falcons-bo3-bpdNnTZsFZwKMIUUW3DtFX.rar
+tyloo-vs-falcons-m1-mirage.dem
+tyloo-vs-falcons-m2-vertigo.dem
+tyloo-vs-falcons-m3-nuke.dem
+$ shasum -a 256 /tmp/roundlab-vertigo.JVqOJo/tyloo-vs-falcons-m2-vertigo.dem
+b1bb75e0e33f7bdbc279e05579ac5edec5990dbbb5d3134b3f1651ea5b33ada0  tyloo-vs-falcons-m2-vertigo.dem, 283922961 octets
+$ parser/target/release/roundlab-parser -in /tmp/roundlab-vertigo.JVqOJo/tyloo-vs-falcons-m2-vertigo.dem -out /tmp/roundlab-vertigo.JVqOJo/vertigo-full.json.gz -quality full -stats
+OK[rust] map=de_vertigo rounds=22 players=10
+ROUNDLAB_STATS frames=130029 events=183 kills=133 effects=464 weapon_fires=3138 projectile_samples=250966
+$ python3 scripts/audit-replay-rendering.py --compare-dir /tmp/roundlab-vertigo.JVqOJo --skip-parsed --json
+de_vertigo: OK; 22 rounds; couches default=650366, lower=343925; démarrages default=110, lower=110; 0 % joueurs/effets/projectiles hors carte; 0 effet non associé; 0 projectile invalide
+$ python3 scripts/audit-replay-fixture-coverage.py --require-all-maps
+Replay fixture coverage manifest complete: 10/10 maps covered, 206 local fixture rounds documented, missing=(none) (with local fixture proof)
+
 Les fichiers `.dem` et les sorties split volumineuses restent locaux et ignorés par Git. Les URL sources et empreintes complètes sont conservées dans `fixture-acquisition-2026-07-21.json`.

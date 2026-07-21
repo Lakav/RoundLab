@@ -17,14 +17,14 @@ Les statuts sont strictement `OK`, `NOK` ou `BLOQUÉ`. La date distingue l'exéc
 | REC-11 | lockfiles courants | dépendances web/Rust | lancer audits | aucune vulnérabilité bloquante | dernier contrôle collecté vert, warnings Rust documentés | OK | 2026-07-20 | logs d'audit |
 | REC-12 | Chrome système | accueil, erreur, bibliothèque, dialogues, replay, commandes | lancer 5 scénarios axe/clavier/reflow | 0 violation axe, contrôles nommés | écart contraste détecté puis corrigé ; campagne finale 5/5 verte | OK | 2026-07-21 | rapport Playwright ; RL-2026-006 à 008 |
 | REC-13 | replay seedé | alternative DOM et état courant | lire la région reliée au radar | joueurs, événements, bombe disponibles | région accessible synchronisée et testée | OK | 2026-07-21 | test replay accessibility |
-| REC-14 | 10 cartes calibrées | vraies fixtures disponibles | exécuter une fixture par carte | preuve réelle pour chaque carte livrée | 9/10 cartes prouvées : quatre démos CS2 publiques ont ajouté Mirage, Nuke, Overpass et Train ; parsing `full` et audit de rendu verts, y compris les deux couches de Nuke et Train ; aucune fixture CS2 Vertigo vérifiée | BLOQUÉ | 2026-07-21 | `docs/replay-fixture-coverage.json`, `fixture-acquisition-2026-07-21.json`, `logs/replay-fixtures-public.txt` |
+| REC-14 | 10 cartes calibrées | vraies fixtures disponibles | exécuter une fixture par carte | preuve réelle pour chaque carte livrée | 10/10 cartes prouvées sur 206 rounds locaux ; la démo Vertigo officielle ajoutée passe le parsing `full` et l'audit de rendu, avec les deux couches observées | OK | 2026-07-21 | `docs/replay-fixture-coverage.json`, `fixture-acquisition-2026-07-21.json`, `logs/replay-fixtures-public.txt` |
 | REC-15 | macOS + VoiceOver | accueil, import, progression, bibliothèque, replay, dialogues | exécuter le protocole manuel | restitution et focus compréhensibles | VoiceOver activé réellement sur l'accueil local, mais raccourcis VO et annonces non observables par l'outil ; aucune session humaine | BLOQUÉ | 2026-07-21 | `05-accessibilite-rgaa.md` |
 | REC-16 | v0.1.40 fusionnée avec CI verte | workflow Pages et SHA v0.1.40 | déployer, smoke, rollback, restaurer | révision v0.1.40 restaurable | CI PR et `main` vertes ; déploiement `2dc622d`, smoke public, rollback `2e51eaf`, smoke, restauration `2dc622d` et smoke réussis | OK | 2026-07-21 | `deployment-runs-2026-07-21.md` |
 
 ## Synthèse générée
 
-- OK : 14
+- OK : 15
 - NOK : 0
-- BLOQUÉ : 2
+- BLOQUÉ : 1
 
-REC-14 et REC-15 ne doivent changer de statut qu'après exécution avec leurs données réelles respectives. Le tag v0.1.40 reste interdit tant que ces contrôles requis sont bloqués.
+REC-14 est validé par les dix fixtures réelles. REC-15 ne doit changer de statut qu'après exécution humaine VoiceOver/RGAA et sessions utilisateurs. Le tag v0.1.40 reste interdit tant que ce contrôle requis est bloqué.

@@ -161,12 +161,12 @@ python3 scripts/audit-replay-fixture-coverage.py
 ```
 
 Use `--require-all-maps` when you need a hard proof gate for replay coverage
-across every calibrated map. That stricter mode is expected to fail until the
-map listed under `missing` has a local fixture.
+across every calibrated map. The current local fixture set passes that stricter
+mode with all ten calibrated maps represented.
 
 Maps with committed `*_lower` radar assets need dedicated replay proof that
-exercises both the default and lower radar layers. Nuke and Train now have that
-proof; Vertigo remains listed under `missing`.
+exercises both the default and lower radar layers. Nuke, Train, and Vertigo now
+have that proof.
 
 To catch accidental regressions back to desktop/Tauri-only code paths, run:
 
