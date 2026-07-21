@@ -36,8 +36,10 @@ export function DrawingToolbar({
         {TOOLS.map(({ value, icon: Icon, title }) => (
           <button
             key={value}
+            type="button"
             onClick={() => setTool(value)}
             title={title}
+            aria-pressed={tool === value}
             className={cn(
               "flex size-7 items-center justify-center rounded-[2px] transition-colors",
               tool === value
@@ -54,6 +56,7 @@ export function DrawingToolbar({
         {COLORS.map((c) => (
           <button
             key={c}
+            type="button"
             onClick={() => setColor(c)}
             aria-label={`Drawing color ${c}`}
             aria-pressed={color === c}
@@ -67,6 +70,7 @@ export function DrawingToolbar({
       </div>
 
       <Button
+        type="button"
         size="icon"
         variant="ghost"
         onClick={() => setStrokes(strokes.slice(0, -1))}
@@ -77,6 +81,7 @@ export function DrawingToolbar({
         <Undo2 className="size-3.5" />
       </Button>
       <Button
+        type="button"
         size="icon"
         variant="ghost"
         onClick={() => setStrokes([])}

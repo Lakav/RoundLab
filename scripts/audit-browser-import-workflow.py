@@ -371,7 +371,8 @@ def assert_modals_keep_keyboard_flow(page: str) -> list[str]:
             "Modal",
             modal,
             [
-                "panelRef.current?.focus()",
+                "const firstFocusable = panel.querySelector<HTMLElement>",
+                "(firstFocusable ?? panel).focus()",
                 "onClick={onClose}",
                 "onKeyDownCapture",
                 "e.stopPropagation()",

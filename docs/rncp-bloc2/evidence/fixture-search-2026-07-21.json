@@ -1,0 +1,28 @@
+{
+  "recordedAt": "2026-07-21T12:09:26+02:00",
+  "roots": [
+    "/Users/julescavanier/Desktop",
+    "/Users/julescavanier/Documents",
+    "/Users/julescavanier/Downloads"
+  ],
+  "targetMapNameHints": [
+    "mirage",
+    "nuke",
+    "overpass",
+    "train",
+    "vertigo"
+  ],
+  "acceptedSuffixes": [
+    ".dem",
+    ".dem.zst",
+    ".zst"
+  ],
+  "commandResult": {
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": "suppressed for inaccessible paths"
+  },
+  "status": "NO_CANDIDATES",
+  "matches": [],
+  "warning": "La recherche porte sur le nom de fichier. Tout candidat aurait dû être parsé pour prouver la carte réelle."
+}

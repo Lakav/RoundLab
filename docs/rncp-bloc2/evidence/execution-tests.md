@@ -1,6 +1,6 @@
 # Rapport d’exécution des contrôles
 
-Généré le `2026-07-20T14:58:02+02:00`.
+Généré le `2026-07-21T13:08:24+02:00`.
 
 | Contrôle | Statut | Preuve |
 | --- | --- | --- |
@@ -9,6 +9,8 @@ Généré le `2026-07-20T14:58:02+02:00`.
 | `frontend-typecheck` | **PASS** | `logs/frontend-typecheck.txt (exit 0)` |
 | `frontend-coverage` | **PASS** | `logs/frontend-coverage.txt (exit 0)` |
 | `frontend-build` | **PASS** | `logs/frontend-build.txt (exit 0)` |
+| `frontend-performance-budgets` | **PASS** | `logs/frontend-performance-budgets.txt (exit 0)` |
+| `browser-benchmark-evidence` | **PASS** | `logs/browser-benchmark-evidence.txt (exit 0)` |
 | `frontend-e2e-accessibility` | **PASS** | `logs/frontend-e2e-accessibility.txt (exit 0)` |
 | `frontend-pages-build` | **PASS** | `logs/frontend-pages-build.txt (exit 0)` |
 | `rust-format` | **PASS** | `logs/rust-format.txt (exit 0)` |
@@ -17,6 +19,7 @@ Généré le `2026-07-20T14:58:02+02:00`.
 | `rust-clippy` | **PASS** | `logs/rust-clippy.txt (exit 0)` |
 | `rust-dependency-audit` | **PASS** | `logs/rust-dependency-audit.txt (exit 0)` |
 | `portable-audits` | **PASS** | `logs/portable-audits.txt (exit 0)` |
+| `recipe-summary` | **PASS** | `logs/recipe-summary.txt (exit 0)` |
 | `wasm-reproducibility` | **PASS** | `logs/wasm-reproducibility.txt (exit 0)` |
 | `rust-real-demo-reference` | **PASS** | `logs/rust-real-demo-reference.txt (exit 0)` |
 | `rust-coverage` | **PASS** | `coverage/rust/coverage-summary.json et logs/rust-coverage.txt (exit 0)` |

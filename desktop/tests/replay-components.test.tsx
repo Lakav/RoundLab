@@ -23,7 +23,7 @@ describe("replay controls and status components", () => {
     expect(useReplay.getState().time).toBe(5);
     await user.click(screen.getByTitle("-5s (J)"));
     expect(useReplay.getState().time).toBe(0);
-    await user.click(screen.getByRole("button", { name: "4×" }));
+    await user.click(screen.getByRole("button", { name: "Playback speed 4 times" }));
     expect(useReplay.getState().speed).toBe(4);
   });
 
@@ -32,7 +32,7 @@ describe("replay controls and status components", () => {
     render(<Controls />);
     expect(screen.getAllByTitle("Loading round...")).toHaveLength(3);
     for (const control of screen.getAllByTitle("Loading round...")) expect(control).toBeDisabled();
-    expect(screen.getByRole("button", { name: "1×" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Playback speed 1 time" })).toBeDisabled();
   });
 
   it("selects a round from the horizontal round list", async () => {

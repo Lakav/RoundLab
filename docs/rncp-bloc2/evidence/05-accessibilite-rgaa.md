@@ -1,29 +1,61 @@
-# Accessibilité - RGAA 4.1.2
+# Accessibilité — RGAA 4.1.2
 
-Le référentiel principal est **RGAA 4.1.2**, adapté à un livrable français. Il opérationnalise les exigences WCAG 2.1 pour l'audit ; une absence de violation axe-core n'est pas une déclaration de conformité RGAA.
+Le référentiel principal est le RGAA 4.1.2. Il fournit une méthode française de vérification fondée sur les exigences WCAG 2.1 A et AA, mais une règle axe-core verte ne suffit pas à déclarer un critère RGAA conforme. Aucun taux global n'est calculé sans audit des critères applicables.
 
-## Réalisations vérifiées
+## Exécution automatisée du 21 juillet 2026
 
-- langue anglaise déclarée, titre `h1`, landmarks `header`, `main` et `nav` ;
-- import fichier accessible au clavier et correctement nommé ;
-- erreurs en `role="alert"`, progression en `role="status"` et `aria-live` ;
-- dialogues nommés, modaux, fermables par Échap et avec focus initial ;
-- boutons de dessin nommés avec état `aria-pressed`, curseur de timeline nommé ;
-- contrastes textuels améliorés sur les principaux contrôles ;
-- canvas exposé comme image interactive et relié à une alternative DOM décrivant round, temps, joueurs, événements et état de bombe.
+Cinq scénarios Playwright/axe-core couvrent désormais :
 
-## Résultats
+- accueil, import local, bibliothèque et contrôle de focus ;
+- erreur de fichier annoncée, menus d'actions, dialogues de renommage/suppression, focus initial et fermeture par Échap ;
+- replay, alternative DOM synchronisée au canvas, titres, régions et noms accessibles ;
+- lecture, timeline, vitesse, couche radar, zoom, mode condensé, sélection du joueur, outils d'annotation et annulation au clavier ; dessin et déplacement de carte au pointeur ;
+- reflow équivalent à des largeurs de 640 px et 320 px.
 
-| Contrôle | Résultat | Portée |
-| --- | --- | --- |
-| axe-core accueil/import/bibliothèque | 0 violation | Chrome système, fixture locale |
-| axe-core replay | 0 violation hors analyse interne du canvas | page replay seedée |
-| clavier/focus import | PASS | test Playwright |
-| noms accessibles et landmarks | PASS | axe + assertions |
-| alternative DOM du canvas | PASS | contenu et relation ARIA testés |
-| contrastes automatisés | PASS sur l'échantillon axe | ne couvre pas toutes les couleurs dessinées dans PixiJS |
-| VoiceOver | NON DÉMONTRÉ | aucune session manuelle enregistrée |
-| zoom 200/400 %, reflow | NON DÉMONTRÉ | aucun procès-verbal manuel |
-| audit exhaustif des 106 critères | NON DÉMONTRÉ | aucun taux de conformité calculé |
+Le premier passage étendu a détecté un contraste de 3,93:1 et une timeline écrasée à 640 px. Les couleurs et la disposition ont été corrigées. La collecte finale passe 5/5 sans relance. Un passage antérieur avait subi un `SIGKILL` de Chrome avant création de page ; il a motivé une unique relance configurée, mais ne constitue pas un défaut d'accessibilité.
 
-Statut global : **PARTIEL**. Le code et les tests améliorent réellement l'accès, mais le dossier ne doit afficher aucun pourcentage de conformité RGAA.
+## Grille de contrôles réellement renseignée
+
+| Critère / exigence | Applicable | Méthode | Résultat | Preuve | Correction |
+| --- | --- | --- | --- | --- | --- |
+| RGAA 3.2 / WCAG 1.4.3 — contraste du texte | oui | axe-core sur accueil et replay dans les états classique/condensé | PASS automatisé après correction | scénario replay commandes | `text-neutral-300`, contrôle axe rejoué |
+| RGAA 8.3 — langue de la page | oui | inspection DOM + axe | PASS automatisé | rapport axe | aucune |
+| RGAA 8.6 — titre de page pertinent | oui | inspection du document | PASS automatisé | rapport axe | aucune |
+| RGAA 9.1 / WCAG 1.3.1 — titres structurés | oui | rôles Playwright + axe | PASS automatisé | scénarios accueil/replay | aucune |
+| RGAA 9.2 — structure et landmarks | oui | rôles `banner`, `main`, `navigation`, régions | PASS automatisé | rapport axe | aucune |
+| RGAA 10.4 / WCAG 1.4.4 — zoom texte | oui | viewport 640 px, équivalent de reflow 200 % | PASS automatisé limité | scénario reflow | barre de commandes empilée sous 768 px |
+| RGAA 10.11 / WCAG 1.4.10 — reflow 400 % | oui | viewport 320 px, contrôles essentiels visibles | PASS automatisé limité | scénario reflow | timeline sur ligne dédiée, zones secondaires défilables |
+| RGAA 11.1 — nom des champs | oui | nom accessible du fichier, de la timeline et du joueur comparé | PASS automatisé | scénarios accueil/replay | ajout `aria-label="Compared player"` |
+| RGAA 11.10 — erreurs de saisie | oui | fichier invalide injecté, assertion `role=alert` | PASS automatisé | scénario erreurs/dialogues | aucune |
+| RGAA 12.6 — regroupement/navigation | oui | landmarks et navigation nommée | PASS automatisé | rapport axe | aucune |
+| RGAA 12.8 — ordre de tabulation | oui | focus ciblé sur import, dialogues et commandes | PARTIEL | assertions Playwright | parcours manuel complet requis |
+| RGAA 12.9 — absence de piège clavier | oui | Échap sur dialogue, navigation clavier des commandes | PARTIEL | scénario dialogues/commandes | piège clavier complet à vérifier manuellement |
+| RGAA 12.11 — contenus additionnels au focus | oui | menus/dialogues Base UI | PASS automatisé sur échantillon | scénario dialogues | aucune |
+| RGAA 13.3 — alternatives aux contenus en mouvement | oui | région DOM reliée au radar par `aria-describedby` | PASS automatisé | scénario alternative replay | aucune |
+| WCAG 2.1.1 / commandes replay au clavier | oui | Entrée/Espace sur lecture, vitesse, couche, zoom, mode, outil de dessin et annulation | PASS automatisé | scénario commandes | états `aria-pressed` ajoutés, dessin et pan testés au pointeur |
+| restitution VoiceOver des pages et changements d'état | oui | VoiceOver macOS réel | NON DÉMONTRÉ | activation réelle confirmée le 21/07, mais navigation VO et annonces non observables par l'outil | intervention humaine requise |
+| focus visible et ordre complet | oui | observation visuelle + Tab/Shift+Tab | NON DÉMONTRÉ | aucune session enregistrée | intervention humaine requise |
+| zoom navigateur réel à 200 % et 400 % | oui | zoom Chrome/Safari réel | NON DÉMONTRÉ | aucun procès-verbal manuel | intervention humaine requise |
+| contrastes internes au canvas PixiJS | oui | mesure visuelle/colorimétrique sur états réels | NON DÉMONTRÉ | axe exclut l'intérieur du canvas | intervention humaine requise |
+| audit exhaustif des 106 critères RGAA | selon pages | audit manuel complet | NON DÉMONTRÉ | grille exhaustive absente | audit dédié requis |
+
+## Protocole VoiceOver à exécuter sur macOS
+
+### Tentative outillée du 21 juillet 2026
+
+VoiceOver a réellement été activé dans macOS, avec le panneau Légende configuré, puis Chrome a ouvert l'export local v0.1.40. L'arbre d'accessibilité de Chrome exposait correctement le titre, le bouton Settings, l'import et le contenu du panneau de réglages. La tabulation standard a aussi déplacé le focus vers le bouton Close.
+
+Cette tentative ne vaut toutefois **pas** parcours VoiceOver : l'outil de contrôle d'interface ne peut pas émettre les raccourcis globaux `VO+…`, et aucune annonce exploitable n'est apparue dans le panneau Légende. Les essais de zoom navigateur piloté n'ont pas non plus fourni un niveau de zoom observable et vérifiable. VoiceOver a été remis sur `off`, Chrome restauré avec `Cmd+0` et le serveur local arrêté. Il faut donc toujours une personne devant le Mac pour exécuter et consigner le protocole ci-dessous.
+
+1. Ouvrir Chrome sur l'accueil, activer VoiceOver avec `Cmd+F5`, puis la navigation web avec `VO+U`.
+2. Parcourir le bandeau, le bouton d'import et la bibliothèque avec `VO+Flèche droite`; noter chaque nom, rôle, état et ordre.
+3. Activer l'import au clavier, sélectionner une vraie démo et vérifier l'annonce du dialogue, de la progression, du pourcentage, du message de phase et de l'erreur éventuelle.
+4. Ouvrir les menus Renommer et Supprimer ; vérifier le titre annoncé, le focus initial, l'ordre Tab/Shift+Tab, la fermeture Échap et le retour de focus.
+5. Ouvrir un replay ; vérifier le titre, la navigation des commandes, leurs états appuyés, la timeline et les changements lecture/pause/vitesse/couche.
+6. Lire la région « Text alternative for the replay radar » à trois instants : début, après un kill et pendant un état de bombe. Comparer oralement avec l'état visible.
+7. Tester toutes les commandes au clavier sans souris, y compris dessin, annulation et effacement.
+8. Refaire le parcours à 200 % puis 400 % de zoom navigateur et noter toute perte, superposition ou défilement bidimensionnel obligatoire.
+9. Mesurer ou inspecter les contrastes du canvas sur joueurs, projectiles, fumée, feu, bombe et annotations.
+10. Renseigner pour chaque étape : date, navigateur, version macOS, résultat observé, anomalie, capture ou enregistrement autorisé.
+
+Statut global honnête : **PARTIEL**. Les contrôles automatisables sont renforcés et les écarts détectés ont été corrigés, mais C2.2.3 ne peut pas être déclaré ACQUIS avant le parcours VoiceOver, les contrôles manuels et la grille RGAA complète.

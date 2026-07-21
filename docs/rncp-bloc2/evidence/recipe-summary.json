@@ -1,0 +1,91 @@
+{
+  "generatedAt": "2026-07-21T11:17:31.935279+00:00",
+  "source": "docs/rncp-bloc2/evidence/03-plan-tests-recette.md",
+  "counts": {
+    "OK": 13,
+    "NOK": 0,
+    "BLOQUÉ": 3
+  },
+  "scenarios": [
+    {
+      "id": "REC-01",
+      "status": "OK",
+      "date": "2026-07-21"
+    },
+    {
+      "id": "REC-02",
+      "status": "OK",
+      "date": "2026-07-20"
+    },
+    {
+      "id": "REC-03",
+      "status": "OK",
+      "date": "2026-07-20"
+    },
+    {
+      "id": "REC-04",
+      "status": "OK",
+      "date": "2026-07-20"
+    },
+    {
+      "id": "REC-05",
+      "status": "OK",
+      "date": "2026-07-20"
+    },
+    {
+      "id": "REC-06",
+      "status": "OK",
+      "date": "2026-07-21"
+    },
+    {
+      "id": "REC-07",
+      "status": "OK",
+      "date": "2026-07-21"
+    },
+    {
+      "id": "REC-08",
+      "status": "OK",
+      "date": "2026-07-20"
+    },
+    {
+      "id": "REC-09",
+      "status": "OK",
+      "date": "2026-07-21"
+    },
+    {
+      "id": "REC-10",
+      "status": "OK",
+      "date": "2026-07-21"
+    },
+    {
+      "id": "REC-11",
+      "status": "OK",
+      "date": "2026-07-20"
+    },
+    {
+      "id": "REC-12",
+      "status": "OK",
+      "date": "2026-07-21"
+    },
+    {
+      "id": "REC-13",
+      "status": "OK",
+      "date": "2026-07-21"
+    },
+    {
+      "id": "REC-14",
+      "status": "BLOQUÉ",
+      "date": "2026-07-21"
+    },
+    {
+      "id": "REC-15",
+      "status": "BLOQUÉ",
+      "date": "2026-07-21"
+    },
+    {
+      "id": "REC-16",
+      "status": "BLOQUÉ",
+      "date": "2026-07-21"
+    }
+  ]
+}

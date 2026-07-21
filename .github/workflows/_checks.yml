@@ -47,6 +47,12 @@ jobs:
         working-directory: desktop
         run: pnpm build
 
+      - name: Enforce production asset budgets
+        run: python3 scripts/check-performance-budgets.py
+
+      - name: Validate recorded browser benchmark evidence
+        run: python3 scripts/summarize-browser-benchmark.py
+
       - name: Run browser accessibility checks
         working-directory: desktop
         run: pnpm test:e2e:a11y
@@ -112,7 +118,11 @@ jobs:
             scripts/audit-static-web-export.py \
             scripts/audit-static-export-output.py \
             scripts/audit-web-portability.py \
+            scripts/benchmark-native-parser.py \
+            scripts/check-performance-budgets.py \
             scripts/run-local-ci-checks.py \
+            scripts/summarize-browser-benchmark.py \
+            scripts/summarize-recipe.py \
             scripts/verify-wasm-reproducibility.py \
             scripts/validate-release-version.py
           python3 -m json.tool docs/replay-fixture-coverage.json >/dev/null

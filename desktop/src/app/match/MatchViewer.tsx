@@ -676,6 +676,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
             <button
               key={mode}
               type="button"
+              aria-pressed={reviewMode === mode}
               onClick={() => {
                 setReviewMode(mode);
                 if (mode === "classic") clearHabitOverlay();
@@ -692,7 +693,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
                 "h-7 rounded-[2px] px-2.5 text-[11px] font-semibold transition-colors",
                 reviewMode === mode
                   ? "bg-white text-neutral-950"
-                  : "text-neutral-400 hover:bg-white/[0.05] hover:text-neutral-200",
+                  : "text-neutral-300 hover:bg-white/[0.05] hover:text-white",
               ].join(" ")}
             >
               {label}
@@ -710,12 +711,13 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
                 <button
                   key={layer}
                   type="button"
+                  aria-pressed={radarLayerMode === layer}
                   onClick={() => setRadarLayerMode(layer)}
                   className={[
                     "h-6 rounded-[2px] px-2 text-[10px] font-semibold transition-colors",
                     radarLayerMode === layer
                       ? "bg-emerald-300 text-[#06100b]"
-                      : "text-neutral-400 hover:bg-white/[0.05] hover:text-neutral-200",
+                      : "text-neutral-300 hover:bg-white/[0.05] hover:text-white",
                   ].join(" ")}
                   title={`Radar layer: ${label}`}
                 >
@@ -754,6 +756,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
         </button>
         {condensedMode && (
           <select
+            aria-label="Compared player"
             value={effectiveCondensedPlayerValue}
             onChange={(event) => {
               setCondensedPlayerValue(event.target.value);
@@ -864,22 +867,26 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
           </div>
         </div>
 
-        <div className="absolute inset-x-4 bottom-4 z-40 shrink-0 rounded-md border border-white/10 bg-[#0b0d0d]/78 px-4 pb-3 pt-1 shadow-2xl shadow-black/35 backdrop-blur-md">
+        <div className="absolute inset-x-2 bottom-2 z-40 shrink-0 rounded-md border border-white/10 bg-[#0b0d0d]/78 px-2 pb-2 pt-1 shadow-2xl shadow-black/35 backdrop-blur-md sm:inset-x-4 sm:bottom-4 sm:px-4 sm:pb-3">
           {!condensedMode && <RoundList />}
-          <div className="flex items-center gap-3">
-            <Controls />
-            <div className="min-w-0 flex-1">
+          <div className="flex flex-col items-stretch gap-2 md:flex-row md:items-center md:gap-3">
+            <div className="max-w-full overflow-x-auto">
+              <Controls />
+            </div>
+            <div className="w-full min-w-0 flex-1">
               <Timeline />
             </div>
             {!condensedMode && (
-              <DrawingToolbar
-                tool={tool}
-                setTool={setTool}
-                color={color}
-                setColor={setColor}
-                strokes={strokes}
-                setStrokes={setStrokes}
-              />
+              <div className="max-w-full overflow-x-auto">
+                <DrawingToolbar
+                  tool={tool}
+                  setTool={setTool}
+                  color={color}
+                  setColor={setColor}
+                  strokes={strokes}
+                  setStrokes={setStrokes}
+                />
+              </div>
             )}
           </div>
         </div>

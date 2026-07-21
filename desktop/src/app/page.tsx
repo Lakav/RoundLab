@@ -734,7 +734,12 @@ function Modal({
   const titleId = useId();
 
   useEffect(() => {
-    panelRef.current?.focus();
+    const panel = panelRef.current;
+    if (!panel) return;
+    const firstFocusable = panel.querySelector<HTMLElement>(
+      "input, select, textarea, button, [href], [tabindex]:not([tabindex='-1'])",
+    );
+    (firstFocusable ?? panel).focus();
   }, []);
 
   return (

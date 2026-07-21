@@ -1,4 +1,4 @@
-# Continuous integration for pull requests and non-main pushes.
+# Continuous integration for pull requests targeting main and pushes to main.
 #
 # Runs the lightweight web + parser check matrix.
 name: ci

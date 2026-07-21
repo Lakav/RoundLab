@@ -2,14 +2,20 @@ import { defineConfig, devices } from "@playwright/test";
 
 const repositoryName = process.env.GITHUB_REPOSITORY?.split("/")[1];
 const basePath = process.env.GITHUB_ACTIONS === "true" && repositoryName ? `/${repositoryName}` : "";
+const benchmarkRun = Boolean(process.env.ROUNDLAB_BENCHMARK_DEMOS);
+const evidenceRoot = benchmarkRun
+  ? "../docs/rncp-bloc2/evidence/performance"
+  : "../docs/rncp-bloc2/evidence";
 
 export default defineConfig({
   testDir: "./tests-e2e",
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 1 : 0,
-  reporter: [["list"], ["html", { outputFolder: "../docs/rncp-bloc2/evidence/playwright-report", open: "never" }]],
-  outputDir: "../docs/rncp-bloc2/evidence/playwright-results",
+  // Chrome can occasionally be killed while launching on constrained runners.
+  // Keep the failed attempt in the report, then retry once in every environment.
+  retries: 1,
+  reporter: [["list"], ["html", { outputFolder: `${evidenceRoot}/playwright-report`, open: "never" }]],
+  outputDir: `${evidenceRoot}/playwright-results`,
   use: {
     baseURL: `http://127.0.0.1:4173${basePath}/`,
     trace: "retain-on-failure",
@@ -17,7 +23,9 @@ export default defineConfig({
     video: "off",
   },
   webServer: {
-    command: "pnpm dev --hostname 127.0.0.1 --port 4173",
+    command: benchmarkRun
+      ? "python3 -m http.server 4173 --bind 127.0.0.1 --directory out"
+      : "pnpm dev --hostname 127.0.0.1 --port 4173",
     url: `http://127.0.0.1:4173${basePath}/`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
