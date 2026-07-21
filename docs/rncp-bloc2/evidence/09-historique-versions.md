@@ -10,7 +10,9 @@ Sa préparation a été réalisée sur `rncp-bloc2-final` avec des commits sépa
 - `2171da4` : publication temporaire de l'artefact Linux de référence ;
 - `8bb9451` : artefact Linux canonique et comparaison sans mutation locale.
 
-La candidate suivante est préparée sur `codex/rncp-bloc2-v0.1.40`. `package.json` vaut `0.1.40`, mais **aucun tag v0.1.40 n'est créé** : la CI distante, le déploiement, le smoke distant et le rollback de cette révision n'ont pas encore eu lieu. Une valeur de package n'est pas une release.
+La candidate v0.1.40 a été préparée dans `de30fd8`, fusionnée sur `main` par la PR #2 dans `2dc622d`, puis validée par CI de PR et de `main`. Elle a été déployée, contrôlée publiquement, rollbackée vers `2e51eaf`, contrôlée, restaurée sur `2dc622d` et contrôlée une dernière fois. La séquence et ses cinq runs sont détaillés dans `deployment-runs-2026-07-21.md`.
+
+`package.json` vaut `0.1.40`, mais **aucun tag v0.1.40 n'est créé** : REC-14 et REC-15 restent BLOQUÉS faute de cinq fixtures réelles et de parcours humain VoiceOver/RGAA. Une valeur de package et un déploiement technique ne suffisent pas à déclarer l'ensemble de la recette acquis.
 
 Commandes de preuve :
 

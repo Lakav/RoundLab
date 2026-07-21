@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-07-21T11:17:31.935279+00:00",
+  "generatedAt": "2026-07-21T11:48:06.351993+00:00",
   "source": "docs/rncp-bloc2/evidence/03-plan-tests-recette.md",
   "counts": {
-    "OK": 13,
+    "OK": 14,
     "NOK": 0,
-    "BLOQUÉ": 3
+    "BLOQUÉ": 2
   },
   "scenarios": [
     {
@@ -84,7 +84,7 @@
     },
     {
       "id": "REC-16",
-      "status": "BLOQUÉ",
+      "status": "OK",
       "date": "2026-07-21"
     }
   ]
