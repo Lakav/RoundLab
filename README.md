@@ -279,6 +279,11 @@ python3 scripts/validate-release-version.py --tag v0.1.40
 `--manifest-only` deliberately skips those evidence gates and must never be
 used to authorize a tag.
 
+For the remote pre-release check, manually dispatch `.github/workflows/release-gate.yml`
+on the candidate commit with the expected tag. It runs the full reusable CI
+suite first and the strict evidence gate second. It deliberately does not
+create or push the tag.
+
 To validate the static security baseline (CSP, referrer policy, dangerous HTML
 or dynamic-code sinks, read-only CI permissions, and dependency-audit wiring),
 run:
