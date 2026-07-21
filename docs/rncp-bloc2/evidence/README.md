@@ -16,6 +16,7 @@ Ce dossier rassemble les preuves techniques du bloc `RNCP39583BC02 — Concevoir
 - `10-smoke-browser.md` : vérification DOM/interactions de l’export servi localement.
 - `11-validation-utilisateur.md` : protocole de 8 tâches et grilles vierges ; sessions réelles encore bloquées.
 - `deployment-runs-2026-07-20.md` : CI, déploiement, rollback et restauration réellement observés pour v0.1.39.
+- `deployment-runs-2026-07-21.md` : CI de PR et `main`, déploiement, smokes, rollback et restauration réellement observés pour v0.1.40.
 - `fixture-search-2026-07-21.json` : recherche locale bornée des cinq cartes sans fixture, sans candidat trouvé.
 - `performance/` : protocoles et résultats natifs/navigateur, chacun sur 3 démos × 3 répétitions, résumés machine et rapports dédiés.
 - `recipe-summary.json` : décompte machine des statuts du cahier de recette.

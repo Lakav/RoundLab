@@ -3,12 +3,12 @@
 | Compétence | Réalisation RoundLab | Preuve | État réel |
 | --- | --- | --- | --- |
 | C2.1.1 Environnements, qualité et performance | Node 24, pnpm 11.9.0, Rust 1.95.0, wasm-bindgen 0.2.126, export statique et portes de qualité | `environment.txt`, `07-qualite-performance.md`, journaux | ACQUIS pour développement, test et intégration |
-| C2.1.2 Intégration continue | PR et `main` : audit, lint, types, couverture, build, axe, audits structurels, Rust, WASM et Clippy | workflow `_checks.yml`, run GitHub Actions, artefacts | ACQUIS après exécution distante verte |
+| C2.1.2 Intégration continue | PR et `main` : audit, lint, types, couverture, build, axe, audits structurels, Rust, WASM et Clippy | workflow `_checks.yml`, `deployment-runs-2026-07-21.md`, artefacts | ACQUIS : PR et `main` verts sur la candidate v0.1.40 |
 | C2.2.1 Prototype sécurisé et ergonomique | Next.js, React, Worker, Rust/WASM, IndexedDB, Zustand, PixiJS, import et replay locaux | `02-architecture.md`, captures et smoke test | ACQUIS sur le prototype observé |
 | C2.2.2 Tests unitaires majoritaires | 70 tests frontend, logique du renderer isolée et couverture Rust avec une vraie démo | rapports HTML/JSON/LCOV, logs et `map-renderer-logic.test.ts` | ACQUIS sur le périmètre mesuré : 61,68 % statements et 63,70 % lignes frontend ; Rust majoritaire avec Dust2 |
 | C2.2.3 Évolutivité, sécurité, accessibilité | frontières modulaires, CSP, audits, axe-core et alternative DOM au canvas | `04-securite-owasp.md`, `05-accessibilite-rgaa.md` | PARTIEL : activation VoiceOver réelle tentée, mais parcours et audit RGAA manuel non réalisés |
-| C2.2.4 Déploiement progressif | export sous `/RoundLab`, workflow Pages après CI verte, rollback par révision | workflow `deploy-pages.yml`, `deployment-runs-2026-07-20.md` | ACQUIS pour v0.1.39 ; BLOQUÉ pour la candidate v0.1.40 non publiée |
-| C2.3.1 Cahier de recette | 16 scénarios avec préconditions, données, étapes, attendu, observé, statut et preuve | `03-plan-tests-recette.md`, `recipe-summary.json`, `execution-tests.md` | PARTIEL : 13 OK, 0 NOK, 3 BLOQUÉS |
+| C2.2.4 Déploiement progressif | export sous `/RoundLab`, workflow Pages après CI verte, rollback par révision | workflow `deploy-pages.yml`, `deployment-runs-2026-07-21.md` | ACQUIS : v0.1.40 déployée, rollbackée puis restaurée |
+| C2.3.1 Cahier de recette | 16 scénarios avec préconditions, données, étapes, attendu, observé, statut et preuve | `03-plan-tests-recette.md`, `recipe-summary.json`, `execution-tests.md` | PARTIEL : 14 OK, 0 NOK, 2 BLOQUÉS |
 | C2.3.2 Correction des bogues | anomalies reliées à un scénario, cause, correction, commit et re-test | `08-anomalies-corrections.md` | ACQUIS pour les anomalies consignées |
 | C2.4.1 Documentation | installation, utilisation, déploiement, rollback et mise à jour WASM/IndexedDB | `06-exploitation.md`, README | ACQUIS |
 
