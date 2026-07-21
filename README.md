@@ -268,6 +268,17 @@ success rate:
 python3 scripts/audit-user-validation.py --require-complete
 ```
 
+Immediately before creating a release tag, run the strict release gate. A
+matching package version is insufficient: all 16 recipe scenarios, the RGAA
+grid, and the real user-session evidence must also pass.
+
+```bash
+python3 scripts/validate-release-version.py --tag v0.1.40
+```
+
+`--manifest-only` deliberately skips those evidence gates and must never be
+used to authorize a tag.
+
 To validate the static security baseline (CSP, referrer policy, dangerous HTML
 or dynamic-code sinks, read-only CI permissions, and dependency-audit wiring),
 run:
