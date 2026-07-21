@@ -25,3 +25,7 @@ Généré le `2026-07-21T13:08:24+02:00`.
 | `rust-coverage` | **PASS** | `coverage/rust/coverage-summary.json et logs/rust-coverage.txt (exit 0)` |
 
 `BLOQUÉ` signifie que le contrôle n’a pas été exécuté ; il ne vaut jamais succès.
+
+## Vérifications distantes
+
+Les CI de PR et de `main`, les déploiements, les smokes publics, les rollbacks, les restaurations et le garde-fou strict sont consignés avec leurs URL et SHA dans `deployment-runs-2026-07-21.md`. Cette synthèse locale ne duplique pas leurs statuts et ne transforme pas l'échec attendu du garde-fou en échec technique.

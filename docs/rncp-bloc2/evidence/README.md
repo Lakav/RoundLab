@@ -18,7 +18,7 @@ Ce dossier rassemble les preuves techniques du bloc `RNCP39583BC02 — Concevoir
 - `11-validation-utilisateur.md` : protocole de 8 tâches et grilles vierges ; sessions réelles encore bloquées.
 - `validation-utilisateur-participants.csv` et `validation-utilisateur-taches.csv` : preuves structurées volontairement vides jusqu'aux sessions humaines réelles.
 - `deployment-runs-2026-07-20.md` : CI, déploiement, rollback et restauration réellement observés pour v0.1.39.
-- `deployment-runs-2026-07-21.md` : CI de PR et `main`, déploiement, smokes, rollback et restauration réellement observés pour v0.1.40.
+- `deployment-runs-2026-07-21.md` : deux séquences réelles de CI, déploiement, smoke, rollback et restauration de la candidate v0.1.40, puis exécution du garde-fou strict sans création de tag.
 - `fixture-search-2026-07-21.json` : recherche locale initiale bornée des cinq cartes alors sans fixture, sans candidat trouvé.
 - `fixture-acquisition-2026-07-21.json` : provenance, empreintes et résultats vérifiés des cinq démos CS2 publiques ajoutant Mirage, Nuke, Overpass, Train et Vertigo.
 - `logs/replay-fixtures-public.txt` : commandes et sorties factuelles de parsing `full`, d'audit de rendu et de contrôle du manifeste local.
