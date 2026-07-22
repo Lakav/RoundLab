@@ -2468,36 +2468,36 @@ function drawEffect(
   }
 
   if (effect.type === "flash") {
-    const burst = clamp01(age / 0.28);
+    const burst = clamp01(age / 0.26);
     const eased = easeOutCubic(burst);
     const alpha = 1 - burst;
-    g.circle(p.x, p.y, 4 + eased * 12)
-      .stroke({ color: 0xffffff, width: 2 - eased * 0.8, alpha: alpha * 0.9 });
-    g.circle(p.x, p.y, 6 - eased * 2)
-      .fill({ color: 0xffffff, alpha: Math.max(0, 0.92 - burst * 2) });
+    const outer = 5 + eased * 8;
+    const inner = 2.2 + eased * 1.2;
+    for (let index = 0; index < 8; index++) {
+      const angle = -Math.PI / 2 + (index * Math.PI) / 4;
+      const radius = index % 2 === 0 ? outer : inner;
+      const x = p.x + Math.cos(angle) * radius;
+      const y = p.y + Math.sin(angle) * radius;
+      if (index === 0) g.moveTo(x, y);
+      else g.lineTo(x, y);
+    }
+    g.closePath()
+      .fill({ color: 0xffffff, alpha: alpha * 0.92 })
+      .stroke({ color: 0xfff7d6, width: 1, alpha: alpha * 0.8 });
     layer.addChild(g);
     return;
   }
 
   if (effect.type === "he") {
-    // HE damage radius ≈ 350 world units.
-    const maxR = 200 * unitsToPx;
-    const t01 = clamp01(age / 0.82);
+    const maxR = 165 * unitsToPx;
+    const t01 = clamp01(age / 0.62);
     const shock = easeOutCubic(t01);
     const alpha = 1 - t01;
     const r = maxR * shock;
-    if (age < 0.14) {
-      const flashA = 1 - age / 0.14;
-      g.circle(p.x, p.y, maxR * (0.18 + 0.27 * (1 - flashA)))
-        .fill({ color: 0xfffbeb, alpha: 0.98 * flashA });
-    }
-    g.circle(p.x, p.y, r * 0.7).fill({ color: 0xea580c, alpha: 0.26 * alpha });
-    g.circle(p.x, p.y, r).stroke({ color: 0xfbbf24, width: 4.5 - shock * 2.5, alpha });
-    g.circle(p.x, p.y, r + 5).stroke({ color: 0xfffbeb, width: 1.2, alpha: alpha * 0.68 });
-    const coreR = Math.max(3, maxR * 0.22 * (1 - shock * 0.55));
-    g.circle(p.x, p.y, coreR).fill({ color: 0xf97316, alpha: alpha * 0.92 });
-    g.circle(p.x, p.y, coreR * 0.48).fill({ color: 0xfef3c7, alpha });
-    drawImpactFragments(g, effect, p.x, p.y, shock, maxR * 0.95, 0xfbbf24, 13);
+    g.circle(p.x, p.y, r)
+      .stroke({ color: 0xf97316, width: 3 - shock * 1.4, alpha: alpha * 0.9 });
+    g.circle(p.x, p.y, Math.max(2.5, 7 - shock * 4))
+      .fill({ color: 0xfbbf24, alpha: alpha * 0.9 });
     layer.addChild(g);
     return;
   }
