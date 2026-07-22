@@ -3,9 +3,9 @@
 import "pixi.js/unsafe-eval";
 import { useEffect, useRef, useState } from "react";
 import { Application, Assets, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
-import { type HabitOverlayTrail, type HabitReplayEffect, type HabitReplayPlayerSample, type HabitReplayProjectile, type HabitReplayRound, useReplay } from "@/lib/replay-store";
+import { type HabitOverlay, type HabitOverlayTrail, type HabitReplayEffect, type HabitReplayPlayerSample, type HabitReplayProjectile, type HabitReplayRound, useReplay } from "@/lib/replay-store";
 import { MAP_CALIBRATION, RADAR_SIZE, radarImagePath, radarLayerForPositions, type RadarLayer, worldToRadar } from "@/lib/maps";
-import type { BombState, Frame, MatchEvent, PlayerPos, ProjectileFrame, ProjectilePos, Round, UtilityEffect, WeaponFireEvent } from "@/lib/types";
+import type { BombState, Frame, MatchData, MatchEvent, PlayerPos, ProjectileFrame, ProjectilePos, Round, UtilityEffect, WeaponFireEvent } from "@/lib/types";
 import { iconPathFor } from "@/lib/icons";
 import { writeDebugLog } from "@/lib/api";
 import { smokeBlastClearAlpha } from "@/lib/replay-logic";
@@ -2581,13 +2581,23 @@ export function MapRenderer({
   useEffect(() => {
     let raf = 0;
     let last = performance.now();
+    let lastRenderedMatch: MatchData | null = null;
+    let lastRenderedRound = -1;
+    let lastRenderedTime = Number.NaN;
+    let lastRenderedOverlay: HabitOverlay | null = null;
     const loop = (now: number) => {
       raf = requestAnimationFrame(loop);
       const dt = (now - last) / 1000;
       last = now;
       const state = useReplay.getState();
       state.step(dt);
-      const { match, currentRoundIdx, time } = useReplay.getState();
+      const { match, currentRoundIdx, time, playing } = useReplay.getState();
+      const overlay = habitOverlayRef.current;
+      const unchanged =
+        match === lastRenderedMatch &&
+        currentRoundIdx === lastRenderedRound &&
+        time === lastRenderedTime &&
+        overlay === lastRenderedOverlay;
       const layer = playerLayerRef.current;
       const utilityLayer = utilityLayerRef.current;
       const bombLayer = bombLayerRef.current;
@@ -2598,10 +2608,19 @@ export function MapRenderer({
       if (!round) return;
       const calib = MAP_CALIBRATION[match.meta.map];
       if (!calib) return;
+      // The old loop rebuilt every Pixi layer at display refresh rate even
+      // while replay time was paused. Keep polling cheaply for store changes,
+      // but skip the expensive render work until something actually changes.
+      // Do not cache before Pixi and the round are ready or a paused replay
+      // could remain blank after asynchronous renderer initialization.
+      if (!playing && unchanged) return;
+      lastRenderedMatch = match;
+      lastRenderedRound = currentRoundIdx;
+      lastRenderedTime = time;
+      lastRenderedOverlay = overlay;
 
       const bombFrames = roundFramesWithBombFallback(round);
       const positions = sampleFrame(round.frames, time);
-      const overlay = habitOverlayRef.current;
       const radarPositions =
         condensed && overlay?.mode === "replay" && overlay.replays?.length
           ? habitRadarLayerPositions(overlay.replays, time)

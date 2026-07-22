@@ -153,7 +153,14 @@ function majoritySide(ids: number[], teams: Map<number, number>): number | null 
 
 function displayTeamName(name: string, slot: "CT" | "T") {
   const trimmed = name.trim();
-  if (!trimmed || trimmed === "CT" || trimmed === "T" || trimmed === "Counter-Terrorists" || trimmed === "Terrorists") {
+  if (
+    !trimmed ||
+    /^team_/i.test(trimmed) ||
+    trimmed === "CT" ||
+    trimmed === "T" ||
+    trimmed === "Counter-Terrorists" ||
+    trimmed === "Terrorists"
+  ) {
     return slot === "CT" ? "Team 1" : "Team 2";
   }
   return trimmed;

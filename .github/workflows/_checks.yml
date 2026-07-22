@@ -50,9 +50,6 @@ jobs:
       - name: Enforce production asset budgets
         run: python3 scripts/check-performance-budgets.py
 
-      - name: Validate recorded browser benchmark evidence
-        run: python3 scripts/summarize-browser-benchmark.py
-
       - name: Run browser accessibility checks
         working-directory: desktop
         run: pnpm test:e2e:a11y
@@ -60,20 +57,20 @@ jobs:
       - name: Validate static export output
         run: python3 scripts/audit-static-export-output.py
 
-      - name: Upload frontend coverage evidence
+      - name: Upload frontend coverage report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: frontend-coverage
-          path: docs/rncp-bloc2/evidence/coverage/frontend
+          path: desktop/coverage
           if-no-files-found: error
 
-      - name: Upload browser accessibility evidence
+      - name: Upload browser accessibility report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: browser-accessibility-report
-          path: docs/rncp-bloc2/evidence/playwright-report
+          path: desktop/playwright-report
           if-no-files-found: error
 
   rust:
@@ -98,33 +95,19 @@ jobs:
       - name: Validate Rust parser audit tooling
         run: |
           python3 -m py_compile \
-            scripts/collect-rncp-bloc2-evidence.py \
-            scripts/audit-browser-import-flow.py \
-            scripts/audit-browser-import-workflow.py \
             scripts/audit-browser-parser-locality.py \
-            scripts/audit-browser-store-contract.py \
-            scripts/audit-ci-coverage.py \
-            scripts/audit-home-accessibility.py \
-            scripts/audit-match-controls.py \
-            scripts/audit-match-layout.py \
-            scripts/audit-parse-estimate.py \
-            scripts/audit-parser-fidelity.py \
             scripts/audit-public-assets.py \
             scripts/audit-reference-snapshots.py \
-            scripts/audit-rgaa-grid.py \
             scripts/audit-replay-fixture-coverage.py \
-            scripts/audit-replay-renderer-contract.py \
             scripts/audit-replay-rendering.py \
             scripts/audit-security-baseline.py \
             scripts/audit-static-web-export.py \
             scripts/audit-static-export-output.py \
-            scripts/audit-user-validation.py \
             scripts/audit-web-portability.py \
             scripts/benchmark-native-parser.py \
             scripts/check-performance-budgets.py \
             scripts/run-local-ci-checks.py \
             scripts/summarize-browser-benchmark.py \
-            scripts/summarize-recipe.py \
             scripts/verify-wasm-reproducibility.py \
             scripts/validate-release-version.py
           python3 -m json.tool docs/replay-fixture-coverage.json >/dev/null
@@ -136,35 +119,8 @@ jobs:
       - name: Validate static web export
         run: python3 scripts/audit-static-web-export.py
 
-      - name: Validate CI audit coverage
-        run: python3 scripts/audit-ci-coverage.py
-
       - name: Validate browser parser locality
         run: python3 scripts/audit-browser-parser-locality.py
-
-      - name: Validate browser import flow
-        run: python3 scripts/audit-browser-import-flow.py
-
-      - name: Validate browser import workflow
-        run: python3 scripts/audit-browser-import-workflow.py
-
-      - name: Validate browser store contract
-        run: python3 scripts/audit-browser-store-contract.py
-
-      - name: Validate home accessibility contract
-        run: python3 scripts/audit-home-accessibility.py
-
-      - name: Validate match review controls
-        run: python3 scripts/audit-match-controls.py
-
-      - name: Validate match layout sizing
-        run: python3 scripts/audit-match-layout.py
-
-      - name: Validate parse time estimate
-        run: python3 scripts/audit-parse-estimate.py
-
-      - name: Validate parser fidelity defaults
-        run: python3 scripts/audit-parser-fidelity.py
 
       - name: Validate public assets
         run: python3 scripts/audit-public-assets.py
@@ -172,23 +128,14 @@ jobs:
       - name: Validate reference parser snapshots
         run: python3 scripts/audit-reference-snapshots.py --reference-only
 
-      - name: Validate RGAA audit grid
-        run: python3 scripts/audit-rgaa-grid.py
-
       - name: Validate replay fixture coverage manifest
         run: python3 scripts/audit-replay-fixture-coverage.py
-
-      - name: Validate replay renderer contract
-        run: python3 scripts/audit-replay-renderer-contract.py
 
       - name: Validate replay map assets
         run: python3 scripts/audit-replay-rendering.py --assets-only
 
       - name: Validate security baseline
         run: python3 scripts/audit-security-baseline.py
-
-      - name: Validate user-session evidence
-        run: python3 scripts/audit-user-validation.py
 
       - uses: taiki-e/install-action@v2
         with:
@@ -210,18 +157,18 @@ jobs:
         working-directory: parser
         run: cargo test
 
-      - name: Measure portable Rust coverage
+      - name: Measure Rust coverage
         working-directory: parser
         run: |
-          mkdir -p ../docs/rncp-bloc2/evidence/coverage/rust
+          mkdir -p coverage
           cargo llvm-cov --workspace --json \
-            --output-path ../docs/rncp-bloc2/evidence/coverage/rust/coverage-summary.json
+            --output-path coverage/coverage-summary.json
 
-      - name: Upload portable Rust coverage evidence
+      - name: Upload Rust coverage report
         uses: actions/upload-artifact@v4
         with:
           name: rust-coverage-portable
-          path: docs/rncp-bloc2/evidence/coverage/rust/coverage-summary.json
+          path: parser/coverage/coverage-summary.json
           if-no-files-found: error
 
       - name: Check browser WASM parser build

@@ -37,7 +37,7 @@ const configuredDemos = (process.env.ROUNDLAB_BENCHMARK_DEMOS ?? "")
   .filter(Boolean)
   .map((entry) => path.resolve(entry));
 const repetitions = Math.max(1, Number(process.env.ROUNDLAB_BENCHMARK_REPETITIONS ?? "3"));
-const outputDirectory = path.resolve("../docs/rncp-bloc2/evidence/performance");
+const outputDirectory = path.resolve("./benchmark-results");
 const outputStem = process.env.ROUNDLAB_BENCHMARK_OUTPUT_STEM ?? "browser-benchmark-raw";
 const execFileAsync = promisify(execFile);
 

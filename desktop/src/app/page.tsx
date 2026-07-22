@@ -195,6 +195,7 @@ export default function Home() {
   const [parseEstimateMs, setParseEstimateMs] = useState(FALLBACK_PARSE_ESTIMATE_MS);
   const parseEffectiveBytesRef = useRef<number | null>(null);
   const parseMinMsPerMbRef = useRef(0);
+  const parseInFlightRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const elapsedMs = parseStartedAt ? Math.max(0, parseNow - parseStartedAt) : 0;
   const backendPct = Math.max(0, Math.min(1, parseProgress.progress || 0));
@@ -229,12 +230,17 @@ export default function Home() {
 
   const parseSource = useCallback(
     async (source: DemoSource) => {
-      if (uploading) return;
+      // State updates are asynchronous: two file/drop events can otherwise
+      // both enter here before `uploading` is rendered as true. The backend
+      // then cancels the first parse and its `finally` hides the second one's
+      // progress dialog while it is still running.
+      if (parseInFlightRef.current) return;
       const sizeError = demoFileSizeError(source.file);
       if (sizeError) {
         setError(sizeError);
         return;
       }
+      parseInFlightRef.current = true;
       setError(null);
       const started = Date.now();
       const estimate = estimateForSource(source);
@@ -271,6 +277,7 @@ export default function Home() {
         const message = e instanceof Error ? e.message : String(e);
         if (!/cancel/i.test(message)) setError(message);
       } finally {
+        parseInFlightRef.current = false;
         setUploading(false);
         setParseStartedAt(null);
         parseEffectiveBytesRef.current = null;
@@ -278,7 +285,7 @@ export default function Home() {
         setParseProgress({ phase: "idle", progress: 0, message: "" });
       }
     },
-    [uploading],
+    [],
   );
 
   useEffect(() => {
@@ -525,7 +532,7 @@ export default function Home() {
         <SettingsPanel />
       </header>
 
-      <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-6 py-8 sm:py-10">
+      <main id="main-content" tabIndex={-1} className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-6 py-8 sm:py-10">
         <input
           ref={fileInputRef}
           data-testid="demo-file-input"

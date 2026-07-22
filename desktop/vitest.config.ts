@@ -18,7 +18,7 @@ export default defineConfig({
     restoreMocks: true,
     coverage: {
       provider: "v8",
-      reportsDirectory: "../docs/rncp-bloc2/evidence/coverage/frontend",
+      reportsDirectory: "./coverage",
       // `lcov` already emits the browsable `lcov-report/`; adding `html`
       // duplicates the same source pages at the coverage root.
       reporter: ["text", "json", "json-summary", "lcov"],

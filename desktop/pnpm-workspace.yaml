@@ -7,6 +7,24 @@ allowBuilds:
   # ESLint's resolver uses this postinstall only to select and verify the
   # platform-specific native binding already pinned in pnpm-lock.yaml.
   unrs-resolver: true
+ignoredOptionalDependencies:
+  # RoundLab exports static HTML with `images.unoptimized`; the server-side
+  # image optimizer is not shipped or executed. Excluding Sharp avoids
+  # installing an unused optional native dependency with known advisories.
+  - sharp
+minimumReleaseAgeExclude:
+  - '@next/env@16.2.11'
+  - '@next/eslint-plugin-next@16.2.11'
+  - '@next/swc-darwin-arm64@16.2.11'
+  - '@next/swc-darwin-x64@16.2.11'
+  - '@next/swc-linux-arm64-gnu@16.2.11'
+  - '@next/swc-linux-arm64-musl@16.2.11'
+  - '@next/swc-linux-x64-gnu@16.2.11'
+  - '@next/swc-linux-x64-musl@16.2.11'
+  - '@next/swc-win32-arm64-msvc@16.2.11'
+  - '@next/swc-win32-x64-msvc@16.2.11'
+  - eslint-config-next@16.2.11
+  - next@16.2.11
 overrides:
   # Patched release for GHSA-3jxr-9vmj-r5cp, pulled transitively by ESLint/minimatch.
   brace-expansion: 1.1.16

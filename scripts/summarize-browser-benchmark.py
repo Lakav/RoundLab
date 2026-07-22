@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Summarize and validate the reproducible browser benchmark evidence."""
+"""Summarize and validate reproducible browser benchmark results."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ import statistics
 from pathlib import Path
 
 
-DEFAULT_INPUT = Path("docs/rncp-bloc2/evidence/performance/browser-benchmark-raw.json")
-DEFAULT_OUTPUT = Path("docs/rncp-bloc2/evidence/performance/browser-benchmark-summary.json")
+DEFAULT_INPUT = Path("desktop/benchmark-results/browser-benchmark-raw.json")
+DEFAULT_OUTPUT = Path("desktop/benchmark-results/browser-benchmark-summary.json")
 IMPORT_BUDGETS_MS = (
     (140_000_000, 20_000),
     (180_000_000, 30_000),
