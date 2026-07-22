@@ -79,6 +79,8 @@ def assert_required_output(errors: list[str]) -> None:
         errors.append("static export is missing bundled roundlab_parser_bg WASM media")
     if not any("web-parser.worker" in path.name for path in media):
         errors.append("static export is missing bundled web-parser.worker media")
+    if not any("zstd-decompress.worker" in path.name for path in media):
+        errors.append("static export is missing bundled zstd decompression worker media")
 
 
 def assert_parser_worker_bundle(errors: list[str]) -> None:
@@ -93,9 +95,12 @@ def assert_parser_worker_bundle(errors: list[str]) -> None:
         errors.append("worker bootstrap chunk is missing the Turbopack worker chunk manifest")
     if not any_chunk_contains(chunks, "web-parser.worker"):
         errors.append("client chunks do not reference the parser worker entry asset")
+    if not any_chunk_contains(chunks, "zstd-decompress.worker"):
+        errors.append("parser chunks do not reference the zstd worker entry asset")
 
     for snippet in [
         "Loading local zstd decoder",
+        "memory-safe high sampling",
         "Decompressed demo is larger",
         "parse_demo_bytes_to_json",
         "Parser output stored",

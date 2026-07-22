@@ -1,6 +1,6 @@
-import { ZSTDDecoder } from "zstddec";
 import initParser, { parse_demo_bytes_to_json } from "../wasm/roundlab_parser/roundlab_parser.js";
 import { saveParsedMatch } from "@/lib/backends/browser-store";
+import { browserParserMemoryError, browserParserQualityForSize } from "@/lib/parser-memory";
 import type { MatchData } from "@/lib/types";
 
 const ZSTD_MAGIC = [0x28, 0xb5, 0x2f, 0xfd] as const;
@@ -12,8 +12,6 @@ type ParseRequest = {
   size: number;
   buffer: ArrayBuffer;
 };
-
-let zstdDecoderPromise: Promise<ZSTDDecoder> | null = null;
 
 function postProgress(progress: number, message: string, phase = "parsing", effectiveBytes?: number): void {
   self.postMessage({
@@ -50,24 +48,26 @@ function validatePlayableMatch(data: MatchData): void {
   }
 }
 
-async function getZstdDecoder(): Promise<ZSTDDecoder> {
-  zstdDecoderPromise ??= (async () => {
-    const decoder = new ZSTDDecoder();
-    await decoder.init();
-    return decoder;
-  })();
-  return zstdDecoderPromise;
-}
-
 async function decompressZstd(bytes: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
-  const decoder = await getZstdDecoder();
-  const output = decoder.decode(bytes);
-  if (!output.byteLength) {
-    throw new Error("The .zst file decompressed to an empty payload.");
+  const worker = new Worker(new URL("./zstd-decompress.worker.ts", import.meta.url), { type: "module" });
+  try {
+    return await new Promise<Uint8Array<ArrayBuffer>>((resolve, reject) => {
+      worker.onmessage = (event: MessageEvent<{ type: "done"; buffer: ArrayBuffer } | { type: "error"; message: string }>) => {
+        if (event.data.type === "done") resolve(new Uint8Array(event.data.buffer));
+        else reject(new Error(event.data.message));
+      };
+      worker.onerror = (event) => reject(new Error(event.message || "Local zstd decompression failed."));
+      const transferable = bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
+        ? bytes.buffer
+        : bytes.slice().buffer;
+      worker.postMessage({ type: "decompress", buffer: transferable }, [transferable]);
+    });
+  } finally {
+    // zstddec grows its own WebAssembly heap to hold both compressed and
+    // decompressed bytes. Terminating this short-lived worker releases that
+    // heap before the much larger parser WebAssembly instance starts.
+    worker.terminate();
   }
-  const copy = new Uint8Array(output.byteLength);
-  copy.set(output);
-  return copy;
 }
 
 async function parseDemo(request: ParseRequest): Promise<string> {
@@ -90,8 +90,10 @@ async function parseDemo(request: ParseRequest): Promise<string> {
   postProgress(0.16, "Loading WASM parser...", "starting", bytes.byteLength);
   await initParser();
 
-  postProgress(0.22, "Parsing demo locally...", "parsing", bytes.byteLength);
-  const json = parse_demo_bytes_to_json(bytes, "full", false, false);
+  const quality = browserParserQualityForSize(bytes.byteLength);
+  const qualityMessage = quality === "high" ? " (memory-safe high sampling)" : "";
+  postProgress(0.22, `Parsing demo locally${qualityMessage}...`, "parsing", bytes.byteLength);
+  const json = parse_demo_bytes_to_json(bytes, quality, false, false);
 
   postProgress(0.86, "Storing parsed match locally...", "storing");
   const data = JSON.parse(json) as MatchData;
@@ -110,7 +112,7 @@ self.onmessage = (event: MessageEvent<ParseRequest>) => {
     .then((id) => self.postMessage({ type: "done", id }))
     .catch((error) => {
       console.error("[parser-worker] parse failed", error);
-      const message = error instanceof Error ? error.message : String(error);
+      const message = browserParserMemoryError(error).message;
       self.postMessage({
         type: "error",
         message,

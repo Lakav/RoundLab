@@ -687,14 +687,14 @@ fn parse_demo_data(args: &Args) -> Result<ParsedDemoData> {
         .unwrap_or_default();
     let mut read_demo_ms = 0;
     let bytes = timed(&mut read_demo_ms, || read_demo(&args.input))?;
-    let mut data = parse_demo_data_from_bytes(args, bytes, input_bytes)?;
+    let mut data = parse_demo_data_from_bytes(args, &bytes, input_bytes)?;
     data.stats.read_demo_ms = read_demo_ms;
     Ok(data)
 }
 
 fn parse_demo_data_from_bytes(
     args: &Args,
-    bytes: Vec<u8>,
+    bytes: &[u8],
     input_bytes: u64,
 ) -> Result<ParsedDemoData> {
     let mut stats = ParserStats {
@@ -3171,7 +3171,7 @@ pub fn parse_demo_bytes_to_json(
         skip_weapon_fires,
         stats: false,
     };
-    let (output, _) = parse_demo_data_from_bytes(&args, bytes.to_vec(), bytes.len() as u64)
+    let (output, _) = parse_demo_data_from_bytes(&args, bytes, bytes.len() as u64)
         .and_then(|mut data| {
             let build_rounds_started = parser_now();
             let ctx = RoundBuildContext {

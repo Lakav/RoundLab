@@ -18,6 +18,7 @@ API_TS = ROOT / "desktop" / "src" / "lib" / "api.ts"
 HOME_TSX = ROOT / "desktop" / "src" / "app" / "page.tsx"
 WORKER_DIR = ROOT / "desktop" / "src" / "workers"
 WORKER_TS = WORKER_DIR / "web-parser.worker.ts"
+ZSTD_WORKER_TS = WORKER_DIR / "zstd-decompress.worker.ts"
 
 LOCALITY_FILES = [
     API_TS,
@@ -26,6 +27,7 @@ LOCALITY_FILES = [
     BACKEND_DIR / "browser-store.ts",
     BACKEND_DIR / "types.ts",
     WORKER_TS,
+    ZSTD_WORKER_TS,
 ]
 
 FORBIDDEN_NETWORK_PATTERNS = {
@@ -51,9 +53,17 @@ REQUIRED_SNIPPETS = {
     WORKER_TS: [
         "parse_demo_bytes_to_json",
         "await initParser()",
+        "zstd-decompress.worker.ts",
+        "worker.terminate()",
         "saveParsedMatch",
         "crypto.randomUUID()",
         "Parsing demo locally",
+    ],
+    ZSTD_WORKER_TS: [
+        "ZSTDDecoder",
+        'event.data.type !== "decompress"',
+        "decoder.decode",
+        "[buffer]",
     ],
     BACKEND_DIR / "browser-store.ts": [
         "indexedDB.open",
