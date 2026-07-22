@@ -2136,18 +2136,33 @@ function drawUtilityIcon(
     .catch(() => {});
 }
 
-function drawFireMarker(layer: Container, x: number, y: number, color = 0xf97316) {
+function drawFireMarker(
+  layer: Container,
+  x: number,
+  y: number,
+  color = 0xf97316,
+  innerColor = 0x7c2d12,
+) {
   const g = new Graphics();
   g.position.set(x, y);
-  // The base flame is 14 px tall; scale it to roughly 18 px so the team
-  // colour and the countdown remain readable at normal replay zoom.
-  g.scale.set(18 / 14);
-  g.moveTo(0, -7)
-    .bezierCurveTo(5.5, -2, 6, 3.5, 1.5, 7)
-    .bezierCurveTo(-5.5, 4, -5, -1.5, -1.5, -5.5)
-    .bezierCurveTo(-0.5, -3, 1.5, -1.5, 0, -7)
+  // A compact two-lobe silhouette reads as a flame even when the replay is
+  // zoomed out. The darker core preserves the team colour without looking
+  // like a flat map pin.
+  g.scale.set(18 / 16);
+  g.moveTo(0, -8)
+    .bezierCurveTo(1.4, -5.4, 5.1, -3.8, 5.4, 0.1)
+    .bezierCurveTo(6.1, 4.8, 3.3, 8, 0, 8)
+    .bezierCurveTo(-4.1, 8, -6.2, 4.8, -5.3, 0.5)
+    .bezierCurveTo(-4.8, -2, -2.8, -3.8, -2, -6.1)
+    .bezierCurveTo(-0.7, -4.7, 0.1, -3.2, 0.4, -1.7)
+    .bezierCurveTo(2.2, -3.8, 1.4, -6.1, 0, -8)
     .fill({ color, alpha: 1 })
-    .stroke({ color: 0x111111, width: 0.9, alpha: 0.5 });
+    .stroke({ color: 0x111111, width: 1, alpha: 0.58 });
+  g.moveTo(0.2, -2.6)
+    .bezierCurveTo(2, -0.7, 2.8, 1.4, 2.1, 3.5)
+    .bezierCurveTo(1.4, 5.2, -1.3, 5.4, -2.2, 3.4)
+    .bezierCurveTo(-3, 1.5, -1.5, -0.7, 0.2, -2.6)
+    .fill({ color: innerColor, alpha: 0.82 });
   layer.addChild(g);
 }
 
@@ -2290,7 +2305,7 @@ function drawEffect(
     g.circle(p.x, p.y, radius).fill({ color: teamDarkColor(effect.team), alpha: 0.32 * alpha });
     drawTimerArc(g, p.x, p.y, radius, remaining, color, 1.7);
     layer.addChild(g);
-    drawFireMarker(layer, p.x, p.y, color);
+    drawFireMarker(layer, p.x, p.y, color, teamDarkColor(effect.team));
     return;
   }
 
