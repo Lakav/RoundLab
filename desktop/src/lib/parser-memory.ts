@@ -1,6 +1,12 @@
 export const LARGE_DEMO_HIGH_QUALITY_THRESHOLD = 384 * 1024 * 1024;
 
 export type BrowserParserQuality = "full" | "high";
+export type BrowserParseMode = "fast" | "precise";
+
+export type BrowserParserStrategy = {
+  quality: BrowserParserQuality;
+  allowed: boolean;
+};
 
 /**
  * Full sampling on very large demos can exceed WebAssembly's 32-bit memory
@@ -9,6 +15,19 @@ export type BrowserParserQuality = "full" | "high";
  */
 export function browserParserQualityForSize(decompressedBytes: number): BrowserParserQuality {
   return decompressedBytes >= LARGE_DEMO_HIGH_QUALITY_THRESHOLD ? "high" : "full";
+}
+
+export function browserParserStrategy(mode: BrowserParseMode, decompressedBytes: number): BrowserParserStrategy {
+  if (mode === "precise") {
+    return {
+      quality: "full",
+      allowed: decompressedBytes < LARGE_DEMO_HIGH_QUALITY_THRESHOLD,
+    };
+  }
+  return {
+    quality: "high",
+    allowed: true,
+  };
 }
 
 export function browserParserMemoryError(error: unknown): Error {

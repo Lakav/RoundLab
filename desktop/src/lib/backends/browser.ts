@@ -1,4 +1,4 @@
-import type { RoundLabBackend, DemoSource, ParseProgress, ProgressListener } from "@/lib/backends/types";
+import type { RoundLabBackend, DemoSource, ParseOptions, ParseProgress, ProgressListener } from "@/lib/backends/types";
 import {
   deleteStoredMatch,
   listStoredMatches,
@@ -33,7 +33,7 @@ function isDemoFile(file: File): boolean {
 export function createBrowserBackend(): RoundLabBackend {
   return {
     parser: {
-      async parseDemo(source: DemoSource): Promise<string> {
+      async parseDemo(source: DemoSource, options: ParseOptions = { mode: "fast" }): Promise<string> {
         activeWorker?.terminate();
         activeReject?.(new Error("Browser parse cancelled."));
         activeWorker = null;
@@ -82,6 +82,7 @@ export function createBrowserBackend(): RoundLabBackend {
                 name: source.file.name,
                 size: source.file.size,
                 buffer,
+                mode: options.mode,
               },
               [buffer],
             );

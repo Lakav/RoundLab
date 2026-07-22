@@ -1,8 +1,8 @@
 import type { MatchData, Round } from "@/lib/types";
 import { getBackend } from "@/lib/backends";
-import type { DemoSource, ParseProgress, ProgressListener } from "@/lib/backends/types";
+import type { DemoSource, ParseOptions, ParseProgress, ProgressListener } from "@/lib/backends/types";
 
-export type { DemoSource, ParseProgress };
+export type { DemoSource, ParseOptions, ParseProgress };
 
 export type MatchSummary = {
   id: string;
@@ -39,8 +39,10 @@ export async function renameMatch(
 }
 
 /** Parse a local .dem or .dem.zst file. Returns the new match id. */
-export async function parseDemo(source: DemoSource): Promise<string> {
-  return getBackend().parser.parseDemo(source);
+export async function parseDemo(source: DemoSource, options?: ParseOptions): Promise<string> {
+  return options
+    ? getBackend().parser.parseDemo(source, options)
+    : getBackend().parser.parseDemo(source);
 }
 
 export async function cancelParse(): Promise<void> {

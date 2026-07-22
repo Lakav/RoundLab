@@ -69,7 +69,10 @@ describe("Home", () => {
     render(<Home />);
     const input = screen.getByLabelText("Choose a local CS2 demo file");
     fireEvent.change(input, { target: { files: [new File(["demo"], "round.dem")] } });
+    expect(await screen.findByRole("dialog", { name: "Import settings" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Start import" }));
     expect(await screen.findByRole("dialog", { name: "Match parsed" })).toBeInTheDocument();
+    expect(mocks.parseDemo).toHaveBeenCalledWith(expect.anything(), { mode: "fast" });
     await user.type(screen.getByPlaceholderText("Practice match"), "Final review");
     await user.click(screen.getByRole("button", { name: "Save & open" }));
     await waitFor(() => expect(mocks.renameMatch).toHaveBeenCalledWith("match-1", "Final review"));
@@ -81,14 +84,39 @@ describe("Home", () => {
     mocks.parseDemo.mockImplementation(() => new Promise<string>((resolve) => {
       finishParse = resolve;
     }));
+    const user = userEvent.setup();
     render(<Home />);
     const input = screen.getByLabelText("Choose a local CS2 demo file");
 
     fireEvent.change(input, { target: { files: [new File(["first"], "first.dem")] } });
     fireEvent.change(input, { target: { files: [new File(["second"], "second.dem")] } });
 
+    await user.click(screen.getByRole("button", { name: "Start import" }));
     expect(mocks.parseDemo).toHaveBeenCalledTimes(1);
     finishParse?.("match-1");
     expect(await screen.findByRole("dialog", { name: "Match parsed" })).toBeInTheDocument();
+  });
+
+  it("lets the user choose maximum precision for a normal demo", async () => {
+    const user = userEvent.setup();
+    mocks.parseDemo.mockResolvedValue("match-1");
+    render(<Home />);
+    fireEvent.change(screen.getByLabelText("Choose a local CS2 demo file"), {
+      target: { files: [new File(["demo"], "round.dem")] },
+    });
+    await user.click(screen.getByRole("radio", { name: /Maximum precision/ }));
+    await user.click(screen.getByRole("button", { name: "Start import" }));
+    expect(mocks.parseDemo).toHaveBeenCalledWith(expect.anything(), { mode: "precise" });
+  });
+
+  it("disables maximum precision when the selected file is already too large", async () => {
+    render(<Home />);
+    const large = new File(["x"], "large.dem");
+    Object.defineProperty(large, "size", { value: 384 * 1024 * 1024 });
+    fireEvent.change(screen.getByLabelText("Choose a local CS2 demo file"), {
+      target: { files: [large] },
+    });
+    expect(await screen.findByRole("radio", { name: /Maximum precision/ })).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent("too large for maximum precision");
   });
 });

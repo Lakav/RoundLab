@@ -46,10 +46,10 @@ describe("browser-only backend", () => {
   });
 
   it("transfers demo bytes to a module worker and resolves only its stored id", async () => {
-    const parse = backend.parser.parseDemo(source());
+    const parse = backend.parser.parseDemo(source(), { mode: "precise" });
     const worker = await latestWorker();
     expect(worker.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "parse", name: "demo.dem", size: 12 }),
+      expect.objectContaining({ type: "parse", name: "demo.dem", size: 12, mode: "precise" }),
       [expect.any(ArrayBuffer)],
     );
     worker.onmessage?.({ data: { type: "done", id: "stored-id" } } as MessageEvent);

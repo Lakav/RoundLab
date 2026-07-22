@@ -1,6 +1,7 @@
 import initParser, { parse_demo_bytes_to_json } from "../wasm/roundlab_parser/roundlab_parser.js";
 import { saveParsedMatch } from "@/lib/backends/browser-store";
-import { browserParserMemoryError, browserParserQualityForSize } from "@/lib/parser-memory";
+import { browserParserMemoryError, browserParserStrategy } from "@/lib/parser-memory";
+import type { BrowserParseMode } from "@/lib/parser-memory";
 import type { MatchData } from "@/lib/types";
 
 const ZSTD_MAGIC = [0x28, 0xb5, 0x2f, 0xfd] as const;
@@ -11,6 +12,7 @@ type ParseRequest = {
   name: string;
   size: number;
   buffer: ArrayBuffer;
+  mode?: BrowserParseMode;
 };
 
 function postProgress(progress: number, message: string, phase = "parsing", effectiveBytes?: number): void {
@@ -90,10 +92,23 @@ async function parseDemo(request: ParseRequest): Promise<string> {
   postProgress(0.16, "Loading WASM parser...", "starting", bytes.byteLength);
   await initParser();
 
-  const quality = browserParserQualityForSize(bytes.byteLength);
-  const qualityMessage = quality === "high" ? " (memory-safe high sampling)" : "";
+  const mode = request.mode ?? "fast";
+  const strategy = browserParserStrategy(mode, bytes.byteLength);
+  if (!strategy.allowed) {
+    const mb = Math.round(bytes.byteLength / 1024 / 1024);
+    throw new Error(
+      `Maximum precision is unavailable for this ${mb} MB decompressed demo because it would exceed ` +
+      "the browser memory limit. Choose Fast / memory-safe mode instead.",
+    );
+  }
+
+  const qualityMessage = mode === "precise"
+    ? " at maximum precision"
+    : strategy.quality === "high"
+      ? " (memory-safe high sampling)"
+      : "";
   postProgress(0.22, `Parsing demo locally${qualityMessage}...`, "parsing", bytes.byteLength);
-  const json = parse_demo_bytes_to_json(bytes, quality, false, false);
+  const json = parse_demo_bytes_to_json(bytes, strategy.quality, false, false);
 
   postProgress(0.86, "Storing parsed match locally...", "storing");
   const data = JSON.parse(json) as MatchData;

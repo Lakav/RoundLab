@@ -26,6 +26,10 @@ import {
   type MatchSummary,
   type ParseProgress,
 } from "@/lib/api";
+import {
+  LARGE_DEMO_HIGH_QUALITY_THRESHOLD,
+  type BrowserParseMode,
+} from "@/lib/parser-memory";
 import { assetPath } from "@/lib/paths";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import {
@@ -53,6 +57,10 @@ function formatDuration(ms: number) {
   const min = Math.floor(total / 60);
   const sec = total % 60;
   return min > 0 ? `${min}m ${sec.toString().padStart(2, "0")}s` : `${sec}s`;
+}
+
+function formatFileSize(bytes: number): string {
+  return `${Math.max(1, Math.round(bytes / 1024 / 1024))} MB`;
 }
 
 function parseSourceSize(source: DemoSource): number | null {
@@ -192,6 +200,8 @@ export default function Home() {
   // before it lands in the recent list.
   const [postParse, setPostParse] = useState<MatchSummary | null>(null);
   const [postParseName, setPostParseName] = useState("");
+  const [pendingSource, setPendingSource] = useState<DemoSource | null>(null);
+  const [parseMode, setParseMode] = useState<BrowserParseMode>("fast");
   const [parseEstimateMs, setParseEstimateMs] = useState(FALLBACK_PARSE_ESTIMATE_MS);
   const parseEffectiveBytesRef = useRef<number | null>(null);
   const parseMinMsPerMbRef = useRef(0);
@@ -229,7 +239,7 @@ export default function Home() {
   }, []);
 
   const parseSource = useCallback(
-    async (source: DemoSource) => {
+    async (source: DemoSource, mode: BrowserParseMode) => {
       // State updates are asynchronous: two file/drop events can otherwise
       // both enter here before `uploading` is rendered as true. The backend
       // then cancels the first parse and its `finally` hides the second one's
@@ -238,6 +248,12 @@ export default function Home() {
       const sizeError = demoFileSizeError(source.file);
       if (sizeError) {
         setError(sizeError);
+        return;
+      }
+      if (mode === "precise" && source.file.size >= LARGE_DEMO_HIGH_QUALITY_THRESHOLD) {
+        setError(
+          "Maximum precision is unavailable for this large demo because it would exceed the browser memory limit. Use Fast / memory-safe mode.",
+        );
         return;
       }
       parseInFlightRef.current = true;
@@ -252,7 +268,7 @@ export default function Home() {
         parseMinMsPerMbRef.current = sourceIsZstd(source) ? MIN_ZSTD_WEB_MS_PER_MB : 0;
         setParseEstimateMs(estimate);
         setParseProgress({ phase: "starting", progress: 0.02, message: "Preparing parser…" });
-        const id = await parseDemo(source);
+        const id = await parseDemo(source, { mode });
         const duration = Date.now() - started;
         saveParseEstimate(source, duration, parseEffectiveBytesRef.current);
         // Pull the freshly parsed match summary from the store so we can
@@ -338,6 +354,11 @@ export default function Home() {
     fileInputRef.current?.click();
   };
 
+  const queueImport = (file: File) => {
+    if (file.size >= LARGE_DEMO_HIGH_QUALITY_THRESHOLD) setParseMode("fast");
+    setPendingSource({ kind: "file", file });
+  };
+
   const onFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0] ?? null;
     event.currentTarget.value = "";
@@ -351,7 +372,7 @@ export default function Home() {
       setError("Choose a .dem or .dem.zst file.");
       return;
     }
-    void parseSource({ kind: "file", file });
+    queueImport(file);
   };
 
   const onImportKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -374,7 +395,14 @@ export default function Home() {
       setError("Drop a .dem or .dem.zst file.");
       return;
     }
-    void parseSource({ kind: "file", file });
+    queueImport(file);
+  };
+
+  const startPendingImport = () => {
+    const source = pendingSource;
+    if (!source) return;
+    setPendingSource(null);
+    void parseSource(source, parseMode);
   };
 
   const openMatch = async (id: string, visualTest = false) => {
@@ -720,6 +748,78 @@ export default function Home() {
             </Button>
             <Button size="sm" onClick={() => void confirmPostParse(true)}>
               Save &amp; open
+            </Button>
+          </div>
+        </Modal>
+      )}
+
+      {pendingSource && (
+        <Modal onClose={() => setPendingSource(null)} title="Import settings">
+          <div className="mb-4 rounded-md border border-white/10 bg-black/20 px-3 py-2">
+            <div className="truncate text-[12px] text-neutral-200">{pendingSource.file.name}</div>
+            <div className="mt-0.5 text-[10px] text-neutral-500">{formatFileSize(pendingSource.file.size)}</div>
+          </div>
+          <fieldset className="space-y-2">
+            <legend className="mb-2 text-[11px] font-medium uppercase tracking-wider text-neutral-400">
+              Parsing mode
+            </legend>
+            <label className="flex cursor-pointer gap-3 rounded-md border border-white/10 px-3 py-3 hover:border-emerald-300/30">
+              <input
+                type="radio"
+                name="parse-mode"
+                value="fast"
+                checked={parseMode === "fast"}
+                onChange={() => setParseMode("fast")}
+                className="mt-0.5 accent-emerald-300"
+              />
+              <span>
+                <span className="block text-[12px] font-medium text-neutral-100">Fast / memory-safe</span>
+                <span className="mt-1 block text-[11px] leading-relaxed text-neutral-400">
+                  About 4 player positions per second, smoothly interpolated. Utilities and events are preserved.
+                </span>
+              </span>
+            </label>
+            <label
+              className={[
+                "flex gap-3 rounded-md border px-3 py-3",
+                pendingSource.file.size >= LARGE_DEMO_HIGH_QUALITY_THRESHOLD
+                  ? "cursor-not-allowed border-white/5 opacity-45"
+                  : "cursor-pointer border-white/10 hover:border-emerald-300/30",
+              ].join(" ")}
+            >
+              <input
+                type="radio"
+                name="parse-mode"
+                value="precise"
+                checked={parseMode === "precise"}
+                disabled={pendingSource.file.size >= LARGE_DEMO_HIGH_QUALITY_THRESHOLD}
+                onChange={() => setParseMode("precise")}
+                className="mt-0.5 accent-emerald-300"
+              />
+              <span>
+                <span className="block text-[12px] font-medium text-neutral-100">Maximum precision</span>
+                <span className="mt-1 block text-[11px] leading-relaxed text-neutral-400">
+                  Keeps all 64 player ticks per second. Slower and only available when the demo fits safely in browser memory.
+                </span>
+              </span>
+            </label>
+          </fieldset>
+          {pendingSource.file.size >= LARGE_DEMO_HIGH_QUALITY_THRESHOLD && (
+            <p role="status" className="mt-3 text-[11px] leading-relaxed text-amber-200/80">
+              This file is already too large for maximum precision. The safe mode is required to prevent another memory crash.
+            </p>
+          )}
+          {sourceIsZstd(pendingSource) && pendingSource.file.size < LARGE_DEMO_HIGH_QUALITY_THRESHOLD && (
+            <p className="mt-3 text-[10px] leading-relaxed text-neutral-500">
+              Compressed demos are checked again after decompression. If the expanded file is too large, RoundLab will ask you to use safe mode.
+            </p>
+          )}
+          <div className="mt-5 flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setPendingSource(null)}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={startPendingImport}>
+              Start import
             </Button>
           </div>
         </Modal>
