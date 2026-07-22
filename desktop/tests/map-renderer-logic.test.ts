@@ -565,8 +565,6 @@ describe("MapRenderer Pixi drawing primitives", () => {
     expect(layer.children.at(-1)?.scale.x).toBeCloseTo(18 / 14);
     const death = logic.drawDeathMarker(layer, 1, 2, 90, 3, "Player");
     expect(death.alpha).toBe(0.18);
-    expect(logic.fireCountdownColor(2)).toBe(0x241708);
-    expect(logic.fireCountdownColor(3)).toBe(0xffffff);
     expect(logic.playerArrowRotation(90)).toBeCloseTo(-Math.PI / 2);
     expect(logic.playerArrowRotation(-90)).toBeCloseTo(Math.PI / 2);
     const frames: ProjectileFrame[] = [

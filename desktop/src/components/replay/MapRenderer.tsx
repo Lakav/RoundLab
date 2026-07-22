@@ -2136,10 +2136,6 @@ function drawUtilityIcon(
     .catch(() => {});
 }
 
-function fireCountdownColor(team?: number) {
-  return team === 2 ? 0x241708 : 0xffffff;
-}
-
 function drawFireMarker(layer: Container, x: number, y: number, color = 0xf97316) {
   const g = new Graphics();
   g.position.set(x, y);
@@ -2295,8 +2291,6 @@ function drawEffect(
     drawTimerArc(g, p.x, p.y, radius, remaining, color, 1.7);
     layer.addChild(g);
     drawFireMarker(layer, p.x, p.y, color);
-    const secsLeft = Math.max(0, Math.ceil(effect.end - time));
-    drawCountdownLabel(layer, String(secsLeft), p.x, p.y + 0.5, fireCountdownColor(effect.team));
     return;
   }
 
@@ -2545,7 +2539,6 @@ export const mapRendererLogic = Object.freeze({
   playerArrowRotation,
   drawDirectionalPlayerArrow,
   drawPlayerIdentityMarker,
-  fireCountdownColor,
   teamDarkColor,
   clamp01,
   easeOutCubic,
