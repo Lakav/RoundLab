@@ -2490,7 +2490,7 @@ function drawEffect(
 
   if (effect.type === "he") {
     const maxR = 165 * unitsToPx;
-    const t01 = clamp01(age / 0.62);
+    const t01 = clamp01(age / 0.38);
     const shock = easeOutCubic(t01);
     const alpha = 1 - t01;
     const r = maxR * shock;
