@@ -174,17 +174,6 @@ jobs:
       - name: Install wasm-bindgen CLI
         run: cargo install wasm-bindgen-cli --version 0.2.126 --locked
 
-      - name: Regenerate Linux browser WASM artifacts
-        working-directory: parser
-        run: |
-          cargo build --target wasm32-unknown-unknown --release --lib
-          wasm-bindgen target/wasm32-unknown-unknown/release/roundlab_parser.wasm \
-            --target web \
-            --out-dir ../desktop/src/wasm/roundlab_parser \
-            --out-name roundlab_parser \
-            --remove-name-section \
-            --remove-producers-section
-
       - name: Verify committed browser WASM artifacts
         run: python3 scripts/verify-wasm-reproducibility.py --check-git
 
