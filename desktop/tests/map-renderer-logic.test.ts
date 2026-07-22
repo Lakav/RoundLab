@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Container, Graphics, Sprite } from "pixi.js";
 import { mapRendererLogic as logic } from "@/components/replay/MapRenderer";
 import type { HabitOverlayTrail, HabitReplayProjectile, HabitReplayRound } from "@/lib/replay-store";
-import type { Frame, PlayerPos, ProjectileFrame, ProjectilePos, Round, UtilityEffect } from "@/lib/types";
+import type { Frame, PlayerPos, ProjectileFrame, ProjectilePos, Round, UtilityEffect, WeaponFireEvent } from "@/lib/types";
 
 const player = (overrides: Partial<PlayerPos> = {}): PlayerPos => ({
   id: 1,
@@ -584,6 +584,30 @@ describe("MapRenderer Pixi drawing primitives", () => {
     );
     expect(layer.children.length).toBeGreaterThan(3);
     expect(layer.children.slice(childrenBeforeProjectile).some((child) => child instanceof Sprite && child.alpha > 0)).toBe(true);
+    layer.destroy({ children: true });
+  });
+
+  it("draws one directional vector effect for shots and knife swings", () => {
+    const layer = new Container();
+    const fire = (weapon: string): WeaponFireEvent => ({
+      t: 1,
+      shooter: 1,
+      weapon,
+      x: 20,
+      y: 30,
+      z: 0,
+      yaw: 90,
+    });
+    const gun = logic.drawWeaponFire(layer, fire("ak47"), 1.04, toRadar);
+    const knife = logic.drawWeaponFire(layer, fire("knife"), 1.12, toRadar);
+
+    expect(gun).toBeInstanceOf(Graphics);
+    expect(knife).toBeInstanceOf(Graphics);
+    expect(gun?.rotation).toBeCloseTo(-Math.PI / 2);
+    expect(knife?.rotation).toBeCloseTo(-Math.PI / 2);
+    expect(layer.children).toHaveLength(2);
+    expect(logic.drawWeaponFire(layer, fire("flashbang"), 1.04, toRadar)).toBeNull();
+    expect(logic.drawWeaponFire(layer, fire("ak47"), 1.2, toRadar)).toBeNull();
     layer.destroy({ children: true });
   });
 

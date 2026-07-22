@@ -84,11 +84,9 @@ const PRELOADABLE_ICON_PATHS = new Set([
   "/icons/p2000.svg",
   "/icons/p250.svg",
   "/icons/p90.svg",
-  "/icons/quick-slash.svg",
   "/icons/revolver.svg",
   "/icons/sawedoff.svg",
   "/icons/scar20.svg",
-  "/icons/shoot.svg",
   "/icons/sg556.svg",
   "/icons/smokegrenade.svg",
   "/icons/ssg08.svg",
@@ -175,8 +173,6 @@ async function collectRoundIconPreloadPaths(round: Round, shouldCancel: () => bo
   if (cached) return cached;
   const paths = new Set<string>([
     "/icons/c4.svg",
-    "/icons/quick-slash.svg",
-    "/icons/shoot.svg",
     "/icons/smokegrenade.svg",
     "/icons/flashbang.svg",
     "/icons/hegrenade.svg",
@@ -212,8 +208,6 @@ async function collectRoundIconPreloadPaths(round: Round, shouldCancel: () => bo
   }
 
   for (const fire of round.weaponFires ?? []) {
-    if (isKnifeWeapon(fire.weapon)) addPreloadPath(paths, "/icons/quick-slash.svg");
-    else if (!isUtilityWeapon(fire.weapon)) addPreloadPath(paths, "/icons/shoot.svg");
     addPreloadPath(paths, iconPathFor(fire.weapon));
   }
 
@@ -1842,7 +1836,6 @@ function isPistolWeapon(name?: string) {
 
 const SHOOT_ROTATION_OFFSET = 0;
 const PLAYER_ARROW_TIP_OFFSET = 9;
-const WEAPON_FIRE_SCALE = 0.64;
 
 function teamColor(team?: number) {
   if (team === 3) return 0x5ab0ff;
@@ -2381,11 +2374,13 @@ function drawWeaponFire(
   toRadar: (x: number, y: number, z?: number) => { x: number; y: number },
   shooterLive?: PlayerPos
 ) {
-  if (isUtilityWeapon(fire.weapon)) return;
+  if (isUtilityWeapon(fire.weapon)) return null;
   const age = time - fire.t;
-  const duration = isKnifeWeapon(fire.weapon) ? 0.18 : 0.14;
-  if (age < 0 || age > duration) return;
-  const alpha = 1 - age / duration;
+  const isKnife = isKnifeWeapon(fire.weapon);
+  const duration = isKnife ? 0.26 : 0.12;
+  if (age < 0 || age > duration) return null;
+  const progress = clamp01(age / duration);
+  const alpha = Math.pow(1 - progress, 1.35);
   // Anchor the shot to the live interpolated player (same source as the
   // rendered arrow) so position and facing always agree visually.
   // Important: pass z=0 because the player marker itself is rendered
@@ -2395,78 +2390,58 @@ function drawWeaponFire(
     : toRadar(fire.x, fire.y, 0);
   const yaw = shooterLive ? shooterLive.yaw : fire.yaw;
   const angle = (-yaw * Math.PI) / 180;
-  // shoot.svg naturally points to the right (angle 0). quick-slash too.
-  // We rotate in-place from the sprite center and then push it forward so
-  // the sprite's back edge sits exactly at the arrow tip.
-  const isKnife = isKnifeWeapon(fire.weapon);
-  const spriteAngle = angle + SHOOT_ROTATION_OFFSET;
+  const visual = new Graphics();
+  visual.position.set(start.x, start.y);
+  visual.rotation = angle + SHOOT_ROTATION_OFFSET;
 
-  // Target box for this weapon.
-  const pistol = !isKnife && isPistolWeapon(fire.weapon);
-  const maxW = (isKnife ? 26 : pistol ? 22 : 30) * WEAPON_FIRE_SCALE;
-  const maxH = (isKnife ? 18 : pistol ? 13 : 16) * WEAPON_FIRE_SCALE;
+  if (isKnife) {
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const sweepStart = -1.02;
+    const sweepHead = sweepStart + eased * 2.04;
+    const sweepTail = Math.max(sweepStart, sweepHead - 0.84);
+    const radius = 23;
 
-  // Compute the final forward offset synchronously so the sprite is
-  // correctly placed on the very first frame, even before the texture
-  // resolves. We approximate width by maxW (exact for shoot.svg, near
-  // exact for quick-slash once loaded).
-  const forward = PLAYER_ARROW_TIP_OFFSET + maxW / 2;
-  const px = start.x + Math.cos(angle) * forward;
-  const py = start.y + Math.sin(angle) * forward;
-  const texturePath = isKnife ? "/icons/quick-slash.svg" : "/icons/shoot.svg";
-  const readyTexture = cachedIconTexture(texturePath);
+    visual
+      .moveTo(Math.cos(sweepTail) * radius, Math.sin(sweepTail) * radius)
+      .arc(0, 0, radius, sweepTail, sweepHead)
+      .stroke({ color: 0x93c5fd, width: 5.6, alpha: 0.24 * alpha });
+    visual
+      .moveTo(Math.cos(sweepTail) * radius, Math.sin(sweepTail) * radius)
+      .arc(0, 0, radius, sweepTail, sweepHead)
+      .stroke({ color: 0xf8fafc, width: 2.2, alpha: 0.96 * alpha });
+    visual
+      .circle(Math.cos(sweepHead) * radius, Math.sin(sweepHead) * radius, 1.8)
+      .fill({ color: 0xffffff, alpha: 0.9 * alpha });
+  } else {
+    const pistol = isPistolWeapon(fire.weapon);
+    const tip = PLAYER_ARROW_TIP_OFFSET + 1;
+    const length = (pistol ? 12 : 16) + progress * 7;
+    const flare = (pistol ? 3.4 : 4.4) * (1 - progress * 0.45);
 
-  if (!readyTexture) {
-    const fallback = new Graphics();
-    fallback.position.set(start.x, start.y);
-    fallback.rotation = angle;
-    if (isKnife) {
-      fallback
-        .moveTo(PLAYER_ARROW_TIP_OFFSET + 2, -6 * WEAPON_FIRE_SCALE)
-        .lineTo(PLAYER_ARROW_TIP_OFFSET + maxW + 4, 0)
-        .lineTo(PLAYER_ARROW_TIP_OFFSET + 2, 6 * WEAPON_FIRE_SCALE)
-        .stroke({ color: 0xf8fafc, width: 1.7, alpha: 0.85 * alpha });
-    } else {
-      const tip = PLAYER_ARROW_TIP_OFFSET + maxW + 7;
-      fallback
-        .moveTo(PLAYER_ARROW_TIP_OFFSET, 0)
-        .lineTo(tip, -maxH * 0.32)
-        .lineTo(tip - 5, 0)
-        .lineTo(tip, maxH * 0.32)
-        .fill({ color: 0xfff2a6, alpha: 0.55 * alpha });
-      fallback.circle(PLAYER_ARROW_TIP_OFFSET + 3, 0, 1.5).fill({ color: 0xffffff, alpha: 0.75 * alpha });
+    visual
+      .moveTo(tip, 0)
+      .lineTo(tip + length * 0.48, -flare)
+      .lineTo(tip + length, 0)
+      .lineTo(tip + length * 0.48, flare)
+      .closePath()
+      .fill({ color: 0xffc857, alpha: 0.7 * alpha });
+    visual
+      .moveTo(tip + 1, 0)
+      .lineTo(tip + length + 7, 0)
+      .stroke({ color: 0xffffff, width: 1.25, alpha: 0.9 * alpha });
+    for (const sparkAngle of [-0.38, 0.38]) {
+      const sparkStart = tip + length * 0.52;
+      const sparkLength = (pistol ? 5 : 7) * (1 - progress * 0.35);
+      visual
+        .moveTo(sparkStart, 0)
+        .lineTo(sparkStart + Math.cos(sparkAngle) * sparkLength, Math.sin(sparkAngle) * sparkLength)
+        .stroke({ color: 0xffe8a3, width: 0.9, alpha: 0.72 * alpha });
     }
-    layer.addChild(fallback);
+    visual.circle(tip + 1.5, 0, 1.6).fill({ color: 0xffffff, alpha: 0.92 * alpha });
   }
 
-  const sprite = new Sprite();
-  sprite.anchor.set(0.5, 0.5);
-  sprite.position.set(px, py);
-  sprite.rotation = spriteAngle;
-  sprite.alpha = 0.95 * alpha;
-  layer.addChild(sprite);
-
-  const applyTexture = (tex: Texture) => {
-    if (sprite.destroyed) return;
-    sprite.texture = tex;
-    fitSpriteBox(sprite, maxW, maxH);
-    // Refine using the true rendered width (matters for quick-slash whose
-    // aspect is narrower than its max box).
-    const trueForward = PLAYER_ARROW_TIP_OFFSET + sprite.width / 2;
-    sprite.position.set(
-      start.x + Math.cos(angle) * trueForward,
-      start.y + Math.sin(angle) * trueForward
-    );
-  };
-  if (readyTexture) {
-    applyTexture(readyTexture);
-    return;
-  }
-  loadIconTexture(texturePath)
-    .then(applyTexture)
-    .catch(() => {
-      sprite.destroy();
-    });
+  layer.addChild(visual);
+  return visual;
 }
 
 function drawDeathMarker(
@@ -3461,28 +3436,9 @@ export function MapRenderer({
         s.muzzleFlash.clear();
         if (alive && shot && !isUtilityWeapon(shot.weapon)) {
           const shotAge = Math.max(0, time - shot.t);
-          const shotDuration = isKnifeWeapon(shot.weapon) ? 0.18 : 0.14;
-          const shotAlpha = Math.max(0, 1 - shotAge / shotDuration);
-          s.arrowRotator.scale.set(1 + shotAlpha * (isKnifeWeapon(shot.weapon) ? 0.025 : 0.015));
-          if (isKnifeWeapon(shot.weapon)) {
-            s.muzzleFlash
-              .moveTo(PLAYER_ARROW_TIP_OFFSET + 1, -4.5)
-              .lineTo(PLAYER_ARROW_TIP_OFFSET + 21, 0)
-              .lineTo(PLAYER_ARROW_TIP_OFFSET + 1, 4.5)
-              .stroke({ color: 0xf8fafc, width: 1.6, alpha: 0.86 * shotAlpha });
-          } else {
-            const tip = PLAYER_ARROW_TIP_OFFSET + 22;
-            s.muzzleFlash
-              .moveTo(PLAYER_ARROW_TIP_OFFSET + 1, 0)
-              .lineTo(tip, -3.8)
-              .lineTo(tip - 4.5, 0)
-              .lineTo(tip, 3.8)
-              .fill({ color: 0xffd166, alpha: 0.62 * shotAlpha });
-            s.muzzleFlash
-              .moveTo(PLAYER_ARROW_TIP_OFFSET + 3, 0)
-              .lineTo(tip + 2.5, 0)
-              .stroke({ color: 0xffffff, width: 1.1, alpha: 0.82 * shotAlpha });
-          }
+          const shotDuration = isKnifeWeapon(shot.weapon) ? 0.26 : 0.12;
+          const shotPulse = Math.sin(Math.PI * clamp01(shotAge / shotDuration));
+          s.arrowRotator.scale.set(1 + shotPulse * (isKnifeWeapon(shot.weapon) ? 0.03 : 0.018));
         } else {
           s.arrowRotator.scale.set(1);
         }
