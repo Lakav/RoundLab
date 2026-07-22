@@ -625,9 +625,11 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
 
   const crop = cropFor(match.meta.map);
   const cropScale = RADAR_SIZE / crop.size;
-  const innerSize = mapSize * cropScale;
-  const cropTx = -crop.x * (mapSize / crop.size);
-  const cropTy = -crop.y * (mapSize / crop.size);
+  const mapInset = Math.min(16, mapSize * 0.025);
+  const contentMapSize = mapSize - mapInset * 2;
+  const innerSize = contentMapSize * cropScale;
+  const cropTx = -crop.x * (contentMapSize / crop.size);
+  const cropTy = -crop.y * (contentMapSize / crop.size);
   const condensedMode = reviewMode === "condensed";
   const condensedPlayerOptions = match.players.map((player) => ({
     value: `player:${player.steamId}`,
@@ -811,13 +813,13 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
             ref={mainRef}
             data-testid="match-map-stage"
             className={[
-              "relative flex min-h-0 flex-1 items-center justify-center pb-24 pt-12",
+              "relative flex min-h-0 flex-1 items-center justify-center pb-32 pt-12",
               condensedMode ? "px-6" : "px-0",
             ].join(" ")}
           >
             <div
               data-testid="match-map-viewport"
-              className="relative overflow-visible"
+              className="relative overflow-hidden"
               style={{
                 width: mapSize,
                 height: mapSize,
@@ -833,7 +835,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
                 style={{
                   width: mapSize,
                   height: mapSize,
-                  overflow: "visible",
+                  overflow: "hidden",
                   contain: "layout style",
                 }}
               >
@@ -843,7 +845,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
                   style={{
                     width: innerSize,
                     height: innerSize,
-                    transform: `translate(${displayMapPan.x}px, ${displayMapPan.y}px) scale(${mapZoom}) translate(${cropTx}px, ${cropTy}px)`,
+                    transform: `translate(${mapInset + displayMapPan.x}px, ${mapInset + displayMapPan.y}px) scale(${mapZoom}) translate(${cropTx}px, ${cropTy}px)`,
                     transformOrigin: "center",
                   }}
                 >
@@ -869,7 +871,10 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
           </div>
         </div>
 
-        <div className="absolute inset-x-2 bottom-2 z-40 shrink-0 rounded-md border border-white/10 bg-[#0b0d0d]/78 px-2 pb-2 pt-1 shadow-2xl shadow-black/35 backdrop-blur-md sm:inset-x-4 sm:bottom-4 sm:px-4 sm:pb-3">
+        <div
+          data-testid="match-controls-panel"
+          className="absolute inset-x-2 bottom-2 z-40 shrink-0 rounded-md border border-white/10 bg-[#0b0d0d]/78 px-2 pb-2 pt-1 shadow-2xl shadow-black/35 backdrop-blur-md sm:inset-x-4 sm:bottom-4 sm:px-4 sm:pb-3"
+        >
           {!condensedMode && <RoundList />}
           <div className="flex flex-col items-stretch gap-2 md:flex-row md:items-center md:gap-3">
             <div className="max-w-full overflow-x-auto">

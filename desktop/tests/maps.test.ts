@@ -19,7 +19,10 @@ describe("map projection and radar layers", () => {
 
   it("uses a safe full-map crop for unknown maps", () => {
     expect(cropFor("de_unknown")).toEqual({ x: 0, y: 0, size: RADAR_SIZE });
-    expect(cropFor("de_nuke")).toEqual({ x: 38, y: 38, size: 948 });
+    expect(cropFor("de_nuke")).toEqual({ x: 28, y: 28, size: 968 });
+    const anubis = cropFor("de_anubis");
+    expect(anubis).toEqual({ x: 14, y: 14, size: 996 });
+    expect(anubis.y + anubis.size - 978).toBeGreaterThanOrEqual(32);
   });
 
   it("selects lower layers only inside configured altitude bounds", () => {

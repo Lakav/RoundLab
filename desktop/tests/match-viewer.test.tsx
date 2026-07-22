@@ -76,6 +76,8 @@ describe("MatchViewer", () => {
     render(<MatchViewer id="match-a" />);
     await screen.findByRole("heading", { level: 1, name: "RoundLab match replay" });
     await waitFor(() => expect(screen.getByTitle("Play/Pause (Space)")).toBeEnabled());
+    expect(screen.getByTestId("match-map-viewport")).toHaveClass("overflow-hidden");
+    expect(screen.getByTestId("match-map-clip")).toHaveStyle({ overflow: "hidden" });
     fireEvent.keyDown(window, { code: "Space" });
     expect(screen.getByTitle("Play/Pause (Space)")).toBeEnabled();
     await user.click(screen.getByTitle("Zoom in"));

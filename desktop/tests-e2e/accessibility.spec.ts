@@ -3,12 +3,12 @@ import { expect, test, type Page } from "@playwright/test";
 
 const matchId = "accessibility-fixture";
 
-async function seedReplay(page: Page): Promise<void> {
+async function seedReplay(page: Page, map = "de_nuke"): Promise<void> {
   await page.goto("./");
-  await page.evaluate(async ({ id }) => {
+  await page.evaluate(async ({ id, mapName }) => {
     const metadata = {
       meta: {
-        map: "de_nuke",
+        map: mapName,
         tickRate: 64,
         sampleRate: 16,
         durationSec: 12,
@@ -66,7 +66,7 @@ async function seedReplay(page: Page): Promise<void> {
         transaction.onerror = () => reject(transaction.error);
       };
     });
-  }, { id: matchId });
+  }, { id: matchId, mapName: map });
   await page.reload();
 }
 
@@ -218,6 +218,23 @@ test("replay retains essential controls in narrow reflow viewports", async ({ pa
   await expect(page.getByTitle("Play/Pause (Space)")).toBeVisible();
   await expect(page.getByRole("slider", { name: "Replay time" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Text alternative for the replay radar" })).toBeAttached();
+});
+
+test("Anubis radar stays inside the safe viewport above replay controls", async ({ page }) => {
+  await seedReplay(page, "de_anubis");
+  for (const viewportSize of [{ width: 1280, height: 720 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(viewportSize);
+    await page.goto(`./match/?id=${matchId}`);
+    const radar = page.getByTestId("match-map-viewport");
+    const controls = page.getByTestId("match-controls-panel");
+    await expect(radar).toBeVisible();
+    await expect(controls).toBeVisible();
+    const radarBox = await radar.boundingBox();
+    const controlsBox = await controls.boundingBox();
+    if (!radarBox || !controlsBox) throw new Error("Replay layout has no measurable bounds");
+    expect(radarBox.y + radarBox.height).toBeLessThanOrEqual(controlsBox.y);
+    await expect(page.getByTestId("match-map-clip")).toHaveCSS("overflow", "hidden");
+  }
 });
 
 test("essential content survives disabled styles and custom text spacing", async ({ page }) => {

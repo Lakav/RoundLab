@@ -152,6 +152,31 @@ describe("MapRenderer projectile sampling and tracks", () => {
     expect(logic.projectileHeightAboveGround(projectile({ z: 30 }), tracks.get(10))).toBe(30);
   });
 
+  it("keeps a projectile visible through missing intermediate frames", () => {
+    const sparse: ProjectileFrame[] = [
+      { t: 0, projectiles: [projectile({ x: 0 })] },
+      { t: 0.25, projectiles: [] },
+      { t: 0.5, projectiles: [projectile({ x: 500 })] },
+    ];
+    const tracks = logic.buildProjectileTracks(sparse);
+    expect(logic.sampleProjectileTrack(tracks.get(10)!, 0.25)).toMatchObject({ id: 10, x: 250 });
+    expect(logic.sampleProjectileTracks(tracks, 0.25)).toEqual([
+      expect.objectContaining({ id: 10, x: 250 }),
+    ]);
+    expect(logic.visibleProjectiles(sparse, 0.25, [], new Set(), tracks)).toEqual([
+      expect.objectContaining({ id: 10, x: 250 }),
+    ]);
+  });
+
+  it("does not interpolate across a reused projectile identity", () => {
+    const reused: ProjectileFrame[] = [
+      { t: 0, projectiles: [projectile({ type: "smokegrenade", x: 0 })] },
+      { t: 1, projectiles: [projectile({ type: "flashbang", x: 100 })] },
+    ];
+    const track = logic.buildProjectileTracks(reused).get(10)!;
+    expect(logic.sampleProjectileTrack(track, 0.5)).toBeNull();
+  });
+
   it("classifies utility projectiles and visual duplicates", () => {
     const cases: Array<[string, string | null]> = [
       ["smokegrenade", "smoke"], ["molotov", "fire"], ["incgrenade", "fire"],
@@ -361,7 +386,9 @@ describe("MapRenderer cache and cleanup", () => {
       events: [{ t: 1, type: "kill", victim: 1 }],
     });
     const cache = logic.getRoundRenderCache(source);
-    expect(cache.deathMarkers).toEqual([{ t: 1, x: 12, y: 13, z: 14 }]);
+    expect(cache.deathMarkers).toEqual([
+      { t: 1, victim: 1, x: 12, y: 13, z: 14, yaw: 170, team: 2 },
+    ]);
     expect(logic.getRoundRenderCache(source)).toBe(cache);
 
     const child = { destroyed: false, destroy: vi.fn() };
@@ -477,8 +504,13 @@ describe("MapRenderer Pixi drawing primitives", () => {
     logic.drawTimerArc(graphics, 0, 0, 10, 2, 0xffffff, 1);
     logic.drawCountdownLabel(layer, "not-a-number", 0, 0);
     logic.drawCountdownLabel(layer, "0123456789", 0, 0);
-    logic.drawFireMarker(layer, 1, 2);
-    logic.drawDeathMarker(layer, 1, 2, 30);
+    logic.drawFireMarker(layer, 1, 2, logic.teamColor(2));
+    const death = logic.drawDeathMarker(layer, 1, 2, 90, 3, "Player");
+    expect(death.alpha).toBe(0.18);
+    expect(logic.fireCountdownColor(2)).toBe(0x241708);
+    expect(logic.fireCountdownColor(3)).toBe(0xffffff);
+    expect(logic.playerArrowRotation(90)).toBeCloseTo(-Math.PI / 2);
+    expect(logic.playerArrowRotation(-90)).toBeCloseTo(Math.PI / 2);
     const frames: ProjectileFrame[] = [
       { t: 0, projectiles: [projectile()] },
       { t: 1, projectiles: [projectile({ x: 100, z: 20 })] },

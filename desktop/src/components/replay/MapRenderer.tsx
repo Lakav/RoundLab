@@ -360,7 +360,7 @@ type RoundRenderCache = {
   projectileFrames: ProjectileSample[];
   projectileTracks: Map<number, ProjectileTrack>;
   resolvedEffects: UtilityEffect[];
-  deathMarkers: Array<{ t: number; x: number; y: number; z: number }>;
+  deathMarkers: Array<{ t: number; victim: number; x: number; y: number; z: number; yaw: number; team?: number }>;
   fixedProjectileSamples: Map<number, ProjectilePos[]>;
 };
 
@@ -777,8 +777,16 @@ function drawHabitGhostPlayer(
   const died = replay.death && time >= replay.death.t;
   if (died && replay.death) {
     const p = toRadar(replay.death.x, replay.death.y, replay.death.z);
-    drawDeathMarker(layer, p.x, p.y, time - replay.death.t);
-    drawHabitGhostLabel(layer, `R${replay.roundNumber}`, p.x, p.y, 0xef4444);
+    const lastPose = sampleHabitPosition(replay.positions, replay.death.t) ?? position;
+    drawPlayerIdentityMarker(
+      layer,
+      p.x,
+      p.y,
+      lastPose?.yaw ?? 0,
+      lastPose?.team,
+      `R${replay.roundNumber} · ${displayName(replay.playerName)}`,
+      0.18,
+    );
     return;
   }
   if (!position || position.hp <= 0) return;
@@ -795,19 +803,15 @@ function drawHabitGhostPlayer(
   path.circle(p.x, p.y, 8).stroke({ color, width: 1.4, alpha: 0.28 });
   layer.addChild(path);
 
-  const marker = new Graphics();
-  marker.position.set(p.x, p.y);
-  marker.rotation = (position.yaw * Math.PI) / 180;
-  marker
-    .moveTo(8, 0)
-    .lineTo(-6, -4.5)
-    .lineTo(-3.5, 0)
-    .lineTo(-6, 4.5)
-    .lineTo(8, 0)
-    .fill({ color, alpha: 0.38 })
-    .stroke({ color: 0xffffff, width: 1, alpha: 0.42 });
-  layer.addChild(marker);
-  drawHabitGhostLabel(layer, `R${replay.roundNumber}`, p.x, p.y, color);
+  drawPlayerIdentityMarker(
+    layer,
+    p.x,
+    p.y,
+    position.yaw,
+    position.team,
+    `R${replay.roundNumber} · ${displayName(replay.playerName)}`,
+    0.48,
+  );
 }
 
 function drawHabitProjectile(
@@ -913,11 +917,16 @@ function drawHabitReplayOverlay(
   toRadar: (x: number, y: number, z?: number) => { x: number; y: number },
   unitsToPx: number,
 ) {
+  const utilityGhosts = new Container();
+  utilityGhosts.alpha = 0.62;
+  const playerGhosts = new Container();
+  layer.addChild(utilityGhosts);
+  layer.addChild(playerGhosts);
   for (const replay of replays) {
-    for (const projectile of replay.projectiles) drawHabitProjectile(layer, projectile, time, toRadar, replay.effects);
-    for (const effect of replay.effects) drawHabitEffect(layer, effect, time, toRadar, unitsToPx, replay.effects);
+    for (const projectile of replay.projectiles) drawHabitProjectile(utilityGhosts, projectile, time, toRadar, replay.effects);
+    for (const effect of replay.effects) drawHabitEffect(utilityGhosts, effect, time, toRadar, unitsToPx, replay.effects);
   }
-  for (const replay of replays) drawHabitGhostPlayer(layer, replay, time, toRadar);
+  for (const replay of replays) drawHabitGhostPlayer(playerGhosts, replay, time, toRadar);
 }
 
 function fireVariantFromProjectiles(effect: UtilityEffect, frames: ProjectileSample[], cache?: RoundRenderCache): UtilityEffect {
@@ -1319,6 +1328,50 @@ function buildProjectileTracks(frames: ProjectileSample[]): Map<number, Projecti
   return tracks;
 }
 
+function sampleProjectileTrack(track: ProjectileTrack, time: number): ProjectilePos | null {
+  const samples = track.samples;
+  if (!samples.length || time < samples[0].t || time > samples[samples.length - 1].t) return null;
+  let low = 0;
+  let high = samples.length - 1;
+  while (low < high) {
+    const mid = Math.floor((low + high + 1) / 2);
+    if (samples[mid].t <= time) low = mid;
+    else high = mid - 1;
+  }
+  const a = samples[low];
+  const b = samples[Math.min(low + 1, samples.length - 1)];
+  if (a === b || Math.abs(time - a.t) < 0.0001) return { ...a.projectile };
+
+  const dt = b.t - a.t;
+  const distance = Math.hypot(
+    b.projectile.x - a.projectile.x,
+    b.projectile.y - a.projectile.y,
+    b.projectile.z - a.projectile.z,
+  );
+  const sameIdentity =
+    projectileTypeToEffect(a.projectile.type) === projectileTypeToEffect(b.projectile.type) &&
+    (a.projectile.thrower ?? 0) === (b.projectile.thrower ?? 0);
+  const continuous = sameIdentity && dt > 0 && dt <= 2 && distance / dt <= 2200;
+  if (!continuous) return time - a.t <= 0.16 ? { ...a.projectile } : null;
+
+  const alpha = clamp01((time - a.t) / dt);
+  return {
+    ...b.projectile,
+    x: a.projectile.x + (b.projectile.x - a.projectile.x) * alpha,
+    y: a.projectile.y + (b.projectile.y - a.projectile.y) * alpha,
+    z: a.projectile.z + (b.projectile.z - a.projectile.z) * alpha,
+  };
+}
+
+function sampleProjectileTracks(tracks: Map<number, ProjectileTrack>, time: number): ProjectilePos[] {
+  const out: ProjectilePos[] = [];
+  for (const track of tracks.values()) {
+    const projectile = sampleProjectileTrack(track, time);
+    if (projectile) out.push(projectile);
+  }
+  return out;
+}
+
 function getRoundRenderCache(round: Round): RoundRenderCache {
   const cached = roundRenderCache.get(round);
   if (cached) return cached;
@@ -1331,7 +1384,17 @@ function getRoundRenderCache(round: Round): RoundRenderCache {
       .filter((event) => event.type === "kill" && Boolean(event.victim))
       .flatMap((event) => {
         const victimPos = playerPositionAtOrBefore(round.frames, event.victim ?? 0, event.t);
-        return victimPos ? [{ t: event.t, x: victimPos.x, y: victimPos.y, z: victimPos.z }] : [];
+        return victimPos
+          ? [{
+              t: event.t,
+              victim: event.victim ?? 0,
+              x: victimPos.x,
+              y: victimPos.y,
+              z: victimPos.z,
+              yaw: victimPos.yaw,
+              team: victimPos.team,
+            }]
+          : [];
       }),
     fixedProjectileSamples: new Map(),
   };
@@ -1362,10 +1425,12 @@ function visibleProjectiles(
   frames: ProjectileSample[],
   time: number,
   startedEffects: UtilityEffect[],
-  detonatedIds: Set<number>
+  detonatedIds: Set<number>,
+  tracks?: Map<number, ProjectileTrack>,
 ): ProjectilePos[] {
   const out = new Map<number, ProjectilePos>();
-  for (const projectile of sampleProjectiles(frames, time)) {
+  const sampled = tracks ? sampleProjectileTracks(tracks, time) : sampleProjectiles(frames, time);
+  for (const projectile of sampled) {
     if (detonatedIds.has(projectile.id)) continue;
     if (projectileResolvedByEffect(projectile, startedEffects, time, frames)) continue;
     if ([...out.values()].some((current) => isSameVisualProjectile(current, projectile))) continue;
@@ -1735,6 +1800,67 @@ function teamDarkColor(team?: number) {
   return 0x303030;
 }
 
+function playerArrowRotation(yaw: number) {
+  return (-yaw * Math.PI) / 180;
+}
+
+function drawDirectionalPlayerArrow(graphics: Graphics, color: number, alpha = 1) {
+  const markerRadius = 8;
+  graphics
+    .clear()
+    .moveTo(markerRadius + 1, 0)
+    .lineTo(-markerRadius + 1, -5.2)
+    .lineTo(-markerRadius + 4, 0)
+    .lineTo(-markerRadius + 1, 5.2)
+    .lineTo(markerRadius + 1, 0)
+    .fill({ color, alpha: 0.98 * alpha })
+    .stroke({ color: 0xffffff, width: 1.7, alpha: 0.96 * alpha });
+}
+
+function drawPlayerIdentityMarker(
+  layer: Container,
+  x: number,
+  y: number,
+  yaw: number,
+  team: number | undefined,
+  labelText: string,
+  alpha: number,
+) {
+  const container = new Container();
+  container.position.set(x, y);
+  container.alpha = alpha;
+
+  const arrowRotator = new Container();
+  arrowRotator.rotation = playerArrowRotation(yaw);
+  const arrow = new Graphics();
+  drawDirectionalPlayerArrow(arrow, teamColor(team));
+  arrowRotator.addChild(arrow);
+  container.addChild(arrowRotator);
+
+  const label = new Text({
+    text: labelText,
+    style: {
+      fontFamily: "ui-sans-serif, system-ui",
+      fontSize: 44,
+      fontWeight: "600",
+      fill: 0x121212,
+    },
+    resolution: Math.max(2, window.devicePixelRatio || 1),
+  });
+  label.anchor.set(0.5, 0.5);
+  label.scale.set(0.24);
+  label.position.set(0, -13);
+  const badge = new Graphics();
+  const width = Math.max(18, label.width + 8);
+  badge.roundRect(-width / 2, -18.25, width, 9.5, 3)
+    .fill({ color: teamColor(team), alpha: 0.95 })
+    .stroke({ color: 0x000000, width: 1, alpha: 0.55 });
+  container.addChild(badge);
+  container.addChild(label);
+  layer.addChild(container);
+  return container;
+}
+
 function clamp01(value: number) {
   return Math.max(0, Math.min(1, value));
 }
@@ -1952,19 +2078,19 @@ function drawUtilityIcon(
     .catch(() => {});
 }
 
-function drawFireMarker(layer: Container, x: number, y: number) {
+function fireCountdownColor(team?: number) {
+  return team === 2 ? 0x241708 : 0xffffff;
+}
+
+function drawFireMarker(layer: Container, x: number, y: number, color = 0xf97316) {
   const g = new Graphics();
   g.position.set(x, y);
-  g.moveTo(0, -11)
-    .bezierCurveTo(8, -3, 9, 5, 2, 11)
-    .bezierCurveTo(-8, 6, -7, -2, -2, -8)
-    .bezierCurveTo(-1, -4, 2, -2, 0, -11)
-    .fill({ color: 0xf97316, alpha: 0.88 });
-  g.moveTo(1, -5)
-    .bezierCurveTo(5, 1, 4, 6, 0, 9)
-    .bezierCurveTo(-4, 5, -3, 0, 1, -5)
-    .fill({ color: 0xfde047, alpha: 0.88 });
-  g.circle(0, 2, 9).stroke({ color: 0xfffbeb, width: 1.2, alpha: 0.55 });
+  g.moveTo(0, -7)
+    .bezierCurveTo(5.5, -2, 6, 3.5, 1.5, 7)
+    .bezierCurveTo(-5.5, 4, -5, -1.5, -1.5, -5.5)
+    .bezierCurveTo(-0.5, -3, 1.5, -1.5, 0, -7)
+    .fill({ color, alpha: 1 })
+    .stroke({ color: 0x111111, width: 0.9, alpha: 0.5 });
   layer.addChild(g);
 }
 
@@ -2103,12 +2229,13 @@ function drawEffect(
   if (effect.type === "fire") {
     const radius = fireRadiusWorld(effect) * unitsToPx;
     const alpha = Math.min(1, age / 0.25) * (life > 0.92 ? 1 - (life - 0.92) / 0.08 : 1);
+    const color = teamColor(effect.team);
     g.circle(p.x, p.y, radius).fill({ color: teamDarkColor(effect.team), alpha: 0.32 * alpha });
-    drawTimerArc(g, p.x, p.y, radius, remaining, teamColor(effect.team), 1.7);
+    drawTimerArc(g, p.x, p.y, radius, remaining, color, 1.7);
     layer.addChild(g);
-    drawFireMarker(layer, p.x, p.y);
+    drawFireMarker(layer, p.x, p.y, color);
     const secsLeft = Math.max(0, Math.ceil(effect.end - time));
-    drawCountdownLabel(layer, String(secsLeft), p.x, p.y + 2, 0x3a3a3a);
+    drawCountdownLabel(layer, String(secsLeft), p.x, p.y + 0.5, fireCountdownColor(effect.team));
     return;
   }
 
@@ -2272,17 +2399,15 @@ function drawWeaponFire(
     });
 }
 
-function drawDeathMarker(layer: Container, x: number, y: number, age: number) {
-  const alpha = Math.max(0.45, 1 - age / 18);
-  const g = new Graphics();
-  g.circle(x, y, 7.2).fill({ color: 0x1d1f1f, alpha: 0.78 * alpha });
-  g.circle(x, y, 7.2).stroke({ color: 0xef4444, width: 1.8, alpha: 0.95 * alpha });
-  g.moveTo(x - 4, y - 4)
-    .lineTo(x + 4, y + 4)
-    .moveTo(x + 4, y - 4)
-    .lineTo(x - 4, y + 4)
-    .stroke({ color: 0xffffff, width: 1.5, alpha: 0.9 * alpha });
-  layer.addChild(g);
+function drawDeathMarker(
+  layer: Container,
+  x: number,
+  y: number,
+  yaw = 0,
+  team?: number,
+  name = "",
+) {
+  return drawPlayerIdentityMarker(layer, x, y, yaw, team, displayName(name), 0.18);
 }
 
 /**
@@ -2335,6 +2460,8 @@ export const mapRendererLogic = Object.freeze({
   resolveFireEffect,
   resolveEffects,
   buildProjectileTracks,
+  sampleProjectileTrack,
+  sampleProjectileTracks,
   getRoundRenderCache,
   sampleProjectilesFixed,
   isSameVisualProjectile,
@@ -2353,6 +2480,10 @@ export const mapRendererLogic = Object.freeze({
   isKnifeWeapon,
   isPistolWeapon,
   teamColor,
+  playerArrowRotation,
+  drawDirectionalPlayerArrow,
+  drawPlayerIdentityMarker,
+  fireCountdownColor,
   teamDarkColor,
   clamp01,
   easeOutCubic,
@@ -2758,7 +2889,8 @@ export function MapRenderer({
       for (const marker of renderCache.deathMarkers) {
         if (marker.t > time) continue;
         const p = toRadar(marker.x, marker.y, marker.z);
-        drawDeathMarker(deathLayer, p.x, p.y, time - marker.t);
+        const playerName = match.players.find((player) => player.steamId === marker.victim)?.name;
+        drawDeathMarker(deathLayer, p.x, p.y, marker.yaw, marker.team, playerName);
       }
 
       const visibleFires: WeaponFireEvent[] = (round.weaponFires ?? []).filter(
@@ -2929,7 +3061,13 @@ export function MapRenderer({
       }
 
       const sampledProjectiles = debugProjectiles ? sampleProjectiles(projectileFrames, time) : [];
-      const projectiles = visibleProjectiles(projectileFrames, time, projectileEffects, detonatedIds);
+      const projectiles = visibleProjectiles(
+        projectileFrames,
+        time,
+        projectileEffects,
+        detonatedIds,
+        renderCache.projectileTracks,
+      );
       if (debugProjectiles) {
         const visibleById = new Set(projectiles.map((projectile) => projectile.id));
         const accepted: ProjectilePos[] = [];
@@ -3128,7 +3266,11 @@ export function MapRenderer({
         })}`);
       }
 
+      const renderedDeathIds = new Set(
+        renderCache.deathMarkers.filter((marker) => marker.t <= time).map((marker) => marker.victim),
+      );
       for (const p of positions) {
+        if (p.hp <= 0 && renderedDeathIds.has(p.id)) continue;
         seen.add(p.id);
         const { x, y } = worldToRadar(p.x, p.y, calib);
         const px = x * scale;
@@ -3253,15 +3395,7 @@ export function MapRenderer({
 
         // CS2Lens-style player marker: just a directional arrow, no round dot.
         s.dot.clear();
-        s.arrow
-          .clear()
-          .moveTo(MARKER_R + 1, 0)
-          .lineTo(-MARKER_R + 1, -5.2)
-          .lineTo(-MARKER_R + 4, 0)
-          .lineTo(-MARKER_R + 1, 5.2)
-          .lineTo(MARKER_R + 1, 0)
-          .fill({ color: baseColor, alpha: alive ? 0.98 : 0.35 })
-          .stroke({ color: 0xffffff, width: 1.7, alpha: alive ? 0.96 : 0.35 });
+        drawDirectionalPlayerArrow(s.arrow, baseColor);
 
         const shot = recentFireByShooter.get(p.id);
         s.muzzleFlash.clear();
@@ -3361,7 +3495,7 @@ export function MapRenderer({
         }
         s.held.tint = 0xffffff;
         s.held.alpha = alive ? 0.46 : 0.16;
-        const arrowRotation = (-p.yaw * Math.PI) / 180;
+        const arrowRotation = playerArrowRotation(p.yaw);
         const activeAction = alive ? p.activeAction : undefined;
         const actionPath = activeAction ? iconPathFor(activeAction.type === "plant" ? "c4" : activeAction.item) : null;
         const hideHeldForAction = Boolean(activeAction && actionPath && heldPath === actionPath);
@@ -3438,7 +3572,7 @@ export function MapRenderer({
         }
         s.container.position.set(px, py);
         s.arrowRotator.rotation = arrowRotation;
-        s.container.alpha = alive ? 1 : 0.4;
+        s.container.alpha = alive ? 1 : 0.18;
       }
 
       for (const [id, s] of spritesRef.current) {

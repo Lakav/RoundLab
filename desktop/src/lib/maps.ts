@@ -53,18 +53,24 @@ export const MAP_VERTICAL_SECTIONS: Partial<Record<string, MapVerticalSection[]>
 // of the crop, size is a square side.
 export type MapCrop = { x: number; y: number; size: number };
 
-// ~1.08x crop: trim 8% of each side
+// Per-map safe crops. These keep the useful radar area large without letting
+// player markers and labels touch the viewport edge. Unknown maps deliberately
+// fall back to the complete 1024px radar below.
 export const MAP_CROP: Record<string, MapCrop> = {
-  de_inferno: { x: 38, y: 38, size: 948 },
-  de_mirage: { x: 38, y: 38, size: 948 },
-  de_dust2: { x: 38, y: 38, size: 948 },
-  de_nuke: { x: 38, y: 38, size: 948 },
-  de_overpass: { x: 38, y: 38, size: 948 },
-  de_ancient: { x: 38, y: 38, size: 948 },
-  de_anubis: { x: 38, y: 38, size: 948 },
-  de_cache: { x: 38, y: 38, size: 948 },
-  de_train: { x: 38, y: 38, size: 948 },
-  de_vertigo: { x: 38, y: 38, size: 948 },
+  de_inferno: { x: 0, y: 0, size: 1024 },
+  de_mirage: { x: 36, y: 36, size: 952 },
+  de_dust2: { x: 0, y: 0, size: 1024 },
+  de_nuke: { x: 28, y: 28, size: 968 },
+  de_overpass: { x: 0, y: 0, size: 1024 },
+  de_ancient: { x: 34, y: 34, size: 956 },
+  // Anubis reaches y=978 in the replay fixtures. A 14px inset leaves 32px
+  // below the lowest player before labels are considered.
+  de_anubis: { x: 14, y: 14, size: 996 },
+  // Cache and Train use the native radar edges in real matches. Cropping
+  // either map would hide valid positions, so the complete overview is used.
+  de_cache: { x: 0, y: 0, size: 1024 },
+  de_train: { x: 0, y: 0, size: 1024 },
+  de_vertigo: { x: 28, y: 28, size: 968 },
 };
 
 export function cropFor(map: string): MapCrop {
