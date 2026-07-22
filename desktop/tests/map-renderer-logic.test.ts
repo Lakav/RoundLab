@@ -528,6 +528,7 @@ describe("MapRenderer habit overlay calculations", () => {
         type: "flashbang",
         samples: [{ t: 0, x: 0, y: 0, z: 20 }, { t: 1, x: 30, y: 20, z: 10 }],
       }],
+      effects: [effect({ type: "smoke", start: 0, end: 10 })],
     };
     const nearbyReplay = {
       ...replay,
@@ -548,15 +549,17 @@ describe("MapRenderer habit overlay calculations", () => {
     expect(firstGhost?.fullLabel.visible).toBe(false);
     const marker = firstGhost?.marker;
     const playerChildren = first.players.children.length;
-    const utilityChild = first.utilities.children[0];
+    const projectileChild = first.projectiles.children[0];
+    const effectChild = first.effects.children[0];
 
     const second = logic.renderHabitReplayScene(layer, first, overlay, 0.52, toRadar, 1, queue as never);
     expect(second).toBe(first);
     expect(second.ghosts.get("r1")?.marker).toBe(marker);
     expect(second.players.children).toHaveLength(playerChildren);
-    expect(second.utilities.children[0]).toBe(utilityChild);
+    expect(second.projectiles.children[0]).not.toBe(projectileChild);
+    expect(second.effects.children[0]).toBe(effectChild);
     const third = logic.renderHabitReplayScene(layer, second, overlay, 0.58, toRadar, 1, queue as never);
-    expect(third.utilities.children[0]).not.toBe(utilityChild);
+    expect(third.effects.children[0]).not.toBe(effectChild);
     layer.destroy({ children: true });
   });
 
@@ -579,6 +582,26 @@ describe("MapRenderer habit overlay calculations", () => {
     expect(visibleLabels).toHaveLength(1);
     expect(visibleLabels[0].compactLabel.text).toBe("×4");
     expect([...scene.ghosts.values()].every((ghost) => ghost.marker.visible)).toBe(true);
+    layer.destroy({ children: true });
+  });
+
+  it("never aggregates condensed markers from opposing teams", () => {
+    const layer = new Container();
+    const replays = Array.from({ length: 8 }, (_, index) => {
+      const team = index < 4 ? 2 : 3;
+      return {
+        ...replay,
+        id: `team-cluster-${index}`,
+        roundNumber: index + 1,
+        positions: positions.map((sample) => ({ ...sample, team, x: sample.x + (index % 4), y: sample.y + (index % 4) })),
+      };
+    });
+    const overlay = { label: "Player", mode: "replay" as const, trails: [], replays };
+    const scene = logic.renderHabitReplayScene(layer, null, overlay, 0.5, toRadar, 1, []);
+    const visibleLabels = [...scene.ghosts.values()].filter((ghost) => ghost.labelGroup.visible);
+    expect(visibleLabels).toHaveLength(2);
+    expect(visibleLabels.map((ghost) => ghost.compactLabel.text)).toEqual(["×4", "×4"]);
+    expect(new Set(visibleLabels.map((ghost) => ghost.team))).toEqual(new Set([2, 3]));
     layer.destroy({ children: true });
   });
 

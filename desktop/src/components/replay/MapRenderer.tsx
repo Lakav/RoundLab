@@ -958,9 +958,11 @@ type HabitReplayScene = {
   overlay: HabitOverlay;
   root: Container;
   utilities: Container;
+  projectiles: Container;
+  effects: Container;
   players: Container;
   ghosts: Map<string, HabitGhostVisual>;
-  lastUtilityTime: number;
+  lastEffectTime: number;
 };
 
 function createHabitGhostVisual(replay: HabitReplayRound): HabitGhostVisual {
@@ -1048,6 +1050,10 @@ function updateHabitGhostVisual(
   visual.path.clear();
   if (!died) {
     const recentPath = habitTimedPoints(replay.positions, Math.max(0, time - trailSeconds), time, toRadar);
+    const tail = recentPath[recentPath.length - 1];
+    if (!tail || Math.hypot(point.x - tail.x, point.y - tail.y) > 0.25) {
+      recentPath.push(point);
+    }
     if (recentPath.length >= 2) {
       visual.path.moveTo(recentPath[0].x, recentPath[0].y);
       for (let index = 1; index < recentPath.length; index++) {
@@ -1093,6 +1099,7 @@ function layoutHabitGhostLabels(ghosts: HabitGhostVisual[], compactAll = false) 
     for (let index = 0; index < cluster.length; index++) {
       const current = cluster[index];
       for (const candidate of [...remaining]) {
+        if (candidate.team !== current.team) continue;
         if (Math.hypot(
           candidate.marker.position.x - current.marker.position.x,
           candidate.marker.position.y - current.marker.position.y,
@@ -1107,7 +1114,8 @@ function layoutHabitGhostLabels(ghosts: HabitGhostVisual[], compactAll = false) 
       );
       for (const ghost of cluster) ghost.labelGroup.visible = ghost === leader;
       configureLabel(leader, true, `×${cluster.length}`);
-      leader.labelGroup.position.set(0, -17);
+      const teamOffset = leader.team === 2 ? -14 : leader.team === 3 ? 14 : 0;
+      leader.labelGroup.position.set(teamOffset, -17);
       continue;
     }
     if (cluster.length <= 1) continue;
@@ -1139,11 +1147,24 @@ function renderHabitReplayScene(
     const root = new Container();
     const utilities = new Container();
     utilities.alpha = 0.45;
+    const projectiles = new Container();
+    const effects = new Container();
+    utilities.addChild(effects);
+    utilities.addChild(projectiles);
     const players = new Container();
     root.addChild(utilities);
     root.addChild(players);
     layer.addChild(root);
-    scene = { overlay, root, utilities, players, ghosts: new Map(), lastUtilityTime: Number.NEGATIVE_INFINITY };
+    scene = {
+      overlay,
+      root,
+      utilities,
+      projectiles,
+      effects,
+      players,
+      ghosts: new Map(),
+      lastEffectTime: Number.NEGATIVE_INFINITY,
+    };
     for (const replay of overlay.replays ?? []) {
       const ghost = createHabitGhostVisual(replay);
       ghost.marker.zIndex = 1;
@@ -1155,29 +1176,34 @@ function renderHabitReplayScene(
 
   const replays = overlay.replays ?? [];
   const dense = replays.length > 10;
-  const utilityInterval = 1 / 20;
-  const utilityTimeDelta = time - scene.lastUtilityTime;
-  const refreshUtilities =
-    !Number.isFinite(scene.lastUtilityTime) ||
-    utilityTimeDelta < 0 ||
-    utilityTimeDelta >= utilityInterval;
-  if (refreshUtilities) {
-    scene.lastUtilityTime = time;
-    scene.utilities.alpha = dense ? 0.3 : 0.45;
-    queueLayerChildrenForDestroy(scene.utilities, destroyQueue);
+  scene.utilities.alpha = dense ? 0.3 : 0.45;
+  // Moving projectiles follow replay time at the same cadence as players.
+  // Their short trail window keeps this cheap even with many rounds.
+  queueLayerChildrenForDestroy(scene.projectiles, destroyQueue);
+  for (const replay of replays) {
+    for (const projectile of replay.projectiles) {
+      drawHabitProjectile(
+        scene.projectiles,
+        projectile,
+        time,
+        toRadar,
+        replay.effects,
+        dense ? 1.5 : 3,
+      );
+    }
+  }
+  const effectInterval = 1 / 20;
+  const effectTimeDelta = time - scene.lastEffectTime;
+  const refreshEffects =
+    !Number.isFinite(scene.lastEffectTime) ||
+    effectTimeDelta < 0 ||
+    effectTimeDelta >= effectInterval;
+  if (refreshEffects) {
+    scene.lastEffectTime = time;
+    queueLayerChildrenForDestroy(scene.effects, destroyQueue);
     for (const replay of replays) {
-      for (const projectile of replay.projectiles) {
-        drawHabitProjectile(
-          scene.utilities,
-          projectile,
-          time,
-          toRadar,
-          replay.effects,
-          dense ? 1.5 : 3,
-        );
-      }
       for (const effect of replay.effects) {
-        drawHabitEffect(scene.utilities, effect, time, toRadar, unitsToPx, replay.effects);
+        drawHabitEffect(scene.effects, effect, time, toRadar, unitsToPx, replay.effects);
       }
     }
   }
