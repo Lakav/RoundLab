@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useReplay } from "@/lib/replay-store";
 import { replayMatch, replayRound } from "./fixtures";
 
 const mocks = vi.hoisted(() => ({
@@ -84,5 +85,26 @@ describe("MatchViewer", () => {
     expect(screen.getByText("125%")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Condensé" }));
     expect(screen.getByRole("combobox")).toHaveValue("player:1");
+  });
+
+  it("does not retain every full round while building condensed review", async () => {
+    const user = userEvent.setup();
+    const metadataRounds = Array.from({ length: 6 }, (_, index) => ({
+      ...replayRound(index + 1, 12),
+      frames: [],
+    }));
+    mocks.getMatchMetadata.mockResolvedValue(replayMatch(metadataRounds));
+    mocks.getRound.mockImplementation(async (_matchId: string, roundNumber: number) => replayRound(roundNumber, 12));
+
+    render(<MatchViewer id="match-memory" />);
+    await screen.findByRole("heading", { level: 1, name: "RoundLab match replay" });
+    await waitFor(() => expect(mocks.getRound).toHaveBeenCalledWith("match-memory", 1, false));
+    await user.click(screen.getByRole("button", { name: "Condensé" }));
+    await waitFor(() => expect(screen.getByText("6 rounds")).toBeInTheDocument());
+
+    const retainedRounds = useReplay.getState().match?.rounds
+      .filter((round) => round.frames.length > 0)
+      .map((round) => round.number);
+    expect(retainedRounds).toEqual([1, 2]);
   });
 });

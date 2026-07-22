@@ -401,9 +401,17 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
   const loadRoundForHabits = useCallback(
     async (round: Round): Promise<Round> => {
       if (round.frames.length > 0) return round;
-      return fetchRoundData(round.number);
+      // Condensed analysis visits the whole match, but only needs each full
+      // round while its lightweight overlay is being built. Keeping those
+      // payloads in Zustand made long matches permanently accumulate hundreds
+      // of megabytes. Fetch them transiently and let them be collected after
+      // each iteration instead.
+      const debugProjectiles = projectileDebugEnabled();
+      const data = assertRenderableRound(await getRound(id, round.number, debugProjectiles));
+      logFrontendRoundReceived(id, data);
+      return data;
     },
-    [fetchRoundData],
+    [id],
   );
 
   useEffect(() => {

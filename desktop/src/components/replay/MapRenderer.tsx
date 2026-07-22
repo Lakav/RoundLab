@@ -19,6 +19,8 @@ const BOMB_CARRIER_COLOR = 0xef4444;
 const BOMB_SECONDS = 40;
 const FIRE_EFFECT_MAX_DURATION = 7;
 const PROJECTILE_EFFECT_HANDOFF_LOOKBACK = 1.75;
+const MAX_DEFERRED_DESTROY_OBJECTS = 192;
+const DISPLAY_OBJECT_DESTROY_OPTIONS = { children: true, context: true, style: true } as const;
 const bombFrameFallbackCache = new WeakMap<Round, Frame[]>();
 const PROJECTILE_DEBUG_KEY = "roundlab.debugProjectiles";
 let projectileDebugCache = { checkedAt: 0, enabled: false };
@@ -1027,7 +1029,7 @@ function renderHabitReplayScene(
   if (!scene || scene.overlay !== overlay || scene.root.destroyed) {
     if (scene && !scene.root.destroyed) {
       layer.removeChild(scene.root);
-      scene.root.destroy({ children: true });
+      scene.root.destroy(DISPLAY_OBJECT_DESTROY_OPTIONS);
     }
     const root = new Container();
     const utilities = new Container();
@@ -2247,15 +2249,34 @@ type BombSprite = {
 type DisposableDisplayObject = Container | Graphics | Sprite | Text;
 
 function queueLayerChildrenForDestroy(layer: Container, queue: DisposableDisplayObject[]): void {
-  queue.push(...(layer.removeChildren() as DisposableDisplayObject[]));
+  const removed = layer.removeChildren() as DisposableDisplayObject[];
+  for (const child of removed) {
+    if (queue.length < MAX_DEFERRED_DESTROY_OBJECTS) {
+      queue.push(child);
+    } else if (!child.destroyed) {
+      // Never let a busy replay retain detached Pixi objects indefinitely.
+      // Once the small smoothing buffer is full, releasing the overflow now is
+      // cheaper than allowing an unbounded GPU/JS allocation backlog.
+      child.destroy(DISPLAY_OBJECT_DESTROY_OPTIONS);
+    }
+  }
 }
 
-function drainDestroyQueue(queue: DisposableDisplayObject[], maxItems = 16, maxMs = 1.2): void {
+function drainDestroyQueue(queue: DisposableDisplayObject[], maxItems = 32, maxMs = 2): void {
   const started = performance.now();
   for (let i = 0; i < maxItems && queue.length > 0; i++) {
     if (performance.now() - started > maxMs) break;
-    const child = queue.shift();
-    if (child && !child.destroyed) child.destroy({ children: true });
+    // Destruction order is irrelevant. pop() stays O(1), unlike shift(), which
+    // became progressively slower as the old unbounded queue grew.
+    const child = queue.pop();
+    if (child && !child.destroyed) child.destroy(DISPLAY_OBJECT_DESTROY_OPTIONS);
+  }
+}
+
+function destroyQueuedDisplayObjects(queue: DisposableDisplayObject[]): void {
+  while (queue.length > 0) {
+    const child = queue.pop();
+    if (child && !child.destroyed) child.destroy(DISPLAY_OBJECT_DESTROY_OPTIONS);
   }
 }
 
@@ -2691,6 +2712,7 @@ function drawDeathMarker(
  * cleanup) behind a browser-only integration test.
  */
 export const mapRendererLogic = Object.freeze({
+  MAX_DEFERRED_DESTROY_OBJECTS,
   sampleFrame,
   playerPositionAtOrBefore,
   nearestFrame,
@@ -2771,6 +2793,7 @@ export const mapRendererLogic = Object.freeze({
   displayName,
   queueLayerChildrenForDestroy,
   drainDestroyQueue,
+  destroyQueuedDisplayObjects,
   heightLift,
   projectileGroundZ,
   projectileHeightAboveGround,
@@ -2808,6 +2831,8 @@ export function MapRenderer({
   const deathLayerRef = useRef<Container | null>(null);
   const spritesRef = useRef<Map<number, PlayerSprite>>(new Map());
   const bombSpriteRef = useRef<BombSprite | null>(null);
+  const deathMarkerSpritesRef = useRef<Map<string, Container>>(new Map());
+  const deathMarkerRoundRef = useRef<Round | null>(null);
   const loadedMapRef = useRef<string | null>(null);
   const defuseVisualRef = useRef<{ key: string; start: number; lastTime: number } | null>(null);
   const deferredDestroyRef = useRef<DisposableDisplayObject[]>([]);
@@ -2847,6 +2872,8 @@ export function MapRenderer({
     let disposed = false;
     const host = hostRef.current;
     const sprites = spritesRef.current;
+    const deathMarkerSprites = deathMarkerSpritesRef.current;
+    const deferredDestroyQueue = deferredDestroyRef.current;
     if (!host) return;
 
       const app = new Application();
@@ -2893,16 +2920,18 @@ export function MapRenderer({
 
     return () => {
       disposed = true;
+      destroyQueuedDisplayObjects(deferredDestroyQueue);
       if (appRef.current) {
-        appRef.current.destroy(true, { children: true });
+        appRef.current.destroy(true, DISPLAY_OBJECT_DESTROY_OPTIONS);
         appRef.current = null;
       }
       sprites.clear();
+      deathMarkerSprites.clear();
+      deathMarkerRoundRef.current = null;
       bombSpriteRef.current = null;
       loadedMapRef.current = null;
       habitLayerRef.current = null;
       deathLayerRef.current = null;
-      deferredDestroyRef.current = [];
       habitReplaySceneRef.current = null;
       condensedLayersClearedRef.current = false;
     };
@@ -3028,7 +3057,12 @@ export function MapRenderer({
       // but skip the expensive render work until something actually changes.
       // Do not cache before Pixi and the round are ready or a paused replay
       // could remain blank after asynchronous renderer initialization.
-      if (!playing && unchanged) return;
+      if (!playing && unchanged) {
+        // Playback can stop with detached objects still buffered. Continue
+        // draining while paused so memory returns to its steady state.
+        drainDestroyQueue(deferredDestroyRef.current, 96, 4);
+        return;
+      }
       lastRenderedMatch = match;
       lastRenderedRound = currentRoundIdx;
       lastRenderedTime = time;
@@ -3052,9 +3086,11 @@ export function MapRenderer({
           queueLayerChildrenForDestroy(utilityLayer, deferredDestroyRef.current);
           queueLayerChildrenForDestroy(bombLayer, deferredDestroyRef.current);
           queueLayerChildrenForDestroy(deathLayer, deferredDestroyRef.current);
+          deathMarkerSpritesRef.current.clear();
+          deathMarkerRoundRef.current = null;
           for (const [, sprite] of spritesRef.current) {
             layer.removeChild(sprite.container);
-            sprite.container.destroy({ children: true });
+            sprite.container.destroy(DISPLAY_OBJECT_DESTROY_OPTIONS);
           }
           spritesRef.current.clear();
           bombSpriteRef.current = null;
@@ -3079,7 +3115,7 @@ export function MapRenderer({
         const scene = habitReplaySceneRef.current;
         if (!scene.root.destroyed) {
           habitLayer?.removeChild(scene.root);
-          scene.root.destroy({ children: true });
+          scene.root.destroy(DISPLAY_OBJECT_DESTROY_OPTIONS);
         }
         habitReplaySceneRef.current = null;
       }
@@ -3107,7 +3143,11 @@ export function MapRenderer({
       const seen = new Set<number>();
       const utilityChildrenBeforeCleanup = utilityLayer.children.length;
       queueLayerChildrenForDestroy(utilityLayer, deferredDestroyRef.current);
-      queueLayerChildrenForDestroy(deathLayer, deferredDestroyRef.current);
+      if (deathMarkerRoundRef.current !== round) {
+        queueLayerChildrenForDestroy(deathLayer, deferredDestroyRef.current);
+        deathMarkerSpritesRef.current.clear();
+        deathMarkerRoundRef.current = round;
+      }
       drainDestroyQueue(deferredDestroyRef.current);
 
       const renderCache = getRoundRenderCache(round);
@@ -3188,11 +3228,19 @@ export function MapRenderer({
         drawEffect(utilityLayer, resolved, time, toRadar, unitsToPx, roundEffects);
       }
 
-      for (const marker of renderCache.deathMarkers) {
+      for (const sprite of deathMarkerSpritesRef.current.values()) sprite.visible = false;
+      for (const [markerIndex, marker] of renderCache.deathMarkers.entries()) {
         if (marker.t > time) continue;
         const p = toRadar(marker.x, marker.y, marker.z);
-        const playerName = match.players.find((player) => player.steamId === marker.victim)?.name;
-        drawDeathMarker(deathLayer, p.x, p.y, marker.yaw, marker.team, playerName);
+        const markerKey = `${markerIndex}:${marker.t}:${marker.victim}`;
+        let sprite = deathMarkerSpritesRef.current.get(markerKey);
+        if (!sprite || sprite.destroyed) {
+          const playerName = match.players.find((player) => player.steamId === marker.victim)?.name;
+          sprite = drawDeathMarker(deathLayer, p.x, p.y, marker.yaw, marker.team, playerName);
+          deathMarkerSpritesRef.current.set(markerKey, sprite);
+        }
+        sprite.position.set(p.x, p.y);
+        sprite.visible = true;
       }
 
       const visibleFires: WeaponFireEvent[] = (round.weaponFires ?? []).filter(
@@ -3851,7 +3899,7 @@ export function MapRenderer({
       for (const [id, s] of spritesRef.current) {
         if (!seen.has(id)) {
           layer.removeChild(s.container);
-          s.container.destroy({ children: true });
+          s.container.destroy(DISPLAY_OBJECT_DESTROY_OPTIONS);
           spritesRef.current.delete(id);
         }
       }

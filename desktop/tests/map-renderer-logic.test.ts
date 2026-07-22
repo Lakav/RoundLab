@@ -455,9 +455,29 @@ describe("MapRenderer cache and cleanup", () => {
     logic.queueLayerChildrenForDestroy(layer as never, queue as never);
     expect(queue).toHaveLength(2);
     logic.drainDestroyQueue(queue as never, 2, 100);
-    expect(child.destroy).toHaveBeenCalledWith({ children: true });
+    expect(child.destroy).toHaveBeenCalledWith({ children: true, context: true, style: true });
     expect(destroyed.destroy).not.toHaveBeenCalled();
     expect(queue).toHaveLength(0);
+  });
+
+  it("caps the detached-object backlog during dense playback", () => {
+    const queue: Array<{ destroyed: boolean; destroy: ReturnType<typeof vi.fn> }> = [];
+    const children = Array.from(
+      { length: logic.MAX_DEFERRED_DESTROY_OBJECTS * 3 },
+      () => ({ destroyed: false, destroy: vi.fn() }),
+    );
+    const layer = { removeChildren: vi.fn(() => children) };
+
+    logic.queueLayerChildrenForDestroy(layer as never, queue as never);
+
+    expect(queue).toHaveLength(logic.MAX_DEFERRED_DESTROY_OBJECTS);
+    expect(children.filter((child) => child.destroy.mock.calls.length > 0)).toHaveLength(
+      logic.MAX_DEFERRED_DESTROY_OBJECTS * 2,
+    );
+
+    logic.destroyQueuedDisplayObjects(queue as never);
+    expect(queue).toHaveLength(0);
+    expect(children.every((child) => child.destroy.mock.calls.length === 1)).toBe(true);
   });
 });
 

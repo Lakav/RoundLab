@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import type { MatchData, Round, UtilityEffect } from "./types";
 
+const LOADED_ROUND_RADIUS = 1;
+
 export type HabitOverlayTrail = {
   id: string;
   roundNumber: number;
@@ -79,6 +81,28 @@ function isLoadedRoundPayload(roundNumber: number, round: Round) {
   return round.number === roundNumber && Array.isArray(round.frames) && round.frames.length > 0;
 }
 
+function stripRoundPayload(round: Round): Round {
+  if (round.frames.length === 0) return round;
+  return {
+    ...round,
+    frames: [],
+    events: [],
+    effects: [],
+    weaponFires: [],
+    projectileFrames: [],
+  };
+}
+
+function retainRoundPayloadWindow(match: MatchData, centerIdx: number): MatchData {
+  let changed = false;
+  const rounds = match.rounds.map((round, index) => {
+    if (Math.abs(index - centerIdx) <= LOADED_ROUND_RADIUS || round.frames.length === 0) return round;
+    changed = true;
+    return stripRoundPayload(round);
+  });
+  return changed ? { ...match, rounds } : match;
+}
+
 function activeDuration(match: MatchData | null, roundIdx: number, durationOverride: number | null, fallback = 0) {
   const raw = durationOverride ?? match?.rounds[roundIdx]?.duration ?? fallback;
   return Number.isFinite(raw) ? Math.max(0, raw) : 0;
@@ -106,18 +130,26 @@ export const useReplay = create<ReplayState>((set, get) => ({
   speed: 1,
   durationOverride: null,
   habitOverlay: null,
-  setMatch: (id, m) => set({ matchId: id, match: m, currentRoundIdx: 0, time: 0, playing: false, speed: 1, durationOverride: null, habitOverlay: null }),
+  setMatch: (id, m) => set({
+    matchId: id,
+    match: retainRoundPayloadWindow(m, 0),
+    currentRoundIdx: 0,
+    time: 0,
+    playing: false,
+    speed: 1,
+    durationOverride: null,
+    habitOverlay: null,
+  }),
   setRoundData: (matchId, roundNumber, round) =>
     set((s) => {
       if (!s.match || s.matchId !== matchId) return s;
       if (!isLoadedRoundPayload(roundNumber, round)) return { playing: false };
       if (!s.match.rounds.some((r) => r.number === roundNumber)) return { playing: false };
-      return {
-        match: {
-          ...s.match,
-          rounds: s.match.rounds.map((r) => (r.number === roundNumber ? round : r)),
-        },
+      const nextMatch = {
+        ...s.match,
+        rounds: s.match.rounds.map((r) => (r.number === roundNumber ? round : r)),
       };
+      return { match: retainRoundPayloadWindow(nextMatch, s.currentRoundIdx) };
     }),
   setHabitOverlay: (overlay) => set({ habitOverlay: overlay }),
   setDurationOverride: (duration) => set((s) => {
@@ -127,11 +159,15 @@ export const useReplay = create<ReplayState>((set, get) => ({
       time: clampReplayTime(s.time, s.match, s.currentRoundIdx, nextDuration),
     };
   }),
-  setRound: (idx) => set((s) => (
-    s.match && idx >= 0 && idx < s.match.rounds.length
-      ? { currentRoundIdx: idx, time: 0, playing: false }
-      : { playing: false }
-  )),
+  setRound: (idx) => set((s) => {
+    if (!s.match || idx < 0 || idx >= s.match.rounds.length) return { playing: false };
+    return {
+      match: retainRoundPayloadWindow(s.match, idx),
+      currentRoundIdx: idx,
+      time: 0,
+      playing: false,
+    };
+  }),
   setTime: (t) => set((s) => ({ time: clampReplayTime(t, s.match, s.currentRoundIdx, s.durationOverride) })),
   setPlaying: (p) => set((s) => ({ playing: p && roundHasFrames(s.match, s.currentRoundIdx) })),
   togglePlay: () => set((s) => {
@@ -156,7 +192,8 @@ export const useReplay = create<ReplayState>((set, get) => ({
     } else if (next >= roundDuration) {
       const nextIdx = s.currentRoundIdx + 1;
       if (nextIdx < s.match.rounds.length) {
-        set({ currentRoundIdx: nextIdx, time: 0, playing: roundHasFrames(s.match, nextIdx) });
+        const nextMatch = retainRoundPayloadWindow(s.match, nextIdx);
+        set({ match: nextMatch, currentRoundIdx: nextIdx, time: 0, playing: roundHasFrames(nextMatch, nextIdx) });
       } else {
         set({ time: roundDuration, playing: false });
       }

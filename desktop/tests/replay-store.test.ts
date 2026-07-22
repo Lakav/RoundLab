@@ -39,6 +39,53 @@ describe("replay state machine", () => {
     expect(useReplay.getState().currentRound()?.duration).toBe(25);
   });
 
+  it("keeps full payloads only for the current round and its neighbours", () => {
+    const metadataRounds = Array.from({ length: 6 }, (_, index) => ({
+      ...replayRound(index + 1),
+      frames: [],
+    }));
+    useReplay.getState().setMatch("match-a", replayMatch(metadataRounds));
+
+    for (let number = 1; number <= 6; number++) {
+      useReplay.getState().setRoundData("match-a", number, replayRound(number));
+    }
+    expect(
+      useReplay.getState().match?.rounds
+        .filter((round) => round.frames.length > 0)
+        .map((round) => round.number),
+    ).toEqual([1, 2]);
+
+    useReplay.getState().setRound(3);
+    for (const number of [3, 4, 5]) {
+      useReplay.getState().setRoundData("match-a", number, replayRound(number));
+    }
+    expect(
+      useReplay.getState().match?.rounds
+        .filter((round) => round.frames.length > 0)
+        .map((round) => round.number),
+    ).toEqual([3, 4, 5]);
+
+    useReplay.getState().setRound(5);
+    useReplay.getState().setRoundData("match-a", 6, replayRound(6));
+    expect(
+      useReplay.getState().match?.rounds
+        .filter((round) => round.frames.length > 0)
+        .map((round) => round.number),
+    ).toEqual([5, 6]);
+  });
+
+  it("trims an already-loaded match as soon as it enters the store", () => {
+    useReplay.getState().setMatch(
+      "match-a",
+      replayMatch(Array.from({ length: 5 }, (_, index) => replayRound(index + 1))),
+    );
+    expect(
+      useReplay.getState().match?.rounds
+        .filter((round) => round.frames.length > 0)
+        .map((round) => round.number),
+    ).toEqual([1, 2]);
+  });
+
   it("guards round selection, time, speed and play state", () => {
     const state = useReplay.getState();
     state.setRound(1);
