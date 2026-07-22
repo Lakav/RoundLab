@@ -1029,6 +1029,15 @@ function projectileHideStart(effect: UtilityEffect): number {
   return effect.start + 0.25;
 }
 
+function projectileHandoffIconAlpha(handoff: ProjectileEffectHandoff | null, time: number): number {
+  if (!handoff?.active) return 1;
+  // Do not make the grenade icon vanish on the exact frame where the effect
+  // starts. A short dissolve keeps the projectile visually connected to its
+  // explosion without leaving an icon sitting inside a smoke or fire zone.
+  const fadeDuration = Math.min(0.16, projectileHideStart(handoff.effect) - handoff.effect.start);
+  return Math.max(0, 1 - (time - handoff.effect.start) / Math.max(0.04, fadeDuration));
+}
+
 type ProjectileEffectHandoff = {
   effect: UtilityEffect;
   active: boolean;
@@ -2056,7 +2065,8 @@ function drawUtilityIcon(
   x: number,
   y: number,
   color: number,
-  max = 16
+  max = 16,
+  alpha = 1,
 ) {
   const path = iconPathFor(name);
   if (!path) return;
@@ -2064,6 +2074,7 @@ function drawUtilityIcon(
   sprite.anchor.set(0.5);
   sprite.position.set(x, y);
   sprite.tint = color;
+  sprite.alpha = alpha;
   layer.addChild(sprite);
   const ready = cachedIconTexture(path);
   if (ready) {
@@ -2298,12 +2309,12 @@ function drawProjectile(
     trail.circle(shadow.x, shadow.y, shadowRadius).fill({ color: 0x000000, alpha: shadowAlpha });
   }
   layer.addChild(trail);
-  if (handoff?.active) return;
   const iconName =
     projectileTypeToEffect(projectile.type) === "fire" && throwerTeam === 3
       ? "incgrenade"
       : projectile.type;
-  drawUtilityIcon(layer, iconName, p.x, p.y, color);
+  const iconAlpha = projectileHandoffIconAlpha(handoff, time);
+  if (iconAlpha > 0) drawUtilityIcon(layer, iconName, p.x, p.y, color, 16, iconAlpha);
 }
 
 function drawWeaponFire(
@@ -2448,6 +2459,7 @@ export const mapRendererLogic = Object.freeze({
   projectileTypeToEffect,
   effectSuppressionRadius,
   projectileHideStart,
+  projectileHandoffIconAlpha,
   projectileTypeForEffect,
   projectileTouchesEffect,
   projectileSeenNearEffect,

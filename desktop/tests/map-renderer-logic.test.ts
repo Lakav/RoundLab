@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { Container, Graphics } from "pixi.js";
+import { Container, Graphics, Sprite } from "pixi.js";
 import { mapRendererLogic as logic } from "@/components/replay/MapRenderer";
 import type { HabitOverlayTrail, HabitReplayProjectile, HabitReplayRound } from "@/lib/replay-store";
 import type { Frame, PlayerPos, ProjectileFrame, ProjectilePos, Round, UtilityEffect } from "@/lib/types";
@@ -538,6 +538,7 @@ describe("MapRenderer Pixi drawing primitives", () => {
       { t: 1, projectiles: [projectile({ x: 100, z: 20 })] },
     ];
     const track = logic.buildProjectileTracks(frames).get(10);
+    const childrenBeforeProjectile = layer.children.length;
     logic.drawProjectile(
       layer,
       projectile({ x: 100, z: 20 }),
@@ -548,6 +549,7 @@ describe("MapRenderer Pixi drawing primitives", () => {
       { effect: effect({ type: "smoke", start: 1, x: 100 }), active: true },
     );
     expect(layer.children.length).toBeGreaterThan(3);
+    expect(layer.children.slice(childrenBeforeProjectile).some((child) => child instanceof Sprite && child.alpha > 0)).toBe(true);
     layer.destroy({ children: true });
   });
 
@@ -611,5 +613,16 @@ describe("MapRenderer diagnostics", () => {
     expect(logic.projectileRenderIssueDebug(projectile(), [{ x: 0, y: 0 }, { x: 1, y: 1 }], { x: 0, y: 0 }, { ...layer, alpha: 0 } as never, 100)).toBe("alpha zero");
     expect(logic.projectileRenderIssueDebug(projectile(), [{ x: 0, y: 0 }, { x: 1, y: 1 }], { x: 0, y: 0 }, { ...layer, destroyed: true } as never, 100)).toBe("object destroyed");
     expect(logic.projectileRenderIssueDebug(projectile(), [{ x: 0, y: 0 }, { x: 1, y: 1 }], { x: 0, y: 0 }, layer as never, 100)).toBeNull();
+  });
+
+  it("keeps the projectile icon visible during the explosion handoff", () => {
+    const he = effect({ type: "he", start: 10.984375, end: 11.884375 });
+    const handoff = { effect: he, active: true };
+
+    expect(logic.projectileHandoffIconAlpha(handoff, he.start)).toBe(1);
+    expect(logic.projectileHandoffIconAlpha(handoff, 11)).toBeGreaterThan(0.8);
+    expect(logic.projectileHandoffIconAlpha(handoff, he.start + 0.08)).toBeCloseTo(0.5);
+    expect(logic.projectileHandoffIconAlpha(handoff, he.start + 0.16)).toBe(0);
+    expect(logic.projectileHandoffIconAlpha(null, 11)).toBe(1);
   });
 });
