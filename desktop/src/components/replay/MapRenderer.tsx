@@ -713,8 +713,18 @@ function habitTimedPoints<T extends { t: number; x: number; y: number; z: number
   groundZ?: number,
 ): { x: number; y: number }[] {
   const points: { x: number; y: number }[] = [];
-  for (const sample of samples) {
-    if (sample.t < start || sample.t > end) continue;
+  // Replay samples are sorted. Restrict the scan to the visible time window
+  // instead of walking the full round for every ghost on every frame.
+  let lo = 0;
+  let hi = samples.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (samples[mid].t < start) lo = mid + 1;
+    else hi = mid;
+  }
+  for (let index = lo; index < samples.length; index++) {
+    const sample = samples[index];
+    if (sample.t > end) break;
     const z = groundZ === undefined ? sample.z : Math.max(0, sample.z - groundZ);
     const p = toRadar(sample.x, sample.y, z);
     const last = points[points.length - 1];
@@ -787,7 +797,7 @@ function drawHabitGhostPlayer(
   if (!position || position.hp <= 0) return;
 
   const color = teamColor(position.team);
-  const recentPath = habitTimedPoints(replay.positions, Math.max(0, time - 7), time, toRadar);
+  const recentPath = habitTimedPoints(replay.positions, Math.max(0, time - 4), time, toRadar);
   const path = new Graphics();
   if (recentPath.length >= 2) {
     path.moveTo(recentPath[0].x, recentPath[0].y);
@@ -913,7 +923,7 @@ function drawHabitReplayOverlay(
   unitsToPx: number,
 ) {
   const utilityGhosts = new Container();
-  utilityGhosts.alpha = 0.62;
+  utilityGhosts.alpha = 0.45;
   const playerGhosts = new Container();
   layer.addChild(utilityGhosts);
   layer.addChild(playerGhosts);
@@ -922,6 +932,208 @@ function drawHabitReplayOverlay(
     for (const effect of replay.effects) drawHabitEffect(utilityGhosts, effect, time, toRadar, unitsToPx, replay.effects);
   }
   for (const replay of replays) drawHabitGhostPlayer(playerGhosts, replay, time, toRadar);
+}
+
+type HabitGhostVisual = {
+  path: Graphics;
+  marker: Container;
+  arrowRotator: Container;
+  labelGroup: Container;
+  badge: Graphics;
+  fullLabel: Text;
+  compactLabel: Text;
+  roundNumber: number;
+  compact: boolean;
+  team?: number;
+};
+
+type HabitReplayScene = {
+  overlay: HabitOverlay;
+  root: Container;
+  utilities: Container;
+  players: Container;
+  ghosts: Map<string, HabitGhostVisual>;
+};
+
+function createHabitGhostVisual(replay: HabitReplayRound): HabitGhostVisual {
+  const path = new Graphics();
+  const marker = new Container();
+  const arrowRotator = new Container();
+  const arrow = new Graphics();
+  arrowRotator.addChild(arrow);
+  marker.addChild(arrowRotator);
+
+  const labelStyle = {
+    fontFamily: "ui-sans-serif, system-ui",
+    fontSize: 44,
+    fontWeight: "600",
+    fill: 0x121212,
+  } as const;
+  const fullLabel = new Text({
+    text: `R${replay.roundNumber} · ${displayName(replay.playerName)}`,
+    style: labelStyle,
+    // These labels are small on screen. A capped resolution avoids creating
+    // dozens of oversized text textures on high-DPI displays.
+    resolution: Math.min(1.5, window.devicePixelRatio || 1),
+  });
+  const compactLabel = new Text({
+    text: `R${replay.roundNumber}`,
+    style: labelStyle,
+    resolution: Math.min(1.5, window.devicePixelRatio || 1),
+  });
+  for (const label of [fullLabel, compactLabel]) {
+    label.anchor.set(0.5, 0.5);
+    label.scale.set(0.24);
+  }
+  compactLabel.visible = false;
+  const labelGroup = new Container();
+  labelGroup.position.set(0, -13);
+  const badge = new Graphics();
+  labelGroup.addChild(badge);
+  labelGroup.addChild(fullLabel);
+  labelGroup.addChild(compactLabel);
+  marker.addChild(labelGroup);
+  return {
+    path,
+    marker,
+    arrowRotator,
+    labelGroup,
+    badge,
+    fullLabel,
+    compactLabel,
+    roundNumber: replay.roundNumber,
+    compact: false,
+  };
+}
+
+function drawHabitGhostBadge(visual: HabitGhostVisual, color: number) {
+  const label = visual.compact ? visual.compactLabel : visual.fullLabel;
+  const width = Math.max(18, label.width + 8);
+  visual.badge.clear()
+    .roundRect(-width / 2, -5.25, width, 9.5, 3)
+    .fill({ color, alpha: 0.95 })
+    .stroke({ color: 0x000000, width: 1, alpha: 0.55 });
+}
+
+function updateHabitGhostVisual(
+  visual: HabitGhostVisual,
+  replay: HabitReplayRound,
+  time: number,
+  toRadar: (x: number, y: number, z?: number) => { x: number; y: number },
+) {
+  const position = sampleHabitPosition(replay.positions, time);
+  const died = Boolean(replay.death && time >= replay.death.t);
+  const pose = died && replay.death
+    ? sampleHabitPosition(replay.positions, replay.death.t) ?? position
+    : position;
+  if (!pose || (!died && pose.hp <= 0)) {
+    visual.path.visible = false;
+    visual.marker.visible = false;
+    return;
+  }
+
+  const world = died && replay.death ? replay.death : pose;
+  const point = toRadar(world.x, world.y, world.z);
+  const color = teamColor(pose.team);
+  visual.path.visible = !died;
+  visual.path.clear();
+  if (!died) {
+    const recentPath = habitTimedPoints(replay.positions, Math.max(0, time - 4), time, toRadar);
+    if (recentPath.length >= 2) {
+      visual.path.moveTo(recentPath[0].x, recentPath[0].y);
+      for (let index = 1; index < recentPath.length; index++) {
+        visual.path.lineTo(recentPath[index].x, recentPath[index].y);
+      }
+      visual.path.stroke({ color, width: 1.4, alpha: 0.16 });
+    }
+    visual.path.circle(point.x, point.y, 8).stroke({ color, width: 1.2, alpha: 0.22 });
+  }
+
+  visual.marker.visible = true;
+  visual.marker.position.set(point.x, point.y);
+  visual.marker.alpha = died ? 0.18 : 0.58;
+  visual.arrowRotator.rotation = playerArrowRotation(pose.yaw);
+  drawDirectionalPlayerArrow(visual.arrowRotator.getChildAt(0) as Graphics, color);
+  if (visual.team !== pose.team) {
+    visual.team = pose.team;
+    drawHabitGhostBadge(visual, color);
+  }
+}
+
+function layoutHabitGhostLabels(ghosts: HabitGhostVisual[]) {
+  const visible = ghosts.filter((ghost) => ghost.marker.visible);
+  for (const ghost of visible) {
+    const neighbours = visible.filter(
+      (candidate) => candidate !== ghost && Math.hypot(
+        candidate.marker.position.x - ghost.marker.position.x,
+        candidate.marker.position.y - ghost.marker.position.y,
+      ) < 28,
+    ).length;
+    const compact = neighbours > 0;
+    if (ghost.compact !== compact) {
+      ghost.compact = compact;
+      ghost.fullLabel.visible = !compact;
+      ghost.compactLabel.visible = compact;
+      drawHabitGhostBadge(ghost, teamColor(ghost.team));
+    }
+    if (!compact) {
+      ghost.labelGroup.position.set(0, -13);
+      continue;
+    }
+    // Spread clustered round badges deterministically around the exact player
+    // marker. This keeps every round identifiable without moving its arrow.
+    const slot = Math.max(0, ghost.roundNumber - 1);
+    const angle = slot * 2.399963229728653;
+    const radius = 17 + Math.floor((slot % 24) / 8) * 12;
+    ghost.labelGroup.position.set(Math.cos(angle) * radius, Math.sin(angle) * radius);
+  }
+}
+
+function renderHabitReplayScene(
+  layer: Container,
+  existing: HabitReplayScene | null,
+  overlay: HabitOverlay,
+  time: number,
+  toRadar: (x: number, y: number, z?: number) => { x: number; y: number },
+  unitsToPx: number,
+  destroyQueue: DisposableDisplayObject[],
+): HabitReplayScene {
+  let scene = existing;
+  if (!scene || scene.overlay !== overlay || scene.root.destroyed) {
+    if (scene && !scene.root.destroyed) {
+      layer.removeChild(scene.root);
+      scene.root.destroy({ children: true });
+    }
+    const root = new Container();
+    const utilities = new Container();
+    utilities.alpha = 0.45;
+    const players = new Container();
+    root.addChild(utilities);
+    root.addChild(players);
+    layer.addChild(root);
+    scene = { overlay, root, utilities, players, ghosts: new Map() };
+    for (const replay of overlay.replays ?? []) {
+      const ghost = createHabitGhostVisual(replay);
+      ghost.marker.zIndex = 1;
+      players.addChild(ghost.path);
+      players.addChild(ghost.marker);
+      scene.ghosts.set(replay.id, ghost);
+    }
+  }
+
+  queueLayerChildrenForDestroy(scene.utilities, destroyQueue);
+  for (const replay of overlay.replays ?? []) {
+    for (const projectile of replay.projectiles) {
+      drawHabitProjectile(scene.utilities, projectile, time, toRadar, replay.effects);
+    }
+    for (const effect of replay.effects) {
+      drawHabitEffect(scene.utilities, effect, time, toRadar, unitsToPx, replay.effects);
+    }
+    const ghost = scene.ghosts.get(replay.id);
+    if (ghost) updateHabitGhostVisual(ghost, replay, time, toRadar);
+  }
+  layoutHabitGhostLabels([...scene.ghosts.values()]);
+  return scene;
 }
 
 function fireVariantFromProjectiles(effect: UtilityEffect, frames: ProjectileSample[], cache?: RoundRenderCache): UtilityEffect {
@@ -2483,6 +2695,7 @@ export const mapRendererLogic = Object.freeze({
   drawHabitProjectile,
   drawHabitEffect,
   drawHabitReplayOverlay,
+  renderHabitReplayScene,
   fireVariantFromProjectiles,
   circleOverlapArea,
   fireRadiusWorld,
@@ -2567,6 +2780,7 @@ export function MapRenderer({
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sizeRef = useRef(size);
+  const initialCondensedRef = useRef(condensed);
   const [radarLayer, setRadarLayer] = useState<RadarLayer>("default");
   const radarLayerRef = useRef<RadarLayer>("default");
   const appRef = useRef<Application | null>(null);
@@ -2581,6 +2795,8 @@ export function MapRenderer({
   const loadedMapRef = useRef<string | null>(null);
   const defuseVisualRef = useRef<{ key: string; start: number; lastTime: number } | null>(null);
   const deferredDestroyRef = useRef<DisposableDisplayObject[]>([]);
+  const habitReplaySceneRef = useRef<HabitReplayScene | null>(null);
+  const condensedLayersClearedRef = useRef(false);
   const projectileDebugRoundRef = useRef<string | null>(null);
   const projectileDebugLastFrameLogRef = useRef(0);
   const projectileDebugHiddenRef = useRef<Set<string>>(new Set());
@@ -2624,7 +2840,9 @@ export function MapRenderer({
         height: 1,
         antialias: true,
         backgroundAlpha: 0,
-        resolution: window.devicePixelRatio || 1,
+        resolution: initialCondensedRef.current
+          ? Math.min(1.5, window.devicePixelRatio || 1)
+          : window.devicePixelRatio || 1,
         autoDensity: true,
       });
       if (disposed) {
@@ -2669,6 +2887,8 @@ export function MapRenderer({
       habitLayerRef.current = null;
       deathLayerRef.current = null;
       deferredDestroyRef.current = [];
+      habitReplaySceneRef.current = null;
+      condensedLayersClearedRef.current = false;
     };
   }, []);
 
@@ -2676,8 +2896,11 @@ export function MapRenderer({
     sizeRef.current = size;
     const app = appRef.current;
     if (!app) return;
+    app.renderer.resolution = condensed
+      ? Math.min(1.5, window.devicePixelRatio || 1)
+      : window.devicePixelRatio || 1;
     app.renderer.resize(size, size);
-  }, [size]);
+  }, [condensed, size]);
 
   useEffect(() => {
     if (!preloadMatch) return;
@@ -2708,10 +2931,10 @@ export function MapRenderer({
       }
       const layer = habitLayerRef.current;
       if (cancel || !layer) return;
+      if (habitOverlay?.mode === "replay") return;
       queueLayerChildrenForDestroy(layer, deferredDestroyRef.current);
       drainDestroyQueue(deferredDestroyRef.current, 24, 2);
       if (!habitOverlay || !map) return;
-      if (habitOverlay.mode === "replay") return;
       const calib = MAP_CALIBRATION[map];
       if (!calib) return;
       const scale = size / RADAR_SIZE;
@@ -2761,6 +2984,7 @@ export function MapRenderer({
     let lastRenderedRound = -1;
     let lastRenderedTime = Number.NaN;
     let lastRenderedOverlay: HabitOverlay | null = null;
+    let lastCondensedPaint = Number.NEGATIVE_INFINITY;
     const loop = (now: number) => {
       raf = requestAnimationFrame(loop);
       const dt = (now - last) / 1000;
@@ -2769,6 +2993,11 @@ export function MapRenderer({
       state.step(dt);
       const { match, currentRoundIdx, time, playing } = useReplay.getState();
       const overlay = habitOverlayRef.current;
+      // Updating the store remains tied to requestAnimationFrame so playback
+      // time is exact. The dense multi-round canvas itself does not benefit
+      // from painting more than 30 times per second.
+      if (condensed && playing && now - lastCondensedPaint < 1000 / 30) return;
+      if (condensed) lastCondensedPaint = now;
       const unchanged =
         match === lastRenderedMatch &&
         currentRoundIdx === lastRenderedRound &&
@@ -2795,14 +3024,56 @@ export function MapRenderer({
       lastRenderedTime = time;
       lastRenderedOverlay = overlay;
 
-      const bombFrames = roundFramesWithBombFallback(round);
-      const positions = sampleFrame(round.frames, time);
+      const positions = condensed ? [] : sampleFrame(round.frames, time);
       const radarPositions =
         condensed && overlay?.mode === "replay" && overlay.replays?.length
           ? habitRadarLayerPositions(overlay.replays, time)
           : positions;
       const autoRadarLayer = radarLayerForPositions(match.meta.map, radarPositions, "default");
       syncRadarLayer(radarLayerMode === "auto" ? autoRadarLayer : radarLayerMode);
+      const scale = size / RADAR_SIZE;
+      const toRadar = (x: number, y: number, z = 0) => {
+        const p = worldToRadar(x, y, calib);
+        return { x: p.x * scale, y: p.y * scale - heightLift(z) };
+      };
+      const unitsToPx = scale / calib.scale;
+      if (condensed) {
+        if (!condensedLayersClearedRef.current) {
+          queueLayerChildrenForDestroy(utilityLayer, deferredDestroyRef.current);
+          queueLayerChildrenForDestroy(bombLayer, deferredDestroyRef.current);
+          queueLayerChildrenForDestroy(deathLayer, deferredDestroyRef.current);
+          for (const [, sprite] of spritesRef.current) {
+            layer.removeChild(sprite.container);
+            sprite.container.destroy({ children: true });
+          }
+          spritesRef.current.clear();
+          bombSpriteRef.current = null;
+          condensedLayersClearedRef.current = true;
+        }
+        if (habitLayer && overlay?.mode === "replay" && overlay.replays?.length) {
+          habitReplaySceneRef.current = renderHabitReplayScene(
+            habitLayer,
+            habitReplaySceneRef.current,
+            overlay,
+            time,
+            toRadar,
+            unitsToPx,
+            deferredDestroyRef.current,
+          );
+        }
+        drainDestroyQueue(deferredDestroyRef.current, 48, 3);
+        return;
+      }
+      condensedLayersClearedRef.current = false;
+      if (habitReplaySceneRef.current) {
+        const scene = habitReplaySceneRef.current;
+        if (!scene.root.destroyed) {
+          habitLayer?.removeChild(scene.root);
+          scene.root.destroy({ children: true });
+        }
+        habitReplaySceneRef.current = null;
+      }
+      const bombFrames = roundFramesWithBombFallback(round);
       const frame = nearestFrame(bombFrames, time);
       const bombPair = framePair(bombFrames, time);
       const smoothBomb = (() => {
@@ -2823,17 +3094,11 @@ export function MapRenderer({
       const plantedAt = activeBombPlantTime(round, time);
       const bombExplosion = recentBombExplosion(round, bombFrames, time);
       const throwerTeams = lastKnownTeams(round.frames, time);
-      const scale = size / RADAR_SIZE;
       const seen = new Set<number>();
       const utilityChildrenBeforeCleanup = utilityLayer.children.length;
       queueLayerChildrenForDestroy(utilityLayer, deferredDestroyRef.current);
       queueLayerChildrenForDestroy(deathLayer, deferredDestroyRef.current);
       drainDestroyQueue(deferredDestroyRef.current);
-
-      const toRadar = (x: number, y: number, z = 0) => {
-        const p = worldToRadar(x, y, calib);
-        return { x: p.x * scale, y: p.y * scale - heightLift(z) };
-      };
 
       const renderCache = getRoundRenderCache(round);
       const projectileFrames = renderCache.projectileFrames;
@@ -2881,26 +3146,8 @@ export function MapRenderer({
       } else {
         projectileDebugDetectedRef.current = false;
       }
-      const unitsToPx = scale / calib.scale;
       const activeEffects = roundEffects.filter((e) => time >= e.start && time <= e.end);
       const currentHabitOverlay = habitOverlayRef.current;
-      if (condensed) {
-        queueLayerChildrenForDestroy(bombLayer, deferredDestroyRef.current);
-        for (const [, sprite] of spritesRef.current) {
-          layer.removeChild(sprite.container);
-          sprite.container.destroy({ children: true });
-        }
-        spritesRef.current.clear();
-        bombSpriteRef.current = null;
-        if (habitLayer) {
-          queueLayerChildrenForDestroy(habitLayer, deferredDestroyRef.current);
-          if (currentHabitOverlay?.mode === "replay" && currentHabitOverlay.replays?.length) {
-            drawHabitReplayOverlay(habitLayer, currentHabitOverlay.replays, time, toRadar, unitsToPx);
-          }
-        }
-        drainDestroyQueue(deferredDestroyRef.current);
-        return;
-      }
       if (habitLayer && currentHabitOverlay?.mode === "replay" && currentHabitOverlay.replays?.length) {
         queueLayerChildrenForDestroy(habitLayer, deferredDestroyRef.current);
         drawHabitReplayOverlay(habitLayer, currentHabitOverlay.replays, time, toRadar, unitsToPx);

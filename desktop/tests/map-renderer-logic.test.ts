@@ -516,6 +516,36 @@ describe("MapRenderer habit overlay calculations", () => {
     layer.destroy({ children: true });
   });
 
+  it("reuses condensed player markers and compacts colliding labels", () => {
+    const layer = new Container();
+    const queue: Array<{ destroyed?: boolean; destroy: (options?: unknown) => void }> = [];
+    const nearbyReplay = {
+      ...replay,
+      id: "r2",
+      roundNumber: 2,
+      positions: positions.map((sample) => ({ ...sample, x: sample.x + 2, y: sample.y + 2 })),
+    };
+    const overlay = {
+      label: "Player",
+      mode: "replay" as const,
+      trails: [],
+      replays: [replay, nearbyReplay],
+    };
+    const first = logic.renderHabitReplayScene(layer, null, overlay, 0.5, toRadar, 1, queue as never);
+    const firstGhost = first.ghosts.get("r1");
+    expect(firstGhost?.compact).toBe(true);
+    expect(firstGhost?.compactLabel.visible).toBe(true);
+    expect(firstGhost?.fullLabel.visible).toBe(false);
+    const marker = firstGhost?.marker;
+    const playerChildren = first.players.children.length;
+
+    const second = logic.renderHabitReplayScene(layer, first, overlay, 0.75, toRadar, 1, queue as never);
+    expect(second).toBe(first);
+    expect(second.ghosts.get("r1")?.marker).toBe(marker);
+    expect(second.players.children).toHaveLength(playerChildren);
+    layer.destroy({ children: true });
+  });
+
   it("draws replay projectiles through their effect hand-off", () => {
     const layer = new Container();
     const replayProjectile: HabitReplayProjectile = {
