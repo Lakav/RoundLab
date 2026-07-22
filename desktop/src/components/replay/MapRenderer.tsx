@@ -945,13 +945,6 @@ type HabitGhostVisual = {
   path: Graphics;
   marker: Container;
   arrowRotator: Container;
-  labelGroup: Container;
-  badge: Graphics;
-  fullLabel: Text;
-  compactLabel: Text;
-  roundNumber: number;
-  compact: boolean;
-  team?: number;
 };
 
 type HabitReplayScene = {
@@ -965,64 +958,14 @@ type HabitReplayScene = {
   lastEffectTime: number;
 };
 
-function createHabitGhostVisual(replay: HabitReplayRound): HabitGhostVisual {
+function createHabitGhostVisual(): HabitGhostVisual {
   const path = new Graphics();
   const marker = new Container();
   const arrowRotator = new Container();
   const arrow = new Graphics();
   arrowRotator.addChild(arrow);
   marker.addChild(arrowRotator);
-
-  const labelStyle = {
-    fontFamily: "ui-sans-serif, system-ui",
-    fontSize: 44,
-    fontWeight: "600",
-    fill: 0x121212,
-  } as const;
-  const fullLabel = new Text({
-    text: `R${replay.roundNumber} · ${displayName(replay.playerName)}`,
-    style: labelStyle,
-    // These labels are small on screen. A capped resolution avoids creating
-    // dozens of oversized text textures on high-DPI displays.
-    resolution: Math.min(1.5, window.devicePixelRatio || 1),
-  });
-  const compactLabel = new Text({
-    text: `R${replay.roundNumber}`,
-    style: labelStyle,
-    resolution: Math.min(1.5, window.devicePixelRatio || 1),
-  });
-  for (const label of [fullLabel, compactLabel]) {
-    label.anchor.set(0.5, 0.5);
-    label.scale.set(0.24);
-  }
-  compactLabel.visible = false;
-  const labelGroup = new Container();
-  labelGroup.position.set(0, -13);
-  const badge = new Graphics();
-  labelGroup.addChild(badge);
-  labelGroup.addChild(fullLabel);
-  labelGroup.addChild(compactLabel);
-  marker.addChild(labelGroup);
-  return {
-    path,
-    marker,
-    arrowRotator,
-    labelGroup,
-    badge,
-    fullLabel,
-    compactLabel,
-    roundNumber: replay.roundNumber,
-    compact: false,
-  };
-}
-
-function drawHabitGhostBadge(visual: HabitGhostVisual, color: number) {
-  const label = visual.compact ? visual.compactLabel : visual.fullLabel;
-  const width = Math.max(18, label.width + 8);
-  visual.badge.clear()
-    .roundRect(-width / 2, -5.25, width, 9.5, 3)
-    .fill({ color, alpha: 0.95 })
-    .stroke({ color: 0x000000, width: 1, alpha: 0.55 });
+  return { path, marker, arrowRotator };
 }
 
 function updateHabitGhostVisual(
@@ -1069,64 +1012,6 @@ function updateHabitGhostVisual(
   visual.marker.alpha = died ? 0.18 : 0.58;
   visual.arrowRotator.rotation = playerArrowRotation(pose.yaw);
   drawDirectionalPlayerArrow(visual.arrowRotator.getChildAt(0) as Graphics, color);
-  if (visual.team !== pose.team) {
-    visual.team = pose.team;
-    drawHabitGhostBadge(visual, color);
-  }
-}
-
-function layoutHabitGhostLabels(ghosts: HabitGhostVisual[], compactAll = false) {
-  const visible = ghosts.filter((ghost) => ghost.marker.visible);
-  const configureLabel = (ghost: HabitGhostVisual, compact: boolean, compactText = `R${ghost.roundNumber}`) => {
-    const changed = ghost.compact !== compact || ghost.compactLabel.text !== compactText;
-    ghost.compact = compact;
-    ghost.fullLabel.visible = !compact;
-    ghost.compactLabel.visible = compact;
-    if (ghost.compactLabel.text !== compactText) ghost.compactLabel.text = compactText;
-    if (changed) drawHabitGhostBadge(ghost, teamColor(ghost.team));
-  };
-  for (const ghost of visible) {
-    ghost.labelGroup.visible = true;
-    configureLabel(ghost, compactAll);
-    ghost.labelGroup.position.set(0, -13);
-  }
-
-  const remaining = new Set(visible);
-  while (remaining.size) {
-    const seed = remaining.values().next().value as HabitGhostVisual;
-    remaining.delete(seed);
-    const cluster = [seed];
-    for (let index = 0; index < cluster.length; index++) {
-      const current = cluster[index];
-      for (const candidate of [...remaining]) {
-        if (candidate.team !== current.team) continue;
-        if (Math.hypot(
-          candidate.marker.position.x - current.marker.position.x,
-          candidate.marker.position.y - current.marker.position.y,
-        ) >= 28) continue;
-        remaining.delete(candidate);
-        cluster.push(candidate);
-      }
-    }
-    if (cluster.length >= 4) {
-      const leader = cluster.reduce((best, candidate) =>
-        candidate.roundNumber < best.roundNumber ? candidate : best,
-      );
-      for (const ghost of cluster) ghost.labelGroup.visible = ghost === leader;
-      configureLabel(leader, true, `×${cluster.length}`);
-      const teamOffset = leader.team === 2 ? -14 : leader.team === 3 ? 14 : 0;
-      leader.labelGroup.position.set(teamOffset, -17);
-      continue;
-    }
-    if (cluster.length <= 1) continue;
-    for (const ghost of cluster) {
-      configureLabel(ghost, true);
-      // Fan only small groups. Larger groups use one aggregate badge above.
-      const slot = Math.max(0, ghost.roundNumber - 1);
-      const angle = slot * 2.399963229728653;
-      ghost.labelGroup.position.set(Math.cos(angle) * 18, Math.sin(angle) * 18);
-    }
-  }
 }
 
 function renderHabitReplayScene(
@@ -1166,7 +1051,7 @@ function renderHabitReplayScene(
       lastEffectTime: Number.NEGATIVE_INFINITY,
     };
     for (const replay of overlay.replays ?? []) {
-      const ghost = createHabitGhostVisual(replay);
+      const ghost = createHabitGhostVisual();
       ghost.marker.zIndex = 1;
       players.addChild(ghost.path);
       players.addChild(ghost.marker);
@@ -1211,7 +1096,6 @@ function renderHabitReplayScene(
     const ghost = scene.ghosts.get(replay.id);
     if (ghost) updateHabitGhostVisual(ghost, replay, time, toRadar, dense ? 2 : 4);
   }
-  layoutHabitGhostLabels([...scene.ghosts.values()], dense);
   return scene;
 }
 
