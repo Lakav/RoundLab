@@ -585,15 +585,16 @@ describe("MapRenderer habit overlay calculations", () => {
 describe("MapRenderer Pixi drawing primitives", () => {
   const toRadar = (x: number, y: number) => ({ x, y });
 
-  it("renders smoke, flash, HE, fire and bomb markers", () => {
+  it("renders distinct smoke, flash, HE, fire, decoy and bomb effects", () => {
     const layer = new Container();
     logic.drawEffect(layer, effect({ type: "smoke", start: 0, end: 10 }), 5, toRadar, 1);
     logic.drawEffect(layer, effect({ type: "flash", start: 0, end: 1 }), 0.1, toRadar, 1);
     logic.drawEffect(layer, effect({ type: "he", start: 0, end: 1 }), 0.05, toRadar, 1);
     logic.drawEffect(layer, effect({ type: "he", start: 0, end: 1 }), 0.5, toRadar, 1);
     logic.drawEffect(layer, effect({ type: "fire", start: 0, end: 7 }), 3, toRadar, 1);
+    logic.drawEffect(layer, effect({ type: "decoy", start: 0, end: 15 }), 0.1, toRadar, 1);
     logic.drawEffect(layer, effect({ type: "bomb_planted", start: 0, end: 40 }), 3, toRadar, 1);
-    expect(layer.children.length).toBeGreaterThanOrEqual(9);
+    expect(layer.children.length).toBeGreaterThanOrEqual(11);
     layer.destroy({ children: true });
   });
 

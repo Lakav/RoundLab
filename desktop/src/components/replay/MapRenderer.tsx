@@ -2391,6 +2391,37 @@ function drawCountdownLabel(layer: Container, text: string, x: number, y: number
   layer.addChild(g);
 }
 
+function effectRandom(effect: UtilityEffect, index: number) {
+  const typeSeed = effect.type.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const value = Math.sin(
+    effect.x * 0.0137 + effect.y * 0.0191 + effect.start * 7.31 + typeSeed * 0.17 + index * 91.73,
+  ) * 43758.5453;
+  return value - Math.floor(value);
+}
+
+function drawImpactFragments(
+  g: Graphics,
+  effect: UtilityEffect,
+  cx: number,
+  cy: number,
+  progress: number,
+  radius: number,
+  color: number,
+  count: number,
+) {
+  const alpha = 1 - progress;
+  for (let index = 0; index < count; index++) {
+    const angle = effectRandom(effect, index) * Math.PI * 2;
+    const distance = radius * progress * (0.45 + effectRandom(effect, index + 20) * 0.55);
+    const length = 3 + effectRandom(effect, index + 40) * 7;
+    const x = cx + Math.cos(angle) * distance;
+    const y = cy + Math.sin(angle) * distance;
+    g.moveTo(x, y)
+      .lineTo(x - Math.cos(angle) * length, y - Math.sin(angle) * length)
+      .stroke({ color, width: index % 3 === 0 ? 2 : 1.2, alpha: alpha * 0.85 });
+  }
+}
+
 function drawEffect(
   layer: Container,
   effect: UtilityEffect,
@@ -2412,10 +2443,23 @@ function drawEffect(
     const alpha = Math.max(0, fadeIn * fadeOut);
     const radius = 156 * unitsToPx;
     const teamCol = teamColor(effect.team);
-    g.circle(p.x, p.y, radius).fill({
-      color: 0x9ca3af,
-      alpha: 0.42 * alpha * smokeBlastClearAlpha(effect, contextualEffects, time),
-    });
+    const clearAlpha = smokeBlastClearAlpha(effect, contextualEffects, time);
+    g.circle(p.x, p.y, radius).fill({ color: 0x737983, alpha: 0.31 * alpha * clearAlpha });
+    // Layered, deterministic lobes make the deployment read as a cloud without
+    // flickering from frame to frame or hiding the whole radar under one disc.
+    for (let index = 0; index < 9; index++) {
+      const angle = effectRandom(effect, index) * Math.PI * 2;
+      const distance = radius * (0.18 + effectRandom(effect, index + 10) * 0.46) * fadeIn;
+      const lobeRadius = radius * (0.23 + effectRandom(effect, index + 20) * 0.16) * fadeIn;
+      g.circle(p.x + Math.cos(angle) * distance, p.y + Math.sin(angle) * distance, lobeRadius)
+        .fill({ color: index % 2 ? 0xaeb3ba : 0x8d939c, alpha: 0.16 * alpha * clearAlpha });
+    }
+    if (age < 0.75) {
+      const burst = easeOutCubic(age / 0.75);
+      g.circle(p.x, p.y, radius * (0.2 + burst * 0.8))
+        .stroke({ color: 0xd8dbe0, width: 3 - burst * 1.5, alpha: (1 - burst) * 0.8 * clearAlpha });
+      drawImpactFragments(g, effect, p.x, p.y, burst, radius * 0.82, 0xc7cbd1, 7);
+    }
     drawTimerArc(g, p.x, p.y, radius, remaining, teamCol, 1.7);
     const secsLeft = Math.max(0, Math.ceil(effect.end - time));
     layer.addChild(g);
@@ -2424,20 +2468,22 @@ function drawEffect(
   }
 
   if (effect.type === "flash") {
-    const pulseR = 8 + life * 36;
-    g.circle(p.x, p.y, pulseR)
-      .stroke({ color: 0xfffbeb, width: 3, alpha: 1 - life });
-    if (life < 0.25) {
-      g.circle(p.x, p.y, 14)
-        .fill({ color: 0xffffff, alpha: 0.95 * (1 - life * 4) });
-      for (let i = 0; i < 8; i++) {
-        const ang = (i / 8) * Math.PI * 2;
-        const inner = 16;
-        const outer = 16 + (1 - life * 4) * 18;
-        g.moveTo(p.x + Math.cos(ang) * inner, p.y + Math.sin(ang) * inner)
-          .lineTo(p.x + Math.cos(ang) * outer, p.y + Math.sin(ang) * outer)
-          .stroke({ color: 0xffffff, width: 2.5, alpha: 0.9 * (1 - life * 4) });
-      }
+    const burst = clamp01(age / 0.5);
+    const eased = easeOutCubic(burst);
+    const alpha = 1 - burst;
+    g.circle(p.x, p.y, 7 + eased * 41)
+      .stroke({ color: 0xfff7d6, width: 3.2 - eased * 1.5, alpha: alpha * 0.95 });
+    g.circle(p.x, p.y, 4 + eased * 25)
+      .stroke({ color: 0xffffff, width: 1.3, alpha: alpha * 0.72 });
+    g.circle(p.x, p.y, 13 - eased * 5)
+      .fill({ color: 0xffffff, alpha: Math.max(0, 0.95 - burst * 1.7) });
+    for (let index = 0; index < 12; index++) {
+      const angle = (index / 12) * Math.PI * 2 + effectRandom(effect, index) * 0.14;
+      const inner = 11 + eased * 4;
+      const outer = inner + (8 + effectRandom(effect, index + 20) * 18) * alpha;
+      g.moveTo(p.x + Math.cos(angle) * inner, p.y + Math.sin(angle) * inner)
+        .lineTo(p.x + Math.cos(angle) * outer, p.y + Math.sin(angle) * outer)
+        .stroke({ color: index % 2 ? 0xfffbeb : 0xffffff, width: index % 3 === 0 ? 2.5 : 1.4, alpha: alpha });
     }
     layer.addChild(g);
     return;
@@ -2446,22 +2492,22 @@ function drawEffect(
   if (effect.type === "he") {
     // HE damage radius ≈ 350 world units.
     const maxR = 200 * unitsToPx;
-    const t01 = Math.min(1, age / 0.9);
-    // White-hot flash in the first 120ms
-    if (age < 0.12) {
-      const flashA = 1 - age / 0.12;
-      const flashR = maxR * 0.35;
-      g.circle(p.x, p.y, flashR).fill({ color: 0xfffbeb, alpha: 0.95 * flashA });
-    }
-    // Expanding shockwave
-    const r = maxR * t01;
+    const t01 = clamp01(age / 0.82);
+    const shock = easeOutCubic(t01);
     const alpha = 1 - t01;
-    g.circle(p.x, p.y, r * 0.75).fill({ color: 0xf97316, alpha: 0.35 * alpha });
-    g.circle(p.x, p.y, r).stroke({ color: 0xfbbf24, width: 4, alpha });
-    g.circle(p.x, p.y, r + 4).stroke({ color: 0xfffbeb, width: 1.5, alpha: 0.7 * alpha });
-    // Bright core that fades
-    const coreR = 10 * unitsToPx + t01 * 8;
-    g.circle(p.x, p.y, coreR).fill({ color: 0xfde047, alpha: 0.9 * alpha });
+    const r = maxR * shock;
+    if (age < 0.14) {
+      const flashA = 1 - age / 0.14;
+      g.circle(p.x, p.y, maxR * (0.18 + 0.27 * (1 - flashA)))
+        .fill({ color: 0xfffbeb, alpha: 0.98 * flashA });
+    }
+    g.circle(p.x, p.y, r * 0.7).fill({ color: 0xea580c, alpha: 0.26 * alpha });
+    g.circle(p.x, p.y, r).stroke({ color: 0xfbbf24, width: 4.5 - shock * 2.5, alpha });
+    g.circle(p.x, p.y, r + 5).stroke({ color: 0xfffbeb, width: 1.2, alpha: alpha * 0.68 });
+    const coreR = Math.max(3, maxR * 0.22 * (1 - shock * 0.55));
+    g.circle(p.x, p.y, coreR).fill({ color: 0xf97316, alpha: alpha * 0.92 });
+    g.circle(p.x, p.y, coreR * 0.48).fill({ color: 0xfef3c7, alpha });
+    drawImpactFragments(g, effect, p.x, p.y, shock, maxR * 0.95, 0xfbbf24, 13);
     layer.addChild(g);
     return;
   }
@@ -2471,6 +2517,12 @@ function drawEffect(
     const alpha = Math.min(1, age / 0.25) * (life > 0.92 ? 1 - (life - 0.92) / 0.08 : 1);
     const color = teamColor(effect.team);
     g.circle(p.x, p.y, radius).fill({ color: teamDarkColor(effect.team), alpha: 0.32 * alpha });
+    if (age < 0.7) {
+      const ignition = easeOutCubic(age / 0.7);
+      g.circle(p.x, p.y, radius * (0.18 + ignition * 0.82))
+        .stroke({ color, width: 3.5 - ignition * 1.8, alpha: (1 - ignition) * 0.9 });
+      drawImpactFragments(g, effect, p.x, p.y, ignition, radius * 1.15, color, 9);
+    }
     drawTimerArc(g, p.x, p.y, radius, remaining, color, 1.7);
     layer.addChild(g);
     drawFireMarker(layer, p.x, p.y, color, teamDarkColor(effect.team));
@@ -2478,6 +2530,17 @@ function drawEffect(
   }
 
   if (effect.type === "decoy") {
+    const shotPhase = (age % 0.72) / 0.72;
+    if (shotPhase < 0.42) {
+      const pulse = easeOutCubic(shotPhase / 0.42);
+      g.circle(p.x, p.y, 6 + pulse * 16)
+        .stroke({ color: 0xc4b5fd, width: 2.2 - pulse, alpha: (1 - pulse) * 0.72 });
+      const angle = effectRandom(effect, Math.floor(age / 0.72)) * Math.PI * 2;
+      g.moveTo(p.x + Math.cos(angle) * 7, p.y + Math.sin(angle) * 7)
+        .lineTo(p.x + Math.cos(angle) * (13 + pulse * 5), p.y + Math.sin(angle) * (13 + pulse * 5))
+        .stroke({ color: 0xede9fe, width: 1.8, alpha: (1 - pulse) * 0.85 });
+      layer.addChild(g);
+    }
     const wobbleX = Math.sin(time * 17) * 2.2;
     const wobbleY = Math.cos(time * 13) * 1.6;
     const rot = Math.sin(time * 20) * 0.22;
