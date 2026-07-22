@@ -58,23 +58,72 @@ describe("replay controls and status components", () => {
     expect(screen.getByText("01:45")).toBeInTheDocument();
   });
 
-  it("renders recent kills and hides expired ones", () => {
+  it("renders the complete CS2 killfeed modifiers and hides expired kills", () => {
     const round = {
       ...replayRound(1),
-      events: [{ t: 2, type: "kill" as const, killer: 1, victim: 2, weapon: "ak47", hs: true }],
+      events: [
+        {
+          t: 2,
+          type: "kill" as const,
+          killer: 1,
+          victim: 2,
+          assist: 3,
+          weapon: "awp",
+          hs: true,
+          flashAssist: true,
+          noScope: true,
+          throughSmoke: true,
+          attackerBlind: true,
+          penetrated: 2,
+          dominated: true,
+          revenge: true,
+        },
+      ],
     };
     const match = replayMatch([round]);
     match.players.push({ steamId: 2, name: "Victim", team: "CT" });
+    match.players.push({ steamId: 3, name: "Assistant", team: "T" });
     useReplay.getState().setMatch("match-a", match);
     useReplay.getState().setTime(5);
     const view = render(<KillFeed />);
     expect(screen.getByText("Player One")).toBeInTheDocument();
+    expect(screen.getByText("Assistant")).toBeInTheDocument();
     expect(screen.getByText("Victim")).toBeInTheDocument();
-    expect(screen.getByText("HS")).toBeInTheDocument();
+    for (const icon of [
+      "blind",
+      "flash-assist",
+      "weapon",
+      "no-scope",
+      "smoke",
+      "wallbang",
+      "headshot",
+      "domination",
+      "revenge",
+    ]) {
+      expect(view.container.querySelector(`[data-killfeed-icon="${icon}"]`)).toBeInTheDocument();
+    }
+    expect(screen.getByLabelText(/Player One eliminated Victim with awp/)).toHaveAccessibleName(
+      /assisted by Assistant with a flashbang.*through 2 surfaces.*headshot/
+    );
     view.unmount();
 
     useReplay.getState().setTime(9);
     expect(render(<KillFeed />).container).toBeEmptyDOMElement();
+  });
+
+  it("labels world and self-inflicted deaths without inventing a game icon", () => {
+    const round = {
+      ...replayRound(1),
+      events: [{ t: 2, type: "kill" as const, killer: 2, victim: 2, weapon: "world" }],
+    };
+    const match = replayMatch([round]);
+    match.players.push({ steamId: 2, name: "Victim", team: "CT" });
+    useReplay.getState().setMatch("match-a", match);
+    useReplay.getState().setTime(3);
+
+    render(<KillFeed />);
+    expect(screen.getByText("world")).toBeInTheDocument();
+    expect(screen.getByLabelText("Victim died with world")).toBeInTheDocument();
   });
 
   it("seeks from a timeline pointer position and displays elapsed time", () => {

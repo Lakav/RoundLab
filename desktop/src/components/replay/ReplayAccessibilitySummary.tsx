@@ -20,7 +20,17 @@ function playerName(id: number, players: Array<{ steamId: number; name: string }
 function describeEvent(event: MatchEvent, players: Array<{ steamId: number; name: string }>): string {
   const at = `${event.t.toFixed(1)} seconds`;
   if (event.type === "kill") {
-    return `${at}: ${playerName(event.killer ?? 0, players)} eliminated ${playerName(event.victim ?? 0, players)}${event.weapon ? ` with ${event.weapon}` : ""}${event.hs ? ", headshot" : ""}.`;
+    const details = [
+      event.assist && `assisted by ${playerName(event.assist, players)}${event.flashAssist ? " with a flashbang" : ""}`,
+      event.attackerBlind && "while blinded",
+      event.noScope && "no-scope",
+      event.throughSmoke && "through smoke",
+      Boolean(event.penetrated) && `through ${event.penetrated} surface${event.penetrated === 1 ? "" : "s"}`,
+      event.hs && "headshot",
+      event.dominated && "domination",
+      event.revenge && "revenge",
+    ].filter(Boolean);
+    return `${at}: ${playerName(event.killer ?? 0, players)} eliminated ${playerName(event.victim ?? 0, players)}${event.weapon ? ` with ${event.weapon}` : ""}${details.length ? `, ${details.join(", ")}` : ""}.`;
   }
   if (event.type === "bomb_planted") return `${at}: bomb planted.`;
   if (event.type === "bomb_defuse_start") return `${at}: bomb defuse started.`;

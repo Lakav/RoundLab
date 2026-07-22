@@ -251,10 +251,31 @@ struct Event {
     assist: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     weapon: Option<String>,
-    #[serde(skip_serializing_if = "is_false")]
-    hs: bool,
+    #[serde(flatten)]
+    kill: KillDetails,
     #[serde(skip_serializing_if = "Option::is_none")]
     winner: Option<String>,
+}
+
+#[derive(Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct KillDetails {
+    #[serde(skip_serializing_if = "is_false")]
+    hs: bool,
+    #[serde(skip_serializing_if = "is_false")]
+    flash_assist: bool,
+    #[serde(skip_serializing_if = "is_false")]
+    no_scope: bool,
+    #[serde(skip_serializing_if = "is_false")]
+    through_smoke: bool,
+    #[serde(skip_serializing_if = "is_false")]
+    attacker_blind: bool,
+    #[serde(skip_serializing_if = "is_zero_i64")]
+    penetrated: i64,
+    #[serde(skip_serializing_if = "is_false")]
+    dominated: bool,
+    #[serde(skip_serializing_if = "is_false")]
+    revenge: bool,
 }
 
 #[derive(Serialize)]
@@ -430,6 +451,10 @@ struct ParsedDemoData {
 
 fn is_false(value: &bool) -> bool {
     !*value
+}
+
+fn is_zero_i64(value: &i64) -> bool {
+    *value == 0
 }
 
 fn emit_progress(progress: f64, message: &str) {
@@ -2098,6 +2123,23 @@ fn weapon_name(weapon_names: &[String], id: Option<u16>) -> &str {
         .unwrap_or("")
 }
 
+fn event_flag(event: &Value, key: &str) -> bool {
+    get_bool(event, key).unwrap_or_else(|| get_i64(event, key).unwrap_or_default() != 0)
+}
+
+fn kill_details(event: &Value) -> KillDetails {
+    KillDetails {
+        hs: event_flag(event, "headshot"),
+        flash_assist: event_flag(event, "assistedflash"),
+        no_scope: event_flag(event, "noscope"),
+        through_smoke: event_flag(event, "thrusmoke"),
+        attacker_blind: event_flag(event, "attackerblind"),
+        penetrated: get_i64(event, "penetrated").unwrap_or_default().max(0),
+        dominated: event_flag(event, "dominated"),
+        revenge: event_flag(event, "revenge"),
+    }
+}
+
 fn round_events(events: &[Value], span: &RoundSpan, next_span: Option<&RoundSpan>) -> Vec<Event> {
     let mut out = Vec::new();
     let post_round_event_end = post_round_event_end_tick(span, next_span);
@@ -2124,7 +2166,7 @@ fn round_events(events: &[Value], span: &RoundSpan, next_span: Option<&RoundSpan
                 victim: get_u64(event, "user_steamid"),
                 assist: get_u64(event, "assister_steamid"),
                 weapon: get_str(event, "weapon").map(str::to_string),
-                hs: get_bool(event, "headshot").unwrap_or(false),
+                kill: kill_details(event),
                 winner: None,
             }),
             "bomb_planted" => out.push(simple_event(t, "bomb_planted")),
@@ -2142,7 +2184,7 @@ fn round_events(events: &[Value], span: &RoundSpan, next_span: Option<&RoundSpan
                     victim: None,
                     assist: None,
                     weapon: None,
-                    hs: false,
+                    kill: KillDetails::default(),
                     winner: None,
                 });
                 active_defuser = player;
@@ -2171,7 +2213,7 @@ fn round_events(events: &[Value], span: &RoundSpan, next_span: Option<&RoundSpan
                 victim: None,
                 assist: None,
                 weapon: None,
-                hs: false,
+                kill: KillDetails::default(),
                 winner: Some(span.winner.clone()),
             }),
             _ => {}
@@ -2313,7 +2355,7 @@ fn bomb_defuse_abort_event(t: f64, player: Option<u64>) -> Event {
         victim: None,
         assist: None,
         weapon: None,
-        hs: false,
+        kill: KillDetails::default(),
         winner: None,
     }
 }
@@ -2328,7 +2370,7 @@ fn simple_event(t: f64, kind: &str) -> Event {
         victim: None,
         assist: None,
         weapon: None,
-        hs: false,
+        kill: KillDetails::default(),
         winner: None,
     }
 }
@@ -3194,9 +3236,9 @@ mod tests {
         build_round_payload, commit_split_output, group_projectile_rows, looks_like_knife_round,
         parse_args_from, parse_demo_to_output, parser_gzip_compression, read_capped, read_demo,
         round_effects, round_events, round_weapon_fires, sample_step, seconds_since, write_json_gz,
-        ActiveAction, Args, BombState, Event, Frame, Output, ProjectileFrame, ProjectileKind,
-        ProjectilePos, ProjectileRow, Round, RoundBuildContext, RoundSpan, TickRow, UtilityEffect,
-        WeaponFireEvent, MAX_DEMO_SIZE,
+        ActiveAction, Args, BombState, Event, Frame, KillDetails, Output, ProjectileFrame,
+        ProjectileKind, ProjectilePos, ProjectileRow, Round, RoundBuildContext, RoundSpan, TickRow,
+        UtilityEffect, WeaponFireEvent, MAX_DEMO_SIZE,
     };
     use flate2::{read::GzDecoder, Compression};
     use serde::Deserialize;
@@ -4172,13 +4214,51 @@ mod tests {
         assert_eq!(kills[0].victim, Some(20));
         assert_eq!(kills[0].assist, Some(30));
         assert_eq!(kills[0].weapon.as_deref(), Some("ak47"));
-        assert!(kills[0].hs);
+        assert!(kills[0].kill.hs);
         assert_eq!(kills[1].killer, Some(40));
         assert_eq!(kills[1].victim, Some(40));
         assert_eq!(kills[1].weapon.as_deref(), Some("molotov"));
         assert_eq!(kills[2].killer, None);
         assert_eq!(kills[2].victim, Some(50));
         assert_eq!(kills[2].weapon.as_deref(), Some("world"));
+    }
+
+    #[test]
+    fn round_events_preserves_every_killfeed_modifier() {
+        let span = RoundSpan {
+            start: 100,
+            end: 300,
+            round_end: 300,
+            winner: "CT".into(),
+        };
+        let events = vec![json!({
+            "tick": 190,
+            "event_name": "player_death",
+            "attacker_steamid": 10_u64,
+            "user_steamid": 20_u64,
+            "assister_steamid": 30_u64,
+            "weapon": "awp",
+            "headshot": true,
+            "assistedflash": true,
+            "noscope": true,
+            "thrusmoke": true,
+            "attackerblind": true,
+            "penetrated": 2,
+            "dominated": 1,
+            "revenge": 1
+        })];
+
+        let parsed = round_events(&events, &span, None);
+        let kill = parsed.iter().find(|event| event.kind == "kill").unwrap();
+
+        assert!(kill.kill.hs);
+        assert!(kill.kill.flash_assist);
+        assert!(kill.kill.no_scope);
+        assert!(kill.kill.through_smoke);
+        assert!(kill.kill.attacker_blind);
+        assert_eq!(kill.kill.penetrated, 2);
+        assert!(kill.kill.dominated);
+        assert!(kill.kill.revenge);
     }
 
     #[test]
@@ -4797,7 +4877,7 @@ mod tests {
                 victim: Some(2),
                 assist: None,
                 weapon: Some("knife_m9_bayonet".into()),
-                hs: false,
+                kill: KillDetails::default(),
                 winner: None,
             }],
             effects: Vec::new(),
@@ -4829,7 +4909,7 @@ mod tests {
                 victim: Some(2),
                 assist: None,
                 weapon: Some("ak47".into()),
-                hs: false,
+                kill: KillDetails::default(),
                 winner: None,
             }],
             effects: Vec::new(),
@@ -6585,7 +6665,7 @@ mod tests {
                     .as_deref()
                     .map(normalized_signature_weapon)
                     .unwrap_or_default(),
-                event.hs
+                event.kill.hs
             )
         } else {
             format!("{:.3}|{}|||||", bucket_signature_time(event.t), event.kind)
@@ -6604,7 +6684,7 @@ mod tests {
                 .as_deref()
                 .map(normalized_signature_weapon)
                 .unwrap_or_default(),
-            event.hs
+            event.kill.hs
         )
     }
 

@@ -98,6 +98,13 @@ export type MatchEvent = {
   assist?: number;
   weapon?: string;
   hs?: boolean;
+  flashAssist?: boolean;
+  noScope?: boolean;
+  throughSmoke?: boolean;
+  attackerBlind?: boolean;
+  penetrated?: number;
+  dominated?: boolean;
+  revenge?: boolean;
   winner?: string;
 };
 
