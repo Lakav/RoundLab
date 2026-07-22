@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("demos", nargs="+", type=Path)
     parser.add_argument("--binary", type=Path, default=Path("parser/target/release/roundlab-parser"))
     parser.add_argument("--repetitions", type=int, default=3)
-    parser.add_argument("--output-dir", type=Path, default=Path("docs/rncp-bloc2/evidence/performance"))
+    parser.add_argument("--output-dir", type=Path, default=Path("parser/benchmark-results"))
     return parser.parse_args()
 
 

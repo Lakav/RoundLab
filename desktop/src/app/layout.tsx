@@ -28,6 +28,14 @@ export default function RootLayout({
         <meta name="referrer" content="no-referrer" />
       </head>
       <body className="min-h-full flex flex-col bg-neutral-950 text-neutral-100">
+        <nav aria-label="Skip navigation">
+          <a
+            href="#main-content"
+            className="fixed left-3 top-3 z-[100] -translate-y-24 rounded-md bg-white px-4 py-2 font-medium text-black shadow-lg transition-transform focus:translate-y-0 focus:outline-none focus:ring-4 focus:ring-emerald-400"
+          >
+            Skip to main content
+          </a>
+        </nav>
         {children}
         <DebugConsoleHost />
       </body>

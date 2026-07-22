@@ -1,5 +1,0 @@
-$ python3 scripts/summarize-browser-benchmark.py
-
-{"status": "PASS", "runs": 9, "failures": []}
-
-exit_code=0

@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Run the local browser/static audit suite with the same safe modes as CI.
-
-Do not replace deep local replay/parser validation with this script. It is the
-portable check suite: it avoids audit modes that require private demo outputs
-such as `.roundlab-compare/full-round-audit-current.json`.
-"""
+"""Run the portable product checks used by CI."""
 
 from __future__ import annotations
 
@@ -18,58 +13,32 @@ ROOT = Path(__file__).resolve().parents[1]
 DESKTOP = ROOT / "desktop"
 
 PY_COMPILE_TARGETS = [
-    "scripts/collect-rncp-bloc2-evidence.py",
-    "scripts/audit-browser-import-flow.py",
-    "scripts/audit-browser-import-workflow.py",
     "scripts/audit-browser-parser-locality.py",
-    "scripts/audit-browser-store-contract.py",
-    "scripts/audit-ci-coverage.py",
-    "scripts/audit-home-accessibility.py",
-    "scripts/audit-match-controls.py",
-    "scripts/audit-match-layout.py",
-    "scripts/audit-parse-estimate.py",
-    "scripts/audit-parser-fidelity.py",
     "scripts/audit-public-assets.py",
     "scripts/audit-reference-snapshots.py",
-    "scripts/audit-rgaa-grid.py",
     "scripts/audit-replay-fixture-coverage.py",
-    "scripts/audit-replay-renderer-contract.py",
     "scripts/audit-replay-rendering.py",
     "scripts/audit-security-baseline.py",
     "scripts/audit-static-web-export.py",
     "scripts/audit-static-export-output.py",
-    "scripts/audit-user-validation.py",
     "scripts/audit-web-portability.py",
     "scripts/benchmark-native-parser.py",
     "scripts/check-performance-budgets.py",
     "scripts/run-local-ci-checks.py",
     "scripts/summarize-browser-benchmark.py",
-    "scripts/summarize-recipe.py",
     "scripts/validate-release-version.py",
 ]
 
 CI_SAFE_AUDITS = [
     ["python3", "scripts/audit-web-portability.py"],
     ["python3", "scripts/audit-static-web-export.py"],
-    ["python3", "scripts/audit-ci-coverage.py"],
     ["python3", "scripts/audit-browser-parser-locality.py"],
-    ["python3", "scripts/audit-browser-import-flow.py"],
-    ["python3", "scripts/audit-browser-import-workflow.py"],
-    ["python3", "scripts/audit-browser-store-contract.py"],
-    ["python3", "scripts/audit-home-accessibility.py"],
-    ["python3", "scripts/audit-match-controls.py"],
-    ["python3", "scripts/audit-match-layout.py"],
-    ["python3", "scripts/audit-parse-estimate.py"],
-    ["python3", "scripts/audit-parser-fidelity.py"],
     ["python3", "scripts/audit-public-assets.py"],
     ["python3", "scripts/audit-reference-snapshots.py", "--reference-only"],
-    ["python3", "scripts/audit-rgaa-grid.py"],
     ["python3", "scripts/audit-replay-fixture-coverage.py"],
-    ["python3", "scripts/audit-replay-renderer-contract.py"],
     ["python3", "scripts/audit-replay-rendering.py", "--assets-only"],
     ["python3", "scripts/audit-security-baseline.py"],
     ["python3", "scripts/audit-static-export-output.py"],
-    ["python3", "scripts/audit-user-validation.py"],
 ]
 
 

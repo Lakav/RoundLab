@@ -40,6 +40,19 @@ describe("drawing tools and player HUD", () => {
     expect(screen.getByRole("complementary", { name: "Bravo player status" })).toHaveTextContent("Alice");
   });
 
+  it("hides CS2 generated team identifiers from the player-facing HUD", () => {
+    const match = useReplay.getState().match;
+    if (!match) throw new Error("match fixture missing");
+    useReplay.getState().setMatch("hud", {
+      ...match,
+      meta: { ...match.meta, teamA: "team_Bob", teamB: "team_Alice" },
+    });
+
+    render(<><PlayerHUD side="CT" /><PlayerHUD side="T" /></>);
+    expect(screen.getByRole("complementary", { name: "Team 1 player status" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Team 2 player status" })).toBeInTheDocument();
+  });
+
   it("draws a pen stroke and exposes named toolbar controls", async () => {
     const user = userEvent.setup();
     const setStrokes = vi.fn();
@@ -57,7 +70,7 @@ describe("drawing tools and player HUD", () => {
     const setTool = vi.fn();
     const setColor = vi.fn();
     render(<DrawingToolbar tool="none" setTool={setTool} color="#ef4444" setColor={setColor} strokes={[stroke]} setStrokes={setStrokes} />);
-    await user.click(screen.getByTitle("Pen (P)"));
+    await user.click(screen.getByTitle("Pen (Alt+P)"));
     await user.click(screen.getByRole("button", { name: "Drawing color #10b981" }));
     expect(setTool).toHaveBeenCalledWith("pen");
     expect(setColor).toHaveBeenCalledWith("#10b981");

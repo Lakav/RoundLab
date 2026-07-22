@@ -1,6 +1,0 @@
-$ python3 scripts/check-performance-budgets.py
-
-production JavaScript: 1811900 bytes across 37 files (budget 2000000)
-production WASM: 2925102 bytes across 1 files (budget 3500000)
-
-exit_code=0

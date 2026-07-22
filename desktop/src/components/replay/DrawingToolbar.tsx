@@ -17,8 +17,8 @@ type Props = {
 };
 
 const TOOLS: { value: DrawTool; icon: React.ComponentType<{ className?: string }>; title: string }[] = [
-  { value: "none", icon: MousePointer2, title: "Select (V)" },
-  { value: "pen", icon: Pencil, title: "Pen (P)" },
+  { value: "none", icon: MousePointer2, title: "Select (Alt+V)" },
+  { value: "pen", icon: Pencil, title: "Pen (Alt+P)" },
   { value: "eraser", icon: Eraser, title: "Eraser" },
 ];
 

@@ -52,11 +52,14 @@ tauri.conf.json
 
 # temp / caches
 coverage/
-!docs/rncp-bloc2/evidence/coverage/
-!docs/rncp-bloc2/evidence/coverage/**
-!docs/rncp-bloc2/evidence/logs/
-!docs/rncp-bloc2/evidence/logs/**
 tmp/
 temp/
 __pycache__/
 *.pyc
+
+# Local test and benchmark reports
+desktop/playwright-report/
+desktop/test-results/
+desktop/benchmark-results/
+parser/coverage/
+parser/benchmark-results/

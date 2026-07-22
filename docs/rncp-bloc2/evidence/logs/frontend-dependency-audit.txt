@@ -1,5 +1,0 @@
-$ pnpm audit --audit-level high
-
-No known vulnerabilities found
-
-exit_code=0

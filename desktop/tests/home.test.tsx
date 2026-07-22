@@ -75,4 +75,20 @@ describe("Home", () => {
     await waitFor(() => expect(mocks.renameMatch).toHaveBeenCalledWith("match-1", "Final review"));
     expect(mocks.push).toHaveBeenCalledWith("/match/?id=match-1");
   });
+
+  it("does not start two parses when file events arrive before the UI rerenders", async () => {
+    let finishParse: ((id: string) => void) | undefined;
+    mocks.parseDemo.mockImplementation(() => new Promise<string>((resolve) => {
+      finishParse = resolve;
+    }));
+    render(<Home />);
+    const input = screen.getByLabelText("Choose a local CS2 demo file");
+
+    fireEvent.change(input, { target: { files: [new File(["first"], "first.dem")] } });
+    fireEvent.change(input, { target: { files: [new File(["second"], "second.dem")] } });
+
+    expect(mocks.parseDemo).toHaveBeenCalledTimes(1);
+    finishParse?.("match-1");
+    expect(await screen.findByRole("dialog", { name: "Match parsed" })).toBeInTheDocument();
+  });
 });
