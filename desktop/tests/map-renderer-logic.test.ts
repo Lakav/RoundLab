@@ -519,6 +519,16 @@ describe("MapRenderer habit overlay calculations", () => {
   it("reuses condensed player markers and compacts colliding labels", () => {
     const layer = new Container();
     const queue: Array<{ destroyed?: boolean; destroy: (options?: unknown) => void }> = [];
+    const replayWithUtility = {
+      ...replay,
+      projectiles: [{
+        id: "r1-flash",
+        roundNumber: 1,
+        projectileId: 12,
+        type: "flashbang",
+        samples: [{ t: 0, x: 0, y: 0, z: 20 }, { t: 1, x: 30, y: 20, z: 10 }],
+      }],
+    };
     const nearbyReplay = {
       ...replay,
       id: "r2",
@@ -529,7 +539,7 @@ describe("MapRenderer habit overlay calculations", () => {
       label: "Player",
       mode: "replay" as const,
       trails: [],
-      replays: [replay, nearbyReplay],
+      replays: [replayWithUtility, nearbyReplay],
     };
     const first = logic.renderHabitReplayScene(layer, null, overlay, 0.5, toRadar, 1, queue as never);
     const firstGhost = first.ghosts.get("r1");
@@ -538,11 +548,37 @@ describe("MapRenderer habit overlay calculations", () => {
     expect(firstGhost?.fullLabel.visible).toBe(false);
     const marker = firstGhost?.marker;
     const playerChildren = first.players.children.length;
+    const utilityChild = first.utilities.children[0];
 
-    const second = logic.renderHabitReplayScene(layer, first, overlay, 0.75, toRadar, 1, queue as never);
+    const second = logic.renderHabitReplayScene(layer, first, overlay, 0.52, toRadar, 1, queue as never);
     expect(second).toBe(first);
     expect(second.ghosts.get("r1")?.marker).toBe(marker);
     expect(second.players.children).toHaveLength(playerChildren);
+    expect(second.utilities.children[0]).toBe(utilityChild);
+    const third = logic.renderHabitReplayScene(layer, second, overlay, 0.58, toRadar, 1, queue as never);
+    expect(third.utilities.children[0]).not.toBe(utilityChild);
+    layer.destroy({ children: true });
+  });
+
+  it("aggregates large condensed marker clusters", () => {
+    const layer = new Container();
+    const clusteredReplays = Array.from({ length: 4 }, (_, index) => ({
+      ...replay,
+      id: `cluster-${index}`,
+      roundNumber: index + 1,
+      positions: positions.map((sample) => ({ ...sample, x: sample.x + index, y: sample.y + index })),
+    }));
+    const overlay = {
+      label: "Player",
+      mode: "replay" as const,
+      trails: [],
+      replays: clusteredReplays,
+    };
+    const scene = logic.renderHabitReplayScene(layer, null, overlay, 0.5, toRadar, 1, []);
+    const visibleLabels = [...scene.ghosts.values()].filter((ghost) => ghost.labelGroup.visible);
+    expect(visibleLabels).toHaveLength(1);
+    expect(visibleLabels[0].compactLabel.text).toBe("×4");
+    expect([...scene.ghosts.values()].every((ghost) => ghost.marker.visible)).toBe(true);
     layer.destroy({ children: true });
   });
 
