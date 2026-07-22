@@ -24,6 +24,7 @@ PARTICIPANT_HEADERS = [
     "taches_reussies",
     "duree_totale_secondes",
     "difficultes",
+    "problemes_rencontres",
     "commentaire",
 ]
 TASK_HEADERS = [
@@ -33,6 +34,7 @@ TASK_HEADERS = [
     "duree_secondes",
     "aide_fournie",
     "difficulte",
+    "probleme_rencontre",
     "observation",
 ]
 EXPECTED_TASKS = {f"UT-{number:02d}" for number in range(1, 9)}
@@ -125,7 +127,7 @@ def main() -> int:
     parser.add_argument(
         "--require-complete",
         action="store_true",
-        help="fail unless at least one real participant has all eight tasks",
+        help="fail unless at least two real participants each have all eight tasks",
     )
     args = parser.parse_args()
 
@@ -134,8 +136,11 @@ def main() -> int:
 
     if not participant_rows and task_rows:
         raise AssertionError("task evidence cannot exist without participant evidence")
-    if args.require_complete and not participant_rows:
-        raise AssertionError("user validation is incomplete: no real participant recorded")
+    if args.require_complete and len(participant_rows) < 2:
+        raise AssertionError(
+            "user validation is incomplete: two real participants are required, "
+            f"found {len(participant_rows)}"
+        )
 
     participants: dict[str, tuple[int, int]] = {}
     for row in participant_rows:
@@ -177,7 +182,7 @@ def main() -> int:
 
     participant_count = len(participants)
     task_count = len(task_rows)
-    complete = participant_count > 0 and task_count == participant_count * 8
+    complete = participant_count >= 2 and task_count == participant_count * 8
     summary = {
         "participants": participant_count,
         "tasks": task_count,

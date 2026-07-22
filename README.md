@@ -253,6 +253,16 @@ before computing a compliance rate:
 python3 scripts/audit-rgaa-grid.py --require-complete
 ```
 
+To validate the structured keyboard, focus, real-browser zoom, canvas contrast,
+and canvas/DOM manual-control evidence, run:
+
+```bash
+python3 scripts/audit-accessibility-controls.py
+```
+
+The release gate uses `--require-complete`, which refuses any control still
+marked `NON DÉMONTRÉ` or `NON CONFORME`.
+
 To validate the anonymized user-session evidence without treating empty files
 as completed sessions, run:
 
@@ -260,7 +270,7 @@ as completed sessions, run:
 python3 scripts/audit-user-validation.py
 ```
 
-After at least one real participant has completed the eight protocol tasks,
+After at least two real participants have each completed the eight protocol tasks,
 require a coherent participant summary and task journal before reporting a
 success rate:
 

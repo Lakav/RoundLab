@@ -9,16 +9,17 @@ Ce dossier rassemble les preuves techniques du bloc `RNCP39583BC02 — Concevoir
 - `03-plan-tests-recette.md` : stratégie de tests et cahier de recette.
 - `04-securite-owasp.md` : analyse OWASP Top 10:2025 et mesures appliquées.
 - `05-accessibilite-rgaa.md` : référentiel retenu, améliorations et limites.
-- `rgaa-4.1.2-grille.csv` : grille exhaustive vierge des 106 critères, à renseigner par l'auditeur sans préjuger du résultat.
+- `rgaa-4.1.2-grille.csv` : grille exhaustive renseignée des 106 critères ; 49 conformes, 53 non applicables et 4 non démontrés, sans taux publié.
+- `accessibilite-controles-manuels.csv` : neuf contrôles REC-15 structurés ; cinq conformes et quatre non démontrés.
 - `06-exploitation.md` : installation, construction, mise à jour et utilisation.
 - `07-qualite-performance.md` : critères mesurables et périmètres de couverture.
 - `08-anomalies-corrections.md` : anomalies observées et corrections vérifiées.
 - `09-historique-versions.md` : stratégie de version et historique factuel.
 - `10-smoke-browser.md` : vérification DOM/interactions de l’export servi localement.
-- `11-validation-utilisateur.md` : protocole de 8 tâches et grilles vierges ; sessions réelles encore bloquées.
+- `11-validation-utilisateur.md` : protocole de 8 tâches pour deux participants et grilles vierges ; sessions réelles encore bloquées.
 - `validation-utilisateur-participants.csv` et `validation-utilisateur-taches.csv` : preuves structurées volontairement vides jusqu'aux sessions humaines réelles.
 - `deployment-runs-2026-07-20.md` : CI, déploiement, rollback et restauration réellement observés pour v0.1.39.
-- `deployment-runs-2026-07-21.md` : deux séquences réelles de CI, déploiement, smoke, rollback et restauration de la candidate v0.1.40, puis exécution du garde-fou strict sans création de tag.
+- `deployment-runs-2026-07-21.md` : séquences réelles de CI/déploiement/rollback/restauration, puis runs finaux PR #5, `main` et Pages sans création de tag.
 - `fixture-search-2026-07-21.json` : recherche locale initiale bornée des cinq cartes alors sans fixture, sans candidat trouvé.
 - `fixture-acquisition-2026-07-21.json` : provenance, empreintes et résultats vérifiés des cinq démos CS2 publiques ajoutant Mirage, Nuke, Overpass, Train et Vertigo.
 - `logs/replay-fixtures-public.txt` : commandes et sorties factuelles de parsing `full`, d'audit de rendu et de contrôle du manifeste local.

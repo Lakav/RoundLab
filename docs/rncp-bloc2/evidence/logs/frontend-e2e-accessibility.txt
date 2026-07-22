@@ -1,57 +1,18 @@
 $ pnpm test:e2e:a11y
 
 $ playwright test tests-e2e/accessibility.spec.ts
-[WebServer] (node:18046) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
-[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] $ next dev --hostname 127.0.0.1 --port 4173
-[WebServer] (node:18357) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
-[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:18513) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
-[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] (node:19392) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
-[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
 
-Running 5 tests using 1 worker
+Running 6 tests using 1 worker
 
-(node:19841) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:87907) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-[WebServer] [browser] eval() is not supported in this environment. If this page was served with a `Content-Security-Policy` header, make sure that `unsafe-eval` is included. React requires eval() in development mode for various debugging features like reconstructing callstacks from a different environment.
-[WebServer] React will never use eval() in production mode
-[WebServer] [browser] eval() is not supported in this environment. If this page was served with a `Content-Security-Policy` header, make sure that `unsafe-eval` is included. React requires eval() in development mode for various debugging features like reconstructing callstacks from a different environment.
-[WebServer] React will never use eval() in production mode
-  ✓  1 [chromium] › tests-e2e/accessibility.spec.ts:73:5 › home, import and library expose accessible controls (1.4s)
-[WebServer] [browser] eval() is not supported in this environment. If this page was served with a `Content-Security-Policy` header, make sure that `unsafe-eval` is included. React requires eval() in development mode for various debugging features like reconstructing callstacks from a different environment.
-[WebServer] React will never use eval() in production mode
-[WebServer] [browser] eval() is not supported in this environment. If this page was served with a `Content-Security-Policy` header, make sure that `unsafe-eval` is included. React requires eval() in development mode for various debugging features like reconstructing callstacks from a different environment.
-[WebServer] React will never use eval() in production mode
-  ✓  2 [chromium] › tests-e2e/accessibility.spec.ts:86:5 › import errors and library dialogs announce state and manage focus (1.5s)
-[WebServer] [browser] eval() is not supported in this environment. If this page was served with a `Content-Security-Policy` header, make sure that `unsafe-eval` is included. React requires eval() in development mode for various debugging features like reconstructing callstacks from a different environment.
-[WebServer] React will never use eval() in production mode
-[WebServer] [browser] eval() is not supported in this environment. If this page was served with a `Content-Security-Policy` header, make sure that `unsafe-eval` is included. React requires eval() in development mode for various debugging features like reconstructing callstacks from a different environment.
-[WebServer] React will never use eval() in production mode
-[WebServer] [browser] eval() is not supported in this environment. If this page was served with a `Content-Security-Policy` header, make sure that `unsafe-eval` is included. React requires eval() in development mode for various debugging features like reconstructing callstacks from a different environment.
-[WebServer] React will never use eval() in production mode
-  ✓  3 [chromium] › tests-e2e/accessibility.spec.ts:114:5 › replay canvas has a keyboard-readable text alternative (1.7s)
-[WebServer] [browser] eval() is not supported in this environment. If this page was served with a `Content-Security-Policy` header, make sure that `unsafe-eval` is included. React requires eval() in development mode for various debugging features like reconstructing callstacks from a different environment.
-[WebServer] React will never use eval() in production mode
-[WebServer] [browser] eval() is not supported in this environment. If this page was served with a `Content-Security-Policy` header, make sure that `unsafe-eval` is included. React requires eval() in development mode for various debugging features like reconstructing callstacks from a different environment.
-[WebServer] React will never use eval() in production mode
-[WebServer] [browser] eval() is not supported in this environment. If this page was served with a `Content-Security-Policy` header, make sure that `unsafe-eval` is included. React requires eval() in development mode for various debugging features like reconstructing callstacks from a different environment.
-[WebServer] React will never use eval() in production mode
-  ✓  4 [chromium] › tests-e2e/accessibility.spec.ts:136:5 › all replay command groups expose names, states and keyboard operation (1.9s)
-[WebServer] [browser] eval() is not supported in this environment. If this page was served with a `Content-Security-Policy` header, make sure that `unsafe-eval` is included. React requires eval() in development mode for various debugging features like reconstructing callstacks from a different environment.
-[WebServer] React will never use eval() in production mode
-[WebServer] [browser] eval() is not supported in this environment. If this page was served with a `Content-Security-Policy` header, make sure that `unsafe-eval` is included. React requires eval() in development mode for various debugging features like reconstructing callstacks from a different environment.
-[WebServer] React will never use eval() in production mode
-[WebServer] [browser] eval() is not supported in this environment. If this page was served with a `Content-Security-Policy` header, make sure that `unsafe-eval` is included. React requires eval() in development mode for various debugging features like reconstructing callstacks from a different environment.
-[WebServer] React will never use eval() in production mode
-  ✓  5 [chromium] › tests-e2e/accessibility.spec.ts:206:5 › replay retains essential controls in narrow reflow viewports (1.1s)
+  ✓  1 [chromium] › tests-e2e/accessibility.spec.ts:73:5 › home, import and library expose accessible controls (911ms)
+  ✓  2 [chromium] › tests-e2e/accessibility.spec.ts:91:5 › import errors and library dialogs announce state and manage focus (1.2s)
+  ✓  3 [chromium] › tests-e2e/accessibility.spec.ts:119:5 › replay canvas has a keyboard-readable text alternative (1.0s)
+  ✓  4 [chromium] › tests-e2e/accessibility.spec.ts:141:5 › all replay command groups expose names, states and keyboard operation (1.3s)
+  ✓  5 [chromium] › tests-e2e/accessibility.spec.ts:209:5 › replay retains essential controls in narrow reflow viewports (673ms)
+  ✓  6 [chromium] › tests-e2e/accessibility.spec.ts:223:5 › essential content survives disabled styles and custom text spacing (435ms)
 
-  5 passed (10.7s)
-
-To open last HTML report run:
-[36m[39m
-[36m  pnpm exec playwright show-report ../docs/rncp-bloc2/evidence/playwright-report[39m
-[36m[39m
+  6 passed (26.2s)
 
 exit_code=0

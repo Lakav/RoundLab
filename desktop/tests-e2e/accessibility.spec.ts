@@ -73,6 +73,11 @@ async function seedReplay(page: Page): Promise<void> {
 test("home, import and library expose accessible controls", async ({ page }) => {
   await seedReplay(page);
   await expect(page.getByRole("heading", { level: 1, name: "RoundLab" })).toBeVisible();
+  await page.keyboard.press("Tab");
+  const skipLink = page.getByRole("link", { name: "Skip to main content" });
+  await expect(skipLink).toBeFocused();
+  await skipLink.press("Enter");
+  await expect(page.locator("#main-content")).toBeFocused();
   const importer = page.getByRole("button", { name: "Open a local CS2 demo file" });
   await expect(importer).toBeVisible();
   await importer.focus();
@@ -162,9 +167,8 @@ test("all replay command groups expose names, states and keyboard operation", as
   await page.keyboard.press("Enter");
   await expect(page.getByText("125%", { exact: true })).toBeVisible();
 
-  const pen = page.getByTitle("Pen (P)");
-  await pen.focus();
-  await page.keyboard.press("Enter");
+  const pen = page.getByTitle("Pen (Alt+P)");
+  await page.keyboard.press("Alt+p");
   await expect(pen).toHaveAttribute("aria-pressed", "true");
   const drawingCanvas = page.locator("canvas").last();
   const drawingBox = await drawingCanvas.boundingBox();
@@ -179,9 +183,8 @@ test("all replay command groups expose names, states and keyboard operation", as
   await page.keyboard.press("Enter");
   await expect(undo).toBeDisabled();
 
-  const select = page.getByTitle("Select (V)");
-  await select.focus();
-  await page.keyboard.press("Enter");
+  const select = page.getByTitle("Select (Alt+V)");
+  await page.keyboard.press("Alt+v");
   await expect(select).toHaveAttribute("aria-pressed", "true");
   const viewport = page.getByTestId("match-map-viewport");
   const content = page.getByTestId("match-map-content");
@@ -215,4 +218,22 @@ test("replay retains essential controls in narrow reflow viewports", async ({ pa
   await expect(page.getByTitle("Play/Pause (Space)")).toBeVisible();
   await expect(page.getByRole("slider", { name: "Replay time" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Text alternative for the replay radar" })).toBeAttached();
+});
+
+test("essential content survives disabled styles and custom text spacing", async ({ page }) => {
+  await page.goto("./");
+  await page.locator('link[rel="stylesheet"], style').evaluateAll((nodes) => nodes.forEach((node) => node.remove()));
+  await expect(page.getByRole("heading", { level: 1, name: "RoundLab" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open a local CS2 demo file" })).toContainText("Open a CS2 demo");
+
+  await page.reload();
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.addStyleTag({
+    content: `
+      * { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; }
+      p { margin-bottom: 2em !important; }
+    `,
+  });
+  await expect(page.getByRole("button", { name: "Open a local CS2 demo file" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
 });

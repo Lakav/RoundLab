@@ -88,9 +88,24 @@ def validate_recipe(root: Path) -> int:
     return 0
 
 
+def validate_frontend_coverage(root: Path) -> int:
+    source_name = "docs/rncp-bloc2/evidence/coverage/frontend/coverage-summary.json"
+    total = read_json(root / source_name).get("total", {})
+    thresholds = {"statements": 60, "branches": 50, "functions": 60, "lines": 60}
+    failed = 0
+    for metric, threshold in thresholds.items():
+        value = total.get(metric, {}).get("pct")
+        print(f"frontend coverage {metric}: {value}% (required {threshold}%)")
+        if not isinstance(value, (int, float)) or value < threshold:
+            print(f"::error file={source_name}::{metric} coverage is below {threshold}%")
+            failed = 1
+    return failed
+
+
 def validate_human_evidence(root: Path) -> int:
     commands = [
-        [sys.executable, "scripts/audit-rgaa-grid.py", "--require-complete"],
+        [sys.executable, "scripts/audit-rgaa-grid.py", "--release-ready"],
+        [sys.executable, "scripts/audit-accessibility-controls.py", "--require-complete"],
         [sys.executable, "scripts/audit-user-validation.py", "--require-complete"],
     ]
     failed = 0
@@ -108,6 +123,16 @@ def validate_human_evidence(root: Path) -> int:
     if failed:
         print("::error::release requires complete RGAA and real user-session evidence")
     return failed
+
+
+def validate_residual_limit(root: Path) -> int:
+    phrase = "lecteur d’écran non testé"
+    source_name = "docs/rncp-bloc2/evidence/05-accessibilite-rgaa.md"
+    if phrase not in (root / source_name).read_text(encoding="utf-8"):
+        print(f"::error file={source_name}::required residual limit is missing: {phrase}")
+        return 1
+    print(f"residual accessibility limit recorded: {phrase}")
+    return 0
 
 
 def main() -> int:
@@ -135,6 +160,8 @@ def main() -> int:
     if not args.manifest_only:
         failed |= validate_tag_absent(root, tag)
         failed |= validate_recipe(root)
+        failed |= validate_frontend_coverage(root)
+        failed |= validate_residual_limit(root)
         failed |= validate_human_evidence(root)
     return failed
 

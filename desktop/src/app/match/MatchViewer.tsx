@@ -503,14 +503,14 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
       if (e.code === "Space") {
         e.preventDefault();
         togglePlay();
-      } else if (e.key === "j" || e.key === "ArrowLeft") {
+      } else if ((e.altKey && e.key === "j") || e.key === "ArrowLeft") {
         setTime(Math.max(0, (st.time ?? 0) - 5));
-      } else if (e.key === "l" || e.key === "ArrowRight") {
+      } else if ((e.altKey && e.key === "l") || e.key === "ArrowRight") {
         setTime(Math.min(duration, (st.time ?? 0) + 5));
-      } else if (e.key === "k") {
+      } else if (e.altKey && e.key === "k") {
         togglePlay();
-      } else if (drawingShortcutsEnabled && e.key === "v") setTool("none");
-      else if (drawingShortcutsEnabled && e.key === "p") setTool("pen");
+      } else if (drawingShortcutsEnabled && e.altKey && e.key === "v") setTool("none");
+      else if (drawingShortcutsEnabled && e.altKey && e.key === "p") setTool("pen");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -693,7 +693,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
                 "h-7 rounded-[2px] px-2.5 text-[11px] font-semibold transition-colors",
                 reviewMode === mode
                   ? "bg-white text-neutral-950"
-                  : "text-neutral-300 hover:bg-white/[0.05] hover:text-white",
+                  : "text-neutral-100 hover:bg-white/[0.05] hover:text-white",
               ].join(" ")}
             >
               {label}
@@ -793,7 +793,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
         )}
         </nav>
       </header>
-      <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      <main id="main-content" tabIndex={-1} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         <h1 className="sr-only">RoundLab match replay</h1>
         {!condensedMode && (
           <>

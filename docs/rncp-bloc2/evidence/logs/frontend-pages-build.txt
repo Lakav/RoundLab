@@ -1,23 +1,23 @@
 $ pnpm build
 
-✓ Lockfile passes supply-chain policies (verified 1h ago)
+✓ Lockfile passes supply-chain policies (verified 5h ago)
 Lockfile is up to date, resolution step is skipped
 Already up to date
 
-Done in 428ms using pnpm v11.9.0
+Done in 415ms using pnpm v11.9.0
 $ next build
 ▲ Next.js 16.2.10 (Turbopack)
 
   Creating an optimized production build ...
-✓ Compiled successfully in 2.5s
+✓ Compiled successfully in 2.2s
   Running TypeScript ...
-  Finished TypeScript in 2.3s ...
+  Finished TypeScript in 2.0s ...
   Collecting page data using 6 workers ...
   Generating static pages using 6 workers (0/5) ...
   Generating static pages using 6 workers (1/5)
   Generating static pages using 6 workers (2/5)
   Generating static pages using 6 workers (3/5)
-✓ Generating static pages using 6 workers (5/5) in 222ms
+✓ Generating static pages using 6 workers (5/5) in 209ms
   Finalizing page optimization ...
 
 Route (app)

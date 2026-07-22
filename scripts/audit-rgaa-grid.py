@@ -25,7 +25,7 @@ HEADERS = [
 ]
 AUDIT_FIELDS = HEADERS[2:]
 APPLICABLE_VALUES = {"oui", "non"}
-APPLICABLE_RESULTS = {"CONFORME", "NON CONFORME"}
+APPLICABLE_RESULTS = {"CONFORME", "NON CONFORME", "NON DÉMONTRÉ"}
 NOT_APPLICABLE_RESULT = "NON APPLICABLE"
 EXPECTED_CRITERIA = """
 1.1 1.2 1.3 1.4 1.5 1.6 1.7 1.8 1.9
@@ -42,6 +42,7 @@ EXPECTED_CRITERIA = """
 12.1 12.2 12.3 12.4 12.5 12.6 12.7 12.8 12.9 12.10 12.11
 13.1 13.2 13.3 13.4 13.5 13.6 13.7 13.8 13.9 13.10 13.11 13.12
 """.split()
+RELEASE_ALLOWED_NOT_DEMONSTRATED = {"7.1", "7.5"}
 
 
 def nonempty(value: str | None) -> bool:
@@ -76,7 +77,7 @@ def validate_filled_row(row: dict[str, str], *, line_number: int) -> None:
     if applicable == "oui" and result not in APPLICABLE_RESULTS:
         raise AssertionError(
             f"line {line_number}, criterion {criterion}: an applicable criterion must be "
-            "CONFORME or NON CONFORME"
+            "CONFORME, NON CONFORME or NON DÉMONTRÉ"
         )
     if applicable == "non" and result != NOT_APPLICABLE_RESULT:
         raise AssertionError(
@@ -96,6 +97,11 @@ def main() -> int:
         "--require-complete",
         action="store_true",
         help="fail unless all 106 criteria contain a coherent real audit result",
+    )
+    parser.add_argument(
+        "--release-ready",
+        action="store_true",
+        help="require complete evidence, no nonconformity, and only the explicit screen-reader residual",
     )
     args = parser.parse_args()
 
@@ -132,7 +138,7 @@ def main() -> int:
         filled.append(row)
 
     incomplete = len(rows) - len(filled)
-    if args.require_complete and incomplete:
+    if (args.require_complete or args.release_ready) and incomplete:
         raise AssertionError(
             f"RGAA audit is incomplete: {len(filled)}/106 criteria filled, {incomplete} missing"
         )
@@ -144,10 +150,15 @@ def main() -> int:
     not_applicable = sum(
         row["resultat"].strip().upper() == NOT_APPLICABLE_RESULT for row in filled
     )
-    applicable = conforming + nonconforming
+    not_demonstrated = sum(
+        row["resultat"].strip().upper() == "NON DÉMONTRÉ" for row in filled
+    )
+    applicable = conforming + nonconforming + not_demonstrated
     complete = incomplete == 0
     compliance_rate = (
-        round(conforming * 100 / applicable, 2) if complete and applicable else None
+        round(conforming * 100 / applicable, 2)
+        if complete and applicable and not_demonstrated == 0
+        else None
     )
     summary = {
         "criteria": len(rows),
@@ -155,10 +166,27 @@ def main() -> int:
         "incomplete": incomplete,
         "conforming": conforming,
         "nonconforming": nonconforming,
+        "notDemonstrated": not_demonstrated,
         "notApplicable": not_applicable,
         "complete": complete,
         "complianceRate": compliance_rate,
     }
+    if args.release_ready:
+        if nonconforming:
+            raise AssertionError(
+                f"RGAA release gate has {nonconforming} non-conforming criteria"
+            )
+        residual = {
+            row["critere"].strip()
+            for row in filled
+            if row["resultat"].strip().upper() == "NON DÉMONTRÉ"
+        }
+        unexpected = sorted(residual - RELEASE_ALLOWED_NOT_DEMONSTRATED)
+        if unexpected:
+            raise AssertionError(
+                "RGAA release gate has non-demonstrated criteria outside the explicit "
+                f"screen-reader residual: {unexpected}"
+            )
     print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
     return 0
 

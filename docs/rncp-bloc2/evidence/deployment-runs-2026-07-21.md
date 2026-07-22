@@ -71,3 +71,15 @@ Le rollback du run 29836670660 contient explicitement `ref: 2e51eaf...` et `HEAD
 Le garde-fou distant n'a créé aucun tag. Son échec ne vient pas de la CI : ses jobs frontend et Rust sont intégralement verts. Il refuse uniquement les preuves humaines manquantes, conformément aux règles de publication. Au 21 juillet 2026, `v0.1.40` est toujours absent du dépôt local et du dépôt distant.
 
 Les commits postérieurs limités à la documentation de preuve et à son générateur peuvent changer le SHA de `main` sans changer l'artefact applicatif contrôlé ci-dessus. Toute modification future du code, des dépendances ou de la construction invaliderait en revanche cette équivalence et imposerait une nouvelle séquence complète.
+
+## Dernière synchronisation de `main` avant l'audit final
+
+Les trois runs demandés ont été vérifiés via GitHub CLI le 21 juillet 2026 :
+
+| Étape | Révision vérifiée | Run | Résultat |
+| --- | --- | --- | --- |
+| CI de la PR #5 | `dd1ef9ef8c58a2a10b65cbee0704901ecf298d8e` | [29837544323](https://github.com/Lakav/RoundLab/actions/runs/29837544323) | SUCCESS |
+| CI `main` après fusion | `189bb265d048a0bd00cf0e18dce7ff7cab8ff2a8` | [29837787045](https://github.com/Lakav/RoundLab/actions/runs/29837787045) | SUCCESS |
+| déploiement Pages post-fusion | `189bb265d048a0bd00cf0e18dce7ff7cab8ff2a8` | [29837978763](https://github.com/Lakav/RoundLab/actions/runs/29837978763) | SUCCESS |
+
+Ces runs prouvent l'état de départ `origin/main`. La branche finale ajoute du code applicatif d'accessibilité (lien d'évitement et raccourcis modifiés) : la preuve de rollback antérieure reste une preuve de procédure, mais la branche devra obtenir sa propre CI et son propre déploiement avant tout tag.

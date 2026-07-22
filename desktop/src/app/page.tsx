@@ -525,7 +525,7 @@ export default function Home() {
         <SettingsPanel />
       </header>
 
-      <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-6 py-8 sm:py-10">
+      <main id="main-content" tabIndex={-1} className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-6 py-8 sm:py-10">
         <input
           ref={fileInputRef}
           data-testid="demo-file-input"

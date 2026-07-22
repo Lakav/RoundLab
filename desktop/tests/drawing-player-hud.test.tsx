@@ -57,7 +57,7 @@ describe("drawing tools and player HUD", () => {
     const setTool = vi.fn();
     const setColor = vi.fn();
     render(<DrawingToolbar tool="none" setTool={setTool} color="#ef4444" setColor={setColor} strokes={[stroke]} setStrokes={setStrokes} />);
-    await user.click(screen.getByTitle("Pen (P)"));
+    await user.click(screen.getByTitle("Pen (Alt+P)"));
     await user.click(screen.getByRole("button", { name: "Drawing color #10b981" }));
     expect(setTool).toHaveBeenCalledWith("pen");
     expect(setColor).toHaveBeenCalledWith("#10b981");

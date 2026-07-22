@@ -2,42 +2,42 @@ $ cargo llvm-cov --workspace --json --output-path /Users/julescavanier/Desktop/g
 
 info: cargo-llvm-cov currently setting cfg(coverage); you can opt-out it by passing --no-cfg-coverage
    Compiling roundlab-parser v0.1.0 (/Users/julescavanier/Desktop/gotvanalyser/parser)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.72s
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.42s
      Running unittests src/wasm_lib.rs (target/llvm-cov-target/debug/deps/roundlab_parser-b7ef1c41c7b3d5cc)
 
 running 40 tests
 test tests::parse_args_from_accepts_quality_and_skip_flags ... ok
-test tests::parse_args_from_rejects_invalid_quality ... ok
 test tests::parse_args_from_rejects_unknown_arguments ... ok
-test tests::knife_round_detection_allows_long_pregame_duels ... ok
+test tests::parse_args_from_rejects_invalid_quality ... ok
 test tests::knife_round_detection_rejects_real_weapon_rounds ... ok
+test tests::fire_effect_ignores_far_inferno_expire ... ok
 test tests::fire_effect_end_uses_nearby_inferno_expire ... ok
 test tests::fire_effect_uses_latest_nearby_cell_expire ... ok
-test tests::fire_effect_ignores_far_inferno_expire ... ok
+test tests::knife_round_detection_allows_long_pregame_duels ... ok
 test tests::read_capped_rejects_overflow ... ok
 test tests::round_events_does_not_duplicate_explicit_bomb_exploded ... ok
-test tests::projectile_grouping_removes_physical_duplicates_in_same_tick ... ok
-test tests::decoy_effect_start_uses_projectile_stationary_time ... ok
 test tests::parser_gzip_compression_defaults_to_standard_and_allows_override ... ok
-test tests::projectile_grouping_keeps_id_across_small_terminal_snap ... ok
-test tests::round_events_does_not_synthesize_ct_killed_bomb_explosion_too_broadly ... ok
-test tests::round_events_keeps_all_post_round_kill_shapes_after_bomb_explosion ... ok
+test tests::projectile_grouping_removes_physical_duplicates_in_same_tick ... ok
 test tests::round_events_keeps_post_round_bomb_events_before_next_round ... ok
-test tests::round_events_synthesizes_abort_when_bomb_explodes_during_defuse ... ok
-test tests::round_events_synthesizes_abort_between_repeated_defuse_starts ... ok
+test tests::round_events_does_not_synthesize_ct_killed_bomb_explosion_too_broadly ... ok
 test tests::round_events_keeps_post_round_kills_before_next_round ... ok
+test tests::round_events_keeps_all_post_round_kill_shapes_after_bomb_explosion ... ok
+test tests::projectile_grouping_keeps_id_across_small_terminal_snap ... ok
+test tests::round_events_synthesizes_abort_between_repeated_defuse_starts ... ok
+test tests::decoy_effect_start_uses_projectile_stationary_time ... ok
+test tests::round_events_synthesizes_abort_when_bomb_explodes_during_defuse ... ok
 test tests::round_events_synthesizes_bomb_exploded_from_round_end_reason ... ok
 test tests::round_events_synthesizes_ct_killed_bomb_explosion_after_long_post_round ... ok
 test tests::round_events_synthesizes_ct_killed_bomb_explosion_before_world_kills ... ok
 test tests::round_events_synthesizes_ct_killed_bomb_explosion_on_final_round ... ok
 test tests::round_weapon_fires_keep_event_when_shooter_pose_is_unavailable ... ok
 test tests::round_weapon_fires_use_exact_shooter_pose_when_available ... ok
+test tests::round_frames_fallback_drop_uses_last_carried_position_without_c4_position ... ok
 test tests::read_demo_plain_passthrough ... ok
 test tests::round_weapon_fires_use_previous_shooter_pose_when_exact_tick_is_missing ... ok
-test tests::round_frames_track_bomb_carry_drop_pickup_plant_and_defuse ... ok
 test tests::round_frames_clear_bomb_after_synthesized_explosion ... ok
-test tests::round_frames_fallback_drop_uses_last_carried_position_without_c4_position ... ok
 test tests::round_frames_clear_bomb_after_explicit_explosion ... ok
+test tests::round_frames_track_bomb_carry_drop_pickup_plant_and_defuse ... ok
 test tests::sample_step_matches_cli_quality_contract ... ok
 test tests::terminal_flash_effects_are_synthesized_from_projectiles ... ok
 test tests::terminal_flash_effects_do_not_duplicate_existing_effects ... ok
@@ -48,43 +48,43 @@ test tests::roundlab_test_demo_honors_quality_and_skip_options_when_configured .
 test tests::roundlab_test_demo_produces_replay_json_when_configured has been running for over 60 seconds
 test tests::roundlab_test_demo_produces_replay_json_when_configured ... ok
 
-test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 141.12s
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 137.33s
 
      Running unittests src/main.rs (target/llvm-cov-target/debug/deps/roundlab_parser-558cc64da01f439a)
 
 running 40 tests
 test tests::parse_args_from_accepts_quality_and_skip_flags ... ok
+test tests::fire_effect_end_uses_nearby_inferno_expire ... ok
+test tests::fire_effect_ignores_far_inferno_expire ... ok
+test tests::knife_round_detection_rejects_real_weapon_rounds ... ok
+test tests::fire_effect_uses_latest_nearby_cell_expire ... ok
 test tests::parse_args_from_rejects_invalid_quality ... ok
 test tests::knife_round_detection_allows_long_pregame_duels ... ok
-test tests::fire_effect_ignores_far_inferno_expire ... ok
-test tests::fire_effect_end_uses_nearby_inferno_expire ... ok
-test tests::fire_effect_uses_latest_nearby_cell_expire ... ok
-test tests::knife_round_detection_rejects_real_weapon_rounds ... ok
 test tests::parse_args_from_rejects_unknown_arguments ... ok
 test tests::parser_gzip_compression_defaults_to_standard_and_allows_override ... ok
-test tests::read_capped_rejects_overflow ... ok
-test tests::projectile_grouping_removes_physical_duplicates_in_same_tick ... ok
-test tests::projectile_grouping_keeps_id_across_small_terminal_snap ... ok
 test tests::round_events_does_not_duplicate_explicit_bomb_exploded ... ok
+test tests::projectile_grouping_removes_physical_duplicates_in_same_tick ... ok
+test tests::read_capped_rejects_overflow ... ok
+test tests::projectile_grouping_keeps_id_across_small_terminal_snap ... ok
 test tests::decoy_effect_start_uses_projectile_stationary_time ... ok
-test tests::round_events_keeps_post_round_bomb_events_before_next_round ... ok
-test tests::round_events_synthesizes_abort_between_repeated_defuse_starts ... ok
-test tests::round_events_synthesizes_abort_when_bomb_explodes_during_defuse ... ok
 test tests::round_events_does_not_synthesize_ct_killed_bomb_explosion_too_broadly ... ok
+test tests::round_events_keeps_post_round_bomb_events_before_next_round ... ok
 test tests::round_events_keeps_all_post_round_kill_shapes_after_bomb_explosion ... ok
 test tests::round_events_keeps_post_round_kills_before_next_round ... ok
+test tests::read_demo_plain_passthrough ... ok
+test tests::round_events_synthesizes_abort_between_repeated_defuse_starts ... ok
+test tests::round_events_synthesizes_abort_when_bomb_explodes_during_defuse ... ok
 test tests::round_events_synthesizes_bomb_exploded_from_round_end_reason ... ok
 test tests::round_events_synthesizes_ct_killed_bomb_explosion_after_long_post_round ... ok
-test tests::round_events_synthesizes_ct_killed_bomb_explosion_on_final_round ... ok
 test tests::round_events_synthesizes_ct_killed_bomb_explosion_before_world_kills ... ok
-test tests::read_demo_plain_passthrough ... ok
-test tests::round_weapon_fires_keep_event_when_shooter_pose_is_unavailable ... ok
+test tests::round_events_synthesizes_ct_killed_bomb_explosion_on_final_round ... ok
 test tests::round_weapon_fires_use_exact_shooter_pose_when_available ... ok
+test tests::round_weapon_fires_keep_event_when_shooter_pose_is_unavailable ... ok
 test tests::round_frames_track_bomb_carry_drop_pickup_plant_and_defuse ... ok
-test tests::round_frames_clear_bomb_after_explicit_explosion ... ok
-test tests::round_frames_fallback_drop_uses_last_carried_position_without_c4_position ... ok
 test tests::round_weapon_fires_use_previous_shooter_pose_when_exact_tick_is_missing ... ok
+test tests::round_frames_fallback_drop_uses_last_carried_position_without_c4_position ... ok
 test tests::round_frames_clear_bomb_after_synthesized_explosion ... ok
+test tests::round_frames_clear_bomb_after_explicit_explosion ... ok
 test tests::sample_step_matches_cli_quality_contract ... ok
 test tests::terminal_flash_effects_are_synthesized_from_projectiles ... ok
 test tests::terminal_flash_effects_do_not_duplicate_existing_effects ... ok
@@ -95,7 +95,7 @@ test tests::roundlab_test_demo_honors_quality_and_skip_options_when_configured .
 test tests::roundlab_test_demo_produces_replay_json_when_configured has been running for over 60 seconds
 test tests::roundlab_test_demo_produces_replay_json_when_configured ... ok
 
-test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 139.71s
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 136.16s
 
 
     Finished report saved to /Users/julescavanier/Desktop/gotvanalyser/docs/rncp-bloc2/evidence/coverage/rust/coverage-summary.json

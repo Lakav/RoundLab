@@ -1,14 +1,14 @@
 $ python3 scripts/run-local-ci-checks.py --skip-frontend
 
-$ python3 -m py_compile scripts/collect-rncp-bloc2-evidence.py scripts/audit-browser-import-flow.py scripts/audit-browser-import-workflow.py scripts/audit-browser-parser-locality.py scripts/audit-browser-store-contract.py scripts/audit-ci-coverage.py scripts/audit-home-accessibility.py scripts/audit-match-controls.py scripts/audit-match-layout.py scripts/audit-parse-estimate.py scripts/audit-parser-fidelity.py scripts/audit-public-assets.py scripts/audit-reference-snapshots.py scripts/audit-replay-fixture-coverage.py scripts/audit-replay-renderer-contract.py scripts/audit-replay-rendering.py scripts/audit-security-baseline.py scripts/audit-static-web-export.py scripts/audit-static-export-output.py scripts/audit-web-portability.py scripts/benchmark-native-parser.py scripts/check-performance-budgets.py scripts/run-local-ci-checks.py scripts/summarize-browser-benchmark.py scripts/summarize-recipe.py scripts/validate-release-version.py
+$ python3 -m py_compile scripts/collect-rncp-bloc2-evidence.py scripts/audit-browser-import-flow.py scripts/audit-browser-import-workflow.py scripts/audit-browser-parser-locality.py scripts/audit-browser-store-contract.py scripts/audit-accessibility-controls.py scripts/audit-ci-coverage.py scripts/audit-home-accessibility.py scripts/audit-match-controls.py scripts/audit-match-layout.py scripts/audit-parse-estimate.py scripts/audit-parser-fidelity.py scripts/audit-public-assets.py scripts/audit-reference-snapshots.py scripts/audit-rgaa-grid.py scripts/audit-replay-fixture-coverage.py scripts/audit-replay-renderer-contract.py scripts/audit-replay-rendering.py scripts/audit-security-baseline.py scripts/audit-static-web-export.py scripts/audit-static-export-output.py scripts/audit-user-validation.py scripts/audit-web-portability.py scripts/benchmark-native-parser.py scripts/check-performance-budgets.py scripts/run-local-ci-checks.py scripts/summarize-browser-benchmark.py scripts/summarize-recipe.py scripts/validate-release-version.py
 $ python3 -m json.tool docs/replay-fixture-coverage.json >/dev/null
 $ python3 -m json.tool parser/reference_demos.json >/dev/null
 $ python3 scripts/audit-web-portability.py
-web portability audit passed: 477 tracked files checked
+web portability audit passed: 553 tracked files checked
 $ python3 scripts/audit-static-web-export.py
 static web export audit passed
 $ python3 scripts/audit-ci-coverage.py
-CI audit coverage passed: 19 audit scripts covered
+CI audit coverage passed: 22 audit scripts covered
 $ python3 scripts/audit-browser-parser-locality.py
 browser parser locality audit passed: 6 files checked
 $ python3 scripts/audit-browser-import-flow.py
@@ -17,6 +17,8 @@ $ python3 scripts/audit-browser-import-workflow.py
 browser import workflow audit passed
 $ python3 scripts/audit-browser-store-contract.py
 browser store contract audit passed
+$ python3 scripts/audit-accessibility-controls.py
+{"controls": 9, "counts": {"CONFORME": 5, "NON CONFORME": 0, "NON DÉMONTRÉ": 4}}
 $ python3 scripts/audit-home-accessibility.py
 home accessibility audit passed
 $ python3 scripts/audit-match-controls.py
@@ -36,8 +38,10 @@ reference snapshot shape audit passed: 5 demos
 - anubis16-19.dem.zst
 - cache11-13.dem.zst
 - inferno8-13.dem.zst
+$ python3 scripts/audit-rgaa-grid.py
+{"complete": true, "complianceRate": null, "conforming": 49, "criteria": 106, "filled": 106, "incomplete": 0, "nonconforming": 0, "notApplicable": 53, "notDemonstrated": 4}
 $ python3 scripts/audit-replay-fixture-coverage.py
-Replay fixture coverage manifest incomplete: 5/10 maps covered, 125 local fixture rounds documented, missing=de_mirage, de_nuke, de_overpass, de_train, de_vertigo (with local fixture proof)
+Replay fixture coverage manifest complete: 10/10 maps covered, 206 local fixture rounds documented, missing=(none) (with local fixture proof)
 $ python3 scripts/audit-replay-renderer-contract.py
 replay renderer contract audit passed
 $ python3 scripts/audit-replay-rendering.py --assets-only
@@ -46,6 +50,8 @@ $ python3 scripts/audit-security-baseline.py
 security baseline audit passed: 40 application source files checked
 $ python3 scripts/audit-static-export-output.py
 static export output audit passed
+$ python3 scripts/audit-user-validation.py
+{"complete": false, "participants": 0, "successRate": null, "successfulTasks": 0, "tasks": 0, "totalDurationSeconds": 0}
 local CI-safe checks passed
 
 exit_code=0

@@ -234,8 +234,8 @@ def assert_keyboard_shortcuts_respect_review_mode(errors: list[str]) -> None:
         viewer,
         [
             'const drawingShortcutsEnabled = reviewMode !== "condensed"',
-            'drawingShortcutsEnabled && e.key === "v"',
-            'drawingShortcutsEnabled && e.key === "p"',
+            'drawingShortcutsEnabled && e.altKey && e.key === "v"',
+            'drawingShortcutsEnabled && e.altKey && e.key === "p"',
             "}, [reviewMode, togglePlay, setTime]);",
         ],
         errors,

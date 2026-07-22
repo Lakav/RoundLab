@@ -103,6 +103,7 @@ jobs:
             scripts/audit-browser-import-workflow.py \
             scripts/audit-browser-parser-locality.py \
             scripts/audit-browser-store-contract.py \
+            scripts/audit-accessibility-controls.py \
             scripts/audit-ci-coverage.py \
             scripts/audit-home-accessibility.py \
             scripts/audit-match-controls.py \
@@ -150,6 +151,9 @@ jobs:
 
       - name: Validate browser store contract
         run: python3 scripts/audit-browser-store-contract.py
+
+      - name: Validate manual accessibility evidence structure
+        run: python3 scripts/audit-accessibility-controls.py
 
       - name: Validate home accessibility contract
         run: python3 scripts/audit-home-accessibility.py

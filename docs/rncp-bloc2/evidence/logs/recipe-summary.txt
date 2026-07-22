@@ -1,5 +1,5 @@
 $ python3 scripts/summarize-recipe.py
 
-{"OK": 13, "NOK": 0, "BLOQUÉ": 3}
+{"OK": 15, "NOK": 0, "BLOQUÉ": 1}
 
 exit_code=0

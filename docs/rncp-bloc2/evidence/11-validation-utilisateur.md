@@ -24,17 +24,19 @@ Statut au 21 juillet 2026 : **BLOQUÉ — aucun participant humain réel n'a ét
 | UT-07 | Consulter le résumé accessible | l'alternative textuelle du radar est retrouvée et comprise |
 | UT-08 | Supprimer le match | le dialogue est compris et la suppression confirmée |
 
+Deux participants réels distincts sont obligatoires. Une seule session, même complète, ne valide pas ce gate.
+
 ## Fiche par participant
 
-| Participant | Profil | Environnement | Tâches réussies / 8 | Durée totale | Difficultés observées | Commentaire verbatim court |
-| --- | --- | --- | ---: | ---: | --- | --- |
-| — | — | — | — | — | — | — |
+| Participant | Profil | Environnement | Tâches réussies / 8 | Durée totale | Difficultés observées | Problèmes rencontrés | Commentaire verbatim court |
+| --- | --- | --- | ---: | ---: | --- | --- | --- |
+| — | — | — | — | — | — | — | — |
 
 ## Journal par tâche
 
-| Participant | Tâche | Réussite | Durée | Aide fournie | Difficulté (1–5) | Observation factuelle |
-| --- | --- | --- | ---: | --- | ---: | --- |
-| — | — | — | — | — | — | — |
+| Participant | Tâche | Réussite | Durée | Aide fournie | Difficulté (1–5) | Problème rencontré | Observation factuelle |
+| --- | --- | --- | ---: | --- | ---: | --- | --- |
+| — | — | — | — | — | — | — | — |
 
 ## Synthèse à remplir après les sessions
 
@@ -49,6 +51,6 @@ Aucun taux de réussite, aucune durée moyenne et aucune conclusion d'utilisabil
 - `validation-utilisateur-participants.csv` reçoit une ligne par participant anonymisé, uniquement après consentement et session réelle.
 - `validation-utilisateur-taches.csv` reçoit exactement les huit tâches `UT-01` à `UT-08` pour chaque participant.
 - les durées sont saisies en secondes ; `duree_totale_secondes` doit être la somme des huit durées ; `taches_reussies` doit correspondre aux huit résultats `oui` ou `non`.
-- `aide_fournie`, `difficultes` et `observation` doivent contenir une observation réelle ; écrire `aucune` lorsque c'est factuellement le cas plutôt que laisser le champ vide.
+- `aide_fournie`, `difficultes`, `problemes_rencontres`, `probleme_rencontre` et `observation` doivent contenir une observation réelle ; écrire `aucun` ou `aucune` lorsque c'est factuellement le cas plutôt que laisser le champ vide.
 
-`python3 scripts/audit-user-validation.py` vérifie la structure sans transformer les fichiers vides en preuve. Après au moins une session réelle complète, `python3 scripts/audit-user-validation.py --require-complete` doit réussir avant de calculer un taux ou de présenter la validation comme acquise.
+`python3 scripts/audit-user-validation.py` vérifie la structure sans transformer les fichiers vides en preuve. Après deux sessions réelles complètes, `python3 scripts/audit-user-validation.py --require-complete` doit réussir avant de calculer un taux ou de présenter la validation comme acquise.

@@ -5,23 +5,23 @@ $ vitest run --coverage
  RUN  v4.1.10 /Users/julescavanier/Desktop/gotvanalyser/desktop
       Coverage enabled with v8
 
-(node:10858) Warning: `--localstorage-file` was provided without a valid path
+(node:82194) Warning: `--localstorage-file` was provided without a valid path
 (Use `node --trace-warnings ...` to show where the warning was created)
 
  Test Files  14 passed (14)
       Tests  70 passed (70)
-   Start at  13:08:33
-   Duration  3.54s (transform 1.27s, setup 3.64s, import 3.71s, tests 3.54s, environment 12.54s)
+   Start at  16:52:02
+   Duration  2.63s (transform 1.13s, setup 2.36s, import 3.02s, tests 2.64s, environment 9.72s)
 
  % Coverage report from v8
 -------------------|---------|----------|---------|---------|-------------------
 File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s
 -------------------|---------|----------|---------|---------|-------------------
-All files          |   61.68 |    52.44 |   72.51 |    63.7 |
+All files          |   61.68 |    52.32 |   72.51 |    63.7 |
  app               |   58.75 |    48.58 |   51.28 |   63.72 |
   page.tsx         |   58.75 |    48.58 |   51.28 |   63.72 | ...52-753,816-831
- app/match         |   65.61 |    39.93 |   67.96 |   70.11 |
-  MatchViewer.tsx  |   65.61 |    39.93 |   67.96 |   70.11 | ...62-763,905-925
+ app/match         |   65.61 |    39.19 |   67.96 |   70.11 |
+  MatchViewer.tsx  |   65.61 |    39.19 |   67.96 |   70.11 | ...62-763,905-925
  components/replay |   56.87 |    50.75 |   71.56 |    57.4 |
   Controls.tsx     |   96.77 |       90 |     100 |     100 | 16-24
   DrawingLayer.tsx |   56.56 |       36 |      80 |   61.17 | 67-69,86,133-185
@@ -44,7 +44,7 @@ All files          |   61.68 |    52.44 |   72.51 |    63.7 |
 
 =============================== Coverage summary ===============================
 Statements   : 61.68% ( 2257/3659 )
-Branches     : 52.44% ( 1382/2635 )
+Branches     : 52.32% ( 1382/2641 )
 Functions    : 72.51% ( 430/593 )
 Lines        : 63.7% ( 1957/3072 )
 ================================================================================

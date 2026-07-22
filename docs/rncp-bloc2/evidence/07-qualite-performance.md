@@ -7,7 +7,7 @@
 | ESLint / TypeScript | 0 erreur | PASS |
 | Vitest | 70 tests verts et seuils 60/50/60/60 | 70 tests, PASS |
 | Build statique normal et `/RoundLab` | 0 erreur, assets résolus | PASS |
-| Playwright + axe-core | 0 violation sur 5 scénarios | 5/5, PASS sans relance dans la collecte finale |
+| Playwright + axe-core | 0 violation, clavier, reflow, styles désactivés et espacement | 6/6, PASS local sur la branche finale |
 | Budget export | JS ≤ 2 000 000 octets ; WASM ≤ 3 500 000 octets et 1 fichier | PASS |
 | Rust test/fmt/Clippy | 0 échec/warning Clippy | PASS |
 | WASM | deux builds propres identiques sur un même OS | PASS |
@@ -20,7 +20,7 @@ Le périmètre frontend comprend `src/lib/**/*.ts`, la page d'accueil, `MatchVie
 | Couverture frontend globale | Couvert / total | Pourcentage |
 | --- | --- | --- |
 | Statements | 2257 / 3659 | 61,68 % |
-| Branches | 1382 / 2635 | 52,44 % |
+| Branches | 1382 / 2641 | 52,32 % |
 | Fonctions | 430 / 593 | 72,51 % |
 | Lignes | 1957 / 3072 | 63,70 % |
 
@@ -41,7 +41,7 @@ Ces chiffres passent les quatre seuils de garde. `MapRenderer` est à 52,72 % st
 
 Avec `demos/dust1-13.dem.zst`, le parser Rust atteint 4867/5231 lignes (93,04 %), 389/452 fonctions (86,06 %) et 6868/7627 régions (90,05 %). Cette mesure dépend d'une fixture locale de 128,8 Mio ignorée par Git ; l'artefact de couverture portable de la CI n'inclut pas cette démo.
 
-La CI cible Node 24 conformément au manifeste. La collecte locale a tourné sous Node 25.1.0, hors plage `>=24 <25` ; ses résultats restent utiles, mais la preuve canonique sous Node 24 est désormais la CI verte de la PR #4 puis de `main`, référencée dans `deployment-runs-2026-07-21.md`.
+La CI cible Node 24 conformément au manifeste. La collecte locale a tourné sous Node 25.1.0, hors plage `>=24 <25` ; ses résultats restent utiles, mais la dernière preuve canonique sous Node 24 est la CI verte de la PR #5 puis de `main` (runs 29837544323 et 29837787045), référencée dans `deployment-runs-2026-07-21.md`.
 
 ## Performance réellement observée
 

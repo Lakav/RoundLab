@@ -21,7 +21,9 @@ Dates : 20 et 21 juillet 2026. Navigateurs : Chrome système piloté par Playwri
 | dialogues | erreur, renommage, suppression, focus, Échap | annonces et focus vérifiés | PASS |
 | commandes replay | lecture, vitesse, couche, zoom, mode, timeline | noms, états et activation clavier vérifiés | PASS |
 | reflow | largeurs 640 px et 320 px | radar, lecture, timeline et alternative DOM disponibles | PASS automatisé limité |
+| focus accueil | premier Tab et activation du lien d'évitement | focus visible, cible `#main-content` reçue | PASS Chrome système, capture datée |
+| styles/espacement | CSS désactivée puis espacement RGAA forcé à 320 px | contenu essentiel présent, aucun débordement horizontal | PASS automatisé |
 
-Le smoke d'accessibilité seed IndexedDB avec une fixture synthétique. Séparément, le benchmark production a réellement importé Dust2, Ancient et Cache trois fois chacun dans Chrome puis ouvert et mesuré le replay ; ses résultats sont dans `performance/`. VoiceOver a été activé réellement sur l'accueil local, mais l'outil n'a pas pu piloter les raccourcis VO ni observer les annonces. Le parcours VoiceOver, le zoom navigateur manuel à 400 % et les contrastes internes au canvas restent donc non démontrés.
+Le smoke d'accessibilité seed IndexedDB avec une fixture synthétique. Séparément, le benchmark production a réellement importé Dust2, Ancient et Cache trois fois chacun dans Chrome puis ouvert et mesuré le replay ; ses résultats sont dans `performance/`. Les raccourcis de zoom du navigateur piloté n'ont produit aucune variation mesurable de `innerWidth`, `devicePixelRatio` ou `visualViewport.scale` : les zooms réels à 200/400 % et les contrastes internes au canvas restent donc non démontrés. Limite résiduelle : lecteur d’écran non testé.
 
 La séquence v0.1.39 est détaillée dans `deployment-runs-2026-07-20.md`. Les deux séquences successives de la candidate v0.1.40, dont le rollback et la restauration de la révision applicative `07fb59a`, sont détaillées dans `deployment-runs-2026-07-21.md`.
