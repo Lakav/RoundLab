@@ -53,6 +53,32 @@ describe("drawing tools and player HUD", () => {
     expect(screen.getByRole("complementary", { name: "Team 2 player status" })).toBeInTheDocument();
   });
 
+  it("keeps both team rosters after the first round payload is evicted", () => {
+    const rounds = [1, 2, 3, 4].map((number) => {
+      const round = replayRound(number);
+      round.frames[0].players = [
+        { id: 1, x: 10, y: 20, z: 0, yaw: 90, hp: 100, armor: 80, team: 2 },
+        { id: 2, x: 30, y: 40, z: 0, yaw: 180, hp: 100, armor: 80, team: 3 },
+      ];
+      return round;
+    });
+    const match = replayMatch(rounds.map((round) => ({ ...round, frames: [] })));
+    match.players = [
+      { steamId: 1, name: "Alice", team: "T" },
+      { steamId: 2, name: "Bob", team: "CT" },
+    ];
+    useReplay.getState().setMatch("hud-memory", match);
+    useReplay.getState().setRoundData("hud-memory", 1, rounds[0]);
+    useReplay.getState().setRoundData("hud-memory", 2, rounds[1]);
+    useReplay.getState().setRound(2);
+    useReplay.getState().setRoundData("hud-memory", 3, rounds[2]);
+
+    expect(useReplay.getState().match?.rounds[0].frames).toHaveLength(0);
+    render(<><PlayerHUD side="CT" /><PlayerHUD side="T" /></>);
+    expect(screen.getByRole("complementary", { name: "Alpha player status" })).toHaveTextContent("Bob");
+    expect(screen.getByRole("complementary", { name: "Bravo player status" })).toHaveTextContent("Alice");
+  });
+
   it("draws a pen stroke and exposes named toolbar controls", async () => {
     const user = userEvent.setup();
     const setStrokes = vi.fn();

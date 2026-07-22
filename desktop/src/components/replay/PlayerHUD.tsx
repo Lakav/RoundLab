@@ -39,6 +39,7 @@ export function PlayerHUD({ side }: { side: "CT" | "T" }) {
   const match = useReplay((s) => s.match);
   const currentRoundIdx = useReplay((s) => s.currentRoundIdx);
   const time = useReplay((s) => s.time) ?? 0;
+  const initialTeamByPlayer = useReplay((s) => s.initialTeamByPlayer);
   if (!match) return null;
   const round = match.rounds[currentRoundIdx];
   if (!round) return null;
@@ -46,16 +47,15 @@ export function PlayerHUD({ side }: { side: "CT" | "T" }) {
   const positions = sample(round.frames, time);
   const liveById = new Map(positions.map((p) => [p.id, p]));
   const byId = lastKnownById(round.frames, time);
-  const baseRound = match.rounds[0] ?? round;
-  const baseTeams = roundTeams(baseRound.frames);
   const currentTeams = roundTeams(round.frames);
   const baseTeamCode = side === "CT" ? 3 : 2;
 
   // Roster is anchored to the first visible round, so players keep their
   // left/right team slot after half-time. Only the CT/T styling changes.
   const sidePlayers: { steamId: number; name: string }[] = [];
-  for (const [id, team] of baseTeams) {
+  for (const [rawId, team] of Object.entries(initialTeamByPlayer)) {
     if (team !== baseTeamCode) continue;
+    const id = Number(rawId);
     const info = match.players.find((p) => p.steamId === id);
     sidePlayers.push({ steamId: id, name: info?.name ?? "" });
   }

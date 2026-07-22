@@ -3,6 +3,8 @@ import type { MatchData, Round, UtilityEffect } from "./types";
 
 const LOADED_ROUND_RADIUS = 1;
 
+export type InitialTeamByPlayer = Record<number, 2 | 3>;
+
 export type HabitOverlayTrail = {
   id: string;
   roundNumber: number;
@@ -59,6 +61,7 @@ type ReplayState = {
   speed: number; // 0.25, 0.5, 1, 2, 4
   durationOverride: number | null;
   habitOverlay: HabitOverlay | null;
+  initialTeamByPlayer: InitialTeamByPlayer;
   setMatch: (id: string, m: MatchData) => void;
   setRoundData: (matchId: string, roundNumber: number, round: Round) => void;
   setHabitOverlay: (overlay: HabitOverlay | null) => void;
@@ -79,6 +82,26 @@ function roundHasFrames(match: MatchData | null, roundIdx: number) {
 
 function isLoadedRoundPayload(roundNumber: number, round: Round) {
   return round.number === roundNumber && Array.isArray(round.frames) && round.frames.length > 0;
+}
+
+function initialTeamsFromMatch(match: MatchData): InitialTeamByPlayer {
+  const teams: InitialTeamByPlayer = {};
+  const firstRound = match.rounds[0];
+  if (firstRound?.frames.length) {
+    for (const frame of firstRound.frames) {
+      for (const player of frame.players) {
+        if (player.team === 2 || player.team === 3) teams[player.id] = player.team;
+      }
+    }
+    return teams;
+  }
+  // Browser metadata has no frame payload. This fallback is replaced as soon
+  // as round 1 loads, but keeps the HUD populated during that short window.
+  for (const player of match.players) {
+    if (player.team === "T") teams[player.steamId] = 2;
+    else if (player.team === "CT") teams[player.steamId] = 3;
+  }
+  return teams;
 }
 
 function stripRoundPayload(round: Round): Round {
@@ -130,6 +153,7 @@ export const useReplay = create<ReplayState>((set, get) => ({
   speed: 1,
   durationOverride: null,
   habitOverlay: null,
+  initialTeamByPlayer: {},
   setMatch: (id, m) => set({
     matchId: id,
     match: retainRoundPayloadWindow(m, 0),
@@ -139,6 +163,7 @@ export const useReplay = create<ReplayState>((set, get) => ({
     speed: 1,
     durationOverride: null,
     habitOverlay: null,
+    initialTeamByPlayer: initialTeamsFromMatch(m),
   }),
   setRoundData: (matchId, roundNumber, round) =>
     set((s) => {
@@ -149,7 +174,13 @@ export const useReplay = create<ReplayState>((set, get) => ({
         ...s.match,
         rounds: s.match.rounds.map((r) => (r.number === roundNumber ? round : r)),
       };
-      return { match: retainRoundPayloadWindow(nextMatch, s.currentRoundIdx) };
+      const firstRoundNumber = s.match.rounds[0]?.number;
+      return {
+        match: retainRoundPayloadWindow(nextMatch, s.currentRoundIdx),
+        initialTeamByPlayer: roundNumber === firstRoundNumber
+          ? initialTeamsFromMatch({ ...s.match, rounds: [round] })
+          : s.initialTeamByPlayer,
+      };
     }),
   setHabitOverlay: (overlay) => set({ habitOverlay: overlay }),
   setDurationOverride: (duration) => set((s) => {
