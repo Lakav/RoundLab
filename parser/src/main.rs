@@ -706,10 +706,10 @@ fn parse_demo_data_from_bytes(
     let huf = create_huffman_lookup_table();
     stats.create_huffman_ms = elapsed_ms(huf_started);
 
-    let header = timed(&mut stats.parse_header_ms, || parse_header(&bytes, &huf))?;
+    let header = timed(&mut stats.parse_header_ms, || parse_header(bytes, &huf))?;
     let map = header.get("map_name").cloned().unwrap_or_default();
-    let players = timed(&mut stats.parse_players_ms, || parse_players(&bytes, &huf))?;
-    let events = timed(&mut stats.parse_events_ms, || parse_events(&bytes, &huf))?;
+    let players = timed(&mut stats.parse_players_ms, || parse_players(bytes, &huf))?;
+    let events = timed(&mut stats.parse_events_ms, || parse_events(bytes, &huf))?;
     let spans = round_spans(&events)
         .into_iter()
         .map(|span| playable_span(&events, &span))
@@ -724,7 +724,7 @@ fn parse_demo_data_from_bytes(
         Ok(sample_ticks(&spans, sample_step, &events))
     })?;
     let tick_data = timed(&mut stats.parse_ticks_ms, || {
-        parse_ticks(&bytes, &huf, wanted_ticks)
+        parse_ticks(bytes, &huf, wanted_ticks)
     })?;
     stats.tick_rows = tick_data.rows.len();
     stats.c4_records = tick_data.c4_positions.len();
@@ -733,7 +733,7 @@ fn parse_demo_data_from_bytes(
     let c4_by_tick = group_c4_positions(tick_data.c4_positions);
     stats.group_ticks_ms = elapsed_ms(group_ticks_started);
     let team_rows = timed(&mut stats.parse_teams_ms, || {
-        Ok(parse_team_rows(&bytes, &huf, team_name_ticks(&spans)).unwrap_or_default())
+        Ok(parse_team_rows(bytes, &huf, team_name_ticks(&spans)).unwrap_or_default())
     })?;
     let (team_a, team_b) = team_names_from_rows(&team_rows);
     let round_scores = round_scores_from_team_rows(&team_rows, &spans, &team_a, &team_b);
@@ -741,7 +741,7 @@ fn parse_demo_data_from_bytes(
         Vec::new()
     } else {
         timed(&mut stats.parse_projectiles_ms, || {
-            parse_projectiles(&bytes, &huf)
+            parse_projectiles(bytes, &huf)
         })?
     };
     stats.projectile_rows = projectile_rows.len();
