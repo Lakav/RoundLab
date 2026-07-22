@@ -242,6 +242,28 @@ describe("MapRenderer projectile/effect hand-off", () => {
     expect(logic.effectHandoffProjectile(frames, smoke, 0.9)).toBeNull();
   });
 
+  it("does not lose a projectile between its last sample and its explosion", () => {
+    const terminalFrames: ProjectileFrame[] = [
+      { t: 0.9, projectiles: [projectile({ type: "flashbang", x: 90 })] },
+      { t: 1, projectiles: [projectile({ type: "flashbang", x: 100 })] },
+      { t: 1.02, projectiles: [] },
+    ];
+    const flash = effect({ type: "flash", start: 1.015, end: 1.815, x: 101 });
+    const tracks = logic.buildProjectileTracks(terminalFrames);
+
+    // The legacy frame sampler still holds the last projectile between the
+    // terminal sample and the next empty frame. The track sampler correctly
+    // reports that flight has ended, allowing a synthetic hand-off instead.
+    expect(logic.liveProjectileForEffect(terminalFrames, flash, 1.01)).not.toBeNull();
+    expect(logic.liveProjectileForEffect(terminalFrames, flash, 1.01, undefined, tracks)).toBeNull();
+    const handoff = logic.effectHandoffProjectile(terminalFrames, flash, 1.01, undefined, tracks);
+    expect(handoff).toMatchObject({ id: 10 });
+    expect(handoff!.x).toBeGreaterThan(100);
+    const visible = logic.visibleProjectiles(terminalFrames, 1.01, [flash], new Set(), tracks);
+    expect(visible).toEqual([expect.objectContaining({ id: 10 })]);
+    expect(visible[0].x).toBeGreaterThan(100);
+  });
+
   it("filters detonated, resolved and duplicate visual projectiles", () => {
     const nearFuture: ProjectileFrame[] = [
       { t: 0.9, projectiles: [projectile({ x: 90 }), projectile({ id: 11, x: 95 })] },

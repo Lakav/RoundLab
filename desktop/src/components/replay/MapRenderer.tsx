@@ -1147,8 +1147,9 @@ function liveProjectileForEffect(
   effect: UtilityEffect,
   time: number,
   ignoredProjectileIds?: Set<number>,
+  tracks?: Map<number, ProjectileTrack>,
 ): ProjectilePos | null {
-  const samples = sampleProjectiles(frames, time);
+  const samples = tracks ? sampleProjectileTracks(tracks, time) : sampleProjectiles(frames, time);
   const threshold = effect.type === "he" ? 900 : effectSuppressionRadius(effect.type);
   const threshold2 = threshold * threshold;
   let best: ProjectilePos | null = null;
@@ -1203,9 +1204,10 @@ function effectHandoffProjectile(
   effect: UtilityEffect,
   time: number,
   ignoredProjectileIds?: Set<number>,
+  tracks?: Map<number, ProjectileTrack>,
 ): ProjectilePos | null {
   if (time >= projectileHideStart(effect)) return null;
-  if (liveProjectileForEffect(frames, effect, time, ignoredProjectileIds)) return null;
+  if (liveProjectileForEffect(frames, effect, time, ignoredProjectileIds, tracks)) return null;
   const last = lastProjectileBeforeEffect(frames, effect);
   if (!last || time < last.time || effect.start - last.time > PROJECTILE_EFFECT_HANDOFF_LOOKBACK) return null;
   const span = Math.max(0.08, effect.start - last.time);
@@ -1449,7 +1451,7 @@ function visibleProjectiles(
   }
 
   for (const effect of startedEffects) {
-    const handoff = effectHandoffProjectile(frames, effect, time, detonatedIds);
+    const handoff = effectHandoffProjectile(frames, effect, time, detonatedIds, tracks);
     if (!handoff) continue;
     if ([...out.values()].some((current) => isSameVisualProjectile(current, handoff))) continue;
     out.set(handoff.id, handoff);
