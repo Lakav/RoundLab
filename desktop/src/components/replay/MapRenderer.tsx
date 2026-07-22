@@ -2143,6 +2143,9 @@ function fireCountdownColor(team?: number) {
 function drawFireMarker(layer: Container, x: number, y: number, color = 0xf97316) {
   const g = new Graphics();
   g.position.set(x, y);
+  // The base flame is 14 px tall; scale it to roughly 18 px so the team
+  // colour and the countdown remain readable at normal replay zoom.
+  g.scale.set(18 / 14);
   g.moveTo(0, -7)
     .bezierCurveTo(5.5, -2, 6, 3.5, 1.5, 7)
     .bezierCurveTo(-5.5, 4, -5, -1.5, -1.5, -5.5)

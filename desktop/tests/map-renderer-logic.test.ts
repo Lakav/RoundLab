@@ -562,6 +562,7 @@ describe("MapRenderer Pixi drawing primitives", () => {
     logic.drawCountdownLabel(layer, "not-a-number", 0, 0);
     logic.drawCountdownLabel(layer, "0123456789", 0, 0);
     logic.drawFireMarker(layer, 1, 2, logic.teamColor(2));
+    expect(layer.children.at(-1)?.scale.x).toBeCloseTo(18 / 14);
     const death = logic.drawDeathMarker(layer, 1, 2, 90, 3, "Player");
     expect(death.alpha).toBe(0.18);
     expect(logic.fireCountdownColor(2)).toBe(0x241708);
