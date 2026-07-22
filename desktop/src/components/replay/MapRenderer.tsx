@@ -2468,23 +2468,13 @@ function drawEffect(
   }
 
   if (effect.type === "flash") {
-    const burst = clamp01(age / 0.5);
+    const burst = clamp01(age / 0.28);
     const eased = easeOutCubic(burst);
     const alpha = 1 - burst;
-    g.circle(p.x, p.y, 7 + eased * 41)
-      .stroke({ color: 0xfff7d6, width: 3.2 - eased * 1.5, alpha: alpha * 0.95 });
-    g.circle(p.x, p.y, 4 + eased * 25)
-      .stroke({ color: 0xffffff, width: 1.3, alpha: alpha * 0.72 });
-    g.circle(p.x, p.y, 13 - eased * 5)
-      .fill({ color: 0xffffff, alpha: Math.max(0, 0.95 - burst * 1.7) });
-    for (let index = 0; index < 12; index++) {
-      const angle = (index / 12) * Math.PI * 2 + effectRandom(effect, index) * 0.14;
-      const inner = 11 + eased * 4;
-      const outer = inner + (8 + effectRandom(effect, index + 20) * 18) * alpha;
-      g.moveTo(p.x + Math.cos(angle) * inner, p.y + Math.sin(angle) * inner)
-        .lineTo(p.x + Math.cos(angle) * outer, p.y + Math.sin(angle) * outer)
-        .stroke({ color: index % 2 ? 0xfffbeb : 0xffffff, width: index % 3 === 0 ? 2.5 : 1.4, alpha: alpha });
-    }
+    g.circle(p.x, p.y, 4 + eased * 12)
+      .stroke({ color: 0xffffff, width: 2 - eased * 0.8, alpha: alpha * 0.9 });
+    g.circle(p.x, p.y, 6 - eased * 2)
+      .fill({ color: 0xffffff, alpha: Math.max(0, 0.92 - burst * 2) });
     layer.addChild(g);
     return;
   }
