@@ -360,6 +360,7 @@ type RoundRenderCache = {
   projectileFrames: ProjectileSample[];
   projectileTracks: Map<number, ProjectileTrack>;
   resolvedEffects: UtilityEffect[];
+  projectileEffectAssociations: Map<UtilityEffect, ProjectileEffectAssociation>;
   deathMarkers: Array<{ t: number; victim: number; x: number; y: number; z: number; yaw: number; team?: number }>;
   fixedProjectileSamples: Map<number, ProjectilePos[]>;
 };
@@ -1114,20 +1115,6 @@ function projectileSeenNearEffect(
   return false;
 }
 
-function projectileResolvedByEffect(
-  projectile: ProjectilePos,
-  startedEffects: UtilityEffect[],
-  time: number,
-  frames: ProjectileSample[],
-): boolean {
-  const type = projectileTypeToEffect(projectile.type);
-  if (!type) return false;
-  return startedEffects.some((effect) => {
-    if (effect.type !== type || time < projectileHideStart(effect)) return false;
-    return projectileTouchesEffect(projectile, effect, frames, time) || projectileSeenNearEffect(projectile, effect, frames);
-  });
-}
-
 function projectileEffectHandoff(
   projectile: ProjectilePos,
   effects: UtilityEffect[],
@@ -1181,6 +1168,7 @@ function liveProjectileForEffect(
 function lastProjectileBeforeEffect(
   frames: ProjectileSample[],
   effect: UtilityEffect,
+  projectileId?: number,
 ): { projectile: ProjectilePos; time: number } | null {
   const threshold = effect.type === "he" ? 1400 : effectSuppressionRadius(effect.type);
   const threshold2 = threshold * threshold;
@@ -1192,6 +1180,7 @@ function lastProjectileBeforeEffect(
     if (frame.t > effect.start) break;
     if (frame.t < effect.start - PROJECTILE_EFFECT_HANDOFF_LOOKBACK) continue;
     for (const projectile of frame.projectiles ?? []) {
+      if (projectileId !== undefined && projectile.id !== projectileId) continue;
       if (projectileTypeToEffect(projectile.type) !== effect.type) continue;
       const dx = projectile.x - effect.x;
       const dy = projectile.y - effect.y;
@@ -1208,16 +1197,66 @@ function lastProjectileBeforeEffect(
   return best ? { projectile: best, time: bestTime } : null;
 }
 
+type ProjectileEffectAssociation = {
+  projectileId: number;
+  distance: number;
+};
+
+function associateProjectileEffects(
+  frames: ProjectileSample[],
+  effects: UtilityEffect[],
+): Map<UtilityEffect, ProjectileEffectAssociation> {
+  const associations = new Map<UtilityEffect, ProjectileEffectAssociation>();
+  const claimedProjectileIds = new Set<number>();
+
+  for (const effect of effects.slice().sort((a, b) => a.start - b.start)) {
+    const sampled = [
+      ...sampleProjectiles(frames, effect.start + 0.08),
+      ...sampleProjectiles(frames, effect.start),
+      ...sampleProjectiles(frames, Math.max(0, effect.start - 0.08)),
+      ...sampleProjectiles(frames, Math.max(0, effect.start - 0.16)),
+      ...sampleProjectiles(frames, Math.max(0, effect.start - 0.32)),
+    ];
+    const sampledById = new Map(sampled.map((projectile) => [projectile.id, projectile]));
+    const delayed = lastProjectileBeforeEffect(frames, effect);
+    if (delayed && !sampledById.has(delayed.projectile.id)) sampledById.set(delayed.projectile.id, delayed.projectile);
+
+    let best: ProjectileEffectAssociation | null = null;
+    for (const projectile of sampledById.values()) {
+      if (claimedProjectileIds.has(projectile.id)) continue;
+      if (projectileTypeToEffect(projectile.type) !== effect.type) continue;
+      const distance = Math.hypot(projectile.x - effect.x, projectile.y - effect.y);
+      if (distance > effectSuppressionRadius(effect.type)) continue;
+      if (!best || distance < best.distance) best = { projectileId: projectile.id, distance };
+    }
+    if (!best) continue;
+    associations.set(effect, best);
+    claimedProjectileIds.add(best.projectileId);
+  }
+
+  return associations;
+}
+
 function effectHandoffProjectile(
   frames: ProjectileSample[],
   effect: UtilityEffect,
   time: number,
   ignoredProjectileIds?: Set<number>,
   tracks?: Map<number, ProjectileTrack>,
+  associatedProjectileId?: number,
 ): ProjectilePos | null {
   if (time >= projectileHideStart(effect)) return null;
-  if (liveProjectileForEffect(frames, effect, time, ignoredProjectileIds, tracks)) return null;
-  const last = lastProjectileBeforeEffect(frames, effect);
+  if (associatedProjectileId !== undefined) {
+    if (ignoredProjectileIds?.has(associatedProjectileId)) return null;
+    const associatedTrack = tracks?.get(associatedProjectileId);
+    let live: ProjectilePos | null;
+    if (tracks) live = associatedTrack ? sampleProjectileTrack(associatedTrack, time) : null;
+    else live = sampleProjectiles(frames, time).find((projectile) => projectile.id === associatedProjectileId) ?? null;
+    if (live) return null;
+  } else if (liveProjectileForEffect(frames, effect, time, ignoredProjectileIds, tracks)) {
+    return null;
+  }
+  const last = lastProjectileBeforeEffect(frames, effect, associatedProjectileId);
   if (!last || time < last.time || effect.start - last.time > PROJECTILE_EFFECT_HANDOFF_LOOKBACK) return null;
   const span = Math.max(0.08, effect.start - last.time);
   const progress = Math.max(0, Math.min(1, (time - last.time) / span));
@@ -1387,10 +1426,15 @@ function getRoundRenderCache(round: Round): RoundRenderCache {
   const cached = roundRenderCache.get(round);
   if (cached) return cached;
   const projectileFrames = projectileSamples(round);
+  const resolvedEffects = resolveEffects(round.effects ?? [], projectileFrames);
   const cache = {
     projectileFrames,
     projectileTracks: buildProjectileTracks(projectileFrames),
-    resolvedEffects: resolveEffects(round.effects ?? [], projectileFrames),
+    resolvedEffects,
+    projectileEffectAssociations: associateProjectileEffects(
+      projectileFrames,
+      resolvedEffects.filter((effect) => effect.type !== "bomb_planted"),
+    ),
     deathMarkers: (round.events ?? [])
       .filter((event) => event.type === "kill" && Boolean(event.victim))
       .flatMap((event) => {
@@ -1438,12 +1482,12 @@ function visibleProjectiles(
   startedEffects: UtilityEffect[],
   detonatedIds: Set<number>,
   tracks?: Map<number, ProjectileTrack>,
+  effectProjectileIds?: Map<UtilityEffect, number>,
 ): ProjectilePos[] {
   const out = new Map<number, ProjectilePos>();
   const sampled = tracks ? sampleProjectileTracks(tracks, time) : sampleProjectiles(frames, time);
   for (const projectile of sampled) {
     if (detonatedIds.has(projectile.id)) continue;
-    if (projectileResolvedByEffect(projectile, startedEffects, time, frames)) continue;
     if ([...out.values()].some((current) => isSameVisualProjectile(current, projectile))) continue;
     out.set(projectile.id, projectile);
   }
@@ -1452,15 +1496,20 @@ function visibleProjectiles(
   if (pair && pair.a !== pair.b && pair.b.t - time <= 0.16) {
     for (const projectile of pair.b.projectiles ?? []) {
       if (out.has(projectile.id) || detonatedIds.has(projectile.id)) continue;
-      if (projectileResolvedByEffect(projectile, startedEffects, time, frames)) continue;
-
       if ([...out.values()].some((current) => isSameVisualProjectile(current, projectile))) continue;
       out.set(projectile.id, projectile);
     }
   }
 
   for (const effect of startedEffects) {
-    const handoff = effectHandoffProjectile(frames, effect, time, detonatedIds, tracks);
+    const handoff = effectHandoffProjectile(
+      frames,
+      effect,
+      time,
+      detonatedIds,
+      tracks,
+      effectProjectileIds?.get(effect),
+    );
     if (!handoff) continue;
     if ([...out.values()].some((current) => isSameVisualProjectile(current, handoff))) continue;
     out.set(handoff.id, handoff);
@@ -1620,12 +1669,8 @@ function projectileHiddenReasonDebug(
   if (detonatedIds.has(projectile.id)) {
     return { reason: "hidden by detonatedIds", match: projectileEffectMatchDebug(projectile, effects, frames, time) };
   }
-  const match = projectileEffectMatchDebug(projectile, effects, frames, time);
-  if (match && match.started && (match.touches || match.seenNear)) {
-    return { reason: "hidden by effect resolution", match };
-  }
   if (existing.some((current) => isSameVisualProjectile(current, projectile))) {
-    return { reason: "duplicate visual projectile", match };
+    return { reason: "duplicate visual projectile", match: projectileEffectMatchDebug(projectile, effects, frames, time) };
   }
   return null;
 }
@@ -2463,10 +2508,10 @@ export const mapRendererLogic = Object.freeze({
   projectileTypeForEffect,
   projectileTouchesEffect,
   projectileSeenNearEffect,
-  projectileResolvedByEffect,
   projectileEffectHandoff,
   liveProjectileForEffect,
   lastProjectileBeforeEffect,
+  associateProjectileEffects,
   effectHandoffProjectile,
   decoyProjectileTracks,
   decoyLandingStart,
@@ -3011,11 +3056,9 @@ export function MapRenderer({
       } else if (bombSpriteRef.current) {
         bombSpriteRef.current.container.visible = false;
       }
-      // Match each started effect to ONE projectile (1-to-1). We sort
-      // effects by start time and greedily assign the closest unclaimed
-      // projectile of the same type at that instant. This prevents a
-      // second flash/HE in the same spot from being swallowed by the first
-      // detonation's suppression.
+      // Associate every nearby effect with exactly one projectile before the
+      // handoff begins. Only that projectile may be moved to or hidden by the
+      // effect; another grenade launched beside the explosion stays untouched.
       const detonatedIds = new Set<number>();
       const detonatedEffectsById = new Map<number, { effect: UtilityEffect; distance: number; rule: string }>();
       const projectileEffects = roundEffects
@@ -3025,51 +3068,37 @@ export function MapRenderer({
       const startedEffects = projectileEffects
         .filter((e) => time >= e.start)
         .slice();
-      for (const e of startedEffects) {
-        if (time < projectileHideStart(e)) continue;
-        const sampled = [
-          ...sampleProjectilesFixed(renderCache, e.start + 0.08),
-          ...sampleProjectilesFixed(renderCache, e.start),
-          ...sampleProjectilesFixed(renderCache, Math.max(0, e.start - 0.08)),
-          ...sampleProjectilesFixed(renderCache, Math.max(0, e.start - 0.16)),
-          ...sampleProjectilesFixed(renderCache, Math.max(0, e.start - 0.32)),
-        ];
-        const sampledById = new Map(sampled.map((projectile) => [projectile.id, projectile]));
-        const delayed = lastProjectileBeforeEffect(projectileFrames, e);
-        if (delayed && !sampledById.has(delayed.projectile.id)) sampledById.set(delayed.projectile.id, delayed.projectile);
-        let bestId: number | null = null;
-        let bestDist = Infinity;
-        for (const sp of sampledById.values()) {
-          if (projectileTypeToEffect(sp.type) !== e.type) continue;
-          if (detonatedIds.has(sp.id)) continue;
-          const dx = sp.x - e.x;
-          const dy = sp.y - e.y;
-          const d = dx * dx + dy * dy;
-          const threshold = effectSuppressionRadius(e.type);
-          if (d > threshold * threshold) continue;
-          if (d < bestDist) {
-            bestDist = d;
-            bestId = sp.id;
-          }
+      const associatedEffectsByProjectileId = new Map<number, UtilityEffect>();
+      const effectProjectileIds = new Map<UtilityEffect, number>();
+      for (const e of projectileEffects) {
+        const association = renderCache.projectileEffectAssociations.get(e);
+        if (!association) continue;
+        associatedEffectsByProjectileId.set(association.projectileId, e);
+        effectProjectileIds.set(e, association.projectileId);
+        if (time >= projectileHideStart(e)) {
+          detonatedIds.add(association.projectileId);
+          detonatedEffectsById.set(association.projectileId, {
+            effect: e,
+            distance: association.distance,
+            rule: "one-to-one projectile/effect association",
+          });
         }
-        if (bestId !== null) {
-          detonatedIds.add(bestId);
-          detonatedEffectsById.set(bestId, { effect: e, distance: Math.sqrt(bestDist), rule: "closest sampled projectile near effect" });
-          if (debugProjectiles) {
-            const key = `${round.number}:${bestId}:${e.type}:${e.start}`;
-            if (!projectileDebugAssociationRef.current.has(key)) {
-              projectileDebugAssociationRef.current.add(key);
-              projectileDebugLog(`effect-associated ${JSON.stringify({
-                roundNumber: round.number,
-                projectileId: bestId,
-                effectType: e.type,
-                effectVariant: e.variant ?? null,
-                projectileTime: formatProjectileDebugNumber(time),
-                effectTime: formatProjectileDebugNumber(e.start),
-                distance: formatProjectileDebugNumber(Math.sqrt(bestDist)),
-                rule: "closest sampled projectile near effect",
-              })}`);
-            }
+        if (time >= e.start && debugProjectiles) {
+          const bestId = association.projectileId;
+          const bestDist = association.distance;
+          const key = `${round.number}:${bestId}:${e.type}:${e.start}`;
+          if (!projectileDebugAssociationRef.current.has(key)) {
+            projectileDebugAssociationRef.current.add(key);
+            projectileDebugLog(`effect-associated ${JSON.stringify({
+              roundNumber: round.number,
+              projectileId: bestId,
+              effectType: e.type,
+              effectVariant: e.variant ?? null,
+              projectileTime: formatProjectileDebugNumber(time),
+              effectTime: formatProjectileDebugNumber(e.start),
+              distance: formatProjectileDebugNumber(bestDist),
+              rule: "one-to-one projectile/effect association",
+            })}`);
           }
         }
       }
@@ -3081,6 +3110,7 @@ export function MapRenderer({
         projectileEffects,
         detonatedIds,
         renderCache.projectileTracks,
+        effectProjectileIds,
       );
       if (debugProjectiles) {
         const visibleById = new Set(projectiles.map((projectile) => projectile.id));
@@ -3255,7 +3285,12 @@ export function MapRenderer({
           time,
           throwerTeams,
           toRadar,
-          projectileEffectHandoff(projectile, projectileEffects, projectileFrames, time),
+          (() => {
+            const associatedEffect = associatedEffectsByProjectileId.get(projectile.id);
+            return associatedEffect
+              ? projectileEffectHandoff(projectile, [associatedEffect], projectileFrames, time)
+              : null;
+          })(),
         );
       }
       if (debugProjectiles && now - projectileDebugLastFrameLogRef.current >= 1000) {

@@ -224,9 +224,6 @@ describe("MapRenderer projectile/effect hand-off", () => {
     expect(logic.projectileTouchesEffect(projectile({ id: 99, x: 90 }), smoke, frames, 2)).toBe(false);
     expect(logic.projectileSeenNearEffect(projectile({ x: 90 }), smoke, frames)).toBe(true);
     expect(logic.projectileSeenNearEffect(projectile({ x: 5000 }), smoke, frames)).toBe(false);
-    expect(logic.projectileResolvedByEffect(projectile({ x: 90 }), [smoke], 1.7, frames)).toBe(true);
-    expect(logic.projectileResolvedByEffect(projectile({ type: "ak47" }), [smoke], 1.7, frames)).toBe(false);
-    expect(logic.projectileResolvedByEffect(projectile({ x: 90 }), [smoke], 1.2, frames)).toBe(false);
     expect(logic.projectileEffectHandoff(projectile({ x: 90 }), [smoke], frames, 0.95)).toMatchObject({ active: false });
     expect(logic.projectileEffectHandoff(projectile({ x: 90 }), [smoke], frames, 1.1)).toMatchObject({ active: true });
     expect(logic.projectileEffectHandoff(projectile({ type: "ak47" }), [smoke], frames, 1)).toBeNull();
@@ -264,7 +261,7 @@ describe("MapRenderer projectile/effect hand-off", () => {
     expect(visible[0].x).toBeGreaterThan(100);
   });
 
-  it("filters detonated, resolved and duplicate visual projectiles", () => {
+  it("filters detonated and duplicate visual projectiles", () => {
     const nearFuture: ProjectileFrame[] = [
       { t: 0.9, projectiles: [projectile({ x: 90 }), projectile({ id: 11, x: 95 })] },
       { t: 1.05, projectiles: [projectile({ id: 12, type: "flashbang", x: 30 })] },
@@ -273,7 +270,45 @@ describe("MapRenderer projectile/effect hand-off", () => {
       expect.objectContaining({ id: 11 }),
       expect.objectContaining({ id: 12 }),
     ]);
-    expect(logic.visibleProjectiles(frames, 1.7, [smoke], new Set())).toEqual([]);
+    expect(logic.visibleProjectiles(frames, 1.7, [smoke], new Set([10]))).toEqual([]);
+  });
+
+  it("keeps a new flash visible beside another flash explosion", () => {
+    const firstFlash = effect({ type: "flash", start: 1, end: 1.8, x: 100 });
+    const secondFlash = effect({ type: "flash", start: 2, end: 2.8, x: 400 });
+    const overlappingFrames: ProjectileFrame[] = [
+      { t: 0.8, projectiles: [projectile({ id: 10, type: "flashbang", x: 60 })] },
+      {
+        t: 0.98,
+        projectiles: [
+          projectile({ id: 10, type: "flashbang", x: 100 }),
+          projectile({ id: 11, type: "flashbang", x: 130, thrower: 2 }),
+        ],
+      },
+      { t: 1.2, projectiles: [projectile({ id: 11, type: "flashbang", x: 210, thrower: 2 })] },
+      { t: 1.6, projectiles: [projectile({ id: 11, type: "flashbang", x: 320, thrower: 2 })] },
+      { t: 1.98, projectiles: [projectile({ id: 11, type: "flashbang", x: 400, thrower: 2 })] },
+    ];
+    const effects = [firstFlash, secondFlash];
+    const associations = logic.associateProjectileEffects(overlappingFrames, effects);
+    const effectProjectileIds = new Map(
+      [...associations].map(([utilityEffect, association]) => [utilityEffect, association.projectileId]),
+    );
+    const tracks = logic.buildProjectileTracks(overlappingFrames);
+
+    expect(effectProjectileIds.get(firstFlash)).toBe(10);
+    expect(effectProjectileIds.get(secondFlash)).toBe(11);
+    expect(
+      logic.visibleProjectiles(overlappingFrames, 1.55, effects, new Set([10]), tracks, effectProjectileIds),
+    ).toEqual([expect.objectContaining({ id: 11 })]);
+    expect(
+      logic.projectileEffectHandoff(
+        logic.sampleProjectileTrack(tracks.get(11)!, 1.55)!,
+        [secondFlash],
+        overlappingFrames,
+        1.55,
+      ),
+    ).toBeNull();
   });
 });
 
@@ -601,7 +636,7 @@ describe("MapRenderer diagnostics", () => {
     expect(logic.projectileEffectMatchDebug(projectile(), [smoke], frames, 2)).toMatchObject({ started: true });
     expect(logic.projectileEffectMatchDebug(projectile({ type: "ak47" }), [smoke], frames, 2)).toBeNull();
     expect(logic.projectileHiddenReasonDebug(projectile(), [], [smoke], new Set([10]), frames, 2)?.reason).toBe("hidden by detonatedIds");
-    expect(logic.projectileHiddenReasonDebug(projectile(), [], [smoke], new Set(), frames, 2)?.reason).toBe("hidden by effect resolution");
+    expect(logic.projectileHiddenReasonDebug(projectile(), [], [smoke], new Set(), frames, 2)).toBeNull();
     expect(logic.projectileHiddenReasonDebug(projectile({ id: 11 }), [projectile()], [], new Set(), frames, 0)?.reason).toBe("duplicate visual projectile");
     expect(logic.projectileHiddenReasonDebug(projectile({ id: 11, x: 1000 }), [], [], new Set(), frames, 0)).toBeNull();
     const layer = { visible: true, alpha: 1, destroyed: false };
