@@ -16,7 +16,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push }) }));
 vi.mock("next/image", () => ({ default: ({ alt = "", ...props }: React.ImgHTMLAttributes<HTMLImageElement>) => <img alt={alt} {...props} /> }));
-vi.mock("@/components/SettingsPanel", () => ({ SettingsPanel: () => <button>Settings</button> }));
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
   return {

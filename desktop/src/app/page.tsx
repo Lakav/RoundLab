@@ -31,7 +31,6 @@ import {
   type BrowserParseMode,
 } from "@/lib/parser-memory";
 import { assetPath } from "@/lib/paths";
-import { SettingsPanel } from "@/components/SettingsPanel";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -557,7 +556,6 @@ export default function Home() {
           />
           <h1 className="text-sm font-semibold">RoundLab</h1>
         </div>
-        <SettingsPanel />
       </header>
 
       <main id="main-content" tabIndex={-1} className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-6 py-8 sm:py-10">
