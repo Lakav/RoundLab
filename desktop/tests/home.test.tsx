@@ -118,4 +118,12 @@ describe("Home", () => {
     expect(await screen.findByRole("radio", { name: /Maximum precision/ })).toBeDisabled();
     expect(screen.getByRole("status")).toHaveTextContent("too large for maximum precision");
   });
+
+  it("does not expose the internal benchmark contribution export", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+    expect(await screen.findByText("Practice match")).toBeInTheDocument();
+    await user.click(screen.getByLabelText("Match actions"));
+    expect(screen.queryByText("Benchmark export")).not.toBeInTheDocument();
+  });
 });

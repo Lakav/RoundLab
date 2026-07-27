@@ -1,0 +1,123 @@
+{
+  "map": "de_inferno",
+  "zonesVersion": "roundlab.de_inferno.coarse.v1",
+  "zones": [
+    {
+      "zoneId": "a_site",
+      "label": "A site",
+      "polygon": [
+        { "x": -2087, "y": 3870 },
+        { "x": 657, "y": 3870 },
+        { "x": 657, "y": 2400 },
+        { "x": -2087, "y": 2400 }
+      ],
+      "altitudeMin": -128,
+      "altitudeMax": 512,
+      "priority": 90
+    },
+    {
+      "zoneId": "a_rotation",
+      "label": "A rotation",
+      "polygon": [
+        { "x": 657, "y": 3870 },
+        { "x": 1539, "y": 3870 },
+        { "x": 1539, "y": 1567 },
+        { "x": 657, "y": 1567 }
+      ],
+      "altitudeMin": -128,
+      "altitudeMax": 512,
+      "priority": 80
+    },
+    {
+      "zoneId": "b_site",
+      "label": "B site",
+      "polygon": [
+        { "x": 1539, "y": 3870 },
+        { "x": 2930.6, "y": 3870 },
+        { "x": 2930.6, "y": 1567 },
+        { "x": 1539, "y": 1567 }
+      ],
+      "altitudeMin": -128,
+      "altitudeMax": 512,
+      "priority": 70
+    },
+    {
+      "zoneId": "west_approach",
+      "label": "West approach",
+      "polygon": [
+        { "x": -2087, "y": 2400 },
+        { "x": -29, "y": 2400 },
+        { "x": -29, "y": 1322 },
+        { "x": -2087, "y": 1322 }
+      ],
+      "altitudeMin": -128,
+      "altitudeMax": 512,
+      "priority": 60
+    },
+    {
+      "zoneId": "west_mid",
+      "label": "West middle",
+      "polygon": [
+        { "x": -2087, "y": 1322 },
+        { "x": -29, "y": 1322 },
+        { "x": -29, "y": 440 },
+        { "x": -2087, "y": 440 }
+      ],
+      "altitudeMin": -128,
+      "altitudeMax": 512,
+      "priority": 50
+    },
+    {
+      "zoneId": "t_spawn",
+      "label": "T spawn",
+      "polygon": [
+        { "x": -2087, "y": 440 },
+        { "x": -29, "y": 440 },
+        { "x": -29, "y": -1147.6 },
+        { "x": -2087, "y": -1147.6 }
+      ],
+      "altitudeMin": -128,
+      "altitudeMax": 512,
+      "priority": 40
+    },
+    {
+      "zoneId": "middle",
+      "label": "Middle",
+      "polygon": [
+        { "x": -29, "y": 2400 },
+        { "x": 1343, "y": 2400 },
+        { "x": 1343, "y": -1147.6 },
+        { "x": -29, "y": -1147.6 }
+      ],
+      "altitudeMin": -128,
+      "altitudeMax": 512,
+      "priority": 30
+    },
+    {
+      "zoneId": "banana",
+      "label": "Banana",
+      "polygon": [
+        { "x": 1343, "y": 1567 },
+        { "x": 2930.6, "y": 1567 },
+        { "x": 2930.6, "y": 930 },
+        { "x": 1343, "y": 930 }
+      ],
+      "altitudeMin": -128,
+      "altitudeMax": 512,
+      "priority": 20
+    },
+    {
+      "zoneId": "ct_spawn",
+      "label": "CT spawn",
+      "polygon": [
+        { "x": 1343, "y": 930 },
+        { "x": 2930.6, "y": 930 },
+        { "x": 2930.6, "y": -1147.6 },
+        { "x": 1343, "y": -1147.6 }
+      ],
+      "altitudeMin": -128,
+      "altitudeMax": 512,
+      "priority": 10
+    }
+  ]
+}

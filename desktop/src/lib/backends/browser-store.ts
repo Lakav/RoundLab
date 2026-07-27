@@ -1,13 +1,21 @@
 import type { MatchSummary } from "@/lib/api";
 import type { MatchData, Round } from "@/lib/types";
+import {
+  normalizeBenchmarkContributionSettings,
+  type BenchmarkContributionSettings,
+} from "@/lib/analysis/benchmark-contribution";
+import {
+  BROWSER_DB_VERSION,
+  MATCH_STORE,
+  ROUND_STORE,
+  runBrowserStoreMigrations,
+} from "@/lib/backends/browser-store-migrations";
 
 const DB_NAME = "roundlab-web";
-const DB_VERSION = 1;
-const MATCH_STORE = "matches";
-const ROUND_STORE = "rounds";
 
 type StoredMatch = MatchSummary & {
   metadata: MatchData;
+  benchmarkContribution?: BenchmarkContributionSettings;
 };
 
 type StoredRound = {
@@ -23,16 +31,14 @@ function roundKey(matchId: string, number: number): string {
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(MATCH_STORE)) {
-        db.createObjectStore(MATCH_STORE, { keyPath: "id" });
-      }
-      if (!db.objectStoreNames.contains(ROUND_STORE)) {
-        const rounds = db.createObjectStore(ROUND_STORE, { keyPath: "key" });
-        rounds.createIndex("matchId", "matchId", { unique: false });
-      }
+    const req = indexedDB.open(DB_NAME, BROWSER_DB_VERSION);
+    req.onupgradeneeded = (event) => {
+      runBrowserStoreMigrations(
+        req.result,
+        req.transaction!,
+        event.oldVersion,
+        event.newVersion,
+      );
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error ?? new Error("IndexedDB open failed"));
@@ -73,8 +79,13 @@ function stripRoundPayload(round: Round): Round {
     ...round,
     frames: [],
     events: [],
+    damages: [],
+    disconnects: [],
+    flashes: [],
+    purchases: [],
     effects: [],
     weaponFires: [],
+    bulletImpacts: [],
     projectileFrames: [],
   };
 }
@@ -130,11 +141,15 @@ function normalizeMatchCreatedAt(createdAt: unknown): number {
 
 function storedMatchSummary(item: StoredMatch): MatchSummary | null {
   if (typeof item.id !== "string" || !item.id) return null;
+  const benchmarkContribution = normalizeBenchmarkContributionSettings(
+    item.benchmarkContribution,
+  );
   return {
     id: item.id,
     name: normalizeMatchName(item.name, item.id.slice(0, 8)),
     createdAt: normalizeMatchCreatedAt(item.createdAt),
     size: normalizeMatchSize(item.size),
+    ...(benchmarkContribution ? { benchmarkContribution } : {}),
   };
 }
 
@@ -153,14 +168,24 @@ function assertLightweightMetadata(id: string, metadata: MatchData): MatchData {
     seenRoundNumbers.add(round.number);
     const frames = metadataPayloadLength(id, round.number, "frames", round.frames);
     const events = metadataPayloadLength(id, round.number, "events", round.events);
+    const damages = metadataPayloadLength(id, round.number, "damages", round.damages);
+    const disconnects = metadataPayloadLength(id, round.number, "disconnects", round.disconnects);
+    const flashes = metadataPayloadLength(id, round.number, "flashes", round.flashes);
+    const purchases = metadataPayloadLength(id, round.number, "purchases", round.purchases);
     const effects = metadataPayloadLength(id, round.number, "effects", round.effects);
     const weaponFires = metadataPayloadLength(id, round.number, "weaponFires", round.weaponFires);
+    const bulletImpacts = metadataPayloadLength(id, round.number, "bulletImpacts", round.bulletImpacts);
     const projectileFrames = metadataPayloadLength(id, round.number, "projectileFrames", round.projectileFrames);
     const hasPayload =
       frames > 0 ||
       events > 0 ||
+      damages > 0 ||
+      disconnects > 0 ||
+      flashes > 0 ||
+      purchases > 0 ||
       effects > 0 ||
       weaponFires > 0 ||
+      bulletImpacts > 0 ||
       projectileFrames > 0;
     if (hasPayload) {
       throw new Error(`Stored match ${id} metadata contains full round payloads. Re-import the demo.`);
@@ -199,6 +224,14 @@ export async function readStoredMetadata(id: string): Promise<MatchData> {
   } finally {
     db.close();
   }
+}
+
+export async function readCompleteStoredMatch(id: string): Promise<MatchData> {
+  const metadata = await readStoredMetadata(id);
+  const rounds = await Promise.all(
+    metadata.rounds.map((round) => readStoredRound(id, round.number)),
+  );
+  return { ...metadata, rounds };
 }
 
 export async function readStoredRound(matchId: string, number: number): Promise<Round> {
@@ -246,6 +279,36 @@ export async function renameStoredMatch(id: string, name: string): Promise<Match
         const updated = { ...item, name: normalizeMatchName(name, item.name) };
         store.put(updated);
         summary = storedMatchSummary(updated) ?? { id: updated.id, name: updated.name, createdAt: updated.createdAt, size: updated.size };
+      },
+    );
+    await txDone(tx);
+    if (!summary) throw new Error(`Match not found: ${id}`);
+    return summary;
+  } finally {
+    db.close();
+  }
+}
+
+export async function saveStoredBenchmarkContribution(
+  id: string,
+  settings: BenchmarkContributionSettings,
+): Promise<MatchSummary> {
+  const normalized = normalizeBenchmarkContributionSettings(settings);
+  if (!normalized) {
+    throw new Error("Benchmark contribution settings are invalid.");
+  }
+  const db = await openDb();
+  try {
+    const tx = db.transaction(MATCH_STORE, "readwrite");
+    const store = tx.objectStore(MATCH_STORE);
+    let summary: MatchSummary | null = null;
+    await requestResultWithTransactionWork<StoredMatch | undefined>(
+      store.get(id) as IDBRequest<StoredMatch | undefined>,
+      (item) => {
+        if (!item) throw new Error(`Match not found: ${id}`);
+        const updated = { ...item, benchmarkContribution: normalized };
+        store.put(updated);
+        summary = storedMatchSummary(updated);
       },
     );
     await txDone(tx);

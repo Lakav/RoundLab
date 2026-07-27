@@ -1,4 +1,6 @@
 export type Team = "CT" | "T" | "SPEC";
+/** V2 parser payloads use strings. Numbers remain accepted for legacy stored matches. */
+export type PlayerId = string | number;
 
 export type MatchMeta = {
   map: string;
@@ -14,7 +16,7 @@ export type MatchMeta = {
 };
 
 export type Player = {
-  steamId: number;
+  steamId: PlayerId;
   name: string;
   team: Team;
 };
@@ -27,14 +29,23 @@ export type ActiveAction = {
 };
 
 export type PlayerPos = {
-  id: number;
+  id: PlayerId;
   x: number;
   y: number;
   z: number;
   yaw: number;
+  pitch?: number;
+  speed?: number;
+  velocityX?: number;
+  velocityY?: number;
+  velocityZ?: number;
+  airborne?: boolean;
+  walking?: boolean;
+  duckAmount?: number;
   hp: number;
   armor: number;
   money?: number;
+  equipmentValue?: number;
   helmet?: boolean;
   kit?: boolean;
   hasBomb?: boolean;
@@ -57,7 +68,7 @@ export type BombState = {
   y: number;
   z: number;
   status: "carried" | "dropped" | "planted";
-  carrier?: number;
+  carrier?: PlayerId;
 };
 
 export type ProjectilePos = {
@@ -66,7 +77,7 @@ export type ProjectilePos = {
   x: number;
   y: number;
   z: number;
-  thrower?: number;
+  thrower?: PlayerId;
 };
 
 export type Frame = {
@@ -83,6 +94,10 @@ export type ProjectileFrame = {
 
 export type MatchEvent = {
   t: number;
+  /** Exact server tick in replay V2. Absent only in legacy stored matches. */
+  tick?: number;
+  /** Original event order, used to break same-tick ties deterministically. */
+  sequence?: number;
   type:
     | "kill"
     | "bomb_planted"
@@ -91,11 +106,11 @@ export type MatchEvent = {
     | "bomb_defused"
     | "bomb_exploded"
     | "round_end";
-  player?: number;
+  player?: PlayerId;
   hasKit?: boolean;
-  killer?: number;
-  victim?: number;
-  assist?: number;
+  killer?: PlayerId;
+  victim?: PlayerId;
+  assist?: PlayerId;
   weapon?: string;
   hs?: boolean;
   flashAssist?: boolean;
@@ -110,13 +125,68 @@ export type MatchEvent = {
 
 export type WeaponFireEvent = {
   t: number;
-  shooter?: number;
+  /** Exact server tick in replay V2. Absent only in legacy stored matches. */
+  tick?: number;
+  /** Original event order, used to break same-tick ties deterministically. */
+  sequence?: number;
+  shooter?: PlayerId;
   weapon?: string;
   x: number;
   y: number;
   z: number;
   yaw: number;
   team?: number;
+};
+
+export type BulletImpactEvent = {
+  t: number;
+  tick: number;
+  sequence?: number;
+  shooter?: PlayerId;
+  x: number;
+  y: number;
+  z: number;
+};
+
+export type DamageEvent = {
+  t: number;
+  tick: number;
+  sequence?: number;
+  attacker?: PlayerId;
+  victim?: PlayerId;
+  weapon?: string;
+  damageHealth: number;
+  damageArmor: number;
+  healthAfter: number;
+  armorAfter: number;
+  hitgroup?: string;
+};
+
+export type DisconnectEvent = {
+  t: number;
+  tick: number;
+  sequence?: number;
+  player?: PlayerId;
+};
+
+export type FlashEvent = {
+  t: number;
+  tick: number;
+  sequence?: number;
+  thrower?: PlayerId;
+  victim?: PlayerId;
+  duration: number;
+};
+
+export type PurchaseEvent = {
+  t: number;
+  tick: number;
+  sequence?: number;
+  player?: PlayerId;
+  item: string;
+  cost?: number;
+  inventorySlot?: number;
+  wasSold?: boolean;
 };
 
 export type Round = {
@@ -131,8 +201,13 @@ export type Round = {
   scoreB?: number;
   frames: Frame[];
   events: MatchEvent[];
+  damages?: DamageEvent[];
+  disconnects?: DisconnectEvent[];
+  flashes?: FlashEvent[];
+  purchases?: PurchaseEvent[];
   effects?: UtilityEffect[];
   weaponFires?: WeaponFireEvent[];
+  bulletImpacts?: BulletImpactEvent[];
   projectileFrames?: ProjectileFrame[];
 };
 
@@ -149,6 +224,8 @@ export type UtilityEffect = {
 };
 
 export type MatchData = {
+  schemaVersion?: "roundlab.replay.v2";
+  parserVersion?: string;
   meta: MatchMeta;
   players: Player[];
   rounds: Round[];

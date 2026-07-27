@@ -14,12 +14,21 @@ import { PlayerHUD } from "@/components/replay/PlayerHUD";
 import { RoundClock } from "@/components/replay/RoundClock";
 import { KillFeed } from "@/components/replay/KillFeed";
 import { ReplayAccessibilitySummary } from "@/components/replay/ReplayAccessibilitySummary";
+import { MatchReport } from "@/components/report/MatchReport";
 import { Loader2, Maximize2, Minimize2, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { MatchData, PlayerPos, Round, UtilityEffect } from "@/lib/types";
+import type { MatchData, PlayerId, PlayerPos, Round, UtilityEffect } from "@/lib/types";
 import { cropFor, MAP_CALIBRATION, MAP_VERTICAL_SECTIONS, RADAR_SIZE, type RadarLayer } from "@/lib/maps";
 import { enterMatchFullscreen, exitMatchFullscreen, getMatchMetadata, getRound, writeDebugLog } from "@/lib/api";
 import { assetPath } from "@/lib/paths";
+import { analyzeMatch } from "@/lib/analysis/analyze-match";
+import type { MatchAnalysis } from "@/lib/analysis/types";
+import { analyzeMechanics } from "@/lib/analysis/analyze-mechanics";
+import type { MechanicsAnalysis } from "@/lib/analysis/mechanics-types";
+import { analyzeSpatial } from "@/lib/analysis/analyze-spatial";
+import type { SpatialAnalysis } from "@/lib/analysis/spatial-types";
+import { loadMapGeometry } from "@/lib/analysis/map-geometry-loader";
+import { loadTacticalZones } from "@/lib/analysis/tactical-zone-loader";
 
 const DRAW_WIDTH = 3;
 const BASE_MAP_VIEW_SCALE = 1;
@@ -31,7 +40,7 @@ const MAP_ZOOM_STEP = 0.25;
 const PROJECTILE_DEBUG_KEY = "roundlab.debugProjectiles";
 
 type HabitProjectileKind = "smoke" | "flash" | "he" | "fire" | "decoy";
-type ReviewMode = "classic" | "condensed";
+type ReviewMode = "classic" | "condensed" | "report";
 type RadarLayerMode = RadarLayer | "auto";
 
 const DEFAULT_HABIT_TYPES: Record<HabitProjectileKind, boolean> = {
@@ -119,7 +128,7 @@ function simplifyTimedHabitPoints<T extends { x: number; y: number; z: number }>
   return out;
 }
 
-function playerAtOrBefore(round: Round, playerId: number, time: number): PlayerPos | null {
+function playerAtOrBefore(round: Round, playerId: PlayerId, time: number): PlayerPos | null {
   for (let i = round.frames.length - 1; i >= 0; i--) {
     const frame = round.frames[i];
     if (frame.t > time) continue;
@@ -144,7 +153,7 @@ function habitEffectMatchRadius(kind: HabitProjectileKind): number {
 
 function buildHabitReplayRound(
   round: Round,
-  playerId: number,
+  playerId: PlayerId,
   playerName: string,
   enabledTypes: Record<HabitProjectileKind, boolean>,
 ): HabitReplayRound | null {
@@ -172,7 +181,7 @@ function buildHabitReplayRound(
 
   const allTracks = new Map<
     number,
-    { type: string; thrower?: number; samples: Array<{ t: number; x: number; y: number; z: number }> }
+    { type: string; thrower?: PlayerId; samples: Array<{ t: number; x: number; y: number; z: number }> }
   >();
   for (const frame of projectileSamplesForHabits(round)) {
     for (const projectile of frame.projectiles ?? []) {
@@ -203,7 +212,7 @@ function buildHabitReplayRound(
     const radius = habitEffectMatchRadius(kind);
     const radius2 = radius * radius;
     let bestDistance = Infinity;
-    let bestThrower: number | undefined;
+    let bestThrower: PlayerId | undefined;
     for (const track of usableTracks) {
       if (habitProjectileKind(track.type) !== kind) continue;
       for (let i = track.samples.length - 1; i >= 0; i--) {
@@ -246,6 +255,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
   const storedMatchId = useReplay((s) => s.matchId);
   const match = storedMatchId === id ? storedMatch : null;
   const currentRoundIdx = useReplay((s) => s.currentRoundIdx);
+  const setRound = useReplay((s) => s.setRound);
   const setTime = useReplay((s) => s.setTime);
   const setPlaying = useReplay((s) => s.setPlaying);
   const setSpeed = useReplay((s) => s.setSpeed);
@@ -260,6 +270,11 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
   const [condensedPlayerValue, setCondensedPlayerValue] = useState("");
   const [habitLoading, setHabitLoading] = useState(false);
   const [habitStatus, setHabitStatus] = useState("");
+  const [analysis, setAnalysis] = useState<MatchAnalysis | null>(null);
+  const [mechanicsAnalysis, setMechanicsAnalysis] = useState<MechanicsAnalysis | null>(null);
+  const [spatialAnalysis, setSpatialAnalysis] = useState<SpatialAnalysis | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
   const [tool, setTool] = useState<DrawTool>("none");
   const [color, setColor] = useState("#ef4444");
@@ -267,6 +282,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
   const matchRef = useRef<MatchData | null>(null);
   const roundLoadPromisesRef = useRef<Map<number, Promise<Round>>>(new Map());
   const habitRunRef = useRef(0);
+  const analysisRunRef = useRef(0);
   const [mapSize, setMapSize] = useState(600);
   const [mapZoom, setMapZoom] = useState(1);
   const [radarLayerMode, setRadarLayerMode] = useState<RadarLayerMode>("auto");
@@ -292,20 +308,27 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
   }, [match]);
 
   useEffect(() => {
-    if (loading) return;
+    if (loading || reviewMode === "report") return;
     const el = mainRef.current;
     if (!el) return;
     let raf = 0;
     const compute = () => {
+      if (!el.isConnected) return;
       const rect = el.getBoundingClientRect();
       const styles = window.getComputedStyle(el);
-      const horizontalPadding = parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
-      const verticalPadding = parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom);
+      const cssPixels = (value: string) => {
+        const parsed = Number.parseFloat(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+      };
+      const horizontalPadding = cssPixels(styles.paddingLeft) + cssPixels(styles.paddingRight);
+      const verticalPadding = cssPixels(styles.paddingTop) + cssPixels(styles.paddingBottom);
       const usableWidth = Math.max(0, rect.width - horizontalPadding);
       const usableHeight = Math.max(0, rect.height - verticalPadding);
       const available = Math.min(usableWidth, usableHeight);
+      if (!Number.isFinite(available) || available <= 0) return;
       const scaled = available * BASE_MAP_VIEW_SCALE;
       const size = Math.floor(available <= MIN_MAP ? available : Math.min(MAX_MAP, Math.max(MIN_MAP, scaled)));
+      if (!Number.isFinite(size) || size <= 0) return;
       setMapSize(size);
       setMapPan((current) => clampMapPan(current, mapZoom, size));
     };
@@ -319,7 +342,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
       ro.disconnect();
       cancelAnimationFrame(raf);
     };
-  }, [loading, mapZoom]);
+  }, [loading, mapZoom, reviewMode]);
 
   const [strokesByRound, setStrokesByRound] = useState<Record<number, Stroke[]>>({});
   const strokes = strokesByRound[currentRoundIdx] ?? [];
@@ -538,17 +561,27 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
 
   useEffect(() => () => invalidateHabitRun(), [invalidateHabitRun]);
 
+  useEffect(
+    () => () => {
+      analysisRunRef.current += 1;
+    },
+    [],
+  );
+
   const runCondensedOverlay = useCallback(async (playerValue: string) => {
     const currentMatch = matchRef.current;
     if (!currentMatch) return;
     const [scopeKind, scopeId] = playerValue.split(":");
-    const playerId = scopeKind === "player" ? Number(scopeId) : NaN;
-    if (!Number.isFinite(playerId)) {
+    const selectedPlayer = scopeKind === "player"
+      ? currentMatch.players.find((player) => String(player.steamId) === scopeId)
+      : undefined;
+    if (!selectedPlayer) {
       invalidateHabitRun();
       setHabitLoading(false);
       setHabitStatus("Select a player");
       return;
     }
+    const playerId = selectedPlayer.steamId;
     const runId = habitRunRef.current + 1;
     habitRunRef.current = runId;
     setHabitOverlay(null);
@@ -558,7 +591,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
     setPlaying(false);
     setTime(0);
     try {
-      const label = currentMatch.players.find((player) => player.steamId === playerId)?.name ?? String(playerId);
+      const label = selectedPlayer.name || String(playerId);
       const replays: HabitReplayRound[] = [];
       for (let i = 0; i < currentMatch.rounds.length; i++) {
         if (habitRunRef.current !== runId) return;
@@ -594,6 +627,71 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
       }
     }
   }, [invalidateHabitRun, loadRoundForHabits, setDurationOverride, setHabitOverlay, setPlaying, setTime]);
+
+  const openPositioningAnalysis = useCallback((playerId: string) => {
+    const playerValue = `player:${playerId}`;
+    setCondensedPlayerValue(playerValue);
+    setReviewMode("condensed");
+    setTool("none");
+    setMapDrag(null);
+    void runCondensedOverlay(playerValue);
+  }, [runCondensedOverlay]);
+
+  const loadAnalysis = useCallback(async () => {
+    const currentMatch = matchRef.current;
+    if (!currentMatch || analysisLoading) return;
+    const runId = analysisRunRef.current + 1;
+    analysisRunRef.current = runId;
+    setAnalysisLoading(true);
+    setAnalysisError(null);
+    try {
+      const rounds: Round[] = [];
+      for (const round of currentMatch.rounds) {
+        if (analysisRunRef.current !== runId) return;
+        rounds.push(await loadRoundForHabits(round));
+      }
+      if (analysisRunRef.current !== runId) return;
+      const hydratedMatch = { ...currentMatch, rounds };
+      const generatedAt = new Date().toISOString();
+      const [mapGeometry, tacticalZones] = await Promise.all([
+        loadMapGeometry(currentMatch.meta.map).catch(() => null),
+        loadTacticalZones(currentMatch.meta.map).catch(() => null),
+      ]);
+      if (analysisRunRef.current !== runId) return;
+      setAnalysis(analyzeMatch(hydratedMatch, { matchId: id, generatedAt }));
+      setMechanicsAnalysis(analyzeMechanics(hydratedMatch, {
+        matchId: id,
+        generatedAt,
+        mapGeometry: mapGeometry ?? undefined,
+      }));
+      setSpatialAnalysis(analyzeSpatial(hydratedMatch, {
+        matchId: id,
+        generatedAt,
+        mapGeometry: mapGeometry ?? undefined,
+        tacticalZones: tacticalZones ?? undefined,
+      }));
+    } catch (error) {
+      if (analysisRunRef.current === runId) {
+        setAnalysisError(error instanceof Error ? error.message : String(error));
+      }
+    } finally {
+      if (analysisRunRef.current === runId) setAnalysisLoading(false);
+    }
+  }, [analysisLoading, id, loadRoundForHabits]);
+
+  const openAnalysisEvidence = useCallback((evidenceId: string) => {
+    const currentMatch = matchRef.current;
+    const proof = analysis?.evidence.find((candidate) => candidate.evidenceId === evidenceId);
+    if (!currentMatch || !proof) return;
+    const roundIndex = currentMatch.rounds.findIndex(
+      (round) => round.number === proof.roundNumber,
+    );
+    if (roundIndex < 0) return;
+    clearHabitOverlay();
+    setReviewMode("classic");
+    setRound(roundIndex);
+    setTime(Math.max(0, proof.time - 3));
+  }, [analysis, clearHabitOverlay, setRound, setTime]);
 
   if (loading || (!err && storedMatchId !== id)) {
     return (
@@ -639,6 +737,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
   const cropTx = -crop.x * (contentMapSize / crop.size);
   const cropTy = -crop.y * (contentMapSize / crop.size);
   const condensedMode = reviewMode === "condensed";
+  const reportMode = reviewMode === "report";
   const condensedPlayerOptions = match.players.map((player) => ({
     value: `player:${player.steamId}`,
     label: player.name || `#${String(player.steamId).slice(-4)}`,
@@ -682,6 +781,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
           {([
             ["classic", "Classique"],
             ["condensed", "Condensé"],
+            ["report", "Rapport"],
           ] as const).map(([mode, label]) => (
             <button
               key={mode}
@@ -690,13 +790,18 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
               onClick={() => {
                 setReviewMode(mode);
                 if (mode === "classic") clearHabitOverlay();
-                else {
+                else if (mode === "condensed") {
                   setTool("none");
                   setMapDrag(null);
                   if (effectiveCondensedPlayerValue) {
                     if (!condensedPlayerValue) setCondensedPlayerValue(effectiveCondensedPlayerValue);
                     void runCondensedOverlay(effectiveCondensedPlayerValue);
                   }
+                } else {
+                  clearHabitOverlay();
+                  setTool("none");
+                  setMapDrag(null);
+                  if (!analysis) void loadAnalysis();
                 }
               }}
               className={[
@@ -712,7 +817,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-1 rounded-[3px] border border-white/10 bg-[#151717] px-1 py-0.5">
+        {!reportMode && <div className="flex items-center gap-1 rounded-[3px] border border-white/10 bg-[#151717] px-1 py-0.5">
           {hasRadarLayerControl && (
             <div className="flex rounded-[3px] border border-white/10 bg-black/20 p-0.5">
               {([
@@ -757,15 +862,15 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
           >
             <ZoomIn className="size-3.5" />
           </button>
-        </div>
-        <button
+        </div>}
+        {!reportMode && <button
           type="button"
           onClick={toggleFullscreen}
           className="flex size-8 items-center justify-center rounded-[3px] border border-white/10 bg-[#151717] text-neutral-400 transition-colors hover:bg-white/[0.05] hover:text-neutral-100"
           title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
         >
           {isFullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
-        </button>
+        </button>}
         {condensedMode && (
           <select
             aria-label="Compared player"
@@ -806,6 +911,21 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
         </nav>
       </header>
       <main id="main-content" tabIndex={-1} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        {reportMode ? (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <MatchReport
+              analysis={analysis}
+              mechanics={mechanicsAnalysis}
+              spatial={spatialAnalysis}
+              loading={analysisLoading}
+              error={analysisError}
+              onRetry={() => void loadAnalysis()}
+              onOpenEvidence={openAnalysisEvidence}
+              onOpenPositioning={openPositioningAnalysis}
+            />
+          </div>
+        ) : (
+          <>
         <h1 className="sr-only">RoundLab match replay</h1>
         {!condensedMode && (
           <>
@@ -905,6 +1025,8 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
             )}
           </div>
         </div>
+          </>
+        )}
       </main>
     </div>
   );

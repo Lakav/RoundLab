@@ -16,8 +16,13 @@ export function replayRound(number: number, duration = 10): Round {
       },
     ],
     events: [],
+    damages: [],
+    disconnects: [],
+    flashes: [],
+    purchases: [],
     effects: [],
     weaponFires: [],
+    bulletImpacts: [],
     projectileFrames: [],
   };
 }

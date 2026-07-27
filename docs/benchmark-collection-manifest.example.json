@@ -1,0 +1,27 @@
+{
+  "manifestVersion": "roundlab.benchmark-collection-manifest.v1",
+  "corpusGeneratedAt": "2026-07-27T12:00:00Z",
+  "policy": {
+    "maps": ["de_inferno"],
+    "levels": ["level-10"],
+    "minimumMatchCount": 20,
+    "minimumPlayerCount": 50,
+    "minimumPlayerSampleCount": 100,
+    "minimumPlayerRounds": 1000,
+    "minimumRoundOutcomeCount": 30
+  },
+  "entries": [
+    {
+      "analysisPath": "analyses/match-001.json",
+      "map": "de_inferno",
+      "level": "level-10",
+      "playedAt": "2026-07-26T19:00:00Z",
+      "provenance": {
+        "sourceType": "player_upload",
+        "sourceReference": "replace-with-upload-reference",
+        "authorizationBasis": "player_consent",
+        "collectedAt": "2026-07-27T10:00:00Z"
+      }
+    }
+  ]
+}

@@ -4,7 +4,7 @@ import { KillFeedIcon, type KillFeedIconKind } from "@/components/replay/KillFee
 import { iconPathFor } from "@/lib/icons";
 import { useReplay } from "@/lib/replay-store";
 import { THEME } from "@/lib/theme";
-import type { MatchEvent } from "@/lib/types";
+import type { MatchEvent, PlayerId } from "@/lib/types";
 
 const WINDOW_SECONDS = 6;
 
@@ -23,12 +23,12 @@ export function KillFeed() {
   if (kills.length === 0) return null;
 
   const playerById = new Map(match.players.map((player) => [player.steamId, player]));
-  const side = (id?: number) => {
+  const side = (id?: PlayerId) => {
     if (!id) return undefined;
     const player = playerById.get(id);
     return player?.team === "T" ? "t" : player?.team === "CT" ? "ct" : undefined;
   };
-  const name = (id?: number) => (id ? playerById.get(id)?.name ?? "?" : "World");
+  const name = (id?: PlayerId) => (id ? playerById.get(id)?.name ?? "?" : "World");
 
   return (
     <div className="pointer-events-none absolute right-3 top-4 z-40 flex flex-col items-end gap-1 md:right-8 md:top-5">
@@ -143,7 +143,7 @@ function killFeedIcons(
   ].filter((kind): kind is KillFeedIconKind => Boolean(kind));
 }
 
-function killFeedLabel(kill: MatchEvent, name: (id?: number) => string) {
+function killFeedLabel(kill: MatchEvent, name: (id?: PlayerId) => string) {
   const killer = displayName(name(kill.killer));
   const victim = displayName(name(kill.victim));
   const descriptions = [

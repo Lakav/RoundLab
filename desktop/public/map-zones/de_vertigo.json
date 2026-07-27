@@ -1,0 +1,97 @@
+{
+  "map": "de_vertigo",
+  "zonesVersion": "roundlab.de_vertigo.coarse.v1",
+  "zones": [
+    {
+      "zoneId": "lower_north",
+      "label": "Lower north route",
+      "polygon": [
+        { "x": -3168, "y": 1762 },
+        { "x": 928, "y": 1762 },
+        { "x": 928, "y": -286 },
+        { "x": -3168, "y": -286 }
+      ],
+      "altitudeMin": 11400,
+      "altitudeMax": 11700,
+      "priority": 100
+    },
+    {
+      "zoneId": "lower_t_spawn",
+      "label": "Lower T spawn and route",
+      "polygon": [
+        { "x": -3168, "y": -286 },
+        { "x": 928, "y": -286 },
+        { "x": 928, "y": -2334 },
+        { "x": -3168, "y": -2334 }
+      ],
+      "altitudeMin": 11400,
+      "altitudeMax": 11700,
+      "priority": 90
+    },
+    {
+      "zoneId": "a_site",
+      "label": "A site",
+      "polygon": [
+        { "x": -3168, "y": 1762 },
+        { "x": -1632, "y": 1762 },
+        { "x": -1632, "y": 226 },
+        { "x": -3168, "y": 226 }
+      ],
+      "altitudeMin": 11700,
+      "altitudeMax": 12100,
+      "priority": 80
+    },
+    {
+      "zoneId": "ct_spawn",
+      "label": "CT spawn and north-east",
+      "polygon": [
+        { "x": -1632, "y": 1762 },
+        { "x": 928, "y": 1762 },
+        { "x": 928, "y": 226 },
+        { "x": -1632, "y": 226 }
+      ],
+      "altitudeMin": 11700,
+      "altitudeMax": 12100,
+      "priority": 70
+    },
+    {
+      "zoneId": "a_approach",
+      "label": "A approach",
+      "polygon": [
+        { "x": -3168, "y": 226 },
+        { "x": -1632, "y": 226 },
+        { "x": -1632, "y": -2334 },
+        { "x": -3168, "y": -2334 }
+      ],
+      "altitudeMin": 11700,
+      "altitudeMax": 12100,
+      "priority": 60
+    },
+    {
+      "zoneId": "middle",
+      "label": "Middle",
+      "polygon": [
+        { "x": -1632, "y": 226 },
+        { "x": -608, "y": 226 },
+        { "x": -608, "y": -2334 },
+        { "x": -1632, "y": -2334 }
+      ],
+      "altitudeMin": 11700,
+      "altitudeMax": 12100,
+      "priority": 50
+    },
+    {
+      "zoneId": "b_site",
+      "label": "B site and approach",
+      "polygon": [
+        { "x": -608, "y": 226 },
+        { "x": 928, "y": 226 },
+        { "x": 928, "y": -2334 },
+        { "x": -608, "y": -2334 }
+      ],
+      "altitudeMin": 11700,
+      "altitudeMax": 12100,
+      "priority": 40
+    }
+  ]
+}

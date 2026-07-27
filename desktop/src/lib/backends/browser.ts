@@ -3,8 +3,10 @@ import {
   deleteStoredMatch,
   listStoredMatches,
   readStoredMetadata,
+  readCompleteStoredMatch,
   readStoredRound,
   renameStoredMatch,
+  saveStoredBenchmarkContribution,
 } from "@/lib/backends/browser-store";
 
 class BrowserProgressBus {
@@ -110,9 +112,11 @@ export function createBrowserBackend(): RoundLabBackend {
     matches: {
       listMatches: listStoredMatches,
       getMatchMetadata: readStoredMetadata,
+      getCompleteMatch: readCompleteStoredMatch,
       getRound: readStoredRound,
       deleteMatch: deleteStoredMatch,
       renameMatch: renameStoredMatch,
+      saveBenchmarkContribution: saveStoredBenchmarkContribution,
     },
     diagnostics: {
       async getDebugInfo() {

@@ -1,0 +1,97 @@
+{
+  "map": "de_nuke",
+  "zonesVersion": "roundlab.de_nuke.coarse.v1",
+  "zones": [
+    {
+      "zoneId": "t_side",
+      "label": "T side",
+      "polygon": [
+        { "x": -3453, "y": 2887 },
+        { "x": -1353, "y": 2887 },
+        { "x": -1353, "y": -4281 },
+        { "x": -3453, "y": -4281 }
+      ],
+      "altitudeMin": -900,
+      "altitudeMax": 128,
+      "priority": 80
+    },
+    {
+      "zoneId": "upper_yard",
+      "label": "Upper yard",
+      "polygon": [
+        { "x": -1353, "y": 2887 },
+        { "x": 1447, "y": 2887 },
+        { "x": 1447, "y": 87 },
+        { "x": -1353, "y": 87 }
+      ],
+      "altitudeMin": -495,
+      "altitudeMax": 128,
+      "priority": 70
+    },
+    {
+      "zoneId": "lower_north",
+      "label": "Lower north",
+      "polygon": [
+        { "x": -1353, "y": 2887 },
+        { "x": 1447, "y": 2887 },
+        { "x": 1447, "y": 87 },
+        { "x": -1353, "y": 87 }
+      ],
+      "altitudeMin": -900,
+      "altitudeMax": -495,
+      "priority": 60
+    },
+    {
+      "zoneId": "a_site_upper",
+      "label": "A site upper",
+      "polygon": [
+        { "x": -1353, "y": 87 },
+        { "x": 1447, "y": 87 },
+        { "x": 1447, "y": -2013 },
+        { "x": -1353, "y": -2013 }
+      ],
+      "altitudeMin": -495,
+      "altitudeMax": 128,
+      "priority": 50
+    },
+    {
+      "zoneId": "b_site_lower",
+      "label": "B site and lower south",
+      "polygon": [
+        { "x": -1353, "y": 87 },
+        { "x": 1447, "y": 87 },
+        { "x": 1447, "y": -4281 },
+        { "x": -1353, "y": -4281 }
+      ],
+      "altitudeMin": -900,
+      "altitudeMax": -495,
+      "priority": 40
+    },
+    {
+      "zoneId": "upper_south",
+      "label": "Upper south",
+      "polygon": [
+        { "x": -1353, "y": -2013 },
+        { "x": 1447, "y": -2013 },
+        { "x": 1447, "y": -4281 },
+        { "x": -1353, "y": -4281 }
+      ],
+      "altitudeMin": -495,
+      "altitudeMax": 128,
+      "priority": 30
+    },
+    {
+      "zoneId": "ct_side",
+      "label": "CT side",
+      "polygon": [
+        { "x": 1447, "y": 2887 },
+        { "x": 3715, "y": 2887 },
+        { "x": 3715, "y": -4281 },
+        { "x": 1447, "y": -4281 }
+      ],
+      "altitudeMin": -900,
+      "altitudeMax": 128,
+      "priority": 20
+    }
+  ]
+}
