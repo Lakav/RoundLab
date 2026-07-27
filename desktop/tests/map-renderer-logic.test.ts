@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { Container, Graphics, Sprite } from "pixi.js";
+import { Container, Graphics, Sprite, Texture } from "pixi.js";
 import { mapRendererLogic as logic } from "@/components/replay/MapRenderer";
+import * as bombLogic from "@/components/replay/map-renderer-bomb";
+import * as effectLogic from "@/components/replay/map-renderer-effect";
+import * as pixiLogic from "@/components/replay/map-renderer-pixi";
+import * as playerLogic from "@/components/replay/map-renderer-player";
+import * as projectileLogic from "@/components/replay/map-renderer-projectile";
 import type { HabitOverlayTrail, HabitReplayProjectile, HabitReplayRound } from "@/lib/replay-store";
 import type { Frame, PlayerPos, ProjectileFrame, ProjectilePos, Round, UtilityEffect, WeaponFireEvent } from "@/lib/types";
 
@@ -52,8 +57,71 @@ const round = (overrides: Partial<Round> = {}): Round => ({
 });
 
 describe("MapRenderer deterministic frame logic", () => {
+  it("exposes projectile sampling through the dedicated projectile module", () => {
+    const frames: ProjectileFrame[] = [
+      { t: 0, projectiles: [projectile({ x: 0, z: 5 })] },
+      { t: 1, projectiles: [projectile({ x: 100, z: 25 })] },
+    ];
+    const tracks = projectileLogic.buildProjectileTracks(frames);
+
+    expect(projectileLogic.projectileSamples(round({ projectileFrames: frames }))).toBe(frames);
+    expect(projectileLogic.sampleProjectileTrack(tracks.get(10)!, 0.5)).toMatchObject({
+      x: 50,
+      z: 15,
+    });
+    expect(
+      projectileLogic.projectileHeightAboveGround(projectile({ z: 25 }), tracks.get(10)),
+    ).toBe(20);
+  });
+
+  it("owns projectile-effect association, handoff and rendering in the projectile module", () => {
+    const frames: ProjectileFrame[] = [
+      { t: 0, projectiles: [projectile({ x: 0 })] },
+      { t: 0.9, projectiles: [projectile({ x: 100 })] },
+    ];
+    const smoke = effect({ type: "smoke", start: 1, x: 100 });
+    const tracks = projectileLogic.buildProjectileTracks(frames);
+    const associations = projectileLogic.associateProjectileEffects(frames, [smoke]);
+
+    expect(associations.get(smoke)?.projectileId).toBe(10);
+    const visible = projectileLogic.visibleProjectiles(
+      frames,
+      1.1,
+      [smoke],
+      new Set(),
+      tracks,
+      new Map([[smoke, 10]]),
+    );
+    expect(visible).toHaveLength(1);
+    expect(visible[0]).toMatchObject({ id: 10, x: 100 });
+
+    const layer = new Container();
+    const drawIcon = vi.fn();
+    projectileLogic.drawProjectileVisual(
+      layer,
+      visible[0],
+      tracks.get(10),
+      1.1,
+      new Map([[1, 2]]),
+      (x, y) => ({ x, y }),
+      { effect: smoke, active: true },
+      drawIcon,
+    );
+    expect(layer.children).toHaveLength(1);
+    expect(drawIcon).toHaveBeenCalledWith(
+      layer,
+      "smokegrenade",
+      100,
+      0,
+      logic.teamColor(2),
+      16,
+      expect.any(Number),
+    );
+    layer.destroy({ children: true });
+  });
+
   it("handles empty, boundary and interpolated player frames", () => {
-    expect(logic.sampleFrame([], 1)).toEqual([]);
+    expect(playerLogic.sampleFrame([], 1)).toEqual([]);
     const frames: Frame[] = [
       {
         t: 0,
@@ -69,9 +137,9 @@ describe("MapRenderer deterministic frame logic", () => {
         ],
       },
     ];
-    expect(logic.sampleFrame(frames, -1)).toBe(frames[0].players);
-    expect(logic.sampleFrame(frames, 3)).toBe(frames[1].players);
-    const sampled = logic.sampleFrame(frames, 1);
+    expect(playerLogic.sampleFrame(frames, -1)).toBe(frames[0].players);
+    expect(playerLogic.sampleFrame(frames, 3)).toBe(frames[1].players);
+    const sampled = playerLogic.sampleFrame(frames, 1);
     expect(sampled[0]).toMatchObject({ x: 10, y: 5, yaw: 180, flashLeft: 1.5 });
     expect(sampled[0].activeAction?.elapsed).toBe(1);
     expect(sampled[1].id).toBe(2);
@@ -80,8 +148,8 @@ describe("MapRenderer deterministic frame logic", () => {
       { t: 0, players: [player({ yaw: -170, flashLeft: 1, activeAction: { type: "utility", item: "flashbang", elapsed: 0 } })] },
       { t: 1, players: [player({ yaw: 170, flashLeft: 0, activeAction: { type: "plant", item: "c4", elapsed: 1 } })] },
     ];
-    expect(logic.sampleFrame(mismatched, 0.5)[0]).toMatchObject({ yaw: -180, flashLeft: 0.5 });
-    expect(logic.sampleFrame(mismatched, 0.5)[0].activeAction?.type).toBe("plant");
+    expect(playerLogic.sampleFrame(mismatched, 0.5)[0]).toMatchObject({ yaw: -180, flashLeft: 0.5 });
+    expect(playerLogic.sampleFrame(mismatched, 0.5)[0].activeAction?.type).toBe("plant");
   });
 
   it("finds historical player positions and nearest frame boundaries", () => {
@@ -90,19 +158,19 @@ describe("MapRenderer deterministic frame logic", () => {
       { t: 1, players: [player({ x: 1 })] },
       { t: 3, players: [player({ x: 3 })] },
     ];
-    expect(logic.playerPositionAtOrBefore([], 1, 2)).toBeNull();
-    expect(logic.playerPositionAtOrBefore(frames, 1, 0)).toBeNull();
-    expect(logic.playerPositionAtOrBefore(frames, 1, 2)?.x).toBe(1);
-    expect(logic.playerPositionAtOrBefore(frames, 1, 9)?.x).toBe(3);
-    expect(logic.nearestFrame([], 2)).toBeNull();
-    expect(logic.nearestFrame(frames, -1)?.t).toBe(0);
-    expect(logic.nearestFrame(frames, 9)?.t).toBe(3);
-    expect(logic.nearestFrame(frames, 1.9)?.t).toBe(1);
-    expect(logic.nearestFrame(frames, 2.2)?.t).toBe(3);
-    expect(logic.framePair([], 0)).toBeNull();
-    expect(logic.framePair(frames, -1)).toMatchObject({ alpha: 0 });
-    expect(logic.framePair(frames, 9)).toMatchObject({ alpha: 0 });
-    expect(logic.framePair(frames, 2)).toMatchObject({ alpha: 0.5 });
+    expect(playerLogic.playerPositionAtOrBefore([], 1, 2)).toBeNull();
+    expect(playerLogic.playerPositionAtOrBefore(frames, 1, 0)).toBeNull();
+    expect(playerLogic.playerPositionAtOrBefore(frames, 1, 2)?.x).toBe(1);
+    expect(playerLogic.playerPositionAtOrBefore(frames, 1, 9)?.x).toBe(3);
+    expect(playerLogic.nearestFrame([], 2)).toBeNull();
+    expect(playerLogic.nearestFrame(frames, -1)?.t).toBe(0);
+    expect(playerLogic.nearestFrame(frames, 9)?.t).toBe(3);
+    expect(playerLogic.nearestFrame(frames, 1.9)?.t).toBe(1);
+    expect(playerLogic.nearestFrame(frames, 2.2)?.t).toBe(3);
+    expect(playerLogic.framePair([], 0)).toBeNull();
+    expect(playerLogic.framePair(frames, -1)).toMatchObject({ alpha: 0 });
+    expect(playerLogic.framePair(frames, 9)).toMatchObject({ alpha: 0 });
+    expect(playerLogic.framePair(frames, 2)).toMatchObject({ alpha: 0.5 });
   });
 });
 
@@ -145,8 +213,8 @@ describe("MapRenderer projectile sampling and tracks", () => {
     expect(tracks.get(10)).toMatchObject({ first: 0, last: 2, samplesCount: 3, moved: true });
     expect(tracks.get(20)).toMatchObject({ samplesCount: 1, moved: false });
     const cache = logic.getRoundRenderCache(round({ projectileFrames: samples }));
-    const first = logic.sampleProjectilesFixed(cache, 0.5);
-    expect(logic.sampleProjectilesFixed(cache, 0.5001)).toBe(first);
+    const first = effectLogic.sampleProjectilesFixed(cache, 0.5);
+    expect(effectLogic.sampleProjectilesFixed(cache, 0.5001)).toBe(first);
     expect(logic.projectileGroundZ(tracks.get(10), 99)).toBe(0);
     expect(logic.projectileGroundZ(undefined, 99)).toBe(99);
     expect(logic.projectileHeightAboveGround(projectile({ z: 30 }), tracks.get(10))).toBe(30);
@@ -316,20 +384,20 @@ describe("MapRenderer utility effect corrections", () => {
   it("infers fire variants, radii and smoke overlap", () => {
     const fire = effect({ type: "fire", start: 1, end: 20, x: 0, variant: undefined });
     const molotovFrames: ProjectileFrame[] = [{ t: 1, projectiles: [projectile({ type: "molotov", x: 10 })] }];
-    expect(logic.fireVariantFromProjectiles(fire, molotovFrames)).toMatchObject({ variant: "molotov" });
+    expect(effectLogic.fireVariantFromProjectiles(fire, molotovFrames)).toMatchObject({ variant: "molotov" });
     const incendiaryFrames: ProjectileFrame[] = [{ t: 1, projectiles: [projectile({ type: "incendiary", x: 10 })] }];
-    expect(logic.fireVariantFromProjectiles(fire, incendiaryFrames)).toMatchObject({ variant: "incendiary" });
-    expect(logic.fireVariantFromProjectiles(fire, [])).toBe(fire);
-    expect(logic.fireVariantFromProjectiles(effect({ type: "smoke" }), [])).toMatchObject({ type: "smoke" });
-    expect(logic.circleOverlapArea(10, 10, 30)).toBe(0);
-    expect(logic.circleOverlapArea(10, 3, 2)).toBeCloseTo(Math.PI * 9);
-    expect(logic.circleOverlapArea(10, 10, 10)).toBeGreaterThan(0);
-    expect(logic.fireRadiusWorld(effect({ type: "fire", variant: "incendiary" }))).toBe(104);
-    expect(logic.fireRadiusWorld(effect({ type: "fire", variant: "molotov" }))).toBe(116);
-    expect(logic.fireRadiusWorld(effect({ type: "fire", variant: undefined, team: 3 }))).toBe(104);
-    expect(logic.fireIsSmoked(fire, [effect({ type: "smoke", x: 0 })])).toBe(true);
-    expect(logic.fireIsSmoked(fire, [effect({ type: "flash", x: 0 })])).toBe(false);
-    expect(logic.fireIsSmoked(fire, [effect({ type: "smoke", x: 1000 })])).toBe(false);
+    expect(effectLogic.fireVariantFromProjectiles(fire, incendiaryFrames)).toMatchObject({ variant: "incendiary" });
+    expect(effectLogic.fireVariantFromProjectiles(fire, [])).toBe(fire);
+    expect(effectLogic.fireVariantFromProjectiles(effect({ type: "smoke" }), [])).toMatchObject({ type: "smoke" });
+    expect(effectLogic.circleOverlapArea(10, 10, 30)).toBe(0);
+    expect(effectLogic.circleOverlapArea(10, 3, 2)).toBeCloseTo(Math.PI * 9);
+    expect(effectLogic.circleOverlapArea(10, 10, 10)).toBeGreaterThan(0);
+    expect(effectLogic.fireRadiusWorld(effect({ type: "fire", variant: "incendiary" }))).toBe(104);
+    expect(effectLogic.fireRadiusWorld(effect({ type: "fire", variant: "molotov" }))).toBe(116);
+    expect(effectLogic.fireRadiusWorld(effect({ type: "fire", variant: undefined, team: 3 }))).toBe(104);
+    expect(effectLogic.fireIsSmoked(fire, [effect({ type: "smoke", x: 0 })])).toBe(true);
+    expect(effectLogic.fireIsSmoked(fire, [effect({ type: "flash", x: 0 })])).toBe(false);
+    expect(effectLogic.fireIsSmoked(fire, [effect({ type: "smoke", x: 1000 })])).toBe(false);
   });
 
   it("corrects excessive fire and early decoy timings", () => {
@@ -338,17 +406,17 @@ describe("MapRenderer utility effect corrections", () => {
       { t: 0.2, projectiles: [projectile({ id: 4, type: "decoy", x: 1 })] },
       { t: 0.4, projectiles: [projectile({ id: 4, type: "decoy", x: 1 })] },
     ];
-    expect(logic.decoyProjectileTracks(decoyFrames)[0]).toMatchObject({ id: 4, landedAt: 0.2, samples: 3 });
+    expect(effectLogic.decoyProjectileTracks(decoyFrames)[0]).toMatchObject({ id: 4, landedAt: 0.2, samples: 3 });
     const decoy = effect({ type: "decoy", start: 1, end: 16, x: 1 });
-    expect(logic.decoyLandingStart(decoy, decoyFrames)).toBe(0.2);
-    expect(logic.decoyLandingStart(effect({ type: "smoke" }), decoyFrames)).toBeNull();
-    expect(logic.resolveDecoyEffect(decoy, decoyFrames)).toMatchObject({ start: 0.2, end: 15.2 });
-    expect(logic.resolveDecoyEffect(effect({ type: "smoke" }), decoyFrames)).toMatchObject({ type: "smoke" });
+    expect(effectLogic.decoyLandingStart(decoy, decoyFrames)).toBe(0.2);
+    expect(effectLogic.decoyLandingStart(effect({ type: "smoke" }), decoyFrames)).toBeNull();
+    expect(effectLogic.resolveDecoyEffect(decoy, decoyFrames)).toMatchObject({ start: 0.2, end: 15.2 });
+    expect(effectLogic.resolveDecoyEffect(effect({ type: "smoke" }), decoyFrames)).toMatchObject({ type: "smoke" });
     const longFire = effect({ type: "fire", start: 2, end: 20 });
-    expect(logic.resolveFireEffect(longFire)).toMatchObject({ end: 9 });
-    expect(logic.resolveFireEffect(effect({ type: "fire", start: 2, end: 8 }))).toMatchObject({ end: 8 });
-    expect(logic.resolveFireEffect(effect({ type: "smoke" }))).toMatchObject({ type: "smoke" });
-    expect(logic.resolveEffects([longFire, decoy], decoyFrames)).toEqual([
+    expect(effectLogic.resolveFireEffect(longFire)).toMatchObject({ end: 9 });
+    expect(effectLogic.resolveFireEffect(effect({ type: "fire", start: 2, end: 8 }))).toMatchObject({ end: 8 });
+    expect(effectLogic.resolveFireEffect(effect({ type: "smoke" }))).toMatchObject({ type: "smoke" });
+    expect(effectLogic.resolveEffects([longFire, decoy], decoyFrames)).toEqual([
       expect.objectContaining({ end: 9 }),
       expect.objectContaining({ start: 0.2 }),
     ]);
@@ -356,6 +424,101 @@ describe("MapRenderer utility effect corrections", () => {
 });
 
 describe("MapRenderer bomb and player state", () => {
+  it("owns the complete dropped, planted, defused and exploded bomb rendering", async () => {
+    const bombLayer = new Container();
+    const utilityLayer = new Container();
+    const loadTexture = vi.fn(async () => Texture.EMPTY);
+    const dropped = {
+      x: 10,
+      y: 20,
+      z: 0,
+      status: "dropped" as const,
+    };
+    let state = bombLogic.updateBombRender({
+      bombLayer,
+      utilityLayer,
+      state: { sprite: null, defuse: null },
+      displayBomb: dropped,
+      defusedBomb: null,
+      explosion: null,
+      plantedAt: null,
+      time: 0,
+      currentRoundIndex: 0,
+      events: [],
+      positions: [],
+      toRadar: (x, y) => ({ x, y }),
+      loadTexture,
+    });
+    await Promise.resolve();
+    expect(state.sprite?.container.position).toMatchObject({ x: 10, y: 20 });
+    expect(state.sprite?.icon.tint).toBe(0xf59e0b);
+    expect(loadTexture).toHaveBeenCalledWith("/icons/c4.svg");
+
+    const planted = { ...dropped, status: "planted" as const };
+    state = bombLogic.updateBombRender({
+      bombLayer,
+      utilityLayer,
+      state,
+      displayBomb: planted,
+      defusedBomb: null,
+      explosion: { bomb: planted, age: 0.4 },
+      plantedAt: 1,
+      time: 2,
+      currentRoundIndex: 0,
+      events: [
+        {
+          t: 1,
+          type: "bomb_defuse_start",
+          player: 2,
+          hasKit: true,
+        },
+      ],
+      positions: [player({ id: 2, team: 3, use: true })],
+      toRadar: (x, y) => ({ x, y }),
+      loadTexture,
+    });
+    expect(state.sprite?.icon.tint).toBe(0xef4444);
+    expect(state.defuse).not.toBeNull();
+    expect(utilityLayer.children.length).toBeGreaterThanOrEqual(3);
+
+    state = bombLogic.updateBombRender({
+      bombLayer,
+      utilityLayer,
+      state,
+      displayBomb: planted,
+      defusedBomb: planted,
+      explosion: null,
+      plantedAt: 1,
+      time: 3,
+      currentRoundIndex: 0,
+      events: [],
+      positions: [],
+      toRadar: (x, y) => ({ x, y }),
+      loadTexture,
+    });
+    expect(state.sprite?.icon.tint).toBe(0x22c55e);
+    expect(state.defuse).toBeNull();
+
+    state = bombLogic.updateBombRender({
+      bombLayer,
+      utilityLayer,
+      state,
+      displayBomb: { ...dropped, status: "carried", carrier: 1 },
+      defusedBomb: null,
+      explosion: null,
+      plantedAt: null,
+      time: 4,
+      currentRoundIndex: 0,
+      events: [],
+      positions: [],
+      toRadar: (x, y) => ({ x, y }),
+      loadTexture,
+    });
+    expect(state.sprite?.container.visible).toBe(false);
+    bombLayer.destroy({ children: true });
+    utilityLayer.destroy({ children: true });
+  });
+
   it("recognises equipment categories and presentation helpers", () => {
     expect(logic.heldWeaponBox("c4")).toEqual({ width: 18, height: 18 });
     expect(logic.heldWeaponBox("flashbang")).toEqual({ width: 15, height: 15 });
@@ -434,6 +597,40 @@ describe("MapRenderer bomb and player state", () => {
     expect(logic.bombPulseProgress(0, 0)).toBe(0);
     expect(logic.bombPulseProgress(0, 40)).toBeCloseTo(0);
   });
+
+  it("interpolates stable bomb states inside the bomb module", () => {
+    const frames: Frame[] = [
+      {
+        t: 0,
+        players: [],
+        bomb: { x: 0, y: 10, z: 0, status: "dropped" },
+      },
+      {
+        t: 2,
+        players: [],
+        bomb: { x: 20, y: 30, z: 10, status: "dropped" },
+      },
+    ];
+    expect(bombLogic.sampleBombState(frames, 1)).toEqual({
+      x: 10,
+      y: 20,
+      z: 5,
+      status: "dropped",
+    });
+    expect(bombLogic.sampleBombState([], 1)).toBeUndefined();
+    expect(
+      bombLogic.sampleBombState(
+        [
+          frames[0],
+          {
+            ...frames[1],
+            bomb: { x: 20, y: 30, z: 10, status: "planted" },
+          },
+        ],
+        1,
+      )?.status,
+    ).toBe("planted");
+  });
 });
 
 describe("MapRenderer cache and cleanup", () => {
@@ -452,9 +649,9 @@ describe("MapRenderer cache and cleanup", () => {
     const destroyed = { destroyed: true, destroy: vi.fn() };
     const layer = { removeChildren: vi.fn(() => [child, destroyed]) };
     const queue: Array<typeof child> = [];
-    logic.queueLayerChildrenForDestroy(layer as never, queue as never);
+    pixiLogic.queueLayerChildrenForDestroy(layer as never, queue as never);
     expect(queue).toHaveLength(2);
-    logic.drainDestroyQueue(queue as never, 2, 100);
+    pixiLogic.drainDestroyQueue(queue as never, 2, 100);
     expect(child.destroy).toHaveBeenCalledWith({ children: true, context: true, style: true });
     expect(destroyed.destroy).not.toHaveBeenCalled();
     expect(queue).toHaveLength(0);
@@ -463,21 +660,60 @@ describe("MapRenderer cache and cleanup", () => {
   it("caps the detached-object backlog during dense playback", () => {
     const queue: Array<{ destroyed: boolean; destroy: ReturnType<typeof vi.fn> }> = [];
     const children = Array.from(
-      { length: logic.MAX_DEFERRED_DESTROY_OBJECTS * 3 },
+      { length: pixiLogic.MAX_DEFERRED_DESTROY_OBJECTS * 3 },
       () => ({ destroyed: false, destroy: vi.fn() }),
     );
     const layer = { removeChildren: vi.fn(() => children) };
 
-    logic.queueLayerChildrenForDestroy(layer as never, queue as never);
+    pixiLogic.queueLayerChildrenForDestroy(layer as never, queue as never);
 
-    expect(queue).toHaveLength(logic.MAX_DEFERRED_DESTROY_OBJECTS);
+    expect(queue).toHaveLength(pixiLogic.MAX_DEFERRED_DESTROY_OBJECTS);
     expect(children.filter((child) => child.destroy.mock.calls.length > 0)).toHaveLength(
-      logic.MAX_DEFERRED_DESTROY_OBJECTS * 2,
+      pixiLogic.MAX_DEFERRED_DESTROY_OBJECTS * 2,
     );
 
-    logic.destroyQueuedDisplayObjects(queue as never);
+    pixiLogic.destroyQueuedDisplayObjects(queue as never);
     expect(queue).toHaveLength(0);
     expect(children.every((child) => child.destroy.mock.calls.length === 1)).toBe(true);
+  });
+
+  it("owns child destruction and animation-frame cancellation in the Pixi lifecycle module", () => {
+    const stage = new Container();
+    const layers = pixiLogic.createMapRendererPixiLayers(stage);
+    expect(stage.children).toEqual([
+      layers.background,
+      layers.habits,
+      layers.utilities,
+      layers.bomb,
+      layers.players,
+      layers.deaths,
+    ]);
+
+    const parent = new Container();
+    const child = new Container();
+    parent.addChild(child);
+    pixiLogic.destroyPixiChild(parent, child);
+    expect(parent.children).not.toContain(child);
+    expect(child.destroyed).toBe(true);
+
+    let callback: FrameRequestCallback | null = null;
+    const request = vi.fn((next: FrameRequestCallback) => {
+      callback = next;
+      return 17;
+    });
+    const cancel = vi.fn();
+    vi.stubGlobal("requestAnimationFrame", request);
+    vi.stubGlobal("cancelAnimationFrame", cancel);
+    const render = vi.fn();
+    const stop = pixiLogic.startAnimationFrameLoop(render);
+    expect(request).toHaveBeenCalledOnce();
+    (callback as unknown as FrameRequestCallback)(123);
+    expect(render).toHaveBeenCalledWith(123);
+    expect(request).toHaveBeenCalledTimes(2);
+    stop();
+    expect(cancel).toHaveBeenCalledWith(17);
+    vi.unstubAllGlobals();
+    stage.destroy({ children: true });
   });
 });
 
@@ -498,21 +734,21 @@ describe("MapRenderer habit overlay calculations", () => {
   };
 
   it("interpolates players, projectiles and radar-layer positions", () => {
-    expect(logic.sampleHabitPosition([], 0)).toBeNull();
-    expect(logic.sampleHabitPosition(positions, 0.5)).toMatchObject({ x: 5, y: 10, z: 15, yaw: 180, hp: 90, team: 3 });
-    expect(logic.habitRadarLayerPositions([replay], 0.5)).toEqual([expect.objectContaining({ z: 15 })]);
-    expect(logic.habitRadarLayerPositions([{ ...replay, death: { t: 0.4, x: 1, y: 2, z: 99 } }], 0.5)).toEqual([{ z: 99 }]);
-    expect(logic.habitRadarLayerPositions([{ ...replay, positions: positions.map((sample) => ({ ...sample, hp: 0 })) }], 0.5)).toEqual([]);
-    expect(logic.habitTimedPoints(positions, 0, 1, toRadar)).toEqual([{ x: 10, y: 0 }, { x: 30, y: 20 }]);
-    expect(logic.habitTimedPoints(positions, 0, 1, toRadar, 10)).toEqual([{ x: 0, y: 0 }, { x: 20, y: 20 }]);
+    expect(playerLogic.sampleHabitPosition([], 0)).toBeNull();
+    expect(playerLogic.sampleHabitPosition(positions, 0.5)).toMatchObject({ x: 5, y: 10, z: 15, yaw: 180, hp: 90, team: 3 });
+    expect(playerLogic.habitRadarLayerPositions([replay], 0.5)).toEqual([expect.objectContaining({ z: 15 })]);
+    expect(playerLogic.habitRadarLayerPositions([{ ...replay, death: { t: 0.4, x: 1, y: 2, z: 99 } }], 0.5)).toEqual([{ z: 99 }]);
+    expect(playerLogic.habitRadarLayerPositions([{ ...replay, positions: positions.map((sample) => ({ ...sample, hp: 0 })) }], 0.5)).toEqual([]);
+    expect(playerLogic.habitTimedPoints(positions, 0, 1, toRadar)).toEqual([{ x: 10, y: 0 }, { x: 30, y: 20 }]);
+    expect(playerLogic.habitTimedPoints(positions, 0, 1, toRadar, 10)).toEqual([{ x: 0, y: 0 }, { x: 20, y: 20 }]);
     const replayProjectile: HabitReplayProjectile = {
       id: "p1", roundNumber: 1, projectileId: 1, type: "smokegrenade",
       samples: [{ t: 0, x: 0, y: 0, z: 20 }, { t: 1, x: 10, y: 20, z: 10 }],
     };
-    expect(logic.sampleHabitProjectile(replayProjectile, 0.5)).toEqual({ x: 5, y: 10, z: 15 });
-    expect(logic.sampleHabitProjectile({ ...replayProjectile, samples: [] }, 0.5)).toBeNull();
-    expect(logic.habitProjectileGroundZ(replayProjectile)).toBe(10);
-    expect(logic.habitProjectileGroundZ({ ...replayProjectile, samples: [] })).toBe(0);
+    expect(projectileLogic.sampleHabitProjectile(replayProjectile, 0.5)).toEqual({ x: 5, y: 10, z: 15 });
+    expect(projectileLogic.sampleHabitProjectile({ ...replayProjectile, samples: [] }, 0.5)).toBeNull();
+    expect(projectileLogic.habitProjectileGroundZ(replayProjectile)).toBe(10);
+    expect(projectileLogic.habitProjectileGroundZ({ ...replayProjectile, samples: [] })).toBe(0);
   });
 
   it("draws trails, live ghosts and death ghosts with Pixi display objects", () => {
@@ -522,17 +758,17 @@ describe("MapRenderer habit overlay calculations", () => {
     expect(layer.children).toHaveLength(0);
     const trail: HabitOverlayTrail = { ...shortTrail, points: [{ x: 0, y: 0, z: 0 }, { x: 20, y: 20, z: 0 }] };
     logic.drawHabitOverlayTrail(layer, trail, toRadar);
-    logic.drawHabitGhostPlayer(layer, replay, 0.5, toRadar);
+    playerLogic.drawHabitGhostPlayer(layer, replay, 0.5, toRadar);
     const beforeDeath = layer.children.length;
-    logic.drawHabitGhostPlayer(layer, { ...replay, death: { t: 0.4, x: 4, y: 5, z: 0 } }, 0.5, toRadar);
+    playerLogic.drawHabitGhostPlayer(layer, { ...replay, death: { t: 0.4, x: 4, y: 5, z: 0 } }, 0.5, toRadar);
     expect(layer.children.length).toBeGreaterThan(beforeDeath);
-    logic.drawHabitGhostPlayer(layer, { ...replay, positions: [] }, 0.5, toRadar);
-    expect(logic.habitTrailColor("smoke")).toBe(0x9ca3af);
-    expect(logic.habitTrailColor("flashbang")).toBe(0xfef3c7);
-    expect(logic.habitTrailColor("hegrenade")).toBe(0xf97316);
-    expect(logic.habitTrailColor("molotov")).toBe(0xef4444);
-    expect(logic.habitTrailColor("decoy")).toBe(0xa78bfa);
-    expect(logic.habitTrailColor("unknown")).toBe(0x6fea76);
+    playerLogic.drawHabitGhostPlayer(layer, { ...replay, positions: [] }, 0.5, toRadar);
+    expect(projectileLogic.habitTrailColor("smoke")).toBe(0x9ca3af);
+    expect(projectileLogic.habitTrailColor("flashbang")).toBe(0xfef3c7);
+    expect(projectileLogic.habitTrailColor("hegrenade")).toBe(0xf97316);
+    expect(projectileLogic.habitTrailColor("molotov")).toBe(0xef4444);
+    expect(projectileLogic.habitTrailColor("decoy")).toBe(0xa78bfa);
+    expect(projectileLogic.habitTrailColor("unknown")).toBe(0x6fea76);
     layer.destroy({ children: true });
   });
 
@@ -595,9 +831,21 @@ describe("MapRenderer habit overlay calculations", () => {
     expect(layer.children).toHaveLength(0);
     logic.drawHabitProjectile(layer, replayProjectile, 1.05, toRadar, effects);
     expect(layer.children.length).toBeGreaterThan(0);
+    const directLayer = new Container();
+    projectileLogic.drawHabitProjectileVisual(
+      directLayer,
+      replayProjectile,
+      1.05,
+      toRadar,
+      effects,
+      Number.POSITIVE_INFINITY,
+      vi.fn(),
+    );
+    expect(directLayer.children.length).toBeGreaterThan(0);
     const replayWithVisuals = { ...replay, projectiles: [replayProjectile], effects };
     logic.drawHabitReplayOverlay(layer, [replayWithVisuals], 1.05, toRadar, 1);
     expect(layer.children.length).toBeGreaterThan(1);
+    directLayer.destroy({ children: true });
     layer.destroy({ children: true });
   });
 });
@@ -607,14 +855,24 @@ describe("MapRenderer Pixi drawing primitives", () => {
 
   it("renders distinct smoke, flash, HE, fire, decoy and bomb effects", () => {
     const layer = new Container();
-    logic.drawEffect(layer, effect({ type: "smoke", start: 0, end: 10 }), 5, toRadar, 1);
-    logic.drawEffect(layer, effect({ type: "flash", start: 0, end: 1 }), 0.1, toRadar, 1);
-    logic.drawEffect(layer, effect({ type: "he", start: 0, end: 1 }), 0.05, toRadar, 1);
-    logic.drawEffect(layer, effect({ type: "he", start: 0, end: 1 }), 0.5, toRadar, 1);
-    logic.drawEffect(layer, effect({ type: "fire", start: 0, end: 7 }), 3, toRadar, 1);
-    logic.drawEffect(layer, effect({ type: "decoy", start: 0, end: 15 }), 0.1, toRadar, 1);
-    logic.drawEffect(layer, effect({ type: "bomb_planted", start: 0, end: 40 }), 3, toRadar, 1);
+    const drawIcon = vi.fn((target: Container) => {
+      target.addChild(new Sprite());
+    });
+    effectLogic.drawEffectVisual(layer, effect({ type: "smoke", start: 0, end: 10 }), 5, toRadar, 1, [], drawIcon);
+    effectLogic.drawEffectVisual(layer, effect({ type: "flash", start: 0, end: 1 }), 0.1, toRadar, 1, [], drawIcon);
+    effectLogic.drawEffectVisual(layer, effect({ type: "he", start: 0, end: 1 }), 0.05, toRadar, 1, [], drawIcon);
+    effectLogic.drawEffectVisual(layer, effect({ type: "he", start: 0, end: 1 }), 0.5, toRadar, 1, [], drawIcon);
+    effectLogic.drawEffectVisual(layer, effect({ type: "fire", start: 0, end: 7 }), 3, toRadar, 1, [], drawIcon);
+    effectLogic.drawEffectVisual(layer, effect({ type: "decoy", start: 0, end: 15 }), 0.1, toRadar, 1, [], drawIcon);
+    effectLogic.drawEffectVisual(layer, effect({ type: "bomb_planted", start: 0, end: 40 }), 3, toRadar, 1, [], drawIcon);
     expect(layer.children.length).toBeGreaterThanOrEqual(11);
+    const habitLayer = new Container();
+    const habitEffect = effect({ type: "smoke", start: 1, end: 5 });
+    effectLogic.drawHabitEffectVisual(habitLayer, habitEffect, 0, toRadar, 1, [habitEffect], drawIcon);
+    expect(habitLayer.children).toHaveLength(0);
+    effectLogic.drawHabitEffectVisual(habitLayer, habitEffect, 2, toRadar, 1, [habitEffect], drawIcon);
+    expect(habitLayer.children.length).toBeGreaterThan(0);
+    habitLayer.destroy({ children: true });
     layer.destroy({ children: true });
   });
 
@@ -623,11 +881,11 @@ describe("MapRenderer Pixi drawing primitives", () => {
     const graphics = new Graphics();
     logic.drawSmoothTrail(graphics, [{ x: 0, y: 0 }], 0xffffff);
     logic.drawSmoothTrail(graphics, [{ x: 0, y: 0 }, { x: 30, y: 0 }, { x: 50, y: 20 }], 0xffffff);
-    logic.drawTimerArc(graphics, 0, 0, 10, 0, 0xffffff, 1);
-    logic.drawTimerArc(graphics, 0, 0, 10, 2, 0xffffff, 1);
-    logic.drawCountdownLabel(layer, "not-a-number", 0, 0);
-    logic.drawCountdownLabel(layer, "0123456789", 0, 0);
-    logic.drawFireMarker(layer, 1, 2, logic.teamColor(2));
+    effectLogic.drawTimerArc(graphics, 0, 0, 10, 0, 0xffffff, 1);
+    effectLogic.drawTimerArc(graphics, 0, 0, 10, 2, 0xffffff, 1);
+    effectLogic.drawCountdownLabel(layer, "not-a-number", 0, 0);
+    effectLogic.drawCountdownLabel(layer, "0123456789", 0, 0);
+    effectLogic.drawFireMarker(layer, 1, 2, logic.teamColor(2));
     expect(layer.children.at(-1)?.scale.x).toBeCloseTo(18 / 16);
     const death = logic.drawDeathMarker(layer, 1, 2, 90, 3, "Player");
     expect(death.alpha).toBe(0.18);
@@ -664,16 +922,16 @@ describe("MapRenderer Pixi drawing primitives", () => {
       z: 0,
       yaw: 90,
     });
-    const gun = logic.drawWeaponFire(layer, fire("ak47"), 1.04, toRadar);
-    const knife = logic.drawWeaponFire(layer, fire("knife"), 1.12, toRadar);
+    const gun = playerLogic.drawWeaponFire(layer, fire("ak47"), 1.04, toRadar);
+    const knife = playerLogic.drawWeaponFire(layer, fire("knife"), 1.12, toRadar);
 
     expect(gun).toBeInstanceOf(Graphics);
     expect(knife).toBeInstanceOf(Graphics);
     expect(gun?.rotation).toBeCloseTo(-Math.PI / 2);
     expect(knife?.rotation).toBeCloseTo(-Math.PI / 2);
     expect(layer.children).toHaveLength(2);
-    expect(logic.drawWeaponFire(layer, fire("flashbang"), 1.04, toRadar)).toBeNull();
-    expect(logic.drawWeaponFire(layer, fire("ak47"), 1.2, toRadar)).toBeNull();
+    expect(playerLogic.drawWeaponFire(layer, fire("flashbang"), 1.04, toRadar)).toBeNull();
+    expect(playerLogic.drawWeaponFire(layer, fire("ak47"), 1.2, toRadar)).toBeNull();
     layer.destroy({ children: true });
   });
 
@@ -689,6 +947,66 @@ describe("MapRenderer Pixi drawing primitives", () => {
     expect(tall).toMatchObject({ width: 5, height: 10 });
     logic.fitSpriteBox(wide as never, 20, 10);
     expect(wide).toMatchObject({ width: 20, height: 10 });
+  });
+
+  it("creates and destroys a complete player visual through the player module boundary", () => {
+    const layer = new Container();
+    const sprite = playerLogic.createPlayerSprite(layer, "Player");
+
+    expect(layer.children).toContain(sprite.container);
+    expect(sprite.labelFill.text).toBe("Player");
+    expect(sprite.arrowRotator.children).toContain(sprite.arrow);
+    expect(sprite.actionGroup.visible).toBe(false);
+    expect(sprite.held.visible).toBe(false);
+
+    playerLogic.destroyPlayerSprite(layer, sprite);
+
+    expect(layer.children).not.toContain(sprite.container);
+    expect(sprite.container.destroyed).toBe(true);
+  });
+
+  it("updates the complete player visual through the player module boundary", async () => {
+    const layer = new Container();
+    const sprite = playerLogic.createPlayerSprite(layer, "Player");
+    const loadTexture = vi.fn(async () => Texture.EMPTY);
+
+    playerLogic.updatePlayerSprite({
+      player: player({
+        x: 10,
+        y: 20,
+        yaw: 90,
+        hp: 50,
+        active: "ak47",
+        flashLeft: 1,
+        flashTotal: 2,
+      }),
+      sprite,
+      x: 120,
+      y: 80,
+      time: 3,
+      carriesBomb: false,
+      recentFire: {
+        t: 2.95,
+        shooter: 1,
+        weapon: "ak47",
+        x: 10,
+        y: 20,
+        z: 0,
+        yaw: 90,
+      },
+      loadTexture,
+    });
+    await Promise.resolve();
+
+    expect(sprite.container.position).toMatchObject({ x: 120, y: 80 });
+    expect(sprite.container.alpha).toBe(1);
+    expect(sprite.arrowRotator.rotation).toBeCloseTo(-Math.PI / 2);
+    expect(sprite.arrowRotator.scale.x).toBeGreaterThan(1);
+    expect(sprite.flashArc.context.instructions.length).toBeGreaterThan(0);
+    expect(loadTexture).toHaveBeenCalledOnce();
+    expect(sprite.held.visible).toBe(true);
+
+    playerLogic.destroyPlayerSprite(layer, sprite);
   });
 });
 
@@ -714,7 +1032,7 @@ describe("MapRenderer diagnostics", () => {
       },
     ];
     const source = round({ frames: [{ t: 0, players: [] }], projectileFrames: frames });
-    const summary = logic.summarizeProjectileRound(source, frames, [effect(), effect({ type: "fire", variant: "molotov" })]);
+    const summary = projectileLogic.summarizeProjectileRound(source, frames, [effect(), effect({ type: "fire", variant: "molotov" })]);
     expect(summary).toMatchObject({ totalProjectileTracks: 4, usableTrajectories: 1, rejectedTrajectories: 3, effectCount: 2 });
     expect(summary.rejectedExamples.map((entry) => entry.reason)).toEqual(expect.arrayContaining(["path too short", "invalid coordinates", "static path"]));
   });
@@ -722,21 +1040,21 @@ describe("MapRenderer diagnostics", () => {
   it("explains projectile hiding and rendering failures", () => {
     const smoke = effect({ type: "smoke", start: 1, x: 0 });
     const frames: ProjectileFrame[] = [{ t: 1, projectiles: [projectile()] }];
-    expect(logic.projectileEffectMatchDebug(projectile(), [smoke], frames, 2)).toMatchObject({ started: true });
-    expect(logic.projectileEffectMatchDebug(projectile({ type: "ak47" }), [smoke], frames, 2)).toBeNull();
-    expect(logic.projectileHiddenReasonDebug(projectile(), [], [smoke], new Set([10]), frames, 2)?.reason).toBe("hidden by detonatedIds");
-    expect(logic.projectileHiddenReasonDebug(projectile(), [], [smoke], new Set(), frames, 2)).toBeNull();
-    expect(logic.projectileHiddenReasonDebug(projectile({ id: 11 }), [projectile()], [], new Set(), frames, 0)?.reason).toBe("duplicate visual projectile");
-    expect(logic.projectileHiddenReasonDebug(projectile({ id: 11, x: 1000 }), [], [], new Set(), frames, 0)).toBeNull();
+    expect(projectileLogic.projectileEffectMatchDebug(projectile(), [smoke], frames, 2)).toMatchObject({ started: true });
+    expect(projectileLogic.projectileEffectMatchDebug(projectile({ type: "ak47" }), [smoke], frames, 2)).toBeNull();
+    expect(projectileLogic.projectileHiddenReasonDebug(projectile(), [], [smoke], new Set([10]), frames, 2)?.reason).toBe("hidden by detonatedIds");
+    expect(projectileLogic.projectileHiddenReasonDebug(projectile(), [], [smoke], new Set(), frames, 2)).toBeNull();
+    expect(projectileLogic.projectileHiddenReasonDebug(projectile({ id: 11 }), [projectile()], [], new Set(), frames, 0)?.reason).toBe("duplicate visual projectile");
+    expect(projectileLogic.projectileHiddenReasonDebug(projectile({ id: 11, x: 1000 }), [], [], new Set(), frames, 0)).toBeNull();
     const layer = { visible: true, alpha: 1, destroyed: false };
-    expect(logic.projectileRenderIssueDebug(projectile({ x: Number.NaN }), [], { x: 0, y: 0 }, layer as never, 100)).toBe("invalid coordinates");
-    expect(logic.projectileRenderIssueDebug(projectile(), [{ x: Number.NaN, y: 0 }], { x: 0, y: 0 }, layer as never, 100)).toBe("invalid radar path");
-    expect(logic.projectileRenderIssueDebug(projectile(), [{ x: 0, y: 0 }], { x: 0, y: 0 }, layer as never, 100)).toBe("path too short");
-    expect(logic.projectileRenderIssueDebug(projectile(), [{ x: 0, y: 0 }, { x: 1, y: 1 }], { x: 200, y: 0 }, layer as never, 100)).toBe("outside map bounds");
-    expect(logic.projectileRenderIssueDebug(projectile(), [{ x: 0, y: 0 }, { x: 1, y: 1 }], { x: 0, y: 0 }, { ...layer, visible: false } as never, 100)).toBe("layer invisible");
-    expect(logic.projectileRenderIssueDebug(projectile(), [{ x: 0, y: 0 }, { x: 1, y: 1 }], { x: 0, y: 0 }, { ...layer, alpha: 0 } as never, 100)).toBe("alpha zero");
-    expect(logic.projectileRenderIssueDebug(projectile(), [{ x: 0, y: 0 }, { x: 1, y: 1 }], { x: 0, y: 0 }, { ...layer, destroyed: true } as never, 100)).toBe("object destroyed");
-    expect(logic.projectileRenderIssueDebug(projectile(), [{ x: 0, y: 0 }, { x: 1, y: 1 }], { x: 0, y: 0 }, layer as never, 100)).toBeNull();
+    expect(projectileLogic.projectileRenderIssueDebug(projectile({ x: Number.NaN }), [], { x: 0, y: 0 }, layer as never, 100)).toBe("invalid coordinates");
+    expect(projectileLogic.projectileRenderIssueDebug(projectile(), [{ x: Number.NaN, y: 0 }], { x: 0, y: 0 }, layer as never, 100)).toBe("invalid radar path");
+    expect(projectileLogic.projectileRenderIssueDebug(projectile(), [{ x: 0, y: 0 }], { x: 0, y: 0 }, layer as never, 100)).toBe("path too short");
+    expect(projectileLogic.projectileRenderIssueDebug(projectile(), [{ x: 0, y: 0 }, { x: 1, y: 1 }], { x: 200, y: 0 }, layer as never, 100)).toBe("outside map bounds");
+    expect(projectileLogic.projectileRenderIssueDebug(projectile(), [{ x: 0, y: 0 }, { x: 1, y: 1 }], { x: 0, y: 0 }, { ...layer, visible: false } as never, 100)).toBe("layer invisible");
+    expect(projectileLogic.projectileRenderIssueDebug(projectile(), [{ x: 0, y: 0 }, { x: 1, y: 1 }], { x: 0, y: 0 }, { ...layer, alpha: 0 } as never, 100)).toBe("alpha zero");
+    expect(projectileLogic.projectileRenderIssueDebug(projectile(), [{ x: 0, y: 0 }, { x: 1, y: 1 }], { x: 0, y: 0 }, { ...layer, destroyed: true } as never, 100)).toBe("object destroyed");
+    expect(projectileLogic.projectileRenderIssueDebug(projectile(), [{ x: 0, y: 0 }, { x: 1, y: 1 }], { x: 0, y: 0 }, layer as never, 100)).toBeNull();
   });
 
   it("keeps the projectile icon visible during the explosion handoff", () => {

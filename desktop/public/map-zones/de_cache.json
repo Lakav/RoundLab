@@ -1,0 +1,97 @@
+{
+  "map": "de_cache",
+  "zonesVersion": "roundlab.de_cache.coarse.v1",
+  "zones": [
+    {
+      "zoneId": "b_site",
+      "label": "B site",
+      "polygon": [
+        { "x": -1964, "y": 3250 },
+        { "x": 383.161572, "y": 3250 },
+        { "x": 383.161572, "y": 1339.519651 },
+        { "x": -1964, "y": 1339.519651 }
+      ],
+      "altitudeMin": 1500,
+      "altitudeMax": 2048,
+      "priority": 90
+    },
+    {
+      "zoneId": "ct_spawn",
+      "label": "CT spawn",
+      "polygon": [
+        { "x": -1964, "y": 1339.519651 },
+        { "x": 383.161572, "y": 1339.519651 },
+        { "x": 383.161572, "y": -298.034934 },
+        { "x": -1964, "y": -298.034934 }
+      ],
+      "altitudeMin": 1500,
+      "altitudeMax": 2048,
+      "priority": 80
+    },
+    {
+      "zoneId": "a_site",
+      "label": "A site",
+      "polygon": [
+        { "x": -1964, "y": -298.034934 },
+        { "x": 383.161572, "y": -298.034934 },
+        { "x": 383.161572, "y": -2339.519651 },
+        { "x": -1964, "y": -2339.519651 }
+      ],
+      "altitudeMin": 1500,
+      "altitudeMax": 2048,
+      "priority": 70
+    },
+    {
+      "zoneId": "b_approach",
+      "label": "B approach",
+      "polygon": [
+        { "x": 383.161572, "y": 3250 },
+        { "x": 1856.960699, "y": 3250 },
+        { "x": 1856.960699, "y": 1339.519651 },
+        { "x": 383.161572, "y": 1339.519651 }
+      ],
+      "altitudeMin": 1500,
+      "altitudeMax": 2048,
+      "priority": 60
+    },
+    {
+      "zoneId": "middle",
+      "label": "Middle",
+      "polygon": [
+        { "x": 383.161572, "y": 1339.519651 },
+        { "x": 1856.960699, "y": 1339.519651 },
+        { "x": 1856.960699, "y": -570.960699 },
+        { "x": 383.161572, "y": -570.960699 }
+      ],
+      "altitudeMin": 1500,
+      "altitudeMax": 2048,
+      "priority": 50
+    },
+    {
+      "zoneId": "a_approach",
+      "label": "A approach",
+      "polygon": [
+        { "x": 383.161572, "y": -570.960699 },
+        { "x": 1856.960699, "y": -570.960699 },
+        { "x": 1856.960699, "y": -2339.519651 },
+        { "x": 383.161572, "y": -2339.519651 }
+      ],
+      "altitudeMin": 1500,
+      "altitudeMax": 2048,
+      "priority": 40
+    },
+    {
+      "zoneId": "t_spawn",
+      "label": "T spawn",
+      "polygon": [
+        { "x": 1856.960699, "y": 3250 },
+        { "x": 3625.519651, "y": 3250 },
+        { "x": 3625.519651, "y": -2339.519651 },
+        { "x": 1856.960699, "y": -2339.519651 }
+      ],
+      "altitudeMin": 1500,
+      "altitudeMax": 2048,
+      "priority": 30
+    }
+  ]
+}

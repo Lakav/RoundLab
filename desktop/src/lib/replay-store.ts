@@ -1,14 +1,14 @@
 import { create } from "zustand";
-import type { MatchData, Round, UtilityEffect } from "./types";
+import type { MatchData, PlayerId, Round, UtilityEffect } from "./types";
 
 const LOADED_ROUND_RADIUS = 1;
 
-export type InitialTeamByPlayer = Record<number, 2 | 3>;
+export type InitialTeamByPlayer = Partial<Record<PlayerId, 2 | 3>>;
 
 export type HabitOverlayTrail = {
   id: string;
   roundNumber: number;
-  thrower?: number;
+  thrower?: PlayerId;
   type: string;
   points: Array<{ x: number; y: number; z: number }>;
 };
@@ -28,7 +28,7 @@ export type HabitReplayProjectile = {
   roundNumber: number;
   projectileId: number;
   type: string;
-  thrower?: number;
+  thrower?: PlayerId;
   samples: Array<{ t: number; x: number; y: number; z: number }>;
 };
 
@@ -37,7 +37,7 @@ export type HabitReplayEffect = Pick<UtilityEffect, "id" | "type" | "variant" | 
 export type HabitReplayRound = {
   id: string;
   roundNumber: number;
-  playerId: number;
+  playerId: PlayerId;
   playerName: string;
   positions: HabitReplayPlayerSample[];
   death?: { t: number; x: number; y: number; z: number };
@@ -110,8 +110,13 @@ function stripRoundPayload(round: Round): Round {
     ...round,
     frames: [],
     events: [],
+    damages: [],
+    disconnects: [],
+    flashes: [],
+    purchases: [],
     effects: [],
     weaponFires: [],
+    bulletImpacts: [],
     projectileFrames: [],
   };
 }

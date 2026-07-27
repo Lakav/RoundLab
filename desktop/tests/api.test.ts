@@ -10,9 +10,16 @@ const backend: RoundLabBackend = {
   matches: {
     listMatches: vi.fn().mockResolvedValue([]),
     getMatchMetadata: vi.fn().mockResolvedValue({ meta: {}, players: [], rounds: [] }),
+    getCompleteMatch: vi.fn().mockResolvedValue({ meta: {}, players: [], rounds: [] }),
     getRound: vi.fn().mockResolvedValue({ number: 1 }),
     deleteMatch: vi.fn().mockResolvedValue(undefined),
     renameMatch: vi.fn().mockResolvedValue({ id: "m", name: "New", createdAt: 1, size: 2 }),
+    saveBenchmarkContribution: vi.fn().mockResolvedValue({
+      id: "m",
+      name: "New",
+      createdAt: 1,
+      size: 2,
+    }),
   },
   diagnostics: {
     getDebugInfo: vi.fn().mockResolvedValue({ runtime: "test" }),
@@ -32,12 +39,14 @@ import {
   enterMatchFullscreen,
   exitMatchFullscreen,
   getDebugInfo,
+  getCompleteMatch,
   getMatchMetadata,
   getRound,
   listMatches,
   onParseProgress,
   parseDemo,
   renameMatch,
+  saveBenchmarkContribution,
   writeDebugLog,
 } from "@/lib/api";
 
@@ -47,14 +56,27 @@ describe("public browser API", () => {
   it("delegates match reads and mutations to the selected backend", async () => {
     await listMatches();
     await getMatchMetadata("m");
+    await getCompleteMatch("m");
     await getRound("m", 2, true);
     await deleteMatch("m");
     await renameMatch("m", "New");
+    const contribution = {
+      selectedPlayerId: "p1",
+      contributorId: "c1",
+      level: "faceit-level-10",
+      levelSource: "self_reported_faceit" as const,
+      playedAt: "2026-07-26T18:00:00.000Z",
+      consentedAt: "2026-07-27T12:00:00.000Z",
+    };
+    await saveBenchmarkContribution("m", contribution);
     expect(backend.matches.listMatches).toHaveBeenCalledOnce();
     expect(backend.matches.getMatchMetadata).toHaveBeenCalledWith("m");
+    expect(backend.matches.getCompleteMatch).toHaveBeenCalledWith("m");
     expect(backend.matches.getRound).toHaveBeenCalledWith("m", 2, true);
     expect(backend.matches.deleteMatch).toHaveBeenCalledWith("m");
     expect(backend.matches.renameMatch).toHaveBeenCalledWith("m", "New");
+    expect(backend.matches.saveBenchmarkContribution)
+      .toHaveBeenCalledWith("m", contribution);
   });
 
   it("delegates parser lifecycle calls", async () => {

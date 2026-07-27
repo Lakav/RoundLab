@@ -1,4 +1,5 @@
 import type { MatchData, Round } from "@/lib/types";
+import type { BenchmarkContributionSettings } from "@/lib/analysis/benchmark-contribution";
 import { getBackend } from "@/lib/backends";
 import type { DemoSource, ParseOptions, ParseProgress, ProgressListener } from "@/lib/backends/types";
 
@@ -9,6 +10,7 @@ export type MatchSummary = {
   name: string;
   createdAt: number;
   size: number;
+  benchmarkContribution?: BenchmarkContributionSettings;
 };
 
 export async function listMatches(): Promise<MatchSummary[]> {
@@ -17,6 +19,10 @@ export async function listMatches(): Promise<MatchSummary[]> {
 
 export async function getMatchMetadata(id: string): Promise<MatchData> {
   return getBackend().matches.getMatchMetadata(id);
+}
+
+export async function getCompleteMatch(id: string): Promise<MatchData> {
+  return getBackend().matches.getCompleteMatch(id);
 }
 
 export async function getRound(
@@ -36,6 +42,13 @@ export async function renameMatch(
   name: string,
 ): Promise<MatchSummary> {
   return getBackend().matches.renameMatch(id, name);
+}
+
+export async function saveBenchmarkContribution(
+  id: string,
+  settings: BenchmarkContributionSettings,
+): Promise<MatchSummary> {
+  return getBackend().matches.saveBenchmarkContribution(id, settings);
 }
 
 /** Parse a local .dem or .dem.zst file. Returns the new match id. */

@@ -28,6 +28,8 @@ use wasm_bindgen::prelude::*;
 const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
 const TICK_RATE: f64 = 64.0;
 const JSON_WRITE_BUFFER_BYTES: usize = 256 * 1024;
+const REPLAY_SCHEMA_VERSION: &str = "roundlab.replay.v2";
+const PARSER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Default)]
 struct Args {
@@ -55,6 +57,7 @@ struct Meta {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Player {
+    #[serde(serialize_with = "serialize_u64_as_string")]
     steam_id: u64,
     name: String,
     team: String,
@@ -76,7 +79,10 @@ struct BombState {
     y: f64,
     z: f64,
     status: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_u64_as_string"
+    )]
     carrier: Option<u64>,
 }
 
@@ -89,15 +95,34 @@ struct ProjectileFrame {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PlayerPos {
+    #[serde(serialize_with = "serialize_u64_as_string")]
     id: u64,
     x: f64,
     y: f64,
     z: f64,
     yaw: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pitch: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    speed: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    velocity_x: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    velocity_y: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    velocity_z: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    airborne: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    walking: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    duck_amount: Option<f64>,
     hp: i64,
     armor: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     money: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    equipment_value: Option<i64>,
     #[serde(skip_serializing_if = "is_false")]
     helmet: bool,
     #[serde(skip_serializing_if = "is_false")]
@@ -139,7 +164,10 @@ struct ProjectilePos {
     x: f64,
     y: f64,
     z: f64,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_u64_as_string"
+    )]
     thrower: Option<u64>,
 }
 
@@ -202,9 +230,18 @@ struct TickRow {
     y: f64,
     z: f64,
     yaw: f64,
+    pitch: Option<f64>,
+    speed: Option<f64>,
+    velocity_x: Option<f64>,
+    velocity_y: Option<f64>,
+    velocity_z: Option<f64>,
+    airborne: Option<bool>,
+    walking: Option<bool>,
+    duck_amount: Option<f64>,
     hp: i64,
     armor: i64,
     money: Option<i64>,
+    equipment_value: Option<i64>,
     helmet: bool,
     kit: bool,
     alive: bool,
@@ -234,20 +271,73 @@ struct BlindSpan {
     total: f64,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FlashEvent {
+    t: f64,
+    tick: i32,
+    sequence: usize,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_u64_as_string"
+    )]
+    thrower: Option<u64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_u64_as_string"
+    )]
+    victim: Option<u64>,
+    duration: f64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PurchaseEvent {
+    t: f64,
+    tick: i32,
+    sequence: usize,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_u64_as_string"
+    )]
+    player: Option<u64>,
+    item: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cost: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    inventory_slot: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    was_sold: Option<bool>,
+}
+
 #[derive(Serialize)]
 struct Event {
     t: f64,
+    tick: i32,
+    sequence: usize,
     #[serde(rename = "type")]
     kind: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_u64_as_string"
+    )]
     player: Option<u64>,
     #[serde(rename = "hasKit", skip_serializing_if = "is_false")]
     has_kit: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_u64_as_string"
+    )]
     killer: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_u64_as_string"
+    )]
     victim: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_u64_as_string"
+    )]
     assist: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     weapon: Option<String>,
@@ -255,6 +345,45 @@ struct Event {
     kill: KillDetails,
     #[serde(skip_serializing_if = "Option::is_none")]
     winner: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DamageEvent {
+    t: f64,
+    tick: i32,
+    sequence: usize,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_u64_as_string"
+    )]
+    attacker: Option<u64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_u64_as_string"
+    )]
+    victim: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    weapon: Option<String>,
+    damage_health: i64,
+    damage_armor: i64,
+    health_after: i64,
+    armor_after: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hitgroup: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DisconnectEvent {
+    t: f64,
+    tick: i32,
+    sequence: usize,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_u64_as_string"
+    )]
+    player: Option<u64>,
 }
 
 #[derive(Default, Serialize)]
@@ -291,8 +420,13 @@ struct Round {
     score_b: i32,
     frames: Vec<Frame>,
     events: Vec<Event>,
+    damages: Vec<DamageEvent>,
+    disconnects: Vec<DisconnectEvent>,
+    flashes: Vec<FlashEvent>,
+    purchases: Vec<PurchaseEvent>,
     effects: Vec<UtilityEffect>,
     weapon_fires: Vec<WeaponFireEvent>,
+    bullet_impacts: Vec<BulletImpactEvent>,
     projectile_frames: Vec<ProjectileFrame>,
 }
 
@@ -315,7 +449,12 @@ struct UtilityEffect {
 #[serde(rename_all = "camelCase")]
 struct WeaponFireEvent {
     t: f64,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    tick: i32,
+    sequence: usize,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_u64_as_string"
+    )]
     shooter: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     weapon: Option<String>,
@@ -328,8 +467,28 @@ struct WeaponFireEvent {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BulletImpactEvent {
+    t: f64,
+    tick: i32,
+    sequence: usize,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_u64_as_string"
+    )]
+    shooter: Option<u64>,
+    x: f64,
+    y: f64,
+    z: f64,
+}
+
+#[derive(Serialize)]
 #[cfg_attr(not(test), allow(dead_code))]
 struct Output {
+    #[serde(rename = "schemaVersion")]
+    schema_version: &'static str,
+    #[serde(rename = "parserVersion")]
+    parser_version: &'static str,
     meta: Meta,
     players: Vec<Player>,
     rounds: Vec<Round>,
@@ -337,6 +496,10 @@ struct Output {
 
 #[derive(Serialize)]
 struct ManifestOutput<'a> {
+    #[serde(rename = "schemaVersion")]
+    schema_version: &'static str,
+    #[serde(rename = "parserVersion")]
+    parser_version: &'static str,
     meta: &'a Meta,
     players: &'a [Player],
     rounds: Vec<ManifestRound>,
@@ -355,8 +518,13 @@ struct ManifestRound {
     score_b: i32,
     frames: Vec<Frame>,
     events: Vec<Event>,
+    damages: Vec<DamageEvent>,
+    disconnects: Vec<DisconnectEvent>,
+    flashes: Vec<FlashEvent>,
+    purchases: Vec<PurchaseEvent>,
     effects: Vec<UtilityEffect>,
     weapon_fires: Vec<WeaponFireEvent>,
+    bullet_impacts: Vec<BulletImpactEvent>,
     projectile_frames: Vec<ProjectileFrame>,
     round_file: String,
 }
@@ -455,6 +623,26 @@ fn is_false(value: &bool) -> bool {
 
 fn is_zero_i64(value: &i64) -> bool {
     *value == 0
+}
+
+fn serialize_u64_as_string<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(&value.to_string())
+}
+
+fn serialize_optional_u64_as_string<S>(
+    value: &Option<u64>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match value {
+        Some(value) => serializer.serialize_some(&value.to_string()),
+        None => serializer.serialize_none(),
+    }
 }
 
 fn emit_progress(progress: f64, message: &str) {
@@ -664,6 +852,8 @@ fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)>
         .unwrap_or_default();
 
     let output = Output {
+        schema_version: REPLAY_SCHEMA_VERSION,
+        parser_version: PARSER_VERSION,
         meta: Meta {
             map: data.map,
             tick_rate: TICK_RATE,
@@ -780,7 +970,8 @@ fn build_round_payload(
 ) -> Option<Round> {
     let span = &ctx.spans[span_idx];
     let mut frames = Vec::new();
-    let blind_spans = round_blinds(ctx.events, span);
+    let flashes = round_flashes(ctx.events, span);
+    let blind_spans = blind_spans_from_flashes(&flashes);
     let next_span = ctx.spans.get(span_idx + 1);
     let post_round_event_end = post_round_event_end_tick(span, next_span);
     let has_explicit_bomb_exploded =
@@ -1053,12 +1244,21 @@ fn build_round_payload(
             .map(|score| score.1)
             .unwrap_or_default(),
         events: round_events(ctx.events, span, ctx.spans.get(span_idx + 1)),
+        damages: round_damages(ctx.events, span),
+        disconnects: round_disconnects(ctx.events, span),
+        flashes,
+        purchases: round_purchases(
+            ctx.events,
+            span,
+            span_idx.checked_sub(1).and_then(|idx| ctx.spans.get(idx)),
+        ),
         effects,
         weapon_fires: if ctx.args.skip_weapon_fires {
             Vec::new()
         } else {
             round_weapon_fires(ctx.events, span, ctx.rows_by_tick)
         },
+        bullet_impacts: round_bullet_impacts(ctx.events, span),
         projectile_frames,
         frames,
     })
@@ -1432,6 +1632,8 @@ fn parse_events(bytes: &[u8], huf: &Vec<(u8, u8)>) -> Result<Vec<Value>> {
             "round_end".into(),
             "round_officially_ended".into(),
             "player_death".into(),
+            "player_hurt".into(),
+            "player_disconnect".into(),
             "bomb_beginplant".into(),
             "bomb_planted".into(),
             "bomb_dropped".into(),
@@ -1442,6 +1644,9 @@ fn parse_events(bytes: &[u8], huf: &Vec<(u8, u8)>) -> Result<Vec<Value>> {
             "bomb_exploded".into(),
             "player_blind".into(),
             "weapon_fire".into(),
+            "bullet_impact".into(),
+            "item_purchase".into(),
+            "item_sold".into(),
             "flashbang_detonate".into(),
             "hegrenade_detonate".into(),
             "smokegrenade_detonate".into(),
@@ -1475,9 +1680,18 @@ fn parse_ticks(bytes: &[u8], huf: &Vec<(u8, u8)>, ticks: Vec<i32>) -> Result<Tic
             "Y".into(),
             "Z".into(),
             "yaw".into(),
+            "pitch".into(),
+            "velocity".into(),
+            "velocity_X".into(),
+            "velocity_Y".into(),
+            "velocity_Z".into(),
+            "is_airborne".into(),
+            "is_walking".into(),
+            "duck_amount".into(),
             "health".into(),
             "armor_value".into(),
             "balance".into(),
+            "current_equip_value".into(),
             "has_helmet".into(),
             "has_defuser".into(),
             "is_alive".into(),
@@ -1551,9 +1765,18 @@ fn tick_rows_from_helper(helper: &OutputSerdeHelperStruct) -> (Vec<TickRow>, Vec
             y: helper_f64(helper, "Y", idx).unwrap_or_default(),
             z: helper_f64(helper, "Z", idx).unwrap_or_default(),
             yaw: helper_f64(helper, "yaw", idx).unwrap_or_default(),
+            pitch: helper_f64(helper, "pitch", idx),
+            speed: helper_f64(helper, "velocity", idx),
+            velocity_x: helper_f64(helper, "velocity_X", idx),
+            velocity_y: helper_f64(helper, "velocity_Y", idx),
+            velocity_z: helper_f64(helper, "velocity_Z", idx),
+            airborne: helper_bool(helper, "is_airborne", idx),
+            walking: helper_bool(helper, "is_walking", idx),
+            duck_amount: helper_f64(helper, "duck_amount", idx),
             hp: helper_i64(helper, "health", idx).unwrap_or_default(),
             armor: helper_i64(helper, "armor_value", idx).unwrap_or_default(),
             money: helper_i64(helper, "balance", idx),
+            equipment_value: helper_i64(helper, "current_equip_value", idx),
             helmet: helper_bool(helper, "has_helmet", idx).unwrap_or(false),
             kit: helper_bool(helper, "has_defuser", idx).unwrap_or(false),
             alive: helper_bool(helper, "is_alive", idx).unwrap_or(false),
@@ -1758,6 +1981,7 @@ fn sample_ticks(spans: &[RoundSpan], step: i32, events: &[Value]) -> Vec<i32> {
         if matches!(
             get_str(event, "event_name").unwrap_or(""),
             "weapon_fire"
+                | "round_freeze_end"
                 | "bomb_beginplant"
                 | "bomb_planted"
                 | "bomb_dropped"
@@ -2097,9 +2321,18 @@ fn player_pos_from_row(
         y: row.y,
         z: row.z,
         yaw: row.yaw,
+        pitch: row.pitch,
+        speed: row.speed,
+        velocity_x: row.velocity_x,
+        velocity_y: row.velocity_y,
+        velocity_z: row.velocity_z,
+        airborne: row.airborne,
+        walking: row.walking,
+        duck_amount: row.duck_amount,
         hp: row.hp,
         armor: row.armor,
         money: row.money,
+        equipment_value: row.equipment_value,
         helmet: row.helmet,
         kit: row.kit,
         has_bomb,
@@ -2149,7 +2382,7 @@ fn round_events(events: &[Value], span: &RoundSpan, next_span: Option<&RoundSpan
     let has_long_post_round_window =
         span.end.saturating_sub(span.round_end) >= TICK_RATE as i32 * 8;
     let mut active_defuser = None;
-    for event in events {
+    for (sequence, event) in events.iter().enumerate() {
         let tick = get_i64(event, "tick").unwrap_or_default() as i32;
         let event_name = get_str(event, "event_name").unwrap_or("");
         if !event_tick_in_round_window(tick, event_name, span, post_round_event_end) {
@@ -2159,6 +2392,8 @@ fn round_events(events: &[Value], span: &RoundSpan, next_span: Option<&RoundSpan
         match event_name {
             "player_death" => out.push(Event {
                 t,
+                tick,
+                sequence,
                 kind: "kill".into(),
                 player: None,
                 has_kit: false,
@@ -2169,14 +2404,16 @@ fn round_events(events: &[Value], span: &RoundSpan, next_span: Option<&RoundSpan
                 kill: kill_details(event),
                 winner: None,
             }),
-            "bomb_planted" => out.push(simple_event(t, "bomb_planted")),
+            "bomb_planted" => out.push(simple_event(t, tick, sequence, "bomb_planted")),
             "bomb_begindefuse" => {
                 if let Some(player) = active_defuser {
-                    out.push(bomb_defuse_abort_event(t, Some(player)));
+                    out.push(bomb_defuse_abort_event(t, tick, sequence, Some(player)));
                 }
                 let player = get_u64(event, "user_steamid");
                 out.push(Event {
                     t,
+                    tick,
+                    sequence,
                     kind: "bomb_defuse_start".into(),
                     player,
                     has_kit: get_bool(event, "haskit").unwrap_or(false),
@@ -2191,21 +2428,23 @@ fn round_events(events: &[Value], span: &RoundSpan, next_span: Option<&RoundSpan
             }
             "bomb_abortdefuse" => {
                 let player = get_u64(event, "user_steamid");
-                out.push(bomb_defuse_abort_event(t, player));
+                out.push(bomb_defuse_abort_event(t, tick, sequence, player));
                 active_defuser = None;
             }
             "bomb_defused" => {
-                out.push(simple_event(t, "bomb_defused"));
+                out.push(simple_event(t, tick, sequence, "bomb_defused"));
                 active_defuser = None;
             }
             "bomb_exploded" => {
                 if let Some(player) = active_defuser.take() {
-                    out.push(bomb_defuse_abort_event(t, Some(player)));
+                    out.push(bomb_defuse_abort_event(t, tick, sequence, Some(player)));
                 }
-                out.push(simple_event(t, "bomb_exploded"));
+                out.push(simple_event(t, tick, sequence, "bomb_exploded"));
             }
             "round_end" => out.push(Event {
                 t,
+                tick,
+                sequence,
                 kind: "round_end".into(),
                 player: None,
                 has_kit: false,
@@ -2230,12 +2469,67 @@ fn round_events(events: &[Value], span: &RoundSpan, next_span: Option<&RoundSpan
             )
         {
             if let Some(player) = active_defuser.take() {
-                out.push(bomb_defuse_abort_event(t, Some(player)));
+                out.push(bomb_defuse_abort_event(t, tick, sequence, Some(player)));
             }
-            out.push(simple_event(t, "bomb_exploded"));
+            out.push(simple_event(t, tick, sequence, "bomb_exploded"));
         }
     }
     out
+}
+
+fn round_damages(events: &[Value], span: &RoundSpan) -> Vec<DamageEvent> {
+    events
+        .iter()
+        .enumerate()
+        .filter_map(|(sequence, event)| {
+            if get_str(event, "event_name") != Some("player_hurt") {
+                return None;
+            }
+            let tick = get_i64(event, "tick")? as i32;
+            if !event_tick_in_round_window(tick, "player_hurt", span, span.end) {
+                return None;
+            }
+            Some(DamageEvent {
+                t: seconds_since(span.start, tick),
+                tick,
+                sequence,
+                attacker: get_u64(event, "attacker_steamid").filter(|id| *id != 0),
+                victim: get_u64(event, "user_steamid").filter(|id| *id != 0),
+                weapon: get_str(event, "weapon")
+                    .filter(|weapon| !weapon.is_empty())
+                    .map(str::to_string),
+                damage_health: get_i64(event, "dmg_health").unwrap_or_default().max(0),
+                damage_armor: get_i64(event, "dmg_armor").unwrap_or_default().max(0),
+                health_after: get_i64(event, "health").unwrap_or_default().max(0),
+                armor_after: get_i64(event, "armor").unwrap_or_default().max(0),
+                hitgroup: get_str(event, "hitgroup")
+                    .filter(|hitgroup| !hitgroup.is_empty())
+                    .map(str::to_string),
+            })
+        })
+        .collect()
+}
+
+fn round_disconnects(events: &[Value], span: &RoundSpan) -> Vec<DisconnectEvent> {
+    events
+        .iter()
+        .enumerate()
+        .filter_map(|(sequence, event)| {
+            if get_str(event, "event_name") != Some("player_disconnect") {
+                return None;
+            }
+            let tick = get_i64(event, "tick")? as i32;
+            if !event_tick_in_round_window(tick, "player_disconnect", span, span.end) {
+                return None;
+            }
+            Some(DisconnectEvent {
+                t: seconds_since(span.start, tick),
+                tick,
+                sequence,
+                player: get_u64(event, "user_steamid").filter(|id| *id != 0),
+            })
+        })
+        .collect()
 }
 
 fn event_tick_in_round_window(
@@ -2345,9 +2639,11 @@ fn is_world_weapon(weapon: &str) -> bool {
     weapon.eq_ignore_ascii_case("world")
 }
 
-fn bomb_defuse_abort_event(t: f64, player: Option<u64>) -> Event {
+fn bomb_defuse_abort_event(t: f64, tick: i32, sequence: usize, player: Option<u64>) -> Event {
     Event {
         t,
+        tick,
+        sequence,
         kind: "bomb_defuse_abort".into(),
         player,
         has_kit: false,
@@ -2360,9 +2656,11 @@ fn bomb_defuse_abort_event(t: f64, player: Option<u64>) -> Event {
     }
 }
 
-fn simple_event(t: f64, kind: &str) -> Event {
+fn simple_event(t: f64, tick: i32, sequence: usize, kind: &str) -> Event {
     Event {
         t,
+        tick,
+        sequence,
         kind: kind.into(),
         player: None,
         has_kit: false,
@@ -2375,9 +2673,9 @@ fn simple_event(t: f64, kind: &str) -> Event {
     }
 }
 
-fn round_blinds(events: &[Value], span: &RoundSpan) -> Vec<BlindSpan> {
+fn round_flashes(events: &[Value], span: &RoundSpan) -> Vec<FlashEvent> {
     let mut out = Vec::new();
-    for event in events {
+    for (sequence, event) in events.iter().enumerate() {
         if get_str(event, "event_name") != Some("player_blind") {
             continue;
         }
@@ -2385,22 +2683,82 @@ fn round_blinds(events: &[Value], span: &RoundSpan) -> Vec<BlindSpan> {
         if tick < span.start || tick > span.end {
             continue;
         }
-        let Some(player) = get_u64(event, "user_steamid") else {
-            continue;
-        };
-        let total = get_f64(event, "blind_duration").unwrap_or(0.0);
-        if total <= 0.0 {
+        let duration = get_f64(event, "blind_duration").unwrap_or(0.0);
+        if duration <= 0.0 {
             continue;
         }
-        let start = seconds_since(span.start, tick);
-        out.push(BlindSpan {
-            player,
-            start,
-            end: start + total,
-            total,
+        out.push(FlashEvent {
+            t: seconds_since(span.start, tick),
+            tick,
+            sequence,
+            thrower: get_u64(event, "attacker_steamid").filter(|id| *id != 0),
+            victim: get_u64(event, "user_steamid").filter(|id| *id != 0),
+            duration,
         });
     }
     out
+}
+
+fn blind_spans_from_flashes(flashes: &[FlashEvent]) -> Vec<BlindSpan> {
+    flashes
+        .iter()
+        .filter_map(|flash| {
+            let player = flash.victim?;
+            Some(BlindSpan {
+                player,
+                start: flash.t,
+                end: flash.t + flash.duration,
+                total: flash.duration,
+            })
+        })
+        .collect()
+}
+
+fn round_purchases(
+    events: &[Value],
+    span: &RoundSpan,
+    previous_span: Option<&RoundSpan>,
+) -> Vec<PurchaseEvent> {
+    let lower_bound = previous_span
+        .map(|previous| previous.end.saturating_add(1))
+        .unwrap_or(0);
+    let purchase_start = events
+        .iter()
+        .filter(|event| get_str(event, "event_name") == Some("round_start"))
+        .filter_map(|event| get_i64(event, "tick").map(|tick| tick as i32))
+        .filter(|tick| *tick >= lower_bound && *tick <= span.start)
+        .max()
+        .unwrap_or(span.start);
+
+    events
+        .iter()
+        .enumerate()
+        .filter_map(|(sequence, event)| {
+            if get_str(event, "event_name") != Some("item_purchase") {
+                return None;
+            }
+            let tick = get_i64(event, "tick")? as i32;
+            if tick < purchase_start || tick > span.end {
+                return None;
+            }
+            let item = get_str(event, "item_name")
+                .or_else(|| get_str(event, "weapon"))
+                .filter(|item| !item.trim().is_empty())?
+                .to_string();
+            Some(PurchaseEvent {
+                t: seconds_since(span.start, tick),
+                tick,
+                sequence,
+                player: get_u64(event, "steamid")
+                    .or_else(|| get_u64(event, "user_steamid"))
+                    .filter(|id| *id != 0),
+                item,
+                cost: get_i64(event, "cost").filter(|cost| *cost >= 0),
+                inventory_slot: get_i64(event, "inventory_slot").filter(|slot| *slot >= 0),
+                was_sold: get_bool(event, "was_sold"),
+            })
+        })
+        .collect()
 }
 
 fn round_effects(
@@ -2689,7 +3047,7 @@ fn round_weapon_fires(
     rows_by_tick: &BTreeMap<i32, Vec<TickRow>>,
 ) -> Vec<WeaponFireEvent> {
     let mut out = Vec::new();
-    for event in events {
+    for (sequence, event) in events.iter().enumerate() {
         let tick = get_i64(event, "tick").unwrap_or_default() as i32;
         if tick < span.start || tick > span.end {
             continue;
@@ -2703,6 +3061,8 @@ fn round_weapon_fires(
         let row = shooter.and_then(|id| player_row_at_tick(rows_by_tick, tick, id, span.start));
         out.push(WeaponFireEvent {
             t: seconds_since(span.start, tick),
+            tick,
+            sequence,
             shooter,
             weapon: get_str(event, "weapon").map(str::to_string),
             x: row.map(|r| r.x).unwrap_or_default(),
@@ -2713,6 +3073,34 @@ fn round_weapon_fires(
         });
     }
     out
+}
+
+fn round_bullet_impacts(events: &[Value], span: &RoundSpan) -> Vec<BulletImpactEvent> {
+    events
+        .iter()
+        .enumerate()
+        .filter_map(|(sequence, event)| {
+            if get_str(event, "event_name") != Some("bullet_impact") {
+                return None;
+            }
+            let tick = get_i64(event, "tick")? as i32;
+            if tick < span.start || tick > span.end {
+                return None;
+            }
+            Some(BulletImpactEvent {
+                t: seconds_since(span.start, tick),
+                tick,
+                sequence,
+                shooter: get_u64(event, "user_steamid")
+                    .or_else(|| get_u64(event, "attacker_steamid"))
+                    .or_else(|| get_u64(event, "steamid"))
+                    .filter(|id| *id != 0),
+                x: get_f64(event, "x").or_else(|| get_f64(event, "X"))?,
+                y: get_f64(event, "y").or_else(|| get_f64(event, "Y"))?,
+                z: get_f64(event, "z").or_else(|| get_f64(event, "Z"))?,
+            })
+        })
+        .collect()
 }
 
 fn player_row_at_tick(
@@ -2823,8 +3211,13 @@ fn manifest_round_from_round(round: &Round, round_file: String) -> ManifestRound
         score_b: round.score_b,
         frames: Vec::new(),
         events: Vec::new(),
+        damages: Vec::new(),
+        disconnects: Vec::new(),
+        flashes: Vec::new(),
+        purchases: Vec::new(),
         effects: Vec::new(),
         weapon_fires: Vec::new(),
+        bullet_impacts: Vec::new(),
         projectile_frames: Vec::new(),
         round_file,
     }
@@ -2875,6 +3268,8 @@ fn write_json_gz(path: &str, output: &Output) -> Result<WriteStats> {
     }
 
     let manifest = ManifestOutput {
+        schema_version: REPLAY_SCHEMA_VERSION,
+        parser_version: PARSER_VERSION,
         meta: &output.meta,
         players: &output.players,
         rounds: manifest_rounds,
@@ -3209,6 +3604,8 @@ pub fn parse_demo_bytes_to_json(
                 .map(|round| (round.score_a, round.score_b))
                 .unwrap_or_default();
             let output = Output {
+                schema_version: REPLAY_SCHEMA_VERSION,
+                parser_version: PARSER_VERSION,
                 meta: Meta {
                     map: data.map,
                     tick_rate: TICK_RATE,
@@ -3233,12 +3630,15 @@ pub fn parse_demo_bytes_to_json(
 mod tests {
     use super::{
         add_missing_terminal_flash_effects, adjust_decoy_effects_from_projectiles,
-        build_round_payload, commit_split_output, group_projectile_rows, looks_like_knife_round,
-        parse_args_from, parse_demo_to_output, parser_gzip_compression, read_capped, read_demo,
-        round_effects, round_events, round_weapon_fires, sample_step, seconds_since, write_json_gz,
-        ActiveAction, Args, BombState, Event, Frame, KillDetails, Output, ProjectileFrame,
-        ProjectileKind, ProjectilePos, ProjectileRow, Round, RoundBuildContext, RoundSpan, TickRow,
-        UtilityEffect, WeaponFireEvent, MAX_DEMO_SIZE,
+        blind_spans_from_flashes, build_round_payload, commit_split_output, group_projectile_rows,
+        looks_like_knife_round, parse_args_from, parse_demo_to_output, parser_gzip_compression,
+        player_pos_from_row, read_capped, read_demo, round_bullet_impacts, round_damages,
+        round_disconnects, round_effects, round_events, round_flashes, round_purchases,
+        round_weapon_fires, sample_step, sample_ticks, seconds_since, write_json_gz, ActiveAction,
+        Args, BombState, DamageEvent, DisconnectEvent, Event, Frame, KillDetails, Output, Player,
+        ProjectileFrame, ProjectileKind, ProjectilePos, ProjectileRow, Round, RoundBuildContext,
+        RoundSpan, TickRow, UtilityEffect, WeaponFireEvent, MAX_DEMO_SIZE, PARSER_VERSION,
+        REPLAY_SCHEMA_VERSION,
     };
     use flate2::{read::GzDecoder, Compression};
     use serde::Deserialize;
@@ -3534,6 +3934,24 @@ mod tests {
     }
 
     #[test]
+    fn sample_ticks_include_exact_freeze_end_for_economy_snapshot() {
+        let spans = vec![RoundSpan {
+            start: 100,
+            end: 300,
+            round_end: 300,
+            winner: "T".into(),
+        }];
+        let events = vec![json!({
+            "tick": 173,
+            "event_name": "round_freeze_end"
+        })];
+
+        let ticks = sample_ticks(&spans, 64, &events);
+
+        assert!(ticks.contains(&173));
+    }
+
+    #[test]
     fn round_events_keeps_post_round_kills_before_next_round() {
         let span = RoundSpan {
             start: 100,
@@ -3670,9 +4088,18 @@ mod tests {
                     y: 0.0,
                     z: 0.0,
                     yaw: 0.0,
+                    pitch: None,
+                    speed: None,
+                    velocity_x: None,
+                    velocity_y: None,
+                    velocity_z: None,
+                    airborne: None,
+                    walking: None,
+                    duck_amount: None,
                     hp: 100,
                     armor: 0,
                     money: None,
+                    equipment_value: None,
                     helmet: false,
                     kit: false,
                     alive: true,
@@ -3770,9 +4197,18 @@ mod tests {
                     y,
                     z: tick as f64,
                     yaw: 0.0,
+                    pitch: None,
+                    speed: None,
+                    velocity_x: None,
+                    velocity_y: None,
+                    velocity_z: None,
+                    airborne: None,
+                    walking: None,
+                    duck_amount: None,
                     hp: 100,
                     armor: 0,
                     money: None,
+                    equipment_value: None,
                     helmet: false,
                     kit: false,
                     alive: true,
@@ -3891,9 +4327,18 @@ mod tests {
                     y: 0.0,
                     z: 0.0,
                     yaw: 0.0,
+                    pitch: None,
+                    speed: None,
+                    velocity_x: None,
+                    velocity_y: None,
+                    velocity_z: None,
+                    airborne: None,
+                    walking: None,
+                    duck_amount: None,
                     hp: 100,
                     armor: 0,
                     money: None,
+                    equipment_value: None,
                     helmet: false,
                     kit: false,
                     alive: true,
@@ -3978,9 +4423,18 @@ mod tests {
                     y: 200.0,
                     z: 10.0,
                     yaw: 0.0,
+                    pitch: None,
+                    speed: None,
+                    velocity_x: None,
+                    velocity_y: None,
+                    velocity_z: None,
+                    airborne: None,
+                    walking: None,
+                    duck_amount: None,
                     hp: 100,
                     armor: 0,
                     money: None,
+                    equipment_value: None,
                     helmet: false,
                     kit: false,
                     alive: true,
@@ -4668,9 +5122,18 @@ mod tests {
                 y: 456.0,
                 z: 78.0,
                 yaw: 270.0,
+                pitch: None,
+                speed: None,
+                velocity_x: None,
+                velocity_y: None,
+                velocity_z: None,
+                airborne: None,
+                walking: None,
+                duck_amount: None,
                 hp: 100,
                 armor: 100,
                 money: None,
+                equipment_value: None,
                 helmet: true,
                 kit: false,
                 alive: true,
@@ -4687,6 +5150,8 @@ mod tests {
 
         assert_eq!(fires.len(), 1);
         assert_eq!(fires[0].t, seconds_since(span.start, 110));
+        assert_eq!(fires[0].tick, 110);
+        assert_eq!(fires[0].sequence, 0);
         assert_eq!(fires[0].shooter, Some(7));
         assert_eq!(fires[0].weapon.as_deref(), Some("ak47"));
         assert_eq!((fires[0].x, fires[0].y, fires[0].z), (123.0, 456.0, 78.0));
@@ -4718,9 +5183,18 @@ mod tests {
                 y: 2.0,
                 z: 3.0,
                 yaw: 4.0,
+                pitch: None,
+                speed: None,
+                velocity_x: None,
+                velocity_y: None,
+                velocity_z: None,
+                airborne: None,
+                walking: None,
+                duck_amount: None,
                 hp: 100,
                 armor: 100,
                 money: None,
+                equipment_value: None,
                 helmet: true,
                 kit: true,
                 alive: true,
@@ -4741,9 +5215,18 @@ mod tests {
                 y: 20.0,
                 z: 30.0,
                 yaw: 40.0,
+                pitch: None,
+                speed: None,
+                velocity_x: None,
+                velocity_y: None,
+                velocity_z: None,
+                airborne: None,
+                walking: None,
+                duck_amount: None,
                 hp: 100,
                 armor: 100,
                 money: None,
+                equipment_value: None,
                 helmet: true,
                 kit: true,
                 alive: true,
@@ -4764,9 +5247,18 @@ mod tests {
                 y: 654.0,
                 z: 12.0,
                 yaw: 91.0,
+                pitch: None,
+                speed: None,
+                velocity_x: None,
+                velocity_y: None,
+                velocity_z: None,
+                airborne: None,
+                walking: None,
+                duck_amount: None,
                 hp: 87,
                 armor: 50,
                 money: None,
+                equipment_value: None,
                 helmet: true,
                 kit: true,
                 alive: true,
@@ -4821,9 +5313,18 @@ mod tests {
                 y: 999.0,
                 z: 999.0,
                 yaw: 180.0,
+                pitch: None,
+                speed: None,
+                velocity_x: None,
+                velocity_y: None,
+                velocity_z: None,
+                airborne: None,
+                walking: None,
+                duck_amount: None,
                 hp: 100,
                 armor: 100,
                 money: None,
+                equipment_value: None,
                 helmet: true,
                 kit: false,
                 alive: true,
@@ -4839,6 +5340,10 @@ mod tests {
         let fires = round_weapon_fires(&events, &span, &rows_by_tick);
 
         assert_eq!(fires.len(), 2);
+        assert_eq!(fires[0].tick, 110);
+        assert_eq!(fires[0].sequence, 0);
+        assert_eq!(fires[1].tick, 111);
+        assert_eq!(fires[1].sequence, 1);
         assert_eq!(fires[0].shooter, Some(7));
         assert_eq!(fires[0].weapon.as_deref(), Some("deagle"));
         assert_eq!((fires[0].x, fires[0].y, fires[0].z), (0.0, 0.0, 0.0));
@@ -4849,6 +5354,264 @@ mod tests {
         assert_eq!((fires[1].x, fires[1].y, fires[1].z), (0.0, 0.0, 0.0));
         assert_eq!(fires[1].yaw, 0.0);
         assert_eq!(fires[1].team, None);
+    }
+
+    #[test]
+    fn round_bullet_impacts_preserve_exact_event_coordinates_and_order() {
+        let span = RoundSpan {
+            start: 1_000,
+            end: 2_000,
+            round_end: 2_000,
+            winner: "CT".into(),
+        };
+        let steam_id = 76_561_198_073_049_527_u64;
+        let events = vec![
+            json!({
+                "event_name": "bullet_impact",
+                "tick": 1_064,
+                "user_steamid": steam_id,
+                "x": 12.5,
+                "y": -24.25,
+                "z": 73.0
+            }),
+            json!({
+                "event_name": "bullet_impact",
+                "tick": 1_096,
+                "user_steamid": 0,
+                "X": -10.0,
+                "Y": 20.0,
+                "Z": 30.0
+            }),
+            json!({
+                "event_name": "bullet_impact",
+                "tick": 1_128,
+                "user_steamid": steam_id,
+                "x": 1.0,
+                "y": 2.0
+            }),
+            json!({
+                "event_name": "bullet_impact",
+                "tick": 2_001,
+                "user_steamid": steam_id,
+                "x": 1.0,
+                "y": 2.0,
+                "z": 3.0
+            }),
+            json!({
+                "event_name": "weapon_fire",
+                "tick": 1_064,
+                "user_steamid": steam_id,
+                "x": 99.0,
+                "y": 99.0,
+                "z": 99.0
+            }),
+        ];
+
+        let impacts = round_bullet_impacts(&events, &span);
+
+        assert_eq!(impacts.len(), 2);
+        assert_eq!(impacts[0].t, 1.0);
+        assert_eq!(impacts[0].tick, 1_064);
+        assert_eq!(impacts[0].sequence, 0);
+        assert_eq!(impacts[0].shooter, Some(steam_id));
+        assert_eq!(
+            (impacts[0].x, impacts[0].y, impacts[0].z),
+            (12.5, -24.25, 73.0)
+        );
+        assert_eq!(impacts[1].t, 1.5);
+        assert_eq!(impacts[1].sequence, 1);
+        assert_eq!(impacts[1].shooter, None);
+        assert_eq!(
+            (impacts[1].x, impacts[1].y, impacts[1].z),
+            (-10.0, 20.0, 30.0)
+        );
+
+        let serialized = serde_json::to_value(&impacts[0]).unwrap();
+        assert_eq!(serialized["shooter"], steam_id.to_string());
+    }
+
+    #[test]
+    fn player_frames_preserve_pitch_velocity_and_movement_state() {
+        let row = TickRow {
+            tick: 1_064,
+            steamid: 7,
+            x: 100.0,
+            y: 200.0,
+            z: 64.0,
+            yaw: 90.0,
+            pitch: Some(-12.5),
+            speed: Some(155.25),
+            velocity_x: Some(120.0),
+            velocity_y: Some(-98.0),
+            velocity_z: Some(4.0),
+            airborne: Some(true),
+            walking: Some(false),
+            duck_amount: Some(0.65),
+            hp: 100,
+            armor: 50,
+            money: Some(3_500),
+            equipment_value: Some(4_200),
+            helmet: true,
+            kit: false,
+            alive: true,
+            team: 2,
+            active: None,
+            weapons: Vec::new(),
+            fire: false,
+            right_click: false,
+            use_key: false,
+        };
+
+        let player = player_pos_from_row(&row, &[], &[], 1.0, None).expect("alive player");
+
+        assert_eq!(player.pitch, Some(-12.5));
+        assert_eq!(player.speed, Some(155.25));
+        assert_eq!(player.velocity_x, Some(120.0));
+        assert_eq!(player.velocity_y, Some(-98.0));
+        assert_eq!(player.velocity_z, Some(4.0));
+        assert_eq!(player.airborne, Some(true));
+        assert_eq!(player.walking, Some(false));
+        assert_eq!(player.duck_amount, Some(0.65));
+        let serialized = serde_json::to_value(player).unwrap();
+        assert_eq!(serialized["velocityX"], 120.0);
+        assert_eq!(serialized["velocityY"], -98.0);
+        assert_eq!(serialized["velocityZ"], 4.0);
+        assert_eq!(serialized["duckAmount"], 0.65);
+    }
+
+    #[test]
+    fn round_flashes_preserve_thrower_victim_duration_and_drive_blind_frames() {
+        let span = RoundSpan {
+            start: 1_000,
+            end: 2_000,
+            round_end: 2_000,
+            winner: "CT".into(),
+        };
+        let thrower = 76_561_198_073_049_527_u64;
+        let victim = 76_561_198_073_049_528_u64;
+        let events = vec![
+            json!({
+                "event_name": "player_blind",
+                "tick": 1_064,
+                "attacker_steamid": thrower,
+                "user_steamid": victim,
+                "blind_duration": 3.25
+            }),
+            json!({
+                "event_name": "player_blind",
+                "tick": 1_128,
+                "attacker_steamid": thrower,
+                "blind_duration": 0.5
+            }),
+            json!({
+                "event_name": "player_blind",
+                "tick": 1_192,
+                "attacker_steamid": thrower,
+                "user_steamid": victim,
+                "blind_duration": 0.0
+            }),
+            json!({
+                "event_name": "player_blind",
+                "tick": 2_001,
+                "attacker_steamid": thrower,
+                "user_steamid": victim,
+                "blind_duration": 2.0
+            }),
+        ];
+
+        let flashes = round_flashes(&events, &span);
+
+        assert_eq!(flashes.len(), 2);
+        assert_eq!(flashes[0].t, 1.0);
+        assert_eq!(flashes[0].tick, 1_064);
+        assert_eq!(flashes[0].sequence, 0);
+        assert_eq!(flashes[0].thrower, Some(thrower));
+        assert_eq!(flashes[0].victim, Some(victim));
+        assert_eq!(flashes[0].duration, 3.25);
+        assert_eq!(flashes[1].sequence, 1);
+        assert_eq!(flashes[1].victim, None);
+
+        let blind_spans = blind_spans_from_flashes(&flashes);
+        assert_eq!(blind_spans.len(), 1);
+        assert_eq!(blind_spans[0].player, victim);
+        assert_eq!(blind_spans[0].start, 1.0);
+        assert_eq!(blind_spans[0].end, 4.25);
+        assert_eq!(blind_spans[0].total, 3.25);
+
+        let serialized = serde_json::to_value(&flashes[0]).unwrap();
+        assert_eq!(serialized["thrower"], thrower.to_string());
+        assert_eq!(serialized["victim"], victim.to_string());
+    }
+
+    #[test]
+    fn round_purchases_include_freeze_time_and_preserve_sellback_facts() {
+        let previous_span = RoundSpan {
+            start: 100,
+            end: 800,
+            round_end: 780,
+            winner: "T".into(),
+        };
+        let span = RoundSpan {
+            start: 1_000,
+            end: 2_000,
+            round_end: 1_950,
+            winner: "CT".into(),
+        };
+        let player = 76_561_198_073_049_527_u64;
+        let events = vec![
+            json!({
+                "event_name": "item_purchase",
+                "tick": 700,
+                "steamid": player,
+                "item_name": "Glock-18",
+                "cost": 200
+            }),
+            json!({ "event_name": "round_start", "tick": 900 }),
+            json!({
+                "event_name": "item_purchase",
+                "tick": 920,
+                "steamid": player,
+                "item_name": "AK-47",
+                "cost": 2_700,
+                "inventory_slot": 1,
+                "was_sold": true
+            }),
+            json!({
+                "event_name": "item_purchase",
+                "tick": 1_100,
+                "steamid": player,
+                "item_name": "Flashbang",
+                "cost": 200,
+                "inventory_slot": 3,
+                "was_sold": false
+            }),
+            json!({
+                "event_name": "item_purchase",
+                "tick": 1_120,
+                "steamid": player,
+                "cost": 300
+            }),
+        ];
+
+        let purchases = round_purchases(&events, &span, Some(&previous_span));
+
+        assert_eq!(purchases.len(), 2);
+        assert_eq!(purchases[0].t, 0.0);
+        assert_eq!(purchases[0].tick, 920);
+        assert_eq!(purchases[0].sequence, 2);
+        assert_eq!(purchases[0].player, Some(player));
+        assert_eq!(purchases[0].item, "AK-47");
+        assert_eq!(purchases[0].cost, Some(2_700));
+        assert_eq!(purchases[0].inventory_slot, Some(1));
+        assert_eq!(purchases[0].was_sold, Some(true));
+        assert_eq!(purchases[1].t, 1.5625);
+        assert_eq!(purchases[1].item, "Flashbang");
+        assert_eq!(purchases[1].was_sold, Some(false));
+
+        let serialized = serde_json::to_value(&purchases[0]).unwrap();
+        assert_eq!(serialized["player"], player.to_string());
+        assert_eq!(serialized["inventorySlot"], 1);
+        assert_eq!(serialized["wasSold"], true);
     }
 
     #[test]
@@ -4870,6 +5633,8 @@ mod tests {
             }],
             events: vec![Event {
                 t: 10.0,
+                tick: 640,
+                sequence: 0,
                 kind: "kill".into(),
                 player: None,
                 has_kit: false,
@@ -4880,12 +5645,123 @@ mod tests {
                 kill: KillDetails::default(),
                 winner: None,
             }],
+            damages: Vec::new(),
+            disconnects: Vec::new(),
+            flashes: Vec::new(),
+            purchases: Vec::new(),
             effects: Vec::new(),
             weapon_fires: Vec::new(),
+            bullet_impacts: Vec::new(),
             projectile_frames: Vec::new(),
         };
 
         assert!(looks_like_knife_round(Some(&round)));
+    }
+
+    #[test]
+    fn round_damages_preserve_complete_player_hurt_facts() {
+        let span = RoundSpan {
+            start: 1_000,
+            end: 2_000,
+            round_end: 2_000,
+            winner: "CT".into(),
+        };
+        let events = vec![
+            serde_json::json!({
+                "event_name": "player_hurt",
+                "tick": 1_064,
+                "attacker_steamid": 10_u64,
+                "user_steamid": 20_u64,
+                "weapon": "ak47",
+                "dmg_health": 27,
+                "dmg_armor": 4,
+                "health": 73,
+                "armor": 96,
+                "hitgroup": "chest"
+            }),
+            serde_json::json!({
+                "event_name": "player_hurt",
+                "tick": 2_001,
+                "attacker_steamid": 10_u64,
+                "user_steamid": 20_u64,
+                "dmg_health": 73
+            }),
+        ];
+
+        let damages = round_damages(&events, &span);
+
+        assert_eq!(damages.len(), 1);
+        let damage = &damages[0];
+        assert_eq!(damage.t, 1.0);
+        assert_eq!(damage.tick, 1_064);
+        assert_eq!(damage.sequence, 0);
+        assert_eq!(damage.attacker, Some(10));
+        assert_eq!(damage.victim, Some(20));
+        assert_eq!(damage.weapon.as_deref(), Some("ak47"));
+        assert_eq!(damage.damage_health, 27);
+        assert_eq!(damage.damage_armor, 4);
+        assert_eq!(damage.health_after, 73);
+        assert_eq!(damage.armor_after, 96);
+        assert_eq!(damage.hitgroup.as_deref(), Some("chest"));
+    }
+
+    #[test]
+    fn round_disconnects_preserve_player_and_exact_tick() {
+        let span = RoundSpan {
+            start: 1_000,
+            end: 2_000,
+            round_end: 2_000,
+            winner: "CT".into(),
+        };
+        let events = vec![
+            serde_json::json!({
+                "event_name": "player_disconnect",
+                "tick": 1_128,
+                "user_steamid": 76_561_198_073_049_527_u64
+            }),
+            serde_json::json!({
+                "event_name": "player_disconnect",
+                "tick": 2_001,
+                "user_steamid": 10_u64
+            }),
+        ];
+
+        let disconnects = round_disconnects(&events, &span);
+
+        assert_eq!(disconnects.len(), 1);
+        assert_eq!(disconnects[0].t, 2.0);
+        assert_eq!(disconnects[0].tick, 1_128);
+        assert_eq!(disconnects[0].sequence, 0);
+        assert_eq!(disconnects[0].player, Some(76_561_198_073_049_527));
+    }
+
+    #[test]
+    fn replay_v2_serializes_steam_ids_without_precision_loss() {
+        let steam_id = 76_561_198_073_049_527_u64;
+        let player = serde_json::to_value(Player {
+            steam_id,
+            name: "Player".into(),
+            team: "T".into(),
+        })
+        .unwrap();
+        let damage = serde_json::to_value(DamageEvent {
+            t: 1.0,
+            tick: 64,
+            sequence: 0,
+            attacker: Some(steam_id),
+            victim: Some(steam_id + 1),
+            weapon: Some("ak47".into()),
+            damage_health: 27,
+            damage_armor: 4,
+            health_after: 73,
+            armor_after: 96,
+            hitgroup: Some("chest".into()),
+        })
+        .unwrap();
+
+        assert_eq!(player["steamId"], steam_id.to_string());
+        assert_eq!(damage["attacker"], steam_id.to_string());
+        assert_eq!(damage["victim"], (steam_id + 1).to_string());
     }
 
     #[test]
@@ -4902,6 +5778,8 @@ mod tests {
             frames: Vec::new(),
             events: vec![Event {
                 t: 10.0,
+                tick: 640,
+                sequence: 0,
                 kind: "kill".into(),
                 player: None,
                 has_kit: false,
@@ -4912,8 +5790,13 @@ mod tests {
                 kill: KillDetails::default(),
                 winner: None,
             }],
+            damages: Vec::new(),
+            disconnects: Vec::new(),
+            flashes: Vec::new(),
+            purchases: Vec::new(),
             effects: Vec::new(),
             weapon_fires: Vec::new(),
+            bullet_impacts: Vec::new(),
             projectile_frames: Vec::new(),
         };
 
@@ -5118,6 +6001,7 @@ mod tests {
         let base_dir = output_path.parent().expect("output path parent");
         let mut split_total_frames = 0usize;
         let mut split_total_events = 0usize;
+        let mut split_total_damages = 0usize;
         let mut split_total_kills = 0usize;
         let mut split_total_bomb_events = 0usize;
         let mut split_total_effects = 0usize;
@@ -5139,6 +6023,16 @@ mod tests {
                 manifest_round["events"].as_array().unwrap().len(),
                 0,
                 "manifest round should not contain event payloads"
+            );
+            assert_eq!(
+                manifest_round["damages"].as_array().unwrap().len(),
+                0,
+                "manifest round should not contain damage payloads"
+            );
+            assert_eq!(
+                manifest_round["disconnects"].as_array().unwrap().len(),
+                0,
+                "manifest round should not contain disconnect payloads"
             );
             let round_file = manifest_round["roundFile"]
                 .as_str()
@@ -5165,6 +6059,12 @@ mod tests {
 
             let frames = round_json["frames"].as_array().expect("round frames array");
             let events = round_json["events"].as_array().expect("round events array");
+            let damages = round_json["damages"]
+                .as_array()
+                .expect("round damages array");
+            let disconnects = round_json["disconnects"]
+                .as_array()
+                .expect("round disconnects array");
             let effects = round_json
                 .get("effects")
                 .and_then(Value::as_array)
@@ -5183,6 +6083,8 @@ mod tests {
 
             assert_eq!(frames.len(), output.rounds[idx].frames.len());
             assert_eq!(events.len(), output.rounds[idx].events.len());
+            assert_eq!(damages.len(), output.rounds[idx].damages.len());
+            assert_eq!(disconnects.len(), output.rounds[idx].disconnects.len());
             assert_eq!(effects, output.rounds[idx].effects.len());
             assert_eq!(weapon_fires, output.rounds[idx].weapon_fires.len());
             assert_eq!(
@@ -5192,6 +6094,7 @@ mod tests {
 
             split_total_frames += frames.len();
             split_total_events += events.len();
+            split_total_damages += damages.len();
             split_total_effects += effects;
             split_total_weapon_fires += weapon_fires;
             split_total_projectile_frames += projectile_frames;
@@ -5257,6 +6160,7 @@ mod tests {
             "split output lost weapon state in frames"
         );
         assert!(split_total_events > 0, "split output lost events");
+        assert!(split_total_damages > 0, "split output lost damage events");
         assert!(split_total_kills > 0, "split output lost kill events");
         assert!(split_total_bomb_events > 0, "split output lost bomb events");
         assert!(split_total_effects > 0, "split output lost utility effects");
@@ -5275,7 +6179,22 @@ mod tests {
     }
 
     fn assert_manifest_json_contract(manifest: &Value) {
-        assert_object_has_keys(manifest, &["meta", "players", "rounds"], "manifest");
+        assert_object_has_keys(
+            manifest,
+            &[
+                "schemaVersion",
+                "parserVersion",
+                "meta",
+                "players",
+                "rounds",
+            ],
+            "manifest",
+        );
+        assert_eq!(
+            manifest["schemaVersion"].as_str(),
+            Some(REPLAY_SCHEMA_VERSION)
+        );
+        assert_eq!(manifest["parserVersion"].as_str(), Some(PARSER_VERSION));
         assert_object_has_keys(
             &manifest["meta"],
             &[
@@ -5295,6 +6214,10 @@ mod tests {
             .expect("manifest players array");
         if let Some(player) = players.first() {
             assert_object_has_keys(player, &["steamId", "name", "team"], "manifest player");
+            assert!(
+                player["steamId"].is_string(),
+                "manifest player Steam ID must be lossless"
+            );
         }
     }
 
@@ -5312,6 +6235,8 @@ mod tests {
                 "scoreB",
                 "frames",
                 "events",
+                "damages",
+                "disconnects",
                 "effects",
                 "weaponFires",
                 "projectileFrames",
@@ -5335,6 +6260,8 @@ mod tests {
                 "scoreB",
                 "frames",
                 "events",
+                "damages",
+                "disconnects",
                 "effects",
                 "weaponFires",
                 "projectileFrames",
@@ -5366,6 +6293,7 @@ mod tests {
                     &["id", "x", "y", "z", "yaw", "hp", "armor", "team"],
                     "frame player",
                 );
+                assert!(player["id"].is_string(), "frame player ID must be lossless");
                 if let Some(action) = player
                     .get("activeAction")
                     .filter(|action| !action.is_null())
@@ -5381,13 +6309,48 @@ mod tests {
 
         let events = round["events"].as_array().expect("round events array");
         if let Some(event) = events.first() {
-            assert_object_has_keys(event, &["t", "type"], "round event");
+            assert_object_has_keys(event, &["t", "tick", "sequence", "type"], "round event");
+        }
+        let damages = round["damages"].as_array().expect("round damages array");
+        if let Some(damage) = damages.first() {
+            assert_object_has_keys(
+                damage,
+                &[
+                    "t",
+                    "tick",
+                    "sequence",
+                    "damageHealth",
+                    "damageArmor",
+                    "healthAfter",
+                    "armorAfter",
+                ],
+                "damage event",
+            );
+            if let Some(attacker) = damage.get("attacker") {
+                assert!(attacker.is_string(), "damage attacker ID must be lossless");
+            }
+            if let Some(victim) = damage.get("victim") {
+                assert!(victim.is_string(), "damage victim ID must be lossless");
+            }
+        }
+        let disconnects = round["disconnects"]
+            .as_array()
+            .expect("round disconnects array");
+        if let Some(disconnect) = disconnects.first() {
+            assert_object_has_keys(disconnect, &["t", "tick", "sequence"], "disconnect event");
+            if let Some(player) = disconnect.get("player") {
+                assert!(player.is_string(), "disconnect player ID must be lossless");
+            }
         }
         if let Some(kill) = events
             .iter()
             .find(|event| event.get("type").and_then(Value::as_str) == Some("kill"))
         {
             assert_object_has_keys(kill, &["t", "type", "victim", "weapon"], "kill event");
+            assert!(
+                kill["victim"].is_string(),
+                "kill victim ID must be lossless"
+            );
         }
         if let Some(bomb_event) = events.iter().find(|event| {
             matches!(
@@ -5455,6 +6418,7 @@ mod tests {
         let base_dir = output_path.parent().expect("output path parent");
         let mut total_frames = 0usize;
         let mut total_events = 0usize;
+        let mut total_damages = 0usize;
         let mut total_effects = 0usize;
         let mut frames_with_embedded_projectiles = 0usize;
         let mut total_weapon_fires = 0usize;
@@ -5469,6 +6433,12 @@ mod tests {
             let round_json = read_gzip_json(&round_path);
             let frames = round_json["frames"].as_array().expect("round frames array");
             let events = round_json["events"].as_array().expect("round events array");
+            let damages = round_json["damages"]
+                .as_array()
+                .expect("round damages array");
+            let disconnects = round_json["disconnects"]
+                .as_array()
+                .expect("round disconnects array");
             let effects = round_json
                 .get("effects")
                 .and_then(Value::as_array)
@@ -5487,6 +6457,8 @@ mod tests {
 
             assert_eq!(frames.len(), output.rounds[idx].frames.len());
             assert_eq!(events.len(), output.rounds[idx].events.len());
+            assert_eq!(damages.len(), output.rounds[idx].damages.len());
+            assert_eq!(disconnects.len(), output.rounds[idx].disconnects.len());
             assert_eq!(effects, output.rounds[idx].effects.len());
             assert_eq!(weapon_fires, 0, "skipWeaponFires leaked split data");
             assert_eq!(
@@ -5496,6 +6468,7 @@ mod tests {
 
             total_frames += frames.len();
             total_events += events.len();
+            total_damages += damages.len();
             total_effects += effects;
             total_weapon_fires += weapon_fires;
             total_projectile_frames += projectile_frames;
@@ -5512,6 +6485,7 @@ mod tests {
 
         assert!(total_frames > 0, "split skip output lost replay frames");
         assert!(total_events > 0, "split skip output lost events");
+        assert!(total_damages > 0, "split skip output lost damage events");
         assert!(total_effects > 0, "split skip output lost effects");
         assert_eq!(total_weapon_fires, 0);
         assert_eq!(total_projectile_frames, 0);
@@ -5561,6 +6535,10 @@ mod tests {
         );
         assert!(metrics.events > 0, "expected round events");
         assert!(metrics.kills > 0, "expected kill events");
+        assert!(
+            output.rounds.iter().any(|round| !round.damages.is_empty()),
+            "expected damage events"
+        );
         assert!(metrics.bomb_events > 0, "expected bomb events");
         assert!(metrics.effects > 0, "expected utility/bomb effects");
     }
@@ -5587,6 +6565,8 @@ mod tests {
             );
             previous_score = (round.score_a, round.score_b);
             assert_events_are_structurally_valid(&round.events, round.duration, &label);
+            assert_damages_are_structurally_valid(&round.damages, round, &label);
+            assert_disconnects_are_structurally_valid(&round.disconnects, round, &label);
             assert_effects_are_structurally_valid(&round.effects, round.duration, &label);
             assert_frames_are_structurally_valid(&round.frames, &round.events, &label);
         }
@@ -5603,6 +6583,7 @@ mod tests {
 
     fn assert_events_are_structurally_valid(events: &[Event], duration: f64, label: &str) {
         let mut previous_t = 0.0;
+        let mut previous = (0, 0usize);
         for event in events {
             assert!(event.t.is_finite(), "{label} event has invalid time");
             assert!(
@@ -5615,6 +6596,11 @@ mod tests {
                 event.t
             );
             previous_t = event.t;
+            assert!(
+                event.tick > previous.0 || event.tick == previous.0 && event.sequence >= previous.1,
+                "{label} event tick/sequence values are not sorted"
+            );
+            previous = (event.tick, event.sequence);
 
             match event.kind.as_str() {
                 "kill" => {
@@ -5631,6 +6617,81 @@ mod tests {
                 | "bomb_exploded" | "round_end" => {}
                 other => panic!("{label} unexpected event type: {other}"),
             }
+        }
+    }
+
+    fn assert_damages_are_structurally_valid(damages: &[DamageEvent], round: &Round, label: &str) {
+        let mut previous = (round.start_tick, 0usize, 0.0);
+        for damage in damages {
+            assert!(damage.t.is_finite(), "{label} damage has invalid time");
+            assert!(
+                damage.tick > previous.0
+                    || damage.tick == previous.0 && damage.sequence >= previous.1,
+                "{label} damages are not chronologically sorted"
+            );
+            assert!(
+                damage.t + 0.001 >= previous.2,
+                "{label} damage times are not sorted"
+            );
+            assert!(
+                damage.tick >= round.start_tick && damage.tick <= round.end_tick,
+                "{label} damage tick is outside the round"
+            );
+            assert!(
+                damage.t <= round.duration + 0.001,
+                "{label} damage is past round duration"
+            );
+            assert!(damage.victim.is_some(), "{label} damage missing victim");
+            assert!(
+                damage
+                    .weapon
+                    .as_deref()
+                    .is_none_or(|weapon| !weapon.is_empty()),
+                "{label} damage contains an empty weapon"
+            );
+            assert!(
+                damage.damage_health >= 0
+                    && damage.damage_armor >= 0
+                    && damage.health_after >= 0
+                    && damage.armor_after >= 0,
+                "{label} damage contains a negative value"
+            );
+            assert!(
+                damage
+                    .hitgroup
+                    .as_deref()
+                    .is_some_and(|hitgroup| !hitgroup.is_empty()),
+                "{label} damage missing hitgroup"
+            );
+            previous = (damage.tick, damage.sequence, damage.t);
+        }
+    }
+
+    fn assert_disconnects_are_structurally_valid(
+        disconnects: &[DisconnectEvent],
+        round: &Round,
+        label: &str,
+    ) {
+        let mut previous = (round.start_tick, 0usize, 0.0);
+        for disconnect in disconnects {
+            assert!(
+                disconnect.tick > previous.0
+                    || disconnect.tick == previous.0 && disconnect.sequence >= previous.1,
+                "{label} disconnects are not chronologically sorted"
+            );
+            assert!(
+                disconnect.t + 0.001 >= previous.2,
+                "{label} disconnect times are not sorted"
+            );
+            assert!(
+                disconnect.tick >= round.start_tick && disconnect.tick <= round.end_tick,
+                "{label} disconnect tick is outside the round"
+            );
+            assert!(
+                disconnect.player.is_some(),
+                "{label} disconnect is missing its player"
+            );
+            previous = (disconnect.tick, disconnect.sequence, disconnect.t);
         }
     }
 

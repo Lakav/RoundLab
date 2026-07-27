@@ -1,7 +1,7 @@
 "use client";
 
 import { useReplay } from "@/lib/replay-store";
-import type { Frame, MatchEvent, PlayerPos } from "@/lib/types";
+import type { Frame, MatchEvent, Player, PlayerId, PlayerPos } from "@/lib/types";
 
 function frameAtOrBefore(frames: Frame[], time: number): Frame | null {
   if (!frames.length) return null;
@@ -13,11 +13,11 @@ function frameAtOrBefore(frames: Frame[], time: number): Frame | null {
   return selected;
 }
 
-function playerName(id: number, players: Array<{ steamId: number; name: string }>): string {
+function playerName(id: PlayerId, players: Pick<Player, "steamId" | "name">[]): string {
   return players.find((player) => player.steamId === id)?.name || `Player ${id}`;
 }
 
-function describeEvent(event: MatchEvent, players: Array<{ steamId: number; name: string }>): string {
+function describeEvent(event: MatchEvent, players: Pick<Player, "steamId" | "name">[]): string {
   const at = `${event.t.toFixed(1)} seconds`;
   if (event.type === "kill") {
     const details = [
@@ -40,7 +40,7 @@ function describeEvent(event: MatchEvent, players: Array<{ steamId: number; name
   return `${at}: round ended${event.winner ? `, winner ${event.winner}` : ""}.`;
 }
 
-function describePlayer(player: PlayerPos, players: Array<{ steamId: number; name: string }>): string {
+function describePlayer(player: PlayerPos, players: Pick<Player, "steamId" | "name">[]): string {
   const side = player.team === 3 ? "Counter-Terrorist" : player.team === 2 ? "Terrorist" : "spectator";
   const state = player.hp > 0 ? `${player.hp} health` : "eliminated";
   return `${playerName(player.id, players)}, ${side}, ${state}, position ${Math.round(player.x)}, ${Math.round(player.y)}, altitude ${Math.round(player.z)}.`;

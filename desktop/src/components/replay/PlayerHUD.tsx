@@ -2,7 +2,7 @@
 
 import { useReplay } from "@/lib/replay-store";
 import { cn } from "@/lib/utils";
-import type { Frame, PlayerPos } from "@/lib/types";
+import type { Frame, PlayerId, PlayerPos } from "@/lib/types";
 import { iconPathFor } from "@/lib/icons";
 import { THEME, sideColors } from "@/lib/theme";
 import { assetPath } from "@/lib/paths";
@@ -23,8 +23,8 @@ function sample(frames: Frame[], t: number): PlayerPos[] {
   return frames[lo].players;
 }
 
-function lastKnownById(frames: Frame[], t: number): Map<number, PlayerPos> {
-  const out = new Map<number, PlayerPos>();
+function lastKnownById(frames: Frame[], t: number): Map<PlayerId, PlayerPos> {
+  const out = new Map<PlayerId, PlayerPos>();
   for (const frame of frames) {
     if (frame.t > t) break;
     for (const pos of frame.players) out.set(pos.id, pos);
@@ -52,12 +52,11 @@ export function PlayerHUD({ side }: { side: "CT" | "T" }) {
 
   // Roster is anchored to the first visible round, so players keep their
   // left/right team slot after half-time. Only the CT/T styling changes.
-  const sidePlayers: { steamId: number; name: string }[] = [];
+  const sidePlayers: { steamId: PlayerId; name: string }[] = [];
   for (const [rawId, team] of Object.entries(initialTeamByPlayer)) {
     if (team !== baseTeamCode) continue;
-    const id = Number(rawId);
-    const info = match.players.find((p) => p.steamId === id);
-    sidePlayers.push({ steamId: id, name: info?.name ?? "" });
+    const info = match.players.find((p) => String(p.steamId) === rawId);
+    sidePlayers.push({ steamId: info?.steamId ?? rawId, name: info?.name ?? "" });
   }
   sidePlayers.sort((a, b) =>
     a.steamId === b.steamId ? 0 : a.steamId < b.steamId ? -1 : 1,
@@ -118,8 +117,8 @@ export function PlayerHUD({ side }: { side: "CT" | "T" }) {
   );
 }
 
-function roundTeams(frames: Frame[]): Map<number, number> {
-  const votes = new Map<number, { ct: number; t: number }>();
+function roundTeams(frames: Frame[]): Map<PlayerId, number> {
+  const votes = new Map<PlayerId, { ct: number; t: number }>();
   for (const frame of frames) {
     for (const pos of frame.players) {
       let v = votes.get(pos.id);
@@ -131,7 +130,7 @@ function roundTeams(frames: Frame[]): Map<number, number> {
       else if (pos.team === 2) v.t++;
     }
   }
-  const out = new Map<number, number>();
+  const out = new Map<PlayerId, number>();
   for (const [id, v] of votes) {
     if (v.ct === 0 && v.t === 0) continue;
     out.set(id, v.ct >= v.t ? 3 : 2);
@@ -139,7 +138,7 @@ function roundTeams(frames: Frame[]): Map<number, number> {
   return out;
 }
 
-function majoritySide(ids: number[], teams: Map<number, number>): number | null {
+function majoritySide(ids: PlayerId[], teams: Map<PlayerId, number>): number | null {
   let ct = 0;
   let t = 0;
   for (const id of ids) {
@@ -234,10 +233,10 @@ function PlayerRow({
   pos?: PlayerPos;
   side: "CT" | "T";
 }) {
-  const hp = pos?.hp ?? 0;
+  const hp = Number.isFinite(pos?.hp) ? pos!.hp : 0;
   const alive = hp > 0;
-  const armor = pos?.armor ?? 0;
-  const money = pos?.money ?? 0;
+  const armor = Number.isFinite(pos?.armor) ? pos!.armor : 0;
+  const money = Number.isFinite(pos?.money) ? pos!.money : 0;
   const inv = inventory(pos);
   const cols = sideColors(side);
   const carriesBomb = alive && inv.hasC4;
