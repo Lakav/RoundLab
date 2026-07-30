@@ -19,12 +19,15 @@ HOME_TSX = ROOT / "desktop" / "src" / "app" / "page.tsx"
 WORKER_DIR = ROOT / "desktop" / "src" / "workers"
 WORKER_TS = WORKER_DIR / "web-parser.worker.ts"
 ZSTD_WORKER_TS = WORKER_DIR / "zstd-decompress.worker.ts"
+BROWSER_STORE_TS = BACKEND_DIR / "browser-store.ts"
+BROWSER_STORE_MIGRATIONS_TS = BACKEND_DIR / "browser-store-migrations.ts"
 
 LOCALITY_FILES = [
     API_TS,
     BACKEND_DIR / "index.ts",
     BACKEND_DIR / "browser.ts",
-    BACKEND_DIR / "browser-store.ts",
+    BROWSER_STORE_TS,
+    BROWSER_STORE_MIGRATIONS_TS,
     BACKEND_DIR / "types.ts",
     WORKER_TS,
     ZSTD_WORKER_TS,
@@ -65,13 +68,21 @@ REQUIRED_SNIPPETS = {
         "decoder.decode",
         "[buffer]",
     ],
-    BACKEND_DIR / "browser-store.ts": [
+    BROWSER_STORE_TS: [
         "indexedDB.open",
-        'const MATCH_STORE = "matches"',
-        'const ROUND_STORE = "rounds"',
+        "browser-store-migrations",
+        "MATCH_STORE",
+        "ROUND_STORE",
+        "runBrowserStoreMigrations",
         "function stripRoundPayload",
         "frames: []",
         "projectileFrames: []",
+    ],
+    BROWSER_STORE_MIGRATIONS_TS: [
+        'const MATCH_STORE = "matches"',
+        'const ROUND_STORE = "rounds"',
+        "db.createObjectStore(MATCH_STORE",
+        "db.createObjectStore(ROUND_STORE",
     ],
 }
 
@@ -116,7 +127,8 @@ def assert_worker_returns_id_only() -> None:
     errors: list[str] = []
     required = {
         "worker parse return type": (worker, "async function parseDemo(request: ParseRequest): Promise<string>"),
-        "worker parses JSON inside worker": (worker, "const data = JSON.parse(json) as MatchData"),
+        "worker parses JSON inside worker": (worker, "JSON.parse(json) as MatchData"),
+        "worker versions the parsed import": (worker, "versionCurrentImport("),
         "worker stores parsed match before resolving": (
             worker,
             "await saveParsedMatch(id, displayName(request.name), request.size, data)",
