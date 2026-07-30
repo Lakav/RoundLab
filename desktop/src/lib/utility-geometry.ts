@@ -1,4 +1,4 @@
-import type { UtilityEffect } from "@/lib/types";
+import type { UtilityEffect } from "./types.ts";
 
 export const SMOKE_RADIUS_WORLD = 144;
 export const MOLOTOV_RADIUS_WORLD = 116;

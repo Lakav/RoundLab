@@ -1,3 +1,5 @@
+import type { QualityMetric } from "./metric-quality.ts";
+
 export const MATCH_ANALYSIS_SPEC_VERSION = "roundlab.metrics.v1" as const;
 
 export type AnalysisEvidence = {
@@ -128,6 +130,8 @@ export type PlayerAnalysis = {
   playerId: string;
   name: string;
   metrics: PlayerAnalysisMetrics;
+  economy?: PlayerEconomyQualityAnalysis;
+  utility?: PlayerUtilityQualityAnalysis;
   metricEvidence: PlayerMetricEvidence;
   unavailableReasons: string[];
   bySide: {
@@ -140,6 +144,36 @@ export type PlayerAnalysis = {
     fullBuy: PlayerEconomyAnalysis | null;
     unavailableRounds: number;
   };
+};
+
+export type PlayerUtilityQualityAnalysis = {
+  grenadesThrown: QualityMetric<number>;
+  flashGrenades: QualityMetric<number>;
+  smokeGrenades: QualityMetric<number>;
+  heGrenades: QualityMetric<number>;
+  fireGrenades: QualityMetric<number>;
+  utilityQuantityRating: QualityMetric<number>;
+  effectiveEnemiesFlashed: QualityMetric<number>;
+  effectiveTeammatesFlashed: QualityMetric<number>;
+  flashesLeadingToKills: QualityMetric<number>;
+  heDamage: QualityMetric<number>;
+  teammateHeDamage: QualityMetric<number>;
+  enemiesPerFlash: QualityMetric<number>;
+  teammatesPerFlash: QualityMetric<number>;
+  flashKillsPerFlash: QualityMetric<number>;
+  averageEnemyBlindDuration: QualityMetric<number>;
+  heDamagePerGrenade: QualityMetric<number>;
+  teammateHeDamagePerGrenade: QualityMetric<number>;
+  averageUnusedUtilityValue: QualityMetric<number>;
+};
+
+export type PlayerEconomyQualityAnalysis = {
+  netSpend: QualityMetric<number>;
+  equipmentValueLostOnDeath: QualityMetric<number>;
+  averageEquipmentValueLostPerDeath: QualityMetric<number>;
+  savedPrimaryWeaponRounds: QualityMetric<number>;
+  valueLostEvidence: string[];
+  savedWeaponEvidence: string[];
 };
 
 export type PlayerSideAnalysis = {
@@ -159,6 +193,10 @@ export type RoundEconomyAnalysis = {
   side: "T" | "CT";
   averageEquipmentValue: number | null;
   category: EconomyCategory | null;
+  quality: {
+    averageEquipmentValue: QualityMetric<number>;
+    category: QualityMetric<EconomyCategory>;
+  };
   evidenceId: string | null;
   unavailableReason: string | null;
 };
@@ -227,8 +265,23 @@ export type LogicalTeamAnalysis = {
   score: number | null;
   playerIds: string[];
   metrics: LogicalTeamMetrics | null;
+  combat?: LogicalTeamCombatQualityAnalysis;
+  economy?: LogicalTeamEconomyAnalysis;
   metricEvidence: PlayerMetricEvidence;
   unavailableReasons: string[];
+};
+
+export type LogicalTeamCombatQualityAnalysis = {
+  advantageRounds: QualityMetric<number>;
+  advantageWins: QualityMetric<number>;
+  advantageConversionRate: QualityMetric<number>;
+};
+
+export type LogicalTeamEconomyAnalysis = {
+  antiEcoRounds: QualityMetric<number>;
+  antiEcoWins: QualityMetric<number>;
+  antiEcoWinRate: QualityMetric<number>;
+  lossesAgainstEco: QualityMetric<number>;
 };
 
 export type MatchAnalysis = {

@@ -342,6 +342,14 @@ round avec moins de cinq joueurs. Si le tick de fin de freeze, sa frame, ou la
 valeur d'équipement d'au moins un joueur du camp manque, la catégorie vaut
 `null` avec une raison d'indisponibilité.
 
+Depuis la formule `roundlab.economy.v2.freeze-equipment`, le résultat conserve
+les champs V1 et ajoute un contrat de qualité pour la moyenne et la catégorie :
+valeur, unité, nombre de joueurs attendus et exploitables, couverture,
+provenance, confiance, raisons d'absence et version de formule. La moyenne
+d'équipement est `observed`; la catégorie issue des seuils ci-dessus est
+`reconstructed`. Une valeur manquante pour un seul joueur invalide la moyenne
+du camp au lieu de calculer silencieusement une moyenne partielle.
+
 **Preuve :** snapshot exact de l'équipe à la fin du freeze time.
 
 **Identifiant joueur :** `byEconomy.eco`, `.forceBuy`, `.fullBuy`
@@ -351,7 +359,54 @@ chaque catégorie, avec les mêmes formules et preuves que l'agrégat général.
 `byEconomy.unavailableRounds` compte les rounds joués dont l'économie du camp
 n'a pas pu être classée ; ils ne sont injectés dans aucune catégorie.
 
-### 4.14 Performance CT/T
+### 4.14 Conversion anti-eco
+
+**Identifiants équipe :** `economy.antiEcoRounds`, `.antiEcoWins`,
+`.antiEcoWinRate`, `.lossesAgainstEco`
+
+Une opportunité anti-eco est un round où la catégorie de l'adversaire vaut
+strictement `eco` selon le snapshot et les seuils de la section 4.13. Le moteur
+relie le côté T/CT à l'équipe logique A/B avant d'attribuer le résultat :
+
+- `antiEcoRounds` compte les opportunités ;
+- `antiEcoWins` compte les opportunités gagnées ;
+- `antiEcoWinRate` divise les victoires par les opportunités ;
+- `lossesAgainstEco` compte les opportunités perdues.
+
+Le contrat de qualité d'`antiEcoRounds` utilise tous les rounds du match comme
+échantillons et les rounds dont l'économie adverse est classable comme
+échantillons exploitables. Si cette couverture n'est pas de 100 %, aucun total
+anti-eco n'est publié. Les trois métriques de résultat utilisent ensuite les
+opportunités identifiées comme échantillons ; une issue manquante invalide
+l'agrégat concerné. Zéro opportunité produit un compte observé de zéro, mais un
+taux `null` avec la raison `no_anti_eco_rounds`.
+
+La provenance est `reconstructed` et la formule
+`roundlab.economy.v2.freeze-equipment`.
+
+### 4.15 Valeur perdue et armes principales sauvegardées
+
+**Identifiants joueur :** `economy.equipmentValueLostOnDeath`,
+`.averageEquipmentValueLostPerDeath`, `.savedPrimaryWeaponRounds`
+
+Pour chaque mort, RoundLab prend la dernière frame strictement antérieure à
+l'événement et lit `current_equip_value`. Le total et la moyenne ne sont
+publiés que si chaque mort possède une valeur finie et positive ou nulle. Il
+s'agit de la valeur de l'équipement détenu, pas d'une reconstruction du prix
+effectivement payé.
+
+Un round d'arme principale sauvegardée est un round perdu où le joueur n'est
+pas mort, est encore vivant sur le snapshot de fin de round et possède au moins
+un fusil, sniper, PM, fusil à pompe ou mitrailleuse. Les couteaux, pistolets,
+grenades, tasers et la bombe ne comptent pas. Une mort confirmée rend le round
+exploitable avec une valeur zéro ; un survivant sans inventaire de fin de round
+rend l'agrégat indisponible.
+
+Les preuves relient les métriques aux événements de mort ou de fin de round et
+aux snapshots d'inventaire utilisés. La provenance est `reconstructed` et la
+formule `roundlab.economy.v2.freeze-equipment`.
+
+### 4.16 Performance CT/T
 
 **Identifiant :** `bySide.CT` et `bySide.T`
 
@@ -361,7 +416,7 @@ pas traverser un round et appartient donc toujours à un seul côté.
 
 **Preuves :** identiques à celles de la métrique agrégée, filtrées par côté.
 
-### 4.15 Agrégats par équipe logique
+### 4.17 Agrégats par équipe logique
 
 **Identifiant :** `teams.A` et `teams.B`
 
@@ -379,7 +434,7 @@ Les autres ratios et compteurs reprennent les règles de leurs métriques V1.
 Les noms et scores finaux proviennent des équipes logiques A/B, jamais des
 côtés T/CT.
 
-### 4.16 Moments importants
+### 4.18 Moments importants
 
 **Identifiant :** `keyMoments`
 
@@ -388,7 +443,7 @@ schéma V1 pour ne pas casser les analyses et contributions déjà sérialisées
 RoundLab ne classe plus automatiquement les événements d'un match selon leur
 importance.
 
-### 4.17 Efficacité des flashes
+### 4.19 Efficacité des flashes
 
 **Identifiants :** `flashes.enemiesFlashed`, `flashes.teammatesFlashed`,
 `flashes.effectiveEnemiesFlashed`, `flashes.effectiveTeammatesFlashed`,
@@ -413,7 +468,7 @@ dans `flashesLeadingToKills` si elle survient pendant un aveuglement effectif
 et si le killer appartient au camp du lanceur. Sans flash ayant touché un
 adversaire, la durée moyenne vaut `null`.
 
-### 4.18 Dégâts utilitaires
+### 4.20 Dégâts utilitaires
 
 **Identifiants :** `utilityDamage.heDamage`, `utilityDamage.fireDamage`,
 `utilityDamage.teammateHeDamage`, `utilityDamage.teammateFireDamage`
@@ -423,7 +478,7 @@ sont séparés des dégâts d'arme. Les dégâts adverses et alliés sont conser
 dans des compteurs distincts. Ils restent `null` si le flux complet de dégâts
 ou le contexte d'équipe manque.
 
-### 4.19 Utility Quantity Rating
+### 4.21 Utility Quantity Rating
 
 **Identifiant :** `utilityQuantityRating`
 
@@ -434,6 +489,66 @@ plafonné à `1`, élevé à la puissance `2/3`, puis multiplié par `100`.
 Cette métrique reproduit la composante Quantity publiée par Leetify en octobre
 2025. Elle ne constitue pas un Utility Rating global : la composante Quality
 dépend de benchmarks de population absents de RoundLab.
+
+### 4.22 Conversion des avantages numériques
+
+**Identifiants équipe :** `combat.advantageRounds`, `.advantageWins`,
+`.advantageConversionRate`
+
+RoundLab reconstruit les joueurs vivants à partir du roster du round, puis
+applique chronologiquement les morts et déconnexions antérieures à
+`round_end`. Une équipe obtient une opportunité dès qu'elle possède strictement
+plus de joueurs vivants que l'adversaire. Elle ne compte qu'une opportunité par
+round, même si l'avantage change plusieurs fois de camp.
+
+`advantageRounds` compte les opportunités, `advantageWins` celles dont le round
+est gagné et `advantageConversionRate` calcule leur ratio. Le roster logique,
+les déconnexions et l'issue doivent être complets sur tous les rounds ; sinon
+aucun total partiel n'est publié. Zéro opportunité garde un compte nul mesuré,
+mais rend le taux indisponible avec `no_numerical_advantage_rounds`.
+
+La provenance est `reconstructed` et la formule
+`roundlab.combat.v2.numerical-advantage`.
+
+### 4.23 Dépenses nettes retenues
+
+**Identifiant joueur :** `economy.netSpend`
+
+Le parseur conserve les événements d'achat, leur coût et le signal de
+remboursement. Le corpus Dust2 contient toutefois des événements tardifs et des
+rafales répétées dont la sémantique temporelle n'a pas encore été validée
+contre une source indépendante. Additionner ces coûts produirait un résultat
+précis en apparence mais potentiellement faux.
+
+La métrique existe donc explicitement avec une valeur `null`, les événements
+observés comme échantillons, zéro échantillon exploitable et la raison
+`unvalidated_purchase_event_semantics`. Si le flux manque entièrement, la
+raison devient `missing_purchase_events`. Aucun zéro de dépense n'est déduit de
+l'absence de valeur.
+
+### 4.24 Contrat de qualité des utilitaires joueur
+
+**Version de formule :** `roundlab.utility.v2.quality`
+
+Les comptes de grenades, le score de quantité, les joueurs effectivement
+flashés, les flashes menant à un kill, les dégâts HE et les ratios dérivés
+exposent tous le contrat central `QualityMetric`. Leur provenance est
+`reconstructed` : les valeurs sont agrégées de manière déterministe depuis les
+flux `weapon_fire`, flash et dégâts de la démo.
+
+Les comptes de lancers utilisent les rounds joués comme échantillons. Les
+ratios par flash et par HE utilisent uniquement les grenades du type
+correspondant comme dénominateur. Un joueur qui n'a lancé aucune flash ou
+aucune HE reçoit donc respectivement `no_flash_grenades` ou
+`no_he_grenades`, avec une valeur `null` pour le ratio : l'absence
+d'opportunité ne devient jamais un zéro artificiel.
+
+La valeur moyenne d'utilitaires conservés à la mort utilise les décès comme
+échantillons. Elle reste `null` avec `incomplete_predeath_inventory` si
+l'inventaire canonique juste avant une ou plusieurs morts n'est pas
+exploitable. Chaque métrique conserve valeur ou `null`, unité, nombre
+d'échantillons, nombre exploitable, couverture, provenance, confiance, raisons
+et version de formule jusque dans le rapport.
 
 ## 5. Disponibilité avec le parseur actuel
 

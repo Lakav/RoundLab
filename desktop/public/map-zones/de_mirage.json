@@ -1,10 +1,10 @@
 {
   "map": "de_mirage",
-  "zonesVersion": "roundlab.de_mirage.coarse.v1",
+  "zonesVersion": "roundlab.de_mirage.coarse.v2",
   "zones": [
     {
       "zoneId": "b_site",
-      "label": "B site",
+      "label": "B Site / Bench / Van",
       "polygon": [
         { "x": -3230, "y": 1713 },
         { "x": -1330, "y": 1713 },
@@ -17,7 +17,7 @@
     },
     {
       "zoneId": "b_approach",
-      "label": "B approach",
+      "label": "B Apartments / Underpass",
       "polygon": [
         { "x": -3230, "y": -187 },
         { "x": -1330, "y": -187 },
@@ -30,7 +30,7 @@
     },
     {
       "zoneId": "ct_spawn",
-      "label": "CT spawn",
+      "label": "CT Spawn / Market",
       "polygon": [
         { "x": -3230, "y": -1087 },
         { "x": -1130, "y": -1087 },
@@ -43,7 +43,7 @@
     },
     {
       "zoneId": "north_route",
-      "label": "North route",
+      "label": "Catwalk / Short",
       "polygon": [
         { "x": -1330, "y": 1713 },
         { "x": 270, "y": 1713 },
@@ -56,7 +56,7 @@
     },
     {
       "zoneId": "middle",
-      "label": "Middle",
+      "label": "Mid / Window / Connector",
       "polygon": [
         { "x": -1330, "y": 463 },
         { "x": 270, "y": 463 },
@@ -69,7 +69,7 @@
     },
     {
       "zoneId": "a_site",
-      "label": "A site",
+      "label": "A Site / Jungle / Stairs",
       "polygon": [
         { "x": -1130, "y": -1537 },
         { "x": 270, "y": -1537 },
@@ -82,7 +82,7 @@
     },
     {
       "zoneId": "t_north",
-      "label": "T north route",
+      "label": "B Apartments / TV",
       "polygon": [
         { "x": 270, "y": 1713 },
         { "x": 1890, "y": 1713 },
@@ -95,7 +95,7 @@
     },
     {
       "zoneId": "t_spawn",
-      "label": "T spawn",
+      "label": "T Spawn / Top Mid",
       "polygon": [
         { "x": 270, "y": 213 },
         { "x": 1890, "y": 213 },
@@ -108,7 +108,7 @@
     },
     {
       "zoneId": "a_approach",
-      "label": "A approach",
+      "label": "A Ramp / Palace",
       "polygon": [
         { "x": 270, "y": -1287 },
         { "x": 1890, "y": -1287 },

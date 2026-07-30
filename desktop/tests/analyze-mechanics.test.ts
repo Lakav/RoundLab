@@ -9,6 +9,7 @@ import {
 } from "@/lib/analysis/analyze-mechanics";
 import type { DamageEvent, MatchData, Round } from "@/lib/types";
 import type { MapGeometry } from "@/lib/analysis/visibility-geometry";
+import { versionCurrentImport } from "@/lib/import-version";
 
 const P1 = "76561198000000001";
 const P2 = "76561198000000002";
@@ -112,7 +113,7 @@ describe("deterministic mechanics engagement detection", () => {
     const engagement = result.rounds[0].engagements[0];
 
     expect(result).toMatchObject({
-      specVersion: "roundlab.mechanics.v1",
+      specVersion: "roundlab.mechanics.v2",
       inputSchemaVersion: "roundlab.replay.v2",
       parserVersion: "0.1.0",
       matchId: CONTEXT.matchId,
@@ -271,6 +272,7 @@ describe("deterministic mechanics engagement detection", () => {
       origin: { x: 0, y: 0, z: 64 },
       yaw: 0,
       enemySpotted: null,
+      associationStatus: "reliable_hit",
       impacts: [{
         evidenceId: "r1-mechanics-impact-0000",
         tick: 1_064,
@@ -287,6 +289,7 @@ describe("deterministic mechanics engagement detection", () => {
         damageHealth: 40,
         damageArmor: 0,
         hitgroup: null,
+        distanceWorld: null,
       }],
       unavailableReasons: [],
     }]);
@@ -297,6 +300,92 @@ describe("deterministic mechanics engagement detection", () => {
       "bullet_impact",
       "damage",
     ]);
+  });
+
+  it.each([
+    ["weapon_usp_silencer", "hkp2000", "hkp2000"],
+    ["weapon_m4a1_silencer", "m4a1", "m4a1"],
+  ])(
+    "normalizes parser aliases between %s fires and %s damage",
+    (fireWeapon, damageWeapon, expectedWeapon) => {
+      const round = sourceRound({
+        weaponFires: [{
+          t: 1,
+          tick: 1_064,
+          sequence: 1,
+          shooter: P1,
+          weapon: fireWeapon,
+          x: 0,
+          y: 0,
+          z: 64,
+          yaw: 0,
+        }],
+        damages: [{
+          ...damage(1.01, 1_064, P1, P2, 40, 2),
+          weapon: damageWeapon,
+        }],
+      });
+
+      const shot = analyzeMechanics(sourceMatch([round]), CONTEXT)
+        .rounds[0].shots[0];
+
+      expect(shot).toMatchObject({
+        weapon: expectedWeapon,
+        associationStatus: "reliable_hit",
+      });
+      expect(shot.damages).toHaveLength(1);
+    },
+  );
+
+  it("keeps shotgun pellets on one shot and links a penetrating kill", () => {
+    const round = sourceRound({
+      weaponFires: [{
+        t: 1,
+        tick: 1_064,
+        sequence: 1,
+        shooter: P1,
+        weapon: "nova",
+        x: 0,
+        y: 0,
+        z: 64,
+        yaw: 0,
+      }],
+      bulletImpacts: [
+        { t: 1.01, tick: 1_064, sequence: 2, shooter: P1, x: 95, y: -2, z: 63 },
+        { t: 1.01, tick: 1_064, sequence: 3, shooter: P1, x: 96, y: 3, z: 65 },
+      ],
+      damages: [
+        { ...damage(1.02, 1_064, P1, P2, 35, 4), weapon: "nova", hitgroup: "chest" },
+        { ...damage(1.02, 1_064, P1, P2, 65, 5), weapon: "nova", hitgroup: "head" },
+      ],
+      events: [{
+        t: 1.03,
+        tick: 1_064,
+        sequence: 6,
+        type: "kill",
+        killer: P1,
+        victim: P2,
+        weapon: "nova",
+        hs: true,
+        penetrated: 2,
+      }],
+    });
+
+    const result = analyzeMechanics(sourceMatch([round]), CONTEXT);
+    const associated = result.rounds[0].shots[0];
+
+    expect(associated).toMatchObject({
+      weapon: "nova",
+      associationStatus: "reliable_hit",
+      kills: [{
+        victimId: P2,
+        headshot: true,
+        penetratedSurfaces: 2,
+      }],
+    });
+    expect(associated.impacts).toHaveLength(2);
+    expect(associated.damages).toHaveLength(2);
+    expect(result.rounds[0].unmatchedKills).toEqual([]);
   });
 
   it("reads the demo spotted mask at the exact weapon-fire frame", () => {
@@ -391,12 +480,14 @@ describe("deterministic mechanics engagement detection", () => {
       "r1-mechanics-impact-0000",
     ]);
     expect(first.damages).toEqual([]);
+    expect(first.associationStatus).toBe("reliable_miss");
     expect(second.impacts.map((impact) => impact.evidenceId)).toEqual([
       "r1-mechanics-impact-0001",
     ]);
     expect(second.damages.map((item) => item.evidenceId)).toEqual([
       "r1-mechanics-damage-0000",
     ]);
+    expect(second.associationStatus).toBe("reliable_hit");
   });
 
   it("refuses to choose between indistinguishable simultaneous fires", () => {
@@ -423,6 +514,56 @@ describe("deterministic mechanics engagement detection", () => {
       evidenceId: "r1-mechanics-impact-0000",
       reason: "ambiguous_fire",
     }]);
+    expect(result.rounds[0].shots.map((shot) => shot.associationStatus)).toEqual([
+      "ambiguous",
+      "ambiguous",
+    ]);
+  });
+
+  it("marks simultaneous shots ambiguous when damage cannot select one", () => {
+    const round = sourceRound({
+      weaponFires: [
+        { t: 1, tick: 1_064, shooter: P1, weapon: "ak47", x: 0, y: 0, z: 64, yaw: 0 },
+        { t: 1, tick: 1_064, shooter: P1, weapon: "ak47", x: 0, y: 0, z: 64, yaw: 0 },
+      ],
+      bulletImpacts: [],
+      damages: [damage(1, 1_064, P1, P2, 30)],
+    });
+
+    const result = analyzeMechanics(sourceMatch([round]), CONTEXT);
+
+    expect(result.rounds[0].shots.map((shot) => shot.associationStatus)).toEqual([
+      "ambiguous",
+      "ambiguous",
+    ]);
+    expect(result.rounds[0].unmatchedDamages).toEqual([{
+      evidenceId: "r1-mechanics-damage-0000",
+      reason: "ambiguous_fire",
+    }]);
+  });
+
+  it("marks shots incomplete when the damage stream is absent", () => {
+    const round = sourceRound({
+      weaponFires: [{
+        t: 1,
+        tick: 1_064,
+        shooter: P1,
+        weapon: "ak47",
+        x: 0,
+        y: 0,
+        z: 64,
+        yaw: 0,
+      }],
+      bulletImpacts: [],
+    });
+    delete round.damages;
+
+    const result = analyzeMechanics(sourceMatch([round]), CONTEXT);
+
+    expect(result.rounds[0].shots[0]).toMatchObject({
+      associationStatus: "incomplete",
+      unavailableReasons: ["missing_damage_events"],
+    });
   });
 
   it("does not attach damage to a shot from another weapon or beyond two ticks", () => {
@@ -455,7 +596,11 @@ describe("deterministic mechanics engagement detection", () => {
 
     const result = analyzeMechanics(sourceMatch([round]), CONTEXT);
 
-    expect(result.rounds[0].shots[0]).toMatchObject({ impacts: [], damages: [] });
+    expect(result.rounds[0].shots[0]).toMatchObject({
+      associationStatus: "reliable_miss",
+      impacts: [],
+      damages: [],
+    });
     expect(result.rounds[0].unmatchedImpacts).toEqual([{
       evidenceId: "r1-mechanics-impact-0000",
       reason: "no_matching_fire",
@@ -478,6 +623,122 @@ describe("deterministic mechanics engagement detection", () => {
       "missing_bullet_impact_events",
       "missing_weapon_fire_events",
     ]);
+  });
+
+  it("uses manifest capabilities to distinguish unavailable impacts from zero impacts", () => {
+    const round = sourceRound({
+      weaponFires: [{
+        t: 1,
+        tick: 1_064,
+        shooter: P1,
+        weapon: "ak47",
+        x: 0,
+        y: 0,
+        z: 64,
+        yaw: 0,
+      }],
+      bulletImpacts: [],
+      damages: [],
+    });
+    const match = versionCurrentImport(sourceMatch([round]), "full");
+
+    const result = analyzeMechanics(match, CONTEXT);
+
+    expect(result.dataQuality?.signals.bulletImpacts).toMatchObject({
+      value: null,
+      usableSampleCount: 0,
+      coverage: 0,
+      confidence: "unavailable",
+      unavailableReasons: ["missing_bullet_impact_events"],
+    });
+    expect(result.rounds[0].shots[0]).toMatchObject({
+      associationStatus: "reliable_miss",
+      unavailableReasons: ["missing_bullet_impact_events"],
+    });
+  });
+
+  it("keeps sample-based quality metrics null when there are no samples", () => {
+    const match = versionCurrentImport(sourceMatch([sourceRound({
+      weaponFires: [],
+      bulletImpacts: [],
+      damages: [],
+    })]), "full");
+
+    const signals = analyzeMechanics(match, CONTEXT).dataQuality!.signals;
+
+    expect(signals.shots).toMatchObject({
+      value: 0,
+      sampleCount: 1,
+      usableSampleCount: 1,
+    });
+    expect(signals.hitgroups).toMatchObject({
+      value: null,
+      sampleCount: 0,
+      coverage: null,
+      confidence: "unavailable",
+      unavailableReasons: ["missing_hitgroups"],
+    });
+    expect(signals.usableEngagements).toMatchObject({
+      value: null,
+      sampleCount: 0,
+      coverage: null,
+      confidence: "unavailable",
+      unavailableReasons: ["incomplete_engagement_context"],
+    });
+    expect(signals.shotDamageAssociation).toMatchObject({
+      value: null,
+      sampleCount: 0,
+      coverage: null,
+      confidence: "unavailable",
+      unavailableReasons: ["incomplete_shot_association"],
+    });
+  });
+
+  it("reports scoped-state coverage independently from the weapon-fire stream", () => {
+    const round = sourceRound({
+      frames: [{
+        t: 0,
+        players: [
+          {
+            id: P1,
+            x: 0,
+            y: 0,
+            z: 0,
+            yaw: 0,
+            hp: 100,
+            armor: 0,
+            team: 2,
+            scoped: true,
+          },
+          {
+            id: P2,
+            x: 100,
+            y: 0,
+            z: 0,
+            yaw: 180,
+            hp: 100,
+            armor: 0,
+            team: 3,
+            scoped: false,
+          },
+          { id: P3, x: 10, y: 0, z: 0, yaw: 0, hp: 100, armor: 0, team: 2 },
+        ],
+      }],
+    });
+    const signals = analyzeMechanics(
+      versionCurrentImport(sourceMatch([round]), "full"),
+      CONTEXT,
+    ).dataQuality!.signals;
+
+    expect(signals.scopedState).toMatchObject({
+      value: 2,
+      sampleCount: 3,
+      usableSampleCount: 2,
+      coverage: 2 / 3,
+      provenance: "observed",
+      confidence: "medium",
+      unavailableReasons: ["missing_scoped_state"],
+    });
   });
 
   it("classifies one, two and three-or-more continuous shots", () => {
@@ -600,6 +861,7 @@ describe("deterministic mechanics engagement detection", () => {
             team: 2,
             velocityX: COUNTER_STRAFE_REFERENCE_SPEED_MIN,
             velocityY: 0,
+            scoped: true,
           }],
         },
         {
@@ -615,6 +877,7 @@ describe("deterministic mechanics engagement detection", () => {
             team: 2,
             velocityX: STATIONARY_SPEED_MAX,
             velocityY: 0,
+            scoped: false,
           }],
         },
       ],
@@ -639,6 +902,11 @@ describe("deterministic mechanics engagement detection", () => {
       sampleAgeSeconds: 0,
       horizontalSpeed: STATIONARY_SPEED_MAX,
       speedSource: "velocity_components",
+      duckAmount: null,
+      scoped: true,
+      scopedSampleTime: 1 - MOVEMENT_SAMPLE_MAX_AGE_SECONDS,
+      scopedSampleAgeSeconds: MOVEMENT_SAMPLE_MAX_AGE_SECONDS,
+      stance: "standing",
       movementState: "stationary",
       counterStrafeAssessment: "compatible",
       referenceTime: 1 - MOVEMENT_SAMPLE_MAX_AGE_SECONDS,
@@ -774,6 +1042,16 @@ describe("deterministic mechanics engagement detection", () => {
       time: 1,
       tick: 1_064,
       geometryId: "synthetic-wall-v1",
+      method: "geometry_fov_smoke_flash",
+      confidence: "low",
+      observerIds: [P1, P2],
+      limitations: [
+        "dynamic_obstacles_not_modeled",
+        "missing_flash_state",
+        "missing_pitch",
+        "missing_spotted_by",
+        "missing_utility_effects",
+      ],
       evidenceId: "r1-engagement-000-visibility",
       unavailableReasons: [],
     }]);

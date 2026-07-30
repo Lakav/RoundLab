@@ -10,6 +10,7 @@
     "dev": "next dev",
     "build": "next build",
     "geometry:import": "node --no-warnings --experimental-strip-types scripts/import-map-geometry.mts",
+    "mechanics:audit": "node --no-warnings --experimental-strip-types scripts/audit-mechanics-match.mts",
     "zones:audit": "node --no-warnings --experimental-strip-types scripts/audit-map-zones.mts",
     "benchmark:analyze": "node --no-warnings --experimental-strip-types scripts/analyze-benchmark-match.mts",
     "benchmark:build": "node --no-warnings --experimental-strip-types scripts/build-benchmark-corpus.mts",

@@ -1,10 +1,10 @@
 {
   "map": "de_anubis",
-  "zonesVersion": "roundlab.de_anubis.coarse.v1",
+  "zonesVersion": "roundlab.de_anubis.coarse.v2",
   "zones": [
     {
       "zoneId": "ct_west",
-      "label": "CT west route",
+      "label": "CT Spawn / Heaven",
       "polygon": [
         { "x": -2796, "y": 3328 },
         { "x": -551.4, "y": 3328 },
@@ -17,7 +17,7 @@
     },
     {
       "zoneId": "a_site",
-      "label": "A site",
+      "label": "A Site / Boat",
       "polygon": [
         { "x": -2796, "y": 1762 },
         { "x": -551.4, "y": 1762 },
@@ -30,7 +30,7 @@
     },
     {
       "zoneId": "a_approach",
-      "label": "A approach",
+      "label": "A Main / Water",
       "polygon": [
         { "x": -2796, "y": 196 },
         { "x": -551.4, "y": 196 },
@@ -43,7 +43,7 @@
     },
     {
       "zoneId": "ct_spawn",
-      "label": "CT spawn",
+      "label": "CT Spawn / Connector",
       "polygon": [
         { "x": -551.4, "y": 3328 },
         { "x": 597, "y": 3328 },
@@ -56,7 +56,7 @@
     },
     {
       "zoneId": "middle",
-      "label": "Middle",
+      "label": "Mid / Bridge",
       "polygon": [
         { "x": -551.4, "y": 1657.6 },
         { "x": 597, "y": 1657.6 },
@@ -69,7 +69,7 @@
     },
     {
       "zoneId": "t_spawn",
-      "label": "T spawn",
+      "label": "T Spawn / Ruins",
       "polygon": [
         { "x": -551.4, "y": -326 },
         { "x": 597, "y": -326 },
@@ -82,7 +82,7 @@
     },
     {
       "zoneId": "b_site",
-      "label": "B site",
+      "label": "B Site / Palace",
       "polygon": [
         { "x": 597, "y": 3328 },
         { "x": 2549.28, "y": 3328 },
@@ -95,7 +95,7 @@
     },
     {
       "zoneId": "b_approach",
-      "label": "B approach",
+      "label": "B Main / Connector",
       "polygon": [
         { "x": 597, "y": 1083.4 },
         { "x": 2549.28, "y": 1083.4 },
@@ -108,7 +108,7 @@
     },
     {
       "zoneId": "t_east",
-      "label": "T east route",
+      "label": "Alley / B Main",
       "polygon": [
         { "x": 597, "y": -65 },
         { "x": 2549.28, "y": -65 },

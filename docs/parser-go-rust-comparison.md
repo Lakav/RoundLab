@@ -85,6 +85,59 @@ ROUNDLAB_TEST_DEMOS="/abs/path/ancient4-13.dem.zst:/abs/path/anubis16-19.dem.zst
 ROUNDLAB_TEST_DEMOS="/abs/path/ancient4-13.dem.zst:/abs/path/anubis16-19.dem.zst:/abs/path/cache11-13.dem.zst:/abs/path/dust1-13.dem.zst:/abs/path/inferno8-13.dem.zst" cargo test --release roundlab_test_demo_honors_quality_and_skip_options_when_configured -- --nocapture
 ```
 
+## Optional demoparser2 cross-check
+
+`scripts/compare-roundlab-demoparser2.py` compares one stream per process with
+demoparser2. It is deliberately a development-only dependency. The comparison
+uses complete event signatures inside RoundLab's round tick spans, not only
+aggregate counts.
+
+Example with a disposable Python 3.12 environment:
+
+```bash
+python3.12 -m venv /tmp/roundlab-demoparser2
+/tmp/roundlab-demoparser2/bin/pip install "demoparser2==0.41.4" "pandas<3"
+/tmp/roundlab-demoparser2/bin/python \
+  scripts/compare-roundlab-demoparser2.py \
+  --demo /tmp/ancient4-13.dem \
+  --roundlab /tmp/roundlab-ancient4-13.json.gz \
+  --stream player_hurt \
+  --output /tmp/ancient-player-hurt.json
+```
+
+Valid streams are `player_death`, `player_hurt`, `weapon_fire`,
+`bullet_impact`, and `player_state`. The last compares positions, yaw and pitch
+at deterministic evenly distributed ticks by default. Use
+`--max-state-ticks 0` for an exhaustive run, which additionally compares
+horizontal velocity. Velocity is deliberately not compared for a sparse query:
+demoparser2 derives incoherent values when intervening ticks are omitted.
+`bullet_impact` currently returns `external_stream_unavailable` on the
+reference corpus and RoundLab does not declare that capability. An empty list
+is therefore not reported as an observed zero.
+
+On the five local demos, the event cross-check produced exact signatures for
+3,144 `player_hurt` events and 17,550 `weapon_fire` events. Kill signatures are
+exact except for seven post-round `world` self-kills retained by RoundLab and
+omitted by demoparser2: two on Ancient, two on Anubis and three on Dust2. This
+known difference is classified
+`external_missing_post_round_world_kills`; there is no unclassified critical
+event difference in this run.
+
+The state cross-check matched position, yaw and pitch exactly for 15,125 player
+states across all five maps (512 evenly distributed ticks per map, except 128
+on Inferno because demoparser2's native query became pathologically slow).
+An exhaustive Dust2 run matched all 485,810 player-state keys and all 485,378
+usable RoundLab horizontal velocities. Twenty external velocity values above
+5,000 units/s appeared only in the targeted demoparser2 query and were
+classified as `external_sparse_tick_velocity_artifact`; they are not counted as
+RoundLab mismatches. This is strong sampled state validation, not a claim of
+exhaustive velocity parity on the other four maps.
+
+Awpy 2.0.2 was also attempted in the same disposable Python 3.12 environment,
+but `Demo.parse()` fails during its Polars aggregation on these files.
+demoparser2 was therefore queried directly. This is an external Awpy failure,
+not an Awpy validation success.
+
 ## Results
 
 ### Medium + skipProjectiles + skipWeaponFires

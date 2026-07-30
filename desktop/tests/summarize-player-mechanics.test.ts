@@ -28,6 +28,9 @@ function shot(
     origin: { x: 0, y: 0, z: 64 },
     yaw: 0,
     enemySpotted,
+    associationStatus: hitgroup === undefined
+      ? "reliable_miss"
+      : "reliable_hit",
     impacts: [],
     damages: hitgroup === undefined
       ? []
@@ -39,6 +42,7 @@ function shot(
         damageHealth: 20,
         damageArmor: 0,
         hitgroup,
+        distanceWorld: 100,
       }],
     unavailableReasons: [],
   };
@@ -71,7 +75,7 @@ function mechanics(
   evidence: MechanicsAnalysis["evidence"] = [],
 ): MechanicsAnalysis {
   return {
-    specVersion: "roundlab.mechanics.v1",
+    specVersion: "roundlab.mechanics.v2",
     inputSchemaVersion: "roundlab.replay.v2",
     parserVersion: "test",
     matchId: "match-1",
@@ -102,7 +106,18 @@ describe("summarizePlayerMechanics", () => {
       }],
     );
 
-    expect(summarizePlayerMechanics(source, PLAYER, true).accuracy).toBe(0.5);
+    const summary = summarizePlayerMechanics(source, PLAYER, true);
+    expect(summary.accuracy).toBe(0.5);
+    expect(summary.metrics.accuracy).toMatchObject({
+      value: 0.5,
+      unit: "ratio",
+      sampleCount: 2,
+      usableSampleCount: 2,
+      coverage: 1,
+      provenance: "reconstructed",
+      confidence: "high",
+      formulaVersion: "roundlab.aim.v3.accuracy",
+    });
   });
 
   it("keeps accuracy unavailable when this player's own damage is unmatched", () => {
@@ -125,7 +140,17 @@ describe("summarizePlayerMechanics", () => {
       }],
     );
 
-    expect(summarizePlayerMechanics(source, PLAYER, true).accuracy).toBeNull();
+    const summary = summarizePlayerMechanics(source, PLAYER, true);
+    expect(summary.accuracy).toBeNull();
+    expect(summary.metrics.accuracy).toMatchObject({
+      value: null,
+      usableSampleCount: 0,
+      coverage: 0,
+      confidence: "unavailable",
+    });
+    expect(summary.metrics.accuracy.unavailableReasons).toContain(
+      "unmatched_player_damage_events",
+    );
   });
 
   it("excludes AWP hits from head accuracy", () => {
@@ -174,7 +199,7 @@ describe("summarizePlayerMechanics", () => {
     ).toBeNull();
   });
 
-  it("limits spray accuracy to spotted rifle spray bullets", () => {
+  it("measures rifle spray accuracy independently from spotted accuracy", () => {
     const rifleShots = [
       shot("rifle-1", "ak47", "chest", true),
       shot("rifle-2", "ak47", undefined, true),
@@ -220,10 +245,14 @@ describe("summarizePlayerMechanics", () => {
     }));
 
     const summary = summarizePlayerMechanics(source, PLAYER, false);
-    expect(summary.sprayAccuracy).toBe(0.5);
+    expect(summary.sprayAccuracy).toBeCloseTo(2 / 3);
     expect(summary.spraySequences).toBe(2);
     expect(summary.tapSequences).toBe(0);
     expect(summary.burstSequences).toBe(0);
+    expect(summary.firstBulletAccuracy).toBe(1);
+    expect(summary.accuracyByWeapon.ak47.value).toBeCloseTo(2 / 3);
+    expect(summary.accuracyByWeapon.mp9.value).toBe(1);
+    expect(summary.hitgroupDistribution.chest.value).toBe(1);
   });
 
   it("uses medians and excludes time-to-damage values of one second or more", () => {
@@ -275,6 +304,11 @@ describe("summarizePlayerMechanics", () => {
           sampleAgeSeconds: 0,
           horizontalSpeed: 0,
           speedSource: "speed",
+          duckAmount: 1,
+          scoped: true,
+          scopedSampleTime: 0.99,
+          scopedSampleAgeSeconds: 0.01,
+          stance: "crouched",
           movementState: "stationary",
           counterStrafeAssessment: "compatible",
           referenceTime: 0.9,
@@ -288,6 +322,11 @@ describe("summarizePlayerMechanics", () => {
           sampleAgeSeconds: 0,
           horizontalSpeed: 90,
           speedSource: "speed",
+          duckAmount: 0,
+          scoped: false,
+          scopedSampleTime: 1.99,
+          scopedSampleAgeSeconds: 0.01,
+          stance: "standing",
           movementState: "moving",
           counterStrafeAssessment: "not_observed",
           referenceTime: 1.9,
@@ -301,7 +340,129 @@ describe("summarizePlayerMechanics", () => {
     expect(summary.stationaryShots).toBe(1);
     expect(summary.movingShots).toBe(1);
     expect(summary.movementSamples).toBe(2);
+    expect(summary.crouchedShots).toBe(1);
+    expect(summary.scopedShots).toBe(1);
+    expect(summary.metrics.scopedShots).toMatchObject({
+      value: 1,
+      sampleCount: 2,
+      usableSampleCount: 2,
+      coverage: 1,
+      provenance: "estimated",
+      confidence: "medium",
+      unavailableReasons: [],
+      formulaVersion: "roundlab.aim.v3.scopedShots",
+    });
     expect(summary.counterStrafeRate).toBe(0.5);
     expect(summary.counterStrafeSamples).toBe(2);
+  });
+
+  it("keeps scoped-shot count unavailable when scoped samples are incomplete", () => {
+    const baseMovement = {
+      shooterId: PLAYER,
+      sampleTime: 1,
+      sampleAgeSeconds: 0,
+      horizontalSpeed: 0,
+      speedSource: "speed" as const,
+      duckAmount: 0,
+      scopedSampleTime: 0.99,
+      scopedSampleAgeSeconds: 0.01,
+      stance: "standing" as const,
+      movementState: "stationary" as const,
+      counterStrafeAssessment: "not_observed" as const,
+      referenceTime: null,
+      referenceSpeed: null,
+      unavailableReasons: [],
+    };
+    const source = mechanics(round({
+      shotMovements: [
+        { ...baseMovement, shotId: "shot-1", scoped: true },
+        { ...baseMovement, shotId: "shot-2", scoped: null },
+      ],
+    }));
+
+    const summary = summarizePlayerMechanics(source, PLAYER, false);
+
+    expect(summary.scopedShots).toBeNull();
+    expect(summary.metrics.scopedShots).toMatchObject({
+      value: null,
+      sampleCount: 2,
+      usableSampleCount: 1,
+      coverage: 0.5,
+      provenance: "estimated",
+      confidence: "unavailable",
+      unavailableReasons: ["incomplete_scoped_samples"],
+    });
+  });
+
+  it("reports wallbangs, sampled duel distance and exposure before first shot", () => {
+    const wallbang = shot("shot-1", "ak47", "head", true);
+    wallbang.kills = [{
+      evidenceId: "kill-1",
+      tick: 101,
+      time: 1.01,
+      victimId: OTHER,
+      headshot: true,
+      penetratedSurfaces: 1,
+    }];
+    const source = mechanics(round({
+      shots: [wallbang],
+      firingSequences: [{
+        firingSequenceId: "tap-1",
+        roundNumber: 1,
+        shooterId: PLAYER,
+        weapon: "ak47",
+        kind: "tap",
+        startTick: 100,
+        endTick: 100,
+        startTime: 1,
+        endTime: 1,
+        shotCount: 1,
+        shotIds: ["shot-1"],
+        fireEvidenceIds: ["shot-1-fire"],
+      }],
+      firstVisibilities: [{
+        visibilityId: "visibility-1",
+        engagementId: "engagement-1",
+        participants: [PLAYER, OTHER],
+        time: 0.75,
+        tick: 75,
+        geometryId: "test",
+        method: "geometry_fov_smoke_flash",
+        confidence: "medium",
+        observerIds: [PLAYER],
+        limitations: ["dynamic_obstacles_not_modeled"],
+        evidenceId: "visibility-evidence",
+        unavailableReasons: [],
+      }],
+      duels: [{
+        duelId: "duel-1",
+        engagementId: "engagement-1",
+        participants: [PLAYER, OTHER],
+        initiatorId: PLAYER,
+        firstVisibilityId: "visibility-1",
+        reactionTimeSeconds: 0.25,
+        startTime: 1,
+        endTime: 1.01,
+        players: [{
+          playerId: PLAYER,
+          damageHealth: 20,
+          shotIds: ["shot-1"],
+          firingSequenceIds: ["tap-1"],
+          movementShotIds: [],
+          crosshairPlacementId: null,
+        }],
+        kill: null,
+        evidenceIds: [],
+        unavailableReasons: [],
+      }],
+    }));
+
+    const summary = summarizePlayerMechanics(source, PLAYER, false);
+    expect(summary.wallbangKills).toBe(1);
+    expect(summary.averageDuelDistance).toBe(100);
+    expect(summary.timeToFirstShotMs).toBe(250);
+    expect(summary.exposureBeforeShotMs).toBe(250);
+    expect(summary.tapAccuracy).toBe(1);
+    expect(summary.firstBulletAccuracy).toBe(1);
   });
 });

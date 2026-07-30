@@ -12,6 +12,10 @@ import {
   summarizePlayerMechanics,
 } from "@/lib/analysis/summarize-player-mechanics";
 import {
+  qualityMetric,
+  type QualityMetric,
+} from "@/lib/analysis/metric-quality";
+import {
   DefinitionTerm,
   STAT_DEFINITIONS,
 } from "@/components/ui/definition-term";
@@ -45,8 +49,11 @@ function average(values: number[]): number | null {
   return values.reduce((total, value) => total + value, 0) / values.length;
 }
 
-function zoneLabel(zoneId: string): string {
-  return zoneId
+function zoneLabel(
+  zoneId: string,
+  labels: Record<string, string> | undefined,
+): string {
+  return labels?.[zoneId] ?? zoneId
     .replace(/[_-]+/g, " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
@@ -93,13 +100,19 @@ function Metric({
   label,
   value,
   detail,
+  quality,
 }: {
   label: string;
   value: string;
   detail?: string;
+  quality?: QualityMetric<number>;
 }) {
   return (
-    <div className="report-metric group relative min-h-[6.25rem] overflow-hidden rounded-lg border border-white/[0.075] px-4 py-3.5">
+    <div
+      className="report-metric group relative min-h-[6.25rem] overflow-hidden rounded-lg border border-white/[0.075] px-4 py-3.5"
+      title={quality ? metricQualityTitle(quality) : undefined}
+      tabIndex={quality ? 0 : undefined}
+    >
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-200/20 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
       <div className="text-[10px] font-semibold uppercase tracking-[0.11em] text-neutral-500">
         <DefinitionTerm label={label} />
@@ -108,6 +121,12 @@ function Metric({
         {value}
       </div>
       {detail && <div className="mt-2 text-[11px] leading-snug text-neutral-500">{detail}</div>}
+      {quality && (
+        <div className="mt-2 text-[9px] leading-snug text-neutral-500">
+          {quality.usableSampleCount}/{quality.sampleCount} ·{" "}
+          {QUALITY_PROVENANCE_LABELS[quality.provenance]}
+        </div>
+      )}
     </div>
   );
 }
@@ -141,6 +160,328 @@ function CoverageBadge({
       <span className="font-semibold">{label}</span>
       <span className="tabular-nums opacity-60">{available}/{total}</span>
     </div>
+  );
+}
+
+const DATA_QUALITY_LABELS: Record<string, string> = {
+  shots: "Tirs",
+  bulletImpacts: "Impacts",
+  damages: "Dégâts",
+  hitgroups: "Hitgroups",
+  pitchYaw: "Pitch / yaw",
+  velocity: "Vélocité",
+  spottedBy: "spottedBy",
+  scopedState: "État scoped",
+  usableEngagements: "Engagements exploitables",
+  shotDamageAssociation: "Association tirs-dégâts",
+  geometry: "Géométrie",
+  economyFreezePlayers: "Équipement au freeze",
+  numericalAdvantageContexts: "Contextes d’avantage",
+  predeathEquipment: "Équipement pré-mort",
+  lostRoundInventories: "Inventaires de rounds perdus",
+  purchaseSemantics: "Achats exploitables",
+  tacticalZoneAssignments: "Attribution des zones",
+  teammateSpacing: "Distances équipiers",
+  utilityInputs: "Flux utilitaires",
+  utilityEffectiveness: "Efficacité utilitaire",
+};
+
+const QUALITY_REASON_LABELS: Record<string, string> = {
+  missing_weapon_fire_events: "Événements weapon_fire absents",
+  missing_bullet_impact_events: "Événements bullet_impact absents",
+  missing_damage_events: "Événements player_hurt absents",
+  missing_hitgroups: "Hitgroups absents sur une partie des dégâts",
+  missing_pitch_or_yaw: "Pitch ou yaw absent sur une partie des positions",
+  missing_velocity: "Vélocité absente sur une partie des positions",
+  missing_spotted_by: "Masque spottedBy absent sur une partie des positions",
+  incomplete_engagement_context: "Contexte de combat incomplet",
+  incomplete_shot_association: "Certains tirs ne peuvent pas être classés fiablement",
+  missing_map_geometry: "Aucune géométrie locale valide pour cette map",
+  map_geometry_mismatch: "La géométrie chargée appartient à une autre map",
+  invalid_map_geometry: "La géométrie chargée est invalide",
+  missing_player_frame: "Frame joueur absente au moment du tir",
+  incomplete_spotted_by_samples: "Échantillons spottedBy incomplets",
+  no_spotted_shots: "Aucun tir avec cible repérée",
+  no_usable_spray_shots: "Aucun tir de spray exploitable",
+  unmatched_player_damage_events: "Dégâts du joueur sans tir associé",
+  incomplete_shot_associations: "Associations de tirs incomplètes",
+  recorded_kill_without_associated_damage: "Kill enregistré sans dégât associé",
+  no_counter_strafe_samples: "Aucun arrêt avant tir exploitable",
+  no_usable_visibility_duels: "Aucun duel avec visibilité exploitable",
+  no_usable_crosshair_samples: "Aucune visibilité exploitable pour le viseur",
+  no_associated_hits: "Aucun impact de dégâts associé",
+  no_shots: "Aucun tir",
+  no_non_awp_hits: "Aucun impact hors AWP",
+  no_usable_tap_shots: "Aucun tap exploitable",
+  no_usable_burst_shots: "Aucun burst exploitable",
+  no_usable_first_bullets: "Aucune première balle exploitable",
+  incomplete_stance_samples: "Posture absente sur une partie des tirs",
+  missing_scoped_state: "État scoped non extrait de la démo",
+  incomplete_scoped_samples: "État scoped incomplet sur certains tirs",
+  missing_freeze_end_tick: "Tick de fin de freeze absent",
+  missing_freeze_end_frame: "Frame de fin de freeze absente",
+  missing_equipment_values: "Valeur d’équipement absente pour certains joueurs",
+  incomplete_position_samples: "Positions absentes sur une partie des impacts",
+  no_usable_first_shot_duels: "Aucun duel avec premier tir exploitable",
+  missing_mechanics_analysis: "Analyse mécanique absente",
+  no_samples: "Aucun échantillon",
+  no_usable_samples: "Aucun échantillon exploitable",
+  incomplete_advantage_context: "Roster, déconnexions ou issue incomplets",
+  incomplete_predeath_equipment_values: "Valeur d’équipement absente avant certaines morts",
+  incomplete_round_end_inventory: "Inventaire de fin de round absent",
+  incomplete_round_outcomes: "Issue de certains rounds absente",
+  missing_non_aim_quality_analysis: "Contrat de qualité non-Aim absent",
+  missing_purchase_events: "Flux d’achats absent",
+  unvalidated_purchase_event_semantics: "Chronologie et répétitions des achats non validées",
+  missing_flash_events: "Événements de flash absents",
+  no_flash_grenades: "Aucune flash lancée",
+  no_enemy_blind_flashes: "Aucun flash ennemi avec durée exploitable",
+  no_he_grenades: "Aucune HE lancée",
+  incomplete_predeath_inventory: "Inventaire absent avant certaines morts",
+};
+
+function qualityReasonLabel(reason: string): string {
+  return QUALITY_REASON_LABELS[reason] ??
+    reason.replaceAll("_", " ");
+}
+
+const QUALITY_PROVENANCE_LABELS = {
+  observed: "observé",
+  reconstructed: "reconstruit",
+  estimated: "estimé",
+} as const;
+
+const QUALITY_CONFIDENCE_LABELS = {
+  high: "haute",
+  medium: "moyenne",
+  low: "faible",
+  unavailable: "indisponible",
+} as const;
+
+function metricQualityTitle(metric: QualityMetric<unknown>): string {
+  const coverage = metric.coverage === null
+    ? "couverture indéfinie"
+    : `${Math.round(metric.coverage * 100)} % de couverture`;
+  const reasons = metric.unavailableReasons.length === 0
+    ? ""
+    : ` — ${metric.unavailableReasons.map(qualityReasonLabel).join("; ")}`;
+  return `${metric.usableSampleCount}/${metric.sampleCount} échantillons, ${coverage}, `
+    + `${QUALITY_PROVENANCE_LABELS[metric.provenance]}, confiance `
+    + `${QUALITY_CONFIDENCE_LABELS[metric.confidence]}, ${metric.formulaVersion}${reasons}`;
+}
+
+function QualityMetricCell({
+  metric,
+  format,
+}: {
+  metric: QualityMetric<number>;
+  format: (value: number | null) => string;
+}) {
+  const qualityDescription = metricQualityTitle(metric);
+  return (
+    <span
+      className="inline-flex flex-col items-end"
+      title={qualityDescription}
+      aria-label={`${format(metric.value)}. ${qualityDescription}`}
+      tabIndex={0}
+    >
+      <span>{format(metric.value)}</span>
+      <span className="text-[9px] font-normal text-neutral-400">
+        {metric.usableSampleCount}/{metric.sampleCount} ·{" "}
+        {QUALITY_PROVENANCE_LABELS[metric.provenance]}
+      </span>
+    </span>
+  );
+}
+
+function DataQualityPanel({
+  analysis,
+  mechanics,
+  spatial,
+}: {
+  analysis: MatchAnalysis;
+  mechanics: MechanicsAnalysis | null;
+  spatial: SpatialAnalysis | null;
+}) {
+  const quality = mechanics?.dataQuality;
+  const coverageSignal = (
+    metrics: QualityMetric<unknown>[],
+    formulaVersion: string,
+  ): QualityMetric<number> => {
+    const sampleCount = metrics.reduce(
+      (total, metric) => total + metric.sampleCount,
+      0,
+    );
+    const usableSampleCount = metrics.reduce(
+      (total, metric) => total + metric.usableSampleCount,
+      0,
+    );
+    const unavailableReasons = [...new Set(
+      metrics.flatMap((metric) => metric.unavailableReasons),
+    )];
+    return qualityMetric({
+      value: sampleCount === 0 ? null : usableSampleCount,
+      unit: "samples",
+      sampleCount,
+      usableSampleCount,
+      provenance: "reconstructed",
+      confidence:
+        sampleCount === 0
+          ? "unavailable"
+          : usableSampleCount === sampleCount
+            ? "high"
+            : usableSampleCount > 0
+              ? "medium"
+              : "low",
+      unavailableReasons:
+        sampleCount === 0 && unavailableReasons.length === 0
+          ? ["missing_non_aim_quality_analysis"]
+          : unavailableReasons,
+      formulaVersion,
+    });
+  };
+  const nonAimSignals: Record<string, QualityMetric<number>> = {
+    economyFreezePlayers: coverageSignal(
+      analysis.economyRounds.map((round) => round.quality.category),
+      "roundlab.data-quality.v2.economyFreezePlayers",
+    ),
+    numericalAdvantageContexts: coverageSignal(
+      analysis.teams.flatMap((team) =>
+        team.combat ? [team.combat.advantageRounds] : []
+      ),
+      "roundlab.data-quality.v2.numericalAdvantageContexts",
+    ),
+    predeathEquipment: coverageSignal(
+      analysis.players.flatMap((player) =>
+        player.economy ? [player.economy.equipmentValueLostOnDeath] : []
+      ),
+      "roundlab.data-quality.v2.predeathEquipment",
+    ),
+    lostRoundInventories: coverageSignal(
+      analysis.players.flatMap((player) =>
+        player.economy ? [player.economy.savedPrimaryWeaponRounds] : []
+      ),
+      "roundlab.data-quality.v2.lostRoundInventories",
+    ),
+    purchaseSemantics: coverageSignal(
+      analysis.players.flatMap((player) =>
+        player.economy ? [player.economy.netSpend] : []
+      ),
+      "roundlab.data-quality.v2.purchaseSemantics",
+    ),
+    tacticalZoneAssignments: coverageSignal(
+      Object.values(spatial?.players ?? {}).map(
+        (player) => player.zoneAssignmentRate,
+      ),
+      "roundlab.data-quality.v2.tacticalZoneAssignments",
+    ),
+    teammateSpacing: coverageSignal(
+      Object.values(spatial?.players ?? {}).map(
+        (player) => player.meanTeammateDistance,
+      ),
+      "roundlab.data-quality.v2.teammateSpacing",
+    ),
+    utilityInputs: coverageSignal(
+      analysis.players.flatMap((player) =>
+        player.utility ? [player.utility.grenadesThrown] : []
+      ),
+      "roundlab.data-quality.v2.utilityInputs",
+    ),
+    utilityEffectiveness: coverageSignal(
+      analysis.players.flatMap((player) =>
+        player.utility
+          ? [
+            player.utility.enemiesPerFlash,
+            player.utility.heDamagePerGrenade,
+            player.utility.averageUnusedUtilityValue,
+          ]
+          : []
+      ),
+      "roundlab.data-quality.v2.utilityEffectiveness",
+    ),
+  };
+  const signals = {
+    ...(quality?.signals ?? {}),
+    ...nonAimSignals,
+  };
+  if (!quality && Object.values(nonAimSignals).every((signal) => signal.sampleCount === 0)) {
+    return (
+      <article className="rounded-md border border-amber-300/15 bg-amber-300/[0.035] p-4">
+        <h3 className="text-sm font-semibold text-amber-100">Qualité des données</h3>
+        <p className="mt-1 text-xs text-amber-100/65">
+          Diagnostic absent : ce rapport provient d’un ancien calcul. Réimporte la démo pour obtenir
+          les couvertures et raisons d’indisponibilité.
+        </p>
+      </article>
+    );
+  }
+  return (
+    <article className="overflow-hidden rounded-md border border-white/10 bg-[#121515]">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-white/8 px-4 py-3">
+        <div>
+          <h3 className="text-sm font-semibold text-neutral-100">Qualité des données</h3>
+          <p className="mt-1 text-xs text-neutral-500">
+            Parseur {quality?.parserVersion ?? analysis.parserVersion} · schéma{" "}
+            {quality?.replaySchemaVersion ?? analysis.inputSchemaVersion} · formules{" "}
+            {quality?.mechanicsFormulaVersion ?? "non-Aim uniquement"} · géométrie{" "}
+            {" "}{quality?.geometryVersion ?? "absente"}
+          </p>
+        </div>
+        <span className="rounded border border-white/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
+          Import {quality?.importQuality ?? "non diagnostiqué"}
+        </span>
+      </div>
+      {quality?.importQuality === "legacy" && (
+        <div className="border-b border-amber-300/12 bg-amber-300/[0.035] px-4 py-3 text-xs text-amber-100/70">
+          Import ancien ou manifeste incomplet. Les données existantes sont conservées, mais une{" "}
+          <Link href="/" className="font-semibold text-amber-200 hover:underline">
+            réimportation de la démo originale
+          </Link>{" "}
+          est nécessaire pour distinguer les flux absents des vrais zéros.
+        </div>
+      )}
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[52rem] text-left text-xs">
+          <thead className="bg-white/[0.02] text-[10px] uppercase tracking-wide text-neutral-600">
+            <tr>
+              <th className="px-4 py-2 font-medium">Donnée</th>
+              <th className="px-3 py-2 text-right font-medium">Valeur</th>
+              <th className="px-3 py-2 text-right font-medium">Exploitable</th>
+              <th className="px-3 py-2 text-right font-medium">Couverture</th>
+              <th className="px-3 py-2 font-medium">Provenance</th>
+              <th className="px-4 py-2 font-medium">Limite</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(signals).map(([signalId, signal]) => (
+              <tr key={signalId} className="border-t border-white/8">
+                <td className="px-4 py-2.5 font-semibold text-neutral-300">
+                  {DATA_QUALITY_LABELS[signalId] ?? signalId}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-neutral-300">
+                  {signal.value === null ? "—" : number(signal.value)}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-neutral-400">
+                  {signal.usableSampleCount}/{signal.sampleCount}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-neutral-400">
+                  {signal.coverage === null ? "—" : percent(signal.coverage)}
+                </td>
+                <td className="px-3 py-2.5 text-neutral-400">
+                  {QUALITY_PROVENANCE_LABELS[signal.provenance]} · confiance{" "}
+                  {QUALITY_CONFIDENCE_LABELS[signal.confidence]}
+                </td>
+                <td className="max-w-[24rem] px-4 py-2.5 text-neutral-500">
+                  {signal.unavailableReasons.length === 0
+                    ? "Aucune limite détectée"
+                    : signal.unavailableReasons.map(qualityReasonLabel).join("; ")}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </article>
   );
 }
 
@@ -271,7 +612,6 @@ export function MatchReport({
   const [selectedRoundNumber, setSelectedRoundNumber] = useState<number | null>(null);
   const [headToHeadPlayerAId, setHeadToHeadPlayerAId] = useState("");
   const [headToHeadPlayerBId, setHeadToHeadPlayerBId] = useState("");
-  const [weaponPlayerId, setWeaponPlayerId] = useState("all");
   const [weaponTeamId, setWeaponTeamId] = useState("all");
   const [weaponSide, setWeaponSide] = useState<"all" | "T" | "CT">("all");
   const [weaponRoundNumber, setWeaponRoundNumber] = useState("all");
@@ -305,105 +645,42 @@ export function MatchReport({
   const rankedPlayers = [...analysis.players].sort(
     (left, right) => (right.metrics.adr ?? -1) - (left.metrics.adr ?? -1),
   );
-  const availableFlashMetrics = analysis.players
-    .map((player) => player.metrics.flashes)
-    .filter((value): value is NonNullable<typeof value> => value !== null && value !== undefined);
-  const totalEnemiesFlashed = availableFlashMetrics.length === analysis.players.length
-    ? availableFlashMetrics.reduce(
-      (total, value) => total + value.effectiveEnemiesFlashed,
-      0,
-    )
-    : null;
-  const totalTeammatesFlashed = availableFlashMetrics.length === analysis.players.length
-    ? availableFlashMetrics.reduce(
-      (total, value) => total + value.effectiveTeammatesFlashed,
-      0,
-    )
-    : null;
-  const totalEnemyBlindDuration = availableFlashMetrics.length === analysis.players.length
-    ? availableFlashMetrics.reduce(
-      (total, value) => total + value.longestEnemyBlindDuration,
-      0,
-    )
-    : null;
-  const totalEnemyBlindFlashes = availableFlashMetrics.length === analysis.players.length
-    ? availableFlashMetrics.reduce(
-      (total, value) => total + value.enemyBlindFlashCount,
-      0,
-    )
-    : null;
-  const averageEnemyBlindDuration =
-    totalEnemyBlindFlashes === null ||
-    totalEnemyBlindDuration === null ||
-    totalEnemyBlindFlashes === 0
-      ? null
-      : totalEnemyBlindDuration / totalEnemyBlindFlashes;
-  const totalFlashGrenades = analysis.players.some(
-    (player) => player.metrics.grenadesThrown === null,
-  )
-    ? null
-    : analysis.players.reduce(
-      (total, player) => total + (player.metrics.grenadesThrown?.flash ?? 0),
-      0,
-    );
-  const totalHeGrenades = analysis.players.some(
-    (player) => player.metrics.grenadesThrown === null,
-  )
-    ? null
-    : analysis.players.reduce(
-      (total, player) => total + (player.metrics.grenadesThrown?.he ?? 0),
-      0,
-    );
-  const totalHeDamage = analysis.players.some(
-    (player) =>
-      player.metrics.utilityDamage === null ||
-      player.metrics.utilityDamage === undefined,
-  )
-    ? null
-    : analysis.players.reduce(
-      (total, player) => total + (player.metrics.utilityDamage?.heDamage ?? 0),
-      0,
-    );
-  const totalUnusedUtilityValue = analysis.players.some(
-    (player) =>
-      player.metrics.unusedUtilityValue === null ||
-      player.metrics.unusedUtilityValue === undefined,
-  )
-    ? null
-    : analysis.players.reduce(
-      (total, player) => total + (player.metrics.unusedUtilityValue ?? 0),
-      0,
-    );
-  const totalDeaths = analysis.players.reduce(
+  const scopedPlayers = selectedPlayer ? [selectedPlayer] : [];
+  const scopedPlayerIds = new Set(scopedPlayers.map((player) => player.playerId));
+  const totalDeaths = scopedPlayers.reduce(
     (total, player) => total + player.metrics.deaths,
     0,
   );
-  const totalTradeAttempts = analysis.players.some(
+  const totalTradeAttempts = scopedPlayers.some(
     (player) => player.metrics.tradeAttempts === null,
   )
     ? null
-    : analysis.players.reduce(
+    : scopedPlayers.reduce(
       (total, player) => total + (player.metrics.tradeAttempts ?? 0),
       0,
     );
-  const totalTradeKills = analysis.players.some(
+  const totalTradeKills = scopedPlayers.some(
     (player) => player.metrics.tradeKills === null,
   )
     ? null
-    : analysis.players.reduce(
+    : scopedPlayers.reduce(
       (total, player) => total + (player.metrics.tradeKills ?? 0),
       0,
     );
-  const totalTradeDeaths = analysis.players.some(
+  const totalTradeDeaths = scopedPlayers.some(
     (player) => player.metrics.tradeDeaths === null,
   )
     ? null
-    : analysis.players.reduce(
+    : scopedPlayers.reduce(
       (total, player) => total + (player.metrics.tradeDeaths ?? 0),
       0,
     );
-  const replayableTradeActions = tradeActions(analysis);
-  const replayableUtilityActions = utilityActions(analysis);
+  const replayableTradeActions = tradeActions(analysis).filter(
+    (action) => scopedPlayerIds.has(action.playerId),
+  );
+  const replayableUtilityActions = utilityActions(analysis).filter(
+    (action) => scopedPlayerIds.has(action.playerId),
+  );
   const selectedRound = analysis.rounds.find(
     (round) => round.roundNumber === selectedRoundNumber,
   ) ?? analysis.rounds[0] ?? null;
@@ -459,12 +736,30 @@ export function MatchReport({
   const reportMapAsset = spatial?.map && /^de_[a-z0-9_]+$/.test(spatial.map)
     ? `/cs2lens-maps/${spatial.map}.png`
     : null;
-  const effectiveHeadToHeadPlayerAId = firstTeamPlayerIds.includes(headToHeadPlayerAId)
+  const allPlayerIds = analysis.players.map((player) => player.playerId);
+  const effectiveHeadToHeadPlayerAId = allPlayerIds.includes(headToHeadPlayerAId)
     ? headToHeadPlayerAId
-    : firstTeamPlayerIds[0] ?? analysis.players[0]?.playerId ?? "";
-  const effectiveHeadToHeadPlayerBId = secondTeamPlayerIds.includes(headToHeadPlayerBId)
+    : analysis.players[0]?.playerId ?? "";
+  const effectiveHeadToHeadPlayerBId =
+    allPlayerIds.includes(headToHeadPlayerBId) &&
+    headToHeadPlayerBId !== effectiveHeadToHeadPlayerAId
     ? headToHeadPlayerBId
-    : secondTeamPlayerIds[0] ?? analysis.players[1]?.playerId ?? "";
+    : analysis.players.find(
+        (player) => player.playerId !== effectiveHeadToHeadPlayerAId,
+      )?.playerId ?? "";
+  const headToHeadOptionLabel = (playerId: string, playerName: string) => {
+    const firstRoundPlayer = analysis.rounds
+      .flatMap((round) => round.players)
+      .find((player) => player.playerId === playerId);
+    const team = analysis.teams.find(
+      (candidate) => candidate.logicalTeam === firstRoundPlayer?.logicalTeam,
+    );
+    return team
+      ? `${playerName} · ${teamLabel(team.name)}`
+      : firstRoundPlayer?.side
+        ? `${playerName} · côté ${firstRoundPlayer.side} au premier round`
+        : playerName;
+  };
   const headToHeadPlayerA = analysis.players.find(
     (player) => player.playerId === effectiveHeadToHeadPlayerAId,
   ) ?? null;
@@ -534,8 +829,11 @@ export function MatchReport({
   );
   const filteredOpeningEvents = openingEvents.filter(
     (proof) =>
-      openingSide === "all" ||
-      roundPlayerSide.get(`${proof.roundNumber}:${proof.actors[0]}`) === openingSide,
+      proof.actors.some((playerId) => scopedPlayerIds.has(playerId)) &&
+      (
+        openingSide === "all" ||
+        roundPlayerSide.get(`${proof.roundNumber}:${proof.actors[0]}`) === openingSide
+      ),
   );
   const weaponTeamPlayerIds = weaponTeamId === "all"
     ? null
@@ -543,21 +841,17 @@ export function MatchReport({
       analysis.teams.find((team) => team.logicalTeam === weaponTeamId)?.playerIds ?? [],
     );
   const weaponScopeIncludes = (playerId: string, roundNumber: number) =>
-    (weaponPlayerId === "all" || playerId === weaponPlayerId) &&
+    scopedPlayerIds.has(playerId) &&
     (weaponTeamPlayerIds === null || weaponTeamPlayerIds.has(playerId)) &&
     (weaponSide === "all" || roundPlayerSide.get(`${roundNumber}:${playerId}`) === weaponSide) &&
     (weaponRoundNumber === "all" || roundNumber === Number(weaponRoundNumber));
   const headshotEvidenceIds = new Set(
     analysis.players.flatMap((player) => player.metricEvidence.headshotKills),
   );
-  const weaponHitDataAvailable = Boolean(
-    mechanics?.rounds.some((round) =>
-      round.shots.some((shot) => shot.damages.length > 0),
-    ),
-  );
   const weaponStats = new Map<string, {
     weapon: string;
     shots: number;
+    reliableShots: number;
     hitShots: number;
     damage: number;
     kills: number;
@@ -568,6 +862,7 @@ export function MatchReport({
     const current = weaponStats.get(normalized) ?? {
       weapon: normalized,
       shots: 0,
+      reliableShots: 0,
       hitShots: 0,
       damage: 0,
       kills: 0,
@@ -581,7 +876,14 @@ export function MatchReport({
       if (!weaponScopeIncludes(shot.shooterId, round.roundNumber)) continue;
       const row = weaponRow(shot.weapon);
       row.shots += 1;
-      if (shot.damages.length > 0) row.hitShots += 1;
+      if (
+        shot.associationStatus !== "reliable_hit" &&
+        shot.associationStatus !== "reliable_miss"
+      ) {
+        continue;
+      }
+      row.reliableShots += 1;
+      if (shot.associationStatus === "reliable_hit") row.hitShots += 1;
       row.damage += shot.damages.reduce(
         (total, damage) => total + damage.damageHealth,
         0,
@@ -612,6 +914,14 @@ export function MatchReport({
       right.shots - left.shots ||
       left.weapon.localeCompare(right.weapon),
   );
+  const weaponAssociationSamples = weaponRows.reduce(
+    (total, row) => total + row.shots,
+    0,
+  );
+  const weaponAssociationUsable = weaponRows.reduce(
+    (total, row) => total + row.reliableShots,
+    0,
+  );
   const mechanicsByPlayer = new Map(
     analysis.players.map((player) => [
       player.playerId,
@@ -622,7 +932,9 @@ export function MatchReport({
       ),
     ]),
   );
-  const mechanicsSummaries = [...mechanicsByPlayer.values()];
+  const mechanicsSummaries = scopedPlayers
+    .map((player) => mechanicsByPlayer.get(player.playerId))
+    .filter((summary): summary is NonNullable<typeof summary> => summary !== undefined);
   const totalAimShots = mechanics
     ? mechanicsSummaries.reduce((total, player) => total + (player.shots ?? 0), 0)
     : null;
@@ -664,9 +976,6 @@ export function MatchReport({
   const selectedZoneVisits = spatial?.rounds
     .flatMap((round) => round.zoneVisits)
     .filter((visit) => visit.playerId === selectedPlayer?.playerId) ?? [];
-  const selectedZoneTransitions = spatial?.rounds
-    .flatMap((round) => round.zoneTransitions)
-    .filter((transition) => transition.playerId === selectedPlayer?.playerId) ?? [];
   const selectedZoneRows = [...selectedZoneVisits.reduce(
     (zones, visit) => {
       const current = zones.get(visit.zoneId) ?? {
@@ -700,22 +1009,13 @@ export function MatchReport({
         event.victimId === selectedPlayer?.playerId ||
         event.coveringPlayerIds.includes(selectedPlayer?.playerId ?? ""),
     ) ?? [];
-  const selectedHabits = spatial?.repeatedTrajectoryHabits.filter(
-    (habit) => habit.playerId === selectedPlayer?.playerId,
-  ) ?? [];
+  const selectedSpatialQuality = selectedPlayer
+    ? spatial?.players?.[selectedPlayer.playerId]
+    : undefined;
+  const selectedUtilityQuality = selectedPlayer?.utility;
   const selectedSpacing = spatial?.rounds
     .flatMap((round) => round.spacing)
     .filter((spacing) => spacing.playerIds.includes(selectedPlayer?.playerId ?? "")) ?? [];
-  const spacingSampleCount = selectedSpacing.reduce(
-    (total, spacing) => total + spacing.sampleCount,
-    0,
-  );
-  const meanTeammateDistance = spacingSampleCount === 0
-    ? null
-    : selectedSpacing.reduce(
-      (total, spacing) => total + spacing.meanHorizontalDistance * spacing.sampleCount,
-      0,
-    ) / spacingSampleCount;
   const closestTeammateDistance = selectedSpacing.length === 0
     ? null
     : Math.min(...selectedSpacing.map((spacing) => spacing.minDistance3d));
@@ -944,29 +1244,53 @@ export function MatchReport({
       </nav>
 
       {playerSectionActive && (
-        <nav
-          aria-label="Analyses des joueurs"
-          className="report-secondary-nav mt-3 flex overflow-x-auto border-b border-white/[0.075] px-1"
-        >
-          {analysisNavigation.map(({ value, label, active, onSelect }) => (
-            <button
-              key={value}
-              type="button"
-              aria-label={label}
-              title={STAT_DEFINITIONS[label]}
-              aria-current={active ? "page" : undefined}
-              onClick={onSelect}
-              className={[
-                "relative h-11 shrink-0 px-3.5 text-xs font-semibold transition-colors",
-                active
-                  ? "text-neutral-100 after:absolute after:inset-x-3.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-emerald-300"
-                  : "text-neutral-500 hover:text-neutral-200",
-              ].join(" ")}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
+        <>
+          <nav
+            aria-label="Analyses des joueurs"
+            className="report-secondary-nav mt-3 flex overflow-x-auto border-b border-white/[0.075] px-1"
+          >
+            {analysisNavigation.map(({ value, label, active, onSelect }) => (
+              <button
+                key={value}
+                type="button"
+                aria-label={label}
+                title={STAT_DEFINITIONS[label]}
+                aria-current={active ? "page" : undefined}
+                onClick={onSelect}
+                className={[
+                  "relative h-11 shrink-0 px-3.5 text-xs font-semibold transition-colors",
+                  active
+                    ? "text-neutral-100 after:absolute after:inset-x-3.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-emerald-300"
+                    : "text-neutral-500 hover:text-neutral-200",
+                ].join(" ")}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+          {tab !== "headToHead" && selectedPlayer && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-emerald-200/10 bg-emerald-200/[0.035] px-3 py-2">
+              <div>
+                <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-emerald-300/70">
+                  Joueur analysé
+                </div>
+                <div className="mt-0.5 text-xs text-neutral-500">
+                  Ce choix reste actif dans toutes les sections du rapport.
+                </div>
+              </div>
+              <select
+                aria-label="Joueur analysé dans toutes les statistiques"
+                value={selectedPlayer.playerId}
+                onChange={(event) => setSelectedPlayerId(event.target.value)}
+                className="h-9 min-w-44 rounded-md border border-white/10 bg-[#121515] px-3 text-sm font-semibold text-neutral-100"
+              >
+                {rankedPlayers.map((player) => (
+                  <option key={player.playerId} value={player.playerId}>{player.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </>
       )}
 
       {tab === "overview" && (
@@ -1115,11 +1439,27 @@ export function MatchReport({
                               )}
                               {overviewMetricSet === "aim" && (
                                 <>
-                                  <td className="px-3 py-3 text-right tabular-nums">{number(playerMechanics?.shots ?? null)}</td>
+                                  <td className="px-3 py-3 text-right tabular-nums">
+                                    {playerMechanics && (
+                                      <QualityMetricCell metric={playerMechanics.metrics.shots} format={number} />
+                                    )}
+                                  </td>
                                   <td className="px-3 py-3 text-right tabular-nums">{percent(player.metrics.headshotRate)}</td>
-                                  <td className="px-3 py-3 text-right tabular-nums">{percent(playerMechanics?.accuracy ?? null)}</td>
-                                  <td className="px-3 py-3 text-right tabular-nums">{percent(playerMechanics?.sprayAccuracy ?? null)}</td>
-                                  <td className="px-4 py-3 text-right tabular-nums">{percent(playerMechanics?.counterStrafeRate ?? null)}</td>
+                                  <td className="px-3 py-3 text-right tabular-nums">
+                                    {playerMechanics && (
+                                      <QualityMetricCell metric={playerMechanics.metrics.accuracy} format={percent} />
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-3 text-right tabular-nums">
+                                    {playerMechanics && (
+                                      <QualityMetricCell metric={playerMechanics.metrics.sprayAccuracy} format={percent} />
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3 text-right tabular-nums">
+                                    {playerMechanics && (
+                                      <QualityMetricCell metric={playerMechanics.metrics.counterStrafeRate} format={percent} />
+                                    )}
+                                  </td>
                                 </>
                               )}
                               {overviewMetricSet === "positioning" && (
@@ -1139,13 +1479,25 @@ export function MatchReport({
                               )}
                               {overviewMetricSet === "utility" && (
                                 <>
-                                  <td className="px-3 py-3 text-right tabular-nums">{player.metrics.grenadesThrown?.total ?? "—"}</td>
-                                  <td className="px-3 py-3 text-right tabular-nums">{number(player.metrics.flashes?.effectiveEnemiesFlashed ?? null)}</td>
                                   <td className="px-3 py-3 text-right tabular-nums">
-                                    {player.metrics.flashes?.averageEnemyBlindDuration === null ||
-                                    player.metrics.flashes?.averageEnemyBlindDuration === undefined
-                                      ? "—"
-                                      : `${player.metrics.flashes.averageEnemyBlindDuration.toFixed(1)} s`}
+                                    {player.utility
+                                      ? <QualityMetricCell metric={player.utility.grenadesThrown} format={number} />
+                                      : "—"}
+                                  </td>
+                                  <td className="px-3 py-3 text-right tabular-nums">
+                                    {player.utility
+                                      ? <QualityMetricCell metric={player.utility.effectiveEnemiesFlashed} format={number} />
+                                      : "—"}
+                                  </td>
+                                  <td className="px-3 py-3 text-right tabular-nums">
+                                    {player.utility
+                                      ? (
+                                        <QualityMetricCell
+                                          metric={player.utility.averageEnemyBlindDuration}
+                                          format={(value) => value === null ? "—" : `${value.toFixed(1)} s`}
+                                        />
+                                      )
+                                      : "—"}
                                   </td>
                                   <td className="px-3 py-3 text-right tabular-nums">{number(player.metrics.flashAssists)}</td>
                                   <td className="px-4 py-3 text-right tabular-nums">{player.metrics.utilitySavedOnDeath?.total ?? "—"}</td>
@@ -1166,6 +1518,7 @@ export function MatchReport({
 
       {tab === "details" && detailSection === "general" && (
         <div className="mt-6 grid gap-3">
+          <DataQualityPanel analysis={analysis} mechanics={mechanics} spatial={spatial} />
           {analysis.players.every(
             (player) => player.metrics.adr === null && player.metrics.flashes == null,
           ) && (
@@ -1210,6 +1563,231 @@ export function MatchReport({
             />
           </div>
           <article className="overflow-hidden rounded-md border border-white/10 bg-[#121515]">
+            <div className="border-b border-white/8 px-4 py-3">
+              <h3 className="text-sm font-semibold text-neutral-100">Conversion des avantages</h3>
+              <p className="mt-1 text-xs text-neutral-500">
+                Avantage numérique acquis après une mort ou une déconnexion pendant le round.
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[36rem] text-left text-sm">
+                <thead className="bg-white/[0.02] text-[11px] text-neutral-500">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Équipe</th>
+                    <th className="px-3 py-3 text-right font-medium">
+                      <DefinitionTerm label="Rounds en avantage" />
+                    </th>
+                    <th className="px-3 py-3 text-right font-medium">Victoires</th>
+                    <th className="px-4 py-3 text-right font-medium">
+                      <DefinitionTerm label="Conversion de l’avantage" />
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {analysis.teams.map((team) => (
+                    <tr key={team.logicalTeam} className="border-t border-white/8">
+                      <td className="px-4 py-3 font-semibold text-neutral-200">
+                        {teamLabel(team.name)}
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums">
+                        {team.combat
+                          ? <QualityMetricCell metric={team.combat.advantageRounds} format={number} />
+                          : "—"}
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums">
+                        {team.combat
+                          ? <QualityMetricCell metric={team.combat.advantageWins} format={number} />
+                          : "—"}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        {team.combat
+                          ? (
+                            <QualityMetricCell
+                              metric={team.combat.advantageConversionRate}
+                              format={percent}
+                            />
+                          )
+                          : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="border-t border-white/8 px-4 py-3 text-xs text-neutral-500">
+              Chaque équipe compte au plus une opportunité par round, même si l’avantage change
+              plusieurs fois de camp. Un contexte de roster ou de fin de round incomplet invalide l’agrégat.
+            </p>
+          </article>
+          <article className="overflow-hidden rounded-md border border-white/10 bg-[#121515]">
+            <div className="border-b border-white/8 px-4 py-3">
+              <h3 className="text-sm font-semibold text-neutral-100">Performance anti-eco</h3>
+              <p className="mt-1 text-xs text-neutral-500">
+                La catégorie adverse vient du snapshot d’équipement à la fin du freeze time.
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[42rem] text-left text-sm">
+                <thead className="bg-white/[0.02] text-[11px] text-neutral-500">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Équipe</th>
+                    <th className="px-3 py-3 text-right font-medium">
+                      <DefinitionTerm label="Rounds anti-eco" />
+                    </th>
+                    <th className="px-3 py-3 text-right font-medium">Victoires</th>
+                    <th className="px-3 py-3 text-right font-medium">
+                      <DefinitionTerm label="Conversion anti-eco" />
+                    </th>
+                    <th className="px-4 py-3 text-right font-medium">
+                      <DefinitionTerm label="Pertes contre eco" />
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {analysis.teams.map((team) => (
+                    <tr key={team.logicalTeam} className="border-t border-white/8">
+                      <td className="px-4 py-3 font-semibold text-neutral-200">
+                        {teamLabel(team.name)}
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums">
+                        {team.economy
+                          ? <QualityMetricCell metric={team.economy.antiEcoRounds} format={number} />
+                          : "—"}
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums">
+                        {team.economy
+                          ? <QualityMetricCell metric={team.economy.antiEcoWins} format={number} />
+                          : "—"}
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums">
+                        {team.economy
+                          ? <QualityMetricCell metric={team.economy.antiEcoWinRate} format={percent} />
+                          : "—"}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        {team.economy
+                          ? <QualityMetricCell metric={team.economy.lossesAgainstEco} format={number} />
+                          : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="border-t border-white/8 px-4 py-3 text-xs text-neutral-500">
+              Si une économie adverse ou l’issue d’un round manque, RoundLab laisse les agrégats
+              concernés indisponibles au lieu de publier un total partiel.
+            </p>
+          </article>
+          <article className="overflow-hidden rounded-md border border-white/10 bg-[#121515]">
+            <div className="border-b border-white/8 px-4 py-3">
+              <h3 className="text-sm font-semibold text-neutral-100">Économie du joueur</h3>
+              <p className="mt-1 text-xs text-neutral-500">
+                Équipement observé avant la mort et inventaire conservé à la fin des rounds perdus.
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[56rem] text-left text-sm">
+                <thead className="bg-white/[0.02] text-[11px] text-neutral-500">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Joueur</th>
+                    <th className="px-3 py-3 text-right font-medium">
+                      <DefinitionTerm label="Dépenses nettes" />
+                    </th>
+                    <th className="px-3 py-3 text-right font-medium">
+                      <DefinitionTerm label="Valeur perdue à la mort" />
+                    </th>
+                    <th className="px-3 py-3 text-right font-medium">
+                      <DefinitionTerm label="Valeur moyenne perdue" />
+                    </th>
+                    <th className="px-3 py-3 text-right font-medium">
+                      <DefinitionTerm label="Armes principales sauvegardées" />
+                    </th>
+                    <th className="px-4 py-3 text-right font-medium">Preuve</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {scopedPlayers.map((player) => {
+                    const economy = player.economy;
+                    const evidenceId =
+                      economy?.valueLostEvidence[0] ??
+                      economy?.savedWeaponEvidence[0];
+                    return (
+                      <tr key={player.playerId} className="border-t border-white/8">
+                        <td className="px-4 py-3 font-semibold text-neutral-200">
+                          {player.name}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          {economy
+                            ? (
+                              <QualityMetricCell
+                                metric={economy.netSpend}
+                                format={(value) => value === null
+                                  ? "—"
+                                  : `${Math.round(value).toLocaleString("fr-FR")} $`}
+                              />
+                            )
+                            : "—"}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          {economy
+                            ? (
+                              <QualityMetricCell
+                                metric={economy.equipmentValueLostOnDeath}
+                                format={(value) => value === null
+                                  ? "—"
+                                  : `${Math.round(value).toLocaleString("fr-FR")} $`}
+                              />
+                            )
+                            : "—"}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          {economy
+                            ? (
+                              <QualityMetricCell
+                                metric={economy.averageEquipmentValueLostPerDeath}
+                                format={(value) => value === null
+                                  ? "—"
+                                  : `${Math.round(value).toLocaleString("fr-FR")} $`}
+                              />
+                            )
+                            : "—"}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          {economy
+                            ? (
+                              <QualityMetricCell
+                                metric={economy.savedPrimaryWeaponRounds}
+                                format={number}
+                              />
+                            )
+                            : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {evidenceId
+                            ? (
+                              <button
+                                type="button"
+                                onClick={() => onOpenEvidence(evidenceId)}
+                                className="text-xs font-semibold text-emerald-300 hover:text-emerald-200 hover:underline"
+                              >
+                                Ouvrir
+                              </button>
+                            )
+                            : <span className="text-neutral-600">—</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="border-t border-white/8 px-4 py-3 text-xs text-neutral-500">
+              La valeur correspond à <code>current_equip_value</code>, pas au prix d’achat historique.
+              Une arme sauvegardée signifie ici une arme principale conservée en vie lors d’un round perdu.
+            </p>
+          </article>
+          <article className="overflow-hidden rounded-md border border-white/10 bg-[#121515]">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[58rem] text-left text-sm">
                 <thead className="bg-white/[0.02] text-[11px] text-neutral-500">
@@ -1227,17 +1805,21 @@ export function MatchReport({
                     <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="5K" /></th>
                   </tr>
                 </thead>
-                {analysis.teams.map((team, teamIndex) => (
+                {analysis.teams
+                  .filter((team) => team.playerIds.some((playerId) => scopedPlayerIds.has(playerId)))
+                  .map((team) => (
                   <tbody key={team.logicalTeam}>
                     <tr className={[
                       "border-t border-white/10",
-                      teamIndex === 0 ? "bg-sky-400/[0.045]" : "bg-amber-300/[0.04]",
+                      team.playerIds.some((playerId) => firstTeamPlayerIds.includes(playerId))
+                        ? "bg-sky-400/[0.045]"
+                        : "bg-amber-300/[0.04]",
                     ].join(" ")}>
                       <th
                         colSpan={11}
                         className={[
                           "border-l-2 px-4 py-2 text-xs font-semibold",
-                          teamIndex === 0
+                          team.playerIds.some((playerId) => firstTeamPlayerIds.includes(playerId))
                             ? "border-sky-300 text-sky-200"
                             : "border-amber-300 text-amber-200",
                         ].join(" ")}
@@ -1245,7 +1827,7 @@ export function MatchReport({
                         {teamLabel(team.name)} · {team.score ?? "—"}
                       </th>
                     </tr>
-                    {analysis.players
+                    {scopedPlayers
                       .filter((player) => team.playerIds.includes(player.playerId))
                       .sort(
                         (left, right) =>
@@ -1385,13 +1967,21 @@ export function MatchReport({
                     <div>
                       <div className="text-xs font-semibold text-neutral-500">{economy.side}</div>
                       <div className="mt-1 text-sm font-semibold text-neutral-200">
-                        {economyLabel(economy.category)}
+                        <span
+                          title={metricQualityTitle(economy.quality.category)}
+                          tabIndex={0}
+                        >
+                          {economyLabel(economy.category)}
+                        </span>
                       </div>
                     </div>
                     <div className="text-right text-sm tabular-nums text-neutral-300">
-                      {economy.averageEquipmentValue === null
-                        ? "—"
-                        : `${Math.round(economy.averageEquipmentValue).toLocaleString("fr-FR")} $`}
+                      <QualityMetricCell
+                        metric={economy.quality.averageEquipmentValue}
+                        format={(value) => value === null
+                          ? "—"
+                          : `${Math.round(value).toLocaleString("fr-FR")} $`}
+                      />
                     </div>
                   </div>
                 ))}
@@ -1467,7 +2057,7 @@ export function MatchReport({
                   </tr>
                 </thead>
                 <tbody>
-                  {rankedPlayers.map((player) => {
+                  {scopedPlayers.map((player) => {
                     const playerMechanics = mechanicsByPlayer.get(player.playerId);
                     return (
                       <tr key={player.playerId} className="border-t border-white/8">
@@ -1559,7 +2149,7 @@ export function MatchReport({
                     </tr>
                   </thead>
                   <tbody>
-                    {[...analysis.players]
+                    {[...scopedPlayers]
                       .sort(
                         (left, right) =>
                           (right.metrics.tradeKills ?? -1) -
@@ -1645,92 +2235,54 @@ export function MatchReport({
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
             <Metric
               label="Quantité"
-              value={number(average(
-                analysis.players
-                  .map((player) => player.metrics.utilityQuantityRating)
-                  .filter((value): value is number => value !== null && value !== undefined),
-              ))}
+              value={number(selectedUtilityQuality?.utilityQuantityRating.value ?? null)}
               detail="Score 0–100"
+              quality={selectedUtilityQuality?.utilityQuantityRating}
             />
             <Metric
               label="Ennemis / flash"
-              value={number(
-                totalEnemiesFlashed === null ||
-                    totalFlashGrenades === null ||
-                    totalFlashGrenades === 0
-                  ? null
-                  : totalEnemiesFlashed / totalFlashGrenades,
-                2,
-              )}
+              value={number(selectedUtilityQuality?.enemiesPerFlash.value ?? null, 2)}
+              quality={selectedUtilityQuality?.enemiesPerFlash}
             />
             <Metric
               label="Alliés / flash"
-              value={number(
-                totalTeammatesFlashed === null ||
-                    totalFlashGrenades === null ||
-                    totalFlashGrenades === 0
-                  ? null
-                  : totalTeammatesFlashed / totalFlashGrenades,
-                2,
-              )}
+              value={number(selectedUtilityQuality?.teammatesPerFlash.value ?? null, 2)}
+              quality={selectedUtilityQuality?.teammatesPerFlash}
             />
             <Metric
               label="Kills / flash"
-              value={number(
-                availableFlashMetrics.length !== analysis.players.length ||
-                    totalFlashGrenades === null ||
-                    totalFlashGrenades === 0
-                  ? null
-                  : availableFlashMetrics.reduce(
-                    (total, value) => total + value.flashesLeadingToKills,
-                    0,
-                  ) / totalFlashGrenades,
-                2,
-              )}
+              value={number(selectedUtilityQuality?.flashKillsPerFlash.value ?? null, 2)}
+              quality={selectedUtilityQuality?.flashKillsPerFlash}
             />
             <Metric
               label="Blind moyen"
-              value={averageEnemyBlindDuration === null
+              value={selectedUtilityQuality?.averageEnemyBlindDuration.value === null ||
+                  selectedUtilityQuality?.averageEnemyBlindDuration.value === undefined
                 ? "—"
-                : `${averageEnemyBlindDuration.toFixed(1)} s`}
+                : `${selectedUtilityQuality.averageEnemyBlindDuration.value.toFixed(1)} s`}
+              quality={selectedUtilityQuality?.averageEnemyBlindDuration}
             />
             <Metric
               label="Dégâts / HE"
-              value={number(
-                totalHeDamage === null ||
-                    totalHeGrenades === null ||
-                    totalHeGrenades === 0
-                  ? null
-                  : totalHeDamage / totalHeGrenades,
-                1,
-              )}
+              value={number(selectedUtilityQuality?.heDamagePerGrenade.value ?? null, 1)}
+              quality={selectedUtilityQuality?.heDamagePerGrenade}
             />
             <Metric
               label="Dégâts alliés / HE"
               value={number(
-                totalHeGrenades === null ||
-                    totalHeGrenades === 0 ||
-                    analysis.players.some(
-                      (player) => player.metrics.utilityDamage == null,
-                    )
-                  ? null
-                  : analysis.players.reduce(
-                    (total, player) =>
-                      total +
-                      (player.metrics.utilityDamage?.teammateHeDamage ?? 0),
-                    0,
-                  ) / totalHeGrenades,
+                selectedUtilityQuality?.teammateHeDamagePerGrenade.value ?? null,
                 1,
               )}
+              quality={selectedUtilityQuality?.teammateHeDamagePerGrenade}
             />
             <Metric
               label="Inutilisés / mort"
-              value={
-                totalUnusedUtilityValue === null || totalDeaths === 0
-                  ? "—"
-                  : `$${number(totalUnusedUtilityValue / totalDeaths)}`
-              }
+              value={selectedUtilityQuality?.averageUnusedUtilityValue.value === null ||
+                  selectedUtilityQuality?.averageUnusedUtilityValue.value === undefined
+                ? "—"
+                : `$${number(selectedUtilityQuality.averageUnusedUtilityValue.value)}`}
               detail="Valeur moyenne"
+              quality={selectedUtilityQuality?.averageUnusedUtilityValue}
             />
           </div>
 
@@ -1758,7 +2310,7 @@ export function MatchReport({
                     </tr>
                   </thead>
                   <tbody>
-                    {[...analysis.players]
+                    {[...scopedPlayers]
                       .sort(
                         (left, right) =>
                           (right.metrics.grenadesThrown?.total ?? -1) -
@@ -1766,93 +2318,123 @@ export function MatchReport({
                           left.name.localeCompare(right.name),
                       )
                       .map((player) => {
-                        const grenades = player.metrics.grenadesThrown;
+                        const utility = player.utility;
                         return (
                           <tr key={player.playerId} className="border-t border-white/8">
                             <td className="py-3 font-semibold text-neutral-200">
                               {playerIdentity(player.playerId, player.name)}
                             </td>
                             <td className="py-3">
-                              {number(player.metrics.utilityQuantityRating ?? null)}
-                            </td>
-                            <td className="py-3">{grenades?.total ?? "—"}</td>
-                            <td className="py-3">{grenades?.flash ?? "—"}</td>
-                            <td className="py-3">{grenades?.smoke ?? "—"}</td>
-                            <td className="py-3">{grenades?.he ?? "—"}</td>
-                            <td className="py-3">
-                              {number(
-                                grenades === null ||
-                                    grenades.he === 0 ||
-                                    player.metrics.utilityDamage === null ||
-                                    player.metrics.utilityDamage === undefined
-                                  ? null
-                                  : (player.metrics.utilityDamage?.heDamage ?? 0) /
-                                    grenades.he,
-                                1,
-                              )}
+                              {utility
+                                ? (
+                                  <QualityMetricCell
+                                    metric={utility.utilityQuantityRating}
+                                    format={(value) => number(value)}
+                                  />
+                                )
+                                : "—"}
                             </td>
                             <td className="py-3">
-                              {number(
-                                grenades === null ||
-                                    grenades.he === 0 ||
-                                    player.metrics.utilityDamage == null
-                                  ? null
-                                  : player.metrics.utilityDamage.teammateHeDamage /
-                                    grenades.he,
-                                1,
-                              )}
+                              {utility
+                                ? (
+                                  <QualityMetricCell
+                                    metric={utility.grenadesThrown}
+                                    format={(value) => number(value)}
+                                  />
+                                )
+                                : "—"}
                             </td>
                             <td className="py-3">
-                              {grenades === null
-                                ? "—"
-                                : grenades.molotov + grenades.incendiary}
+                              {utility
+                                ? <QualityMetricCell metric={utility.flashGrenades} format={number} />
+                                : "—"}
                             </td>
                             <td className="py-3">
-                              {number(
-                                grenades === null ||
-                                    grenades.flash === 0 ||
-                                    player.metrics.flashes === null ||
-                                    player.metrics.flashes === undefined
-                                  ? null
-                                  : (player.metrics.flashes?.effectiveEnemiesFlashed ?? 0) /
-                                    grenades.flash,
-                                2,
-                              )}
+                              {utility
+                                ? <QualityMetricCell metric={utility.smokeGrenades} format={number} />
+                                : "—"}
                             </td>
                             <td className="py-3">
-                              {number(
-                                grenades === null ||
-                                    grenades.flash === 0 ||
-                                    player.metrics.flashes === null ||
-                                    player.metrics.flashes === undefined
-                                  ? null
-                                  : (player.metrics.flashes?.effectiveTeammatesFlashed ?? 0) /
-                                    grenades.flash,
-                                2,
-                              )}
+                              {utility
+                                ? <QualityMetricCell metric={utility.heGrenades} format={number} />
+                                : "—"}
                             </td>
                             <td className="py-3">
-                              {player.metrics.flashes?.averageEnemyBlindDuration === null ||
-                              player.metrics.flashes?.averageEnemyBlindDuration === undefined
-                                ? "—"
-                                : `${player.metrics.flashes.averageEnemyBlindDuration.toFixed(1)} s`}
+                              {utility
+                                ? (
+                                  <QualityMetricCell
+                                    metric={utility.heDamagePerGrenade}
+                                    format={(value) => number(value, 1)}
+                                  />
+                                )
+                                : "—"}
                             </td>
                             <td className="py-3">
-                              {number(
-                                grenades === null ||
-                                    grenades.flash === 0 ||
-                                    player.metrics.flashes == null
-                                  ? null
-                                  : player.metrics.flashes.flashesLeadingToKills /
-                                    grenades.flash,
-                                2,
-                              )}
+                              {utility
+                                ? (
+                                  <QualityMetricCell
+                                    metric={utility.teammateHeDamagePerGrenade}
+                                    format={(value) => number(value, 1)}
+                                  />
+                                )
+                                : "—"}
                             </td>
                             <td className="py-3">
-                              {player.metrics.averageUnusedUtilityValue === null ||
-                              player.metrics.averageUnusedUtilityValue === undefined
-                                ? "—"
-                                : `$${number(player.metrics.averageUnusedUtilityValue)}`}
+                              {utility
+                                ? <QualityMetricCell metric={utility.fireGrenades} format={number} />
+                                : "—"}
+                            </td>
+                            <td className="py-3">
+                              {utility
+                                ? (
+                                  <QualityMetricCell
+                                    metric={utility.enemiesPerFlash}
+                                    format={(value) => number(value, 2)}
+                                  />
+                                )
+                                : "—"}
+                            </td>
+                            <td className="py-3">
+                              {utility
+                                ? (
+                                  <QualityMetricCell
+                                    metric={utility.teammatesPerFlash}
+                                    format={(value) => number(value, 2)}
+                                  />
+                                )
+                                : "—"}
+                            </td>
+                            <td className="py-3">
+                              {utility
+                                ? (
+                                  <QualityMetricCell
+                                    metric={utility.averageEnemyBlindDuration}
+                                    format={(value) =>
+                                      value === null ? "—" : `${value.toFixed(1)} s`}
+                                  />
+                                )
+                                : "—"}
+                            </td>
+                            <td className="py-3">
+                              {utility
+                                ? (
+                                  <QualityMetricCell
+                                    metric={utility.flashKillsPerFlash}
+                                    format={(value) => number(value, 2)}
+                                  />
+                                )
+                                : "—"}
+                            </td>
+                            <td className="py-3">
+                              {utility
+                                ? (
+                                  <QualityMetricCell
+                                    metric={utility.averageUnusedUtilityValue}
+                                    format={(value) =>
+                                      value === null ? "—" : `$${number(value)}`}
+                                  />
+                                )
+                                : "—"}
                             </td>
                           </tr>
                         );
@@ -1864,14 +2446,18 @@ export function MatchReport({
 
             <article className="overflow-hidden rounded-md border border-white/10 bg-[#121515]">
               <div className="border-b border-white/8 px-4 py-3">
-                <h3 className="text-sm font-semibold text-white">Répartition par équipe</h3>
+                <h3 className="text-sm font-semibold text-white">
+                  Répartition de {selectedPlayer?.name ?? "ce joueur"}
+                </h3>
                 <p className="mt-1 text-xs text-neutral-500">
                   Volume total et composition des lancers, sans score propriétaire.
                 </p>
               </div>
               <div className="grid gap-px bg-white/8">
-                {overviewPlayerGroups.map((team) => {
-                  const players = analysis.players.filter((player) =>
+                {overviewPlayerGroups
+                  .filter((team) => team.playerIds.some((playerId) => scopedPlayerIds.has(playerId)))
+                  .map((team) => {
+                  const players = scopedPlayers.filter((player) =>
                     team.playerIds.includes(player.playerId)
                   );
                   const complete = players.every(
@@ -1988,7 +2574,7 @@ export function MatchReport({
             </span>
             <h2 className="mt-1 text-2xl font-semibold text-white">Aim</h2>
             <p className="mt-1 max-w-3xl text-sm text-neutral-500">
-              Précision, discipline de mouvement et vitesse de réaction mesurées directement dans la démo.
+              Mesures observées, reconstruites ou estimées depuis la démo, avec couverture et limites explicites.
             </p>
           </article>
 
@@ -2058,15 +2644,8 @@ export function MatchReport({
                   </tr>
                 </thead>
                 <tbody>
-                  {rankedPlayers.map((player) => {
+                  {scopedPlayers.map((player) => {
                     const playerMechanics = mechanicsByPlayer.get(player.playerId);
-                    const movementRate =
-                      playerMechanics?.movementSamples === null ||
-                      playerMechanics?.movementSamples === undefined ||
-                      playerMechanics.movementSamples === 0 ||
-                      playerMechanics.movingShots === null
-                        ? null
-                        : playerMechanics.movingShots / playerMechanics.movementSamples;
                     return (
                       <tr key={player.playerId} className="border-t border-white/8">
                         <td className="px-4 py-3 font-semibold text-neutral-200">
@@ -2080,20 +2659,40 @@ export function MatchReport({
                           ].join(" ")} />
                           {player.name}
                         </td>
-                        <td className="px-3 py-3 text-right tabular-nums">{number(playerMechanics?.shots ?? null)}</td>
-                        <td className="px-3 py-3 text-right tabular-nums">{number(playerMechanics?.hitShots ?? null)}</td>
-                        <td className="px-3 py-3 text-right tabular-nums">{number(playerMechanics?.damage ?? null)}</td>
-                        <td className="px-3 py-3 text-right tabular-nums">{number(playerMechanics?.averageDamagePerHit ?? null, 1)}</td>
-                        <td className="px-3 py-3 text-right tabular-nums">{number(playerMechanics?.headHits ?? null)}</td>
-                        <td className="px-3 py-3 text-right tabular-nums">{number(playerMechanics?.bodyHits ?? null)}</td>
-                        <td className="px-3 py-3 text-right tabular-nums">{number(playerMechanics?.tapSequences ?? null)}</td>
-                        <td className="px-3 py-3 text-right tabular-nums">{number(playerMechanics?.burstSequences ?? null)}</td>
-                        <td className="px-3 py-3 text-right tabular-nums">{number(playerMechanics?.spraySequences ?? null)}</td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          {playerMechanics && <QualityMetricCell metric={playerMechanics.metrics.shots} format={number} />}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          {playerMechanics && <QualityMetricCell metric={playerMechanics.metrics.hitShots} format={number} />}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          {playerMechanics && <QualityMetricCell metric={playerMechanics.metrics.damage} format={number} />}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          {playerMechanics && (
+                            <QualityMetricCell
+                              metric={playerMechanics.metrics.averageDamagePerHit}
+                              format={(value) => number(value, 1)}
+                            />
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          {playerMechanics && <QualityMetricCell metric={playerMechanics.metrics.headHits} format={number} />}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          {playerMechanics && <QualityMetricCell metric={playerMechanics.metrics.bodyHits} format={number} />}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          {playerMechanics && <QualityMetricCell metric={playerMechanics.metrics.tapSequences} format={number} />}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          {playerMechanics && <QualityMetricCell metric={playerMechanics.metrics.burstSequences} format={number} />}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          {playerMechanics && <QualityMetricCell metric={playerMechanics.metrics.spraySequences} format={number} />}
+                        </td>
                         <td className="px-4 py-3 text-right tabular-nums">
-                          {percent(movementRate)}
-                          {playerMechanics?.movementSamples
-                            ? <span className="ml-1 text-[10px] text-neutral-600">({playerMechanics.movementSamples})</span>
-                            : null}
+                          {playerMechanics && <QualityMetricCell metric={playerMechanics.metrics.movingShots} format={number} />}
                         </td>
                       </tr>
                     );
@@ -2102,7 +2701,8 @@ export function MatchReport({
               </table>
             </div>
             <p className="border-t border-white/8 px-4 py-3 text-xs text-neutral-500">
-              Les impacts et dégâts restent vides si leur association aux tirs n’est pas assez fiable.
+              Toutes les valeurs utilisent le contrat Aim V3. Les impacts et dégâts restent vides si
+              leur association aux tirs n’est pas assez fiable.
             </p>
           </details>
 
@@ -2114,7 +2714,7 @@ export function MatchReport({
               </p>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[72rem] text-left text-sm">
+              <table className="w-full min-w-[96rem] text-left text-sm">
                 <thead className="bg-white/[0.02] text-[11px] text-neutral-500">
                   <tr>
                     <th className="px-4 py-3 font-medium">Joueur</th>
@@ -2123,14 +2723,19 @@ export function MatchReport({
                     <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Time to damage" /></th>
                     <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Erreur initiale du viseur" /></th>
                     <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Head accuracy" /></th>
-                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="HS kill %" /></th>
+                    <th className="px-3 py-3 text-right font-medium">Première balle</th>
                     <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Spray accuracy" /></th>
+                    <th className="px-3 py-3 text-right font-medium">Tirs accroupis</th>
+                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Tirs scoped" /></th>
+                    <th className="px-3 py-3 text-right font-medium">Wallbangs</th>
+                    <th className="px-3 py-3 text-right font-medium">Distance / hit</th>
+                    <th className="px-3 py-3 text-right font-medium">Exposition avant tir</th>
                     <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Arrêt avant tir" /></th>
                     <th className="px-4 py-3 text-right font-medium"><DefinitionTerm label="Accuracy all" /></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rankedPlayers.map((player) => {
+                  {scopedPlayers.map((player) => {
                     const playerMechanics = mechanicsByPlayer.get(player.playerId);
                     return (
                       <tr key={player.playerId} className="border-t border-white/8">
@@ -2146,45 +2751,87 @@ export function MatchReport({
                           {player.name}
                         </td>
                         <td className="px-3 py-3 text-right tabular-nums">
-                          {number(playerMechanics?.spottedShots ?? null)}
+                          {playerMechanics && (
+                            <QualityMetricCell metric={playerMechanics.metrics.spottedShots} format={number} />
+                          )}
                         </td>
                         <td className="px-3 py-3 text-right">
-                          {percent(playerMechanics?.spottedAccuracy ?? null)}
+                          {playerMechanics && (
+                            <QualityMetricCell metric={playerMechanics.metrics.spottedAccuracy} format={percent} />
+                          )}
                         </td>
                         <td className="px-3 py-3 text-right tabular-nums">
-                          {playerMechanics?.timeToDamageMs === null || playerMechanics?.timeToDamageMs === undefined
-                            ? "—"
-                            : (
-                              <>
-                                {Math.round(playerMechanics.timeToDamageMs)} ms
-                                <span className="ml-1 text-[10px] text-neutral-600">
-                                  ({playerMechanics.timeToDamageSamples})
-                                </span>
-                              </>
-                            )}
+                          {playerMechanics && (
+                            <QualityMetricCell
+                              metric={playerMechanics.metrics.timeToDamageMs}
+                              format={(value) => value === null ? "—" : `${Math.round(value)} ms`}
+                            />
+                          )}
                         </td>
                         <td className="px-3 py-3 text-right tabular-nums">
-                          {playerMechanics?.crosshairErrorDegrees === null || playerMechanics?.crosshairErrorDegrees === undefined
-                            ? "—"
-                            : (
-                              <>
-                                {playerMechanics.crosshairErrorDegrees.toFixed(1)}°
-                                <span className="ml-1 text-[10px] text-neutral-600">
-                                  ({playerMechanics.crosshairSamples})
-                                </span>
-                              </>
-                            )}
+                          {playerMechanics && (
+                            <QualityMetricCell
+                              metric={playerMechanics.metrics.crosshairErrorDegrees}
+                              format={(value) => value === null ? "—" : `${value.toFixed(1)}°`}
+                            />
+                          )}
                         </td>
-                        <td className="px-3 py-3 text-right">{percent(playerMechanics?.headAccuracy ?? null)}</td>
-                        <td className="px-3 py-3 text-right">{percent(player.metrics.headshotRate)}</td>
-                        <td className="px-3 py-3 text-right">{percent(playerMechanics?.sprayAccuracy ?? null)}</td>
                         <td className="px-3 py-3 text-right">
-                          {percent(playerMechanics?.counterStrafeRate ?? null)}
-                          {playerMechanics?.counterStrafeSamples
-                            ? <span className="ml-1 text-[10px] text-neutral-600">({playerMechanics.counterStrafeSamples})</span>
-                            : null}
+                          {playerMechanics && (
+                            <QualityMetricCell metric={playerMechanics.metrics.headAccuracy} format={percent} />
+                          )}
                         </td>
-                        <td className="px-4 py-3 text-right">{percent(playerMechanics?.accuracy ?? null)}</td>
+                        <td className="px-3 py-3 text-right">
+                          {playerMechanics && (
+                            <QualityMetricCell metric={playerMechanics.metrics.firstBulletAccuracy} format={percent} />
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          {playerMechanics && (
+                            <QualityMetricCell metric={playerMechanics.metrics.sprayAccuracy} format={percent} />
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          {playerMechanics && (
+                            <QualityMetricCell metric={playerMechanics.metrics.crouchedShots} format={number} />
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          {playerMechanics && (
+                            <QualityMetricCell metric={playerMechanics.metrics.scopedShots} format={number} />
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          {playerMechanics && (
+                            <QualityMetricCell metric={playerMechanics.metrics.wallbangKills} format={number} />
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          {playerMechanics && (
+                            <QualityMetricCell
+                              metric={playerMechanics.metrics.averageDuelDistance}
+                              format={(value) => number(value, 0)}
+                            />
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          {playerMechanics && (
+                            <QualityMetricCell
+                              metric={playerMechanics.metrics.exposureBeforeShotMs}
+                              format={(value) => value === null ? "—" : `${Math.round(value)} ms`}
+                            />
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          {playerMechanics && (
+                            <QualityMetricCell metric={playerMechanics.metrics.counterStrafeRate} format={percent} />
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {playerMechanics && (
+                            <QualityMetricCell metric={playerMechanics.metrics.accuracy} format={percent} />
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -2192,11 +2839,11 @@ export function MatchReport({
               </table>
             </div>
             <p className="border-t border-white/8 px-4 py-3 text-xs text-neutral-500">
-              La précision sur ennemi repéré et la précision de spray utilisent le masque de visibilité fourni par
-              la démo. Elles peuvent différer de Leetify et restent vides sur les anciens imports. « Erreur initiale
-              du viseur » mesure l’angle à la première visibilité, pas le mouvement du viseur jusqu’au premier dégât
-              utilisé par Leetify. « Arrêt avant tir » est notre détection de freinage rapide, pas leur formule à
-              34 % de la vitesse maximale de chaque arme.
+              La précision sur ennemi repéré utilise le masque réseau comme signal secondaire. Les délais,
+              distances, postures et erreurs angulaires sont des estimations dépendantes de l’échantillonnage GOTV.
+              « Erreur initiale du viseur » mesure l’angle à notre première visibilité combinée ; « Arrêt avant tir »
+              détecte un freinage cinématique rapide, pas une touche clavier. « Tirs scoped » utilise la dernière
+              frame strictement antérieure au tir dans une fenêtre de 250 ms ; cette valeur reste donc une estimation.
             </p>
           </article>
 
@@ -2213,16 +2860,9 @@ export function MatchReport({
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <label className="grid gap-1 text-[11px] font-medium text-neutral-500">
                 Joueur
-                <select
-                  value={weaponPlayerId}
-                  onChange={(event) => setWeaponPlayerId(event.target.value)}
-                  className="h-9 rounded-md border border-white/10 bg-[#0d0f0f] px-3 text-sm text-neutral-200"
-                >
-                  <option value="all">Tous les joueurs</option>
-                  {analysis.players.map((player) => (
-                    <option key={player.playerId} value={player.playerId}>{player.name}</option>
-                  ))}
-                </select>
+                <span className="flex h-9 items-center rounded-md border border-white/10 bg-[#0d0f0f] px-3 text-sm font-semibold text-neutral-200">
+                  {selectedPlayer?.name ?? "—"}
+                </span>
               </label>
               <label className="grid gap-1 text-[11px] font-medium text-neutral-500">
                 Équipe
@@ -2279,11 +2919,12 @@ export function MatchReport({
               </div>
               <span className={[
                 "rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wide",
-                weaponHitDataAvailable
+                weaponAssociationSamples > 0 &&
+                  weaponAssociationUsable === weaponAssociationSamples
                   ? "bg-emerald-300/[0.08] text-emerald-200"
                   : "bg-amber-300/[0.08] text-amber-200",
               ].join(" ")}>
-                {weaponHitDataAvailable ? "Dégâts associés" : "Dégâts non associés"}
+                Association {weaponAssociationUsable}/{weaponAssociationSamples}
               </span>
             </div>
             <div className="overflow-x-auto">
@@ -2300,25 +2941,49 @@ export function MatchReport({
                   </tr>
                 </thead>
                 <tbody>
-                  {weaponRows.map((row) => (
-                    <tr key={row.weapon} className="border-t border-white/8">
-                      <td className="px-4 py-3 font-semibold text-neutral-200">
-                        {weaponLabel(row.weapon)}
-                      </td>
-                      <td className="px-3 py-3 text-right tabular-nums">{mechanics ? row.shots : "—"}</td>
-                      <td className="px-3 py-3 text-right tabular-nums">
-                        {weaponHitDataAvailable ? row.hitShots : "—"}
-                      </td>
-                      <td className="px-3 py-3 text-right font-semibold tabular-nums text-emerald-200">
-                        {weaponHitDataAvailable && row.shots > 0 ? percent(row.hitShots / row.shots) : "—"}
-                      </td>
-                      <td className="px-3 py-3 text-right tabular-nums">
-                        {weaponHitDataAvailable ? row.damage : "—"}
-                      </td>
-                      <td className="px-3 py-3 text-right tabular-nums">{row.kills}</td>
-                      <td className="px-4 py-3 text-right tabular-nums">{row.headshotKills}</td>
-                    </tr>
-                  ))}
+                  {weaponRows.map((row) => {
+                    const accuracyMetric = qualityMetric({
+                      value: row.reliableShots === 0
+                        ? null
+                        : row.hitShots / row.reliableShots,
+                      unit: "ratio",
+                      sampleCount: row.shots,
+                      usableSampleCount: row.reliableShots,
+                      provenance: "reconstructed",
+                      confidence:
+                        row.reliableShots === 0
+                          ? "unavailable"
+                          : row.reliableShots === row.shots
+                            ? "high"
+                            : "medium",
+                      unavailableReasons:
+                        row.shots === 0
+                          ? ["no_shots"]
+                          : row.reliableShots < row.shots
+                            ? ["incomplete_shot_associations"]
+                            : [],
+                      formulaVersion: "roundlab.aim.v3.accuracyByWeapon.filtered",
+                    });
+                    return (
+                      <tr key={row.weapon} className="border-t border-white/8">
+                        <td className="px-4 py-3 font-semibold text-neutral-200">
+                          {weaponLabel(row.weapon)}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums">{mechanics ? row.shots : "—"}</td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          {row.reliableShots > 0 ? row.hitShots : "—"}
+                        </td>
+                        <td className="px-3 py-3 text-right font-semibold tabular-nums text-emerald-200">
+                          <QualityMetricCell metric={accuracyMetric} format={percent} />
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          {row.reliableShots > 0 ? row.damage : "—"}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums">{row.kills}</td>
+                        <td className="px-4 py-3 text-right tabular-nums">{row.headshotKills}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -2327,10 +2992,11 @@ export function MatchReport({
                 Aucune donnée d’arme ne correspond à ces filtres.
               </p>
             )}
-            {!weaponHitDataAvailable && mechanics && weaponRows.length > 0 && (
+            {mechanics && weaponRows.length > 0 &&
+              weaponAssociationUsable < weaponAssociationSamples && (
               <p className="border-t border-amber-300/10 bg-amber-300/[0.025] px-4 py-3 text-xs leading-relaxed text-amber-100/70">
-                Les tirs et les kills sont présents, mais cette importation ne permet pas de relier les dégâts
-                à chaque tir. La précision, les tirs touchés et les dégâts par arme restent donc volontairement vides.
+                Les lignes calculent la précision uniquement sur les tirs fiables et affichent leur
+                couverture. Une ligne sans tir fiable reste volontairement vide.
               </p>
             )}
           </article>
@@ -2385,7 +3051,7 @@ export function MatchReport({
                   </tr>
                 </thead>
                 <tbody>
-                  {rankedPlayers.map((player) => {
+                  {scopedPlayers.map((player) => {
                     const scopedPlayer = openingSide === "all"
                       ? player
                       : player.bySide[openingSide];
@@ -2530,7 +3196,7 @@ export function MatchReport({
                   </tr>
                 </thead>
                 <tbody>
-                  {rankedPlayers.map((player) => {
+                  {scopedPlayers.map((player) => {
                     const opportunities = player.metrics.clutchOpportunities;
                     const wins = player.metrics.clutchWins;
                     const totalOpportunities = opportunities === null
@@ -2579,28 +3245,38 @@ export function MatchReport({
         <div className="mt-6 grid gap-6">
           <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
             <label className="grid gap-1 text-xs text-neutral-500">
-              {analysis.teams[0]?.name ? teamLabel(analysis.teams[0].name) : "Équipe A"}
+              Joueur A
               <select
+                aria-label="Joueur A à comparer"
                 value={effectiveHeadToHeadPlayerAId}
                 onChange={(event) => setHeadToHeadPlayerAId(event.target.value)}
                 className="h-10 rounded-md border border-white/10 bg-[#121515] px-3 text-sm text-neutral-200"
               >
                 {analysis.players
-                  .filter((player) => firstTeamPlayerIds.includes(player.playerId))
-                  .map((player) => <option key={player.playerId} value={player.playerId}>{player.name}</option>)}
+                  .filter((player) => player.playerId !== effectiveHeadToHeadPlayerBId)
+                  .map((player) => (
+                    <option key={player.playerId} value={player.playerId}>
+                      {headToHeadOptionLabel(player.playerId, player.name)}
+                    </option>
+                  ))}
               </select>
             </label>
             <span className="hidden pb-2 text-xs text-neutral-600 sm:block">contre</span>
             <label className="grid gap-1 text-xs text-neutral-500">
-              {analysis.teams[1]?.name ? teamLabel(analysis.teams[1].name) : "Équipe B"}
+              Joueur B
               <select
+                aria-label="Joueur B à comparer"
                 value={effectiveHeadToHeadPlayerBId}
                 onChange={(event) => setHeadToHeadPlayerBId(event.target.value)}
                 className="h-10 rounded-md border border-white/10 bg-[#121515] px-3 text-sm text-neutral-200"
               >
                 {analysis.players
-                  .filter((player) => secondTeamPlayerIds.includes(player.playerId))
-                  .map((player) => <option key={player.playerId} value={player.playerId}>{player.name}</option>)}
+                  .filter((player) => player.playerId !== effectiveHeadToHeadPlayerAId)
+                  .map((player) => (
+                    <option key={player.playerId} value={player.playerId}>
+                      {headToHeadOptionLabel(player.playerId, player.name)}
+                    </option>
+                  ))}
               </select>
             </label>
           </div>
@@ -2696,7 +3372,7 @@ export function MatchReport({
 
       {tab === "rating" && selectedPlayer && (
         <div className="mt-6 grid gap-6">
-          <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
             <div>
               <span className="text-[10px] font-semibold uppercase tracking-[0.13em] text-neutral-600">
                 Profil joueur
@@ -2706,16 +3382,6 @@ export function MatchReport({
                 Synthèse de ses contributions mesurées et détail round par round.
               </p>
             </div>
-            <select
-              aria-label="Joueur analysé"
-              value={selectedPlayer.playerId}
-              onChange={(event) => setSelectedPlayerId(event.target.value)}
-              className="h-10 rounded-md border border-white/10 bg-[#121515] px-3 text-sm text-neutral-200"
-            >
-              {rankedPlayers.map((player) => (
-                <option key={player.playerId} value={player.playerId}>{player.name}</option>
-              ))}
-            </select>
           </div>
 
           <article className="grid overflow-hidden border-y border-white/10 bg-[#121515] md:grid-cols-2 xl:grid-cols-4">
@@ -2746,10 +3412,26 @@ export function MatchReport({
                 Utilitaires
               </h3>
               <div className="mt-4 grid grid-cols-2 gap-4">
-                <Metric label="Lancers" value={number(selectedPlayer.metrics.grenadesThrown?.total ?? null)} />
-                <Metric label="Quantity" value={number(selectedPlayer.metrics.utilityQuantityRating ?? null)} />
-                <Metric label="Ennemis flashés" value={number(selectedPlayer.metrics.flashes?.effectiveEnemiesFlashed ?? null)} />
-                <Metric label="Dégâts HE" value={number(selectedPlayer.metrics.utilityDamage?.heDamage ?? null)} />
+                <Metric
+                  label="Lancers"
+                  value={number(selectedUtilityQuality?.grenadesThrown.value ?? null)}
+                  quality={selectedUtilityQuality?.grenadesThrown}
+                />
+                <Metric
+                  label="Quantité"
+                  value={number(selectedUtilityQuality?.utilityQuantityRating.value ?? null)}
+                  quality={selectedUtilityQuality?.utilityQuantityRating}
+                />
+                <Metric
+                  label="Ennemis flashés"
+                  value={number(selectedUtilityQuality?.effectiveEnemiesFlashed.value ?? null)}
+                  quality={selectedUtilityQuality?.effectiveEnemiesFlashed}
+                />
+                <Metric
+                  label="Dégâts HE"
+                  value={number(selectedUtilityQuality?.heDamage.value ?? null)}
+                  quality={selectedUtilityQuality?.heDamage}
+                />
               </div>
             </section>
             <section className="border-t border-white/8 p-5 md:border-l xl:border-t-0">
@@ -2862,18 +3544,41 @@ export function MatchReport({
                   </button>
                 </div>
                 <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                  <Metric label="Zones visitées" value={spatial ? String(selectedZoneRows.length) : "—"} />
-                  <Metric label="Transitions" value={spatial ? String(selectedZoneTransitions.length) : "—"} />
-                  <Metric label="Rotations" value={spatial ? String(selectedRotations.length) : "—"} />
-                  <Metric label="Habitudes répétées" value={spatial ? String(selectedHabits.length) : "—"} />
+                  <Metric
+                    label="Zones visitées"
+                    value={number(selectedSpatialQuality?.uniqueZonesVisited.value ?? null)}
+                    quality={selectedSpatialQuality?.uniqueZonesVisited}
+                  />
+                  <Metric
+                    label="Transitions"
+                    value={number(selectedSpatialQuality?.zoneTransitions.value ?? null)}
+                    quality={selectedSpatialQuality?.zoneTransitions}
+                  />
+                  <Metric
+                    label="Rotations"
+                    value={number(selectedSpatialQuality?.rotations.value ?? null)}
+                    quality={selectedSpatialQuality?.rotations}
+                  />
+                  <Metric
+                    label="Habitudes répétées"
+                    value={number(selectedSpatialQuality?.repeatedTrajectoryHabits.value ?? null)}
+                    quality={selectedSpatialQuality?.repeatedTrajectoryHabits}
+                  />
                   <Metric
                     label="Distance équipiers"
-                    value={meanTeammateDistance === null ? "—" : `${meanTeammateDistance.toFixed(0)} u`}
+                    value={
+                      selectedSpatialQuality?.meanTeammateDistance.value === null ||
+                        selectedSpatialQuality?.meanTeammateDistance.value === undefined
+                        ? "—"
+                        : `${selectedSpatialQuality.meanTeammateDistance.value.toFixed(0)} u`
+                    }
                     detail="moyenne horizontale"
+                    quality={selectedSpatialQuality?.meanTeammateDistance}
                   />
                   <Metric
                     label="Échantillons spacing"
-                    value={spatial ? String(spacingSampleCount) : "—"}
+                    value={number(selectedSpatialQuality?.spacingSamples.value ?? null)}
+                    quality={selectedSpatialQuality?.spacingSamples}
                   />
                 </div>
               </article>
@@ -2898,7 +3603,9 @@ export function MatchReport({
                     <tbody>
                       {selectedZoneRows.slice(0, 16).map((zone) => (
                         <tr key={zone.zoneId} className="border-t border-white/8">
-                          <td className="px-4 py-3 font-semibold text-neutral-200">{zoneLabel(zone.zoneId)}</td>
+                          <td className="px-4 py-3 font-semibold text-neutral-200">
+                            {zoneLabel(zone.zoneId, spatial?.zoneLabels)}
+                          </td>
                           <td className="px-3 py-3 text-right tabular-nums">{zone.rounds.size}</td>
                           <td className="px-3 py-3 text-right tabular-nums">{zone.visits}</td>
                           <td className="px-4 py-3 text-right tabular-nums">{zone.duration.toFixed(1)} s</td>

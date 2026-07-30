@@ -813,7 +813,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
                 "h-7 rounded-[4px] px-3 text-[11px] font-semibold transition-colors",
                 displayMode === mode
                   ? "bg-emerald-300 text-[#0b1410] shadow-[0_4px_12px_rgba(110,231,183,0.12)]"
-                  : "text-neutral-400 hover:bg-white/[0.05] hover:text-white",
+                  : "text-neutral-200 hover:bg-white/[0.05] hover:text-white",
               ].join(" ")}
             >
               {label}

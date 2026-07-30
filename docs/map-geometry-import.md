@@ -2,7 +2,8 @@
 
 ## Statut
 
-RoundLab sait convertir une scène glTF 2.0 ou GLB en triangles 3D, puis charger
+RoundLab sait convertir une scène glTF 2.0, GLB ou un ancien maillage Awpy
+`.tri` en triangles 3D, puis charger
 le JSON produit par nom de map. Aucun maillage Valve n'est distribué dans ce
 dépôt.
 
@@ -40,9 +41,29 @@ pnpm geometry:import -- \
   --output public/map-geometry/de_nuke.json
 ```
 
+Pour un `.tri` Awpy existant :
+
+```bash
+pnpm geometry:import -- \
+  --input /chemin/vers/de_nuke.tri \
+  --map de_nuke \
+  --geometry-id awpy-TRI_SOURCE_VERSION \
+  --output public/map-geometry/de_nuke.json
+```
+
+Le lecteur `.tri` suit le contrat publié par Awpy 2.x : aucune en-tête, puis
+neuf `float32` little-endian par triangle (`ax..cz`). Il valide la longueur,
+les nombres finis et une limite de sécurité avant conversion. Awpy stable
+utilise désormais des assets `.mesh` versionnés par `ClientVersion`; ce format
+n'est pas traité comme s'il était identique au `.tri`. La prise en charge
+`.tri` reste utile pour les corpus Awpy historiques et constitue un chemin
+fonctionnel déterministe, pas une promesse de compatibilité avec tout fichier
+portant cette extension.
+
 L'identifiant doit permettre de retrouver la source exacte. La commande :
 
 - accepte `.gltf` avec buffers externes ou data URI, et `.glb` ;
+- accepte les `.tri` Awpy historiques sans conversion d'axes (Hammer, Z-up) ;
 - applique toute la hiérarchie de transformations ;
 - accepte les positions `float32` et les indices 8, 16 ou 32 bits ;
 - convertit par défaut le repère glTF Y-up vers le repère Source Z-up ;
@@ -79,5 +100,7 @@ Avant de valider une map réelle :
 4. comparer plusieurs premières visibilités au replay ;
 5. mesurer le coût sur une partie complète.
 
-Le moteur actuel traite la géométrie statique. Les smokes, portes et obstacles
-dynamiques nécessitent encore une couche temporelle séparée.
+La géométrie reste statique, mais la couche temporelle de visibilité combine
+désormais ce maillage avec le FOV supposé, la posture, les smokes actives et
+l'état flashé. Les portes, props mobiles et autres obstacles dynamiques ne sont
+pas reconstruits et restent explicitement signalés comme limite.

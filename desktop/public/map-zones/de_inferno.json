@@ -1,10 +1,10 @@
 {
   "map": "de_inferno",
-  "zonesVersion": "roundlab.de_inferno.coarse.v1",
+  "zonesVersion": "roundlab.de_inferno.coarse.v2",
   "zones": [
     {
       "zoneId": "a_site",
-      "label": "A site",
+      "label": "A Site / Pit / Balcony",
       "polygon": [
         { "x": -2087, "y": 3870 },
         { "x": 657, "y": 3870 },
@@ -17,7 +17,7 @@
     },
     {
       "zoneId": "a_rotation",
-      "label": "A rotation",
+      "label": "Arch / Library / Speedway",
       "polygon": [
         { "x": 657, "y": 3870 },
         { "x": 1539, "y": 3870 },
@@ -30,7 +30,7 @@
     },
     {
       "zoneId": "b_site",
-      "label": "B site",
+      "label": "B Site / Coffins / Construction",
       "polygon": [
         { "x": 1539, "y": 3870 },
         { "x": 2930.6, "y": 3870 },
@@ -43,7 +43,7 @@
     },
     {
       "zoneId": "west_approach",
-      "label": "West approach",
+      "label": "Apartments / Second Mid",
       "polygon": [
         { "x": -2087, "y": 2400 },
         { "x": -29, "y": 2400 },
@@ -56,7 +56,7 @@
     },
     {
       "zoneId": "west_mid",
-      "label": "West middle",
+      "label": "Second Mid / T Apartments",
       "polygon": [
         { "x": -2087, "y": 1322 },
         { "x": -29, "y": 1322 },
@@ -69,7 +69,7 @@
     },
     {
       "zoneId": "t_spawn",
-      "label": "T spawn",
+      "label": "T Spawn / T Ramp",
       "polygon": [
         { "x": -2087, "y": 440 },
         { "x": -29, "y": 440 },
@@ -82,7 +82,7 @@
     },
     {
       "zoneId": "middle",
-      "label": "Middle",
+      "label": "Mid / Top Mid",
       "polygon": [
         { "x": -29, "y": 2400 },
         { "x": 1343, "y": 2400 },
@@ -108,7 +108,7 @@
     },
     {
       "zoneId": "ct_spawn",
-      "label": "CT spawn",
+      "label": "CT Spawn / Speedway",
       "polygon": [
         { "x": 1343, "y": 930 },
         { "x": 2930.6, "y": 930 },

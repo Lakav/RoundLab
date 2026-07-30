@@ -8,6 +8,7 @@ import {
   SPATIAL_ANALYSIS_SPEC_VERSION,
   type PlayerZoneVisit,
   type PlayerZoneTransition,
+  type PlayerSpatialQualityAnalysis,
   type RoundSpatialAnalysis,
   type SpatialAnalysis,
   type TeamSpacing,
@@ -17,6 +18,7 @@ import {
   type ZoneControlInterval,
   type ZoneControlState,
 } from "./spatial-types";
+import { qualityMetric } from "./metric-quality";
 import {
   hasClearLineOfSight,
   type MapGeometry,
@@ -30,6 +32,7 @@ export const ROTATION_WINDOW_SECONDS = 3;
 export const TRADEABILITY_FRAME_MAX_AGE_SECONDS = 0.25;
 const PLAYER_EYE_HEIGHT_STANDING = 64;
 const PLAYER_EYE_HEIGHT_CROUCHED = 46;
+const SPATIAL_QUALITY_FORMULA_VERSION = "roundlab.spatial.v2.quality";
 
 export type AnalyzeSpatialContext = {
   matchId: string;
@@ -623,6 +626,150 @@ function analyzeRoundZones(
   };
 }
 
+function buildPlayerSpatialQuality(
+  match: MatchData,
+  rounds: RoundSpatialAnalysis[],
+  repeatedHabits: SpatialAnalysis["repeatedTrajectoryHabits"],
+  zonesUnavailableReason: string | null,
+): Record<string, PlayerSpatialQualityAnalysis> {
+  const playerIds = new Set([
+    ...match.players.map((player) => String(player.steamId)),
+    ...match.rounds.flatMap((round) =>
+      round.frames.flatMap((frame) =>
+        frame.players.map((player) => String(player.id))
+      )
+    ),
+  ]);
+  return Object.fromEntries([...playerIds].sort().map((id) => {
+    const positionSamples = match.rounds.reduce(
+      (total, round) =>
+        total + round.frames.reduce(
+          (roundTotal, frame) =>
+            roundTotal + frame.players.filter(
+              (player) => String(player.id) === id && player.hp > 0,
+            ).length,
+          0,
+        ),
+      0,
+    );
+    const visits = rounds.flatMap((round) =>
+      round.zoneVisits.filter((visit) => visit.playerId === id)
+    );
+    const assignedSamples = visits.reduce(
+      (total, visit) => total + visit.sampleCount,
+      0,
+    );
+    const assignmentComplete =
+      positionSamples > 0 &&
+      assignedSamples === positionSamples &&
+      zonesUnavailableReason === null;
+    const zoneReasons = positionSamples === 0
+      ? ["no_position_samples"]
+      : zonesUnavailableReason !== null
+        ? [zonesUnavailableReason]
+        : assignmentComplete
+          ? []
+          : ["incomplete_zone_assignment"];
+    const transitions = rounds.flatMap((round) =>
+      round.zoneTransitions.filter((transition) => transition.playerId === id)
+    );
+    const rotations = rounds.flatMap((round) =>
+      round.rotations.filter((rotation) => rotation.playerIds.includes(id))
+    );
+    const spacings = rounds.flatMap((round) =>
+      round.spacing.filter((spacing) => spacing.playerIds.includes(id))
+    );
+    const spacingSamples = spacings.reduce(
+      (total, spacing) => total + spacing.sampleCount,
+      0,
+    );
+    const meanTeammateDistance = spacingSamples === 0
+      ? null
+      : spacings.reduce(
+        (total, spacing) =>
+          total + spacing.meanHorizontalDistance * spacing.sampleCount,
+        0,
+      ) / spacingSamples;
+    const playerHabits = repeatedHabits.filter((habit) => habit.playerId === id);
+    const countFromZones = (
+      metricId: string,
+      value: number,
+    ) => qualityMetric({
+      value: assignmentComplete ? value : null,
+      unit: "count",
+      sampleCount: positionSamples,
+      usableSampleCount: assignedSamples,
+      provenance: "reconstructed" as const,
+      confidence: "high" as const,
+      unavailableReasons: zoneReasons,
+      formulaVersion: `${SPATIAL_QUALITY_FORMULA_VERSION}.${metricId}`,
+    });
+    return [id, {
+      zoneAssignmentRate: qualityMetric({
+        value:
+          zonesUnavailableReason === null && positionSamples > 0
+            ? assignedSamples / positionSamples
+            : null,
+        unit: "ratio",
+        sampleCount: positionSamples,
+        usableSampleCount: assignedSamples,
+        provenance: "reconstructed",
+        confidence:
+          assignedSamples === positionSamples && positionSamples > 0
+            ? "high"
+            : "medium",
+        unavailableReasons: zoneReasons,
+        formulaVersion: `${SPATIAL_QUALITY_FORMULA_VERSION}.zoneAssignmentRate`,
+      }),
+      uniqueZonesVisited: countFromZones(
+        "uniqueZonesVisited",
+        new Set(visits.map((visit) => visit.zoneId)).size,
+      ),
+      zoneTransitions: countFromZones("zoneTransitions", transitions.length),
+      rotations: countFromZones("rotations", rotations.length),
+      meanTeammateDistance: qualityMetric({
+        value: meanTeammateDistance,
+        unit: "world_units",
+        sampleCount: spacingSamples,
+        usableSampleCount: spacingSamples,
+        provenance: "estimated",
+        confidence: "medium",
+        unavailableReasons:
+          spacingSamples === 0 ? ["no_spacing_samples"] : [],
+        formulaVersion:
+          `${SPATIAL_QUALITY_FORMULA_VERSION}.meanTeammateDistance`,
+      }),
+      spacingSamples: qualityMetric({
+        value: spacingSamples,
+        unit: "samples",
+        sampleCount: spacingSamples,
+        usableSampleCount: spacingSamples,
+        provenance: "reconstructed",
+        confidence: "high",
+        unavailableReasons: [],
+        formulaVersion: `${SPATIAL_QUALITY_FORMULA_VERSION}.spacingSamples`,
+      }),
+      repeatedTrajectoryHabits: qualityMetric({
+        value: playerHabits.length,
+        unit: "count",
+        sampleCount: playerHabits.reduce(
+          (total, habit) => total + habit.comparisonCount,
+          0,
+        ),
+        usableSampleCount: playerHabits.reduce(
+          (total, habit) => total + habit.comparisonCount,
+          0,
+        ),
+        provenance: "estimated",
+        confidence: "medium",
+        unavailableReasons: [],
+        formulaVersion:
+          `${SPATIAL_QUALITY_FORMULA_VERSION}.repeatedTrajectoryHabits`,
+      }),
+    } satisfies PlayerSpatialQualityAnalysis];
+  }));
+}
+
 export function analyzeSpatial(
   match: MatchData,
   context: AnalyzeSpatialContext,
@@ -654,6 +801,18 @@ export function analyzeSpatial(
       ? suppliedGeometry
       : null;
   const trajectoryComparisons = analyzeTrajectoryComparisons(match);
+  const repeatedTrajectoryHabits =
+    analyzeRepeatedTrajectoryHabits(trajectoryComparisons);
+  const rounds = match.rounds.map((round) =>
+    analyzeRoundZones(
+      round,
+      match.meta.tickRate,
+      usableDefinition,
+      unavailableReason,
+      usableGeometry,
+      geometryReason,
+    )
+  );
   return {
     specVersion: SPATIAL_ANALYSIS_SPEC_VERSION,
     inputSchemaVersion: match.schemaVersion ?? "roundlab.replay.legacy",
@@ -662,18 +821,17 @@ export function analyzeSpatial(
     generatedAt: context.generatedAt,
     map: match.meta.map,
     zonesVersion: usableDefinition?.zonesVersion ?? null,
-    rounds: match.rounds.map((round) =>
-      analyzeRoundZones(
-        round,
-        match.meta.tickRate,
-        usableDefinition,
-        unavailableReason,
-        usableGeometry,
-        geometryReason,
-      )
+    zoneLabels: Object.fromEntries(
+      usableDefinition?.zones.map((zone) => [zone.zoneId, zone.label]) ?? [],
     ),
+    players: buildPlayerSpatialQuality(
+      match,
+      rounds,
+      repeatedTrajectoryHabits,
+      unavailableReason,
+    ),
+    rounds,
     trajectoryComparisons,
-    repeatedTrajectoryHabits:
-      analyzeRepeatedTrajectoryHabits(trajectoryComparisons),
+    repeatedTrajectoryHabits,
   };
 }
