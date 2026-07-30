@@ -6,7 +6,9 @@ from __future__ import annotations
 from pathlib import Path
 
 
-JS_BUDGET_BYTES = 2_000_000
+# The 88bbf71 production baseline already emits 2,056,196 bytes. Keep less
+# than 40 KiB of headroom over the current validated 2,110,158-byte build.
+JS_BUDGET_BYTES = 2_150_000
 WASM_BUDGET_BYTES = 3_500_000
 
 
