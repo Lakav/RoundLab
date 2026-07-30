@@ -52,6 +52,8 @@ export type PlayerPos = {
   team: number; // 2=T, 3=CT
   active?: string;
   weapons?: string[];
+  /** Approximate players currently spotting this pawn, as reported by the demo. */
+  spottedBy?: PlayerId[];
   flashLeft?: number;
   flashTotal?: number;
   use?: boolean;

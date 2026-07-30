@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { DebugConsoleHost } from "@/components/DebugConsoleHost";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { assetPath } from "@/lib/paths";
 import "./globals.css";
 
@@ -19,7 +20,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full antialiased dark">
+    <html lang="fr" className="h-full antialiased dark">
       <head>
         <meta
           httpEquiv="Content-Security-Policy"
@@ -36,7 +37,7 @@ export default function RootLayout({
             Skip to main content
           </a>
         </nav>
-        {children}
+        <TooltipProvider delay={300}>{children}</TooltipProvider>
         <DebugConsoleHost />
       </body>
     </html>

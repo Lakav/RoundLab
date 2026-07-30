@@ -15,7 +15,13 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("next/image", () => ({ default: ({ alt = "", ...props }: React.ImgHTMLAttributes<HTMLImageElement>) => <img alt={alt} {...props} /> }));
 vi.mock("@/components/replay/MapRenderer", () => ({
-  MapRenderer: ({ descriptionId, size }: { descriptionId?: string; size?: number }) => (
+  MapRenderer: ({
+    descriptionId,
+    size,
+  }: {
+    descriptionId?: string;
+    size?: number;
+  }) => (
     <div
       role="img"
       aria-label="Interactive replay radar"
@@ -141,7 +147,7 @@ describe("MatchViewer", () => {
     expect(screen.getByRole("region", { name: "Text alternative for the replay radar" })).toHaveTextContent("Player One");
   });
 
-  it("supports keyboard playback, zoom and condensed review mode", async () => {
+  it("supports keyboard playback, zoom and trajectory mode", async () => {
     const user = userEvent.setup();
     render(<MatchViewer id="match-a" />);
     await screen.findByRole("heading", { level: 1, name: "RoundLab match replay" });
@@ -152,7 +158,7 @@ describe("MatchViewer", () => {
     expect(screen.getByTitle("Play/Pause (Space)")).toBeEnabled();
     await user.click(screen.getByTitle("Zoom in"));
     expect(screen.getByText("125%")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Condensé" }));
+    await user.click(screen.getByRole("button", { name: "Trajectoires" }));
     expect(screen.getByRole("combobox")).toHaveValue("player:1");
   });
 
@@ -164,39 +170,48 @@ describe("MatchViewer", () => {
 
     await user.click(screen.getByRole("button", { name: "Rapport" }));
 
-    expect(await screen.findByRole("heading", { name: "Analyse du match" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Rapport du match" })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Sections du rapport" })).toBeInTheDocument();
-    expect(screen.getByText("Tableau des joueurs")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Joueurs" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Général" })).toHaveAttribute("aria-pressed", "true");
     await user.click(screen.getByRole("button", { name: "Aim" }));
     expect(screen.getByRole("columnheader", { name: "Tirs" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Counter-strafe" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Détails du match" }));
-    expect(screen.getByRole("navigation", { name: "Sections des détails du match" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "HLTV" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Performance" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Arrêt avant tir" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Joueurs" }));
+    expect(screen.getByRole("navigation", { name: "Analyses des joueurs" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Général" }));
+    expect(screen.queryByRole("columnheader", { name: "HLTV" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Performance" })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Timeline" }));
+    await user.click(screen.getByRole("button", { name: "Rounds" }));
     expect(screen.getByRole("heading", { name: "Round 1" })).toBeInTheDocument();
     expect(screen.getByText("Joueurs du round")).toBeInTheDocument();
-    expect(screen.getByText("Moments du round")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /Opening gagné.*Voir dans le replay/ }),
-    ).toBeInTheDocument();
+    expect(screen.queryByText("Moments du round")).not.toBeInTheDocument();
 
+    await user.click(screen.getByRole("button", { name: "Joueurs" }));
     await user.click(screen.getByRole("button", { name: "Aim" }));
     expect(screen.getByRole("heading", { name: "Aim" })).toBeInTheDocument();
+    expect(screen.getByText("Données brutes de tir")).toBeInTheDocument();
+    expect(screen.getByText("Afficher")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Métriques avancées" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Dégâts / impact" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Tap" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Burst" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Spray" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Tirs ennemi repéré" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Accuracy all" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Counter-strafing" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", {
-        name: "Headshot, Player One, round 1, ouvrir dans le replay",
-      }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Arrêt avant tir" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Actions de combat" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "Panneau Review" }))
+      .not.toBeInTheDocument();
 
+    await user.click(screen.getByRole("button", { name: "Rapport" }));
+    await user.click(screen.getByRole("button", { name: "Joueurs" }));
     await user.click(screen.getByRole("button", { name: "Utilitaires" }));
+
     expect(screen.getByRole("heading", { name: "Utilitaires" })).toBeInTheDocument();
     expect(screen.getByText("Usage par joueur")).toBeInTheDocument();
+    expect(screen.getByText("Répartition par équipe")).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
         name: "Grenade lancée, Player One, round 1, ouvrir dans le replay",
@@ -211,6 +226,7 @@ describe("MatchViewer", () => {
     await user.click(screen.getByRole("button", { name: "Trades" }));
     expect(screen.getByRole("heading", { name: "Trades" })).toBeInTheDocument();
     expect(screen.getByText("Bilan par joueur")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Réussite des trades" })).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
         name: "Trade kill, Player One, round 1, ouvrir dans le replay",
@@ -224,27 +240,41 @@ describe("MatchViewer", () => {
 
     await user.click(screen.getByRole("button", { name: "Activité" }));
     expect(screen.getByRole("columnheader", { name: "Dégâts HE" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Rounds survécus" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Survie" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Armes" }));
+    expect(screen.getByRole("heading", { name: "Statistiques par arme" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Joueur" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Équipe" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Côté" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Round" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Opening duels" }));
     expect(screen.getByText("Détail par round")).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Tentatives" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Tentatives d'opening" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Openings tous côtés" })).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: "Openings côté T" }));
+    expect(screen.getByRole("button", { name: "Openings côté T" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getAllByRole("columnheader", { name: "Côté" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("columnheader", { name: "Arme" }).length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole("button", { name: "Clutches" }));
     expect(screen.getByRole("columnheader", { name: "1v1" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Clutches gagnés" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Gagnés" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Perdus" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Réussite" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Face-à-face" }));
+    await user.click(screen.getByRole("button", { name: "Comparer" }));
     expect(screen.getAllByText("Kills").length).toBeGreaterThan(0);
 
-    await user.click(screen.getByRole("button", { name: "Décomposition du rating" }));
-    expect(screen.getByRole("heading", { name: "Décomposition du rating" })).toBeInTheDocument();
-    expect(screen.getByText("Contributions mesurées")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Profil" }));
+    expect(screen.getByRole("heading", { name: "Player One" })).toBeInTheDocument();
+    expect(screen.getByText("Combat")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Zones de carte" }));
+    await user.click(screen.getByRole("button", { name: "Positionnement" }));
     expect(screen.getByRole("heading", { name: "Positionnement" })).toBeInTheDocument();
     expect(screen.getByText("Occupation par zone")).toBeInTheDocument();
-    expect(screen.getByText("Lignes de vue")).toBeInTheDocument();
+    expect(screen.getByText("Espacement")).toBeInTheDocument();
     await user.click(
       screen.getByRole("button", {
         name: "Voir les trajectoires de Player One",
@@ -263,9 +293,9 @@ describe("MatchViewer", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Rapport" }));
-    expect(await screen.findByRole("heading", { name: "Analyse du match" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Rapport du match" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Classique" }));
+    await user.click(screen.getByRole("button", { name: "Replay libre" }));
     const radar = await screen.findByRole("img", { name: "Interactive replay radar" });
     const width = Number.parseFloat(radar.style.width);
     const height = Number.parseFloat(radar.style.height);
@@ -273,7 +303,7 @@ describe("MatchViewer", () => {
     expect(Number.isFinite(height) && height > 0).toBe(true);
   });
 
-  it("does not retain every full round while building condensed review", async () => {
+  it("does not retain every full round while building analysis or trajectories", async () => {
     const user = userEvent.setup();
     const metadataRounds = Array.from({ length: 6 }, (_, index) => ({
       ...replayRound(index + 1, 12),
@@ -285,7 +315,16 @@ describe("MatchViewer", () => {
     render(<MatchViewer id="match-memory" />);
     await screen.findByRole("heading", { level: 1, name: "RoundLab match replay" });
     await waitFor(() => expect(mocks.getRound).toHaveBeenCalledWith("match-memory", 1, false));
-    await user.click(screen.getByRole("button", { name: "Condensé" }));
+
+    await user.click(screen.getByRole("button", { name: "Rapport" }));
+    expect(await screen.findByRole("heading", { name: "Rapport du match" }))
+      .toBeInTheDocument();
+    const retainedAfterAnalysis = useReplay.getState().match?.rounds
+      .filter((round) => round.frames.length > 0)
+      .map((round) => round.number);
+    expect(retainedAfterAnalysis).toEqual([1, 2]);
+
+    await user.click(screen.getByRole("button", { name: "Trajectoires" }));
     await waitFor(() => expect(screen.getByText("6 rounds")).toBeInTheDocument());
 
     const retainedRounds = useReplay.getState().match?.rounds

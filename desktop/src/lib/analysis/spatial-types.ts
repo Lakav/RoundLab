@@ -120,6 +120,12 @@ export type SmokeSpatialImpact = {
   playerIdsInside: string[];
   evaluatedSightlineSamples: number | null;
   blockedSightlineSamples: number | null;
+  blockedPlayerPairs: Array<{
+    playerIds: [string, string];
+    sampleCount: number;
+    firstTime: number;
+    lastTime: number;
+  }>;
   unavailableReasons: string[];
 };
 

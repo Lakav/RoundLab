@@ -86,11 +86,18 @@ describe("spatial utility impact", () => {
       radius: 144,
       evaluatedSightlineSamples: 1,
       blockedSightlineSamples: 1,
+      blockedPlayerPairs: [{
+        playerIds: ["ct", "t"],
+        sampleCount: 1,
+        firstTime: 1,
+        lastTime: 1,
+      }],
       unavailableReasons: [],
     });
     expect(walled).toMatchObject({
       evaluatedSightlineSamples: 0,
       blockedSightlineSamples: 0,
+      blockedPlayerPairs: [],
     });
   });
 
@@ -112,6 +119,7 @@ describe("spatial utility impact", () => {
     expect(missing).toMatchObject({
       evaluatedSightlineSamples: null,
       blockedSightlineSamples: null,
+      blockedPlayerPairs: [],
       unavailableReasons: ["missing_map_geometry"],
     });
   });

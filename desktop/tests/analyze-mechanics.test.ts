@@ -270,6 +270,7 @@ describe("deterministic mechanics engagement detection", () => {
       time: 1,
       origin: { x: 0, y: 0, z: 64 },
       yaw: 0,
+      enemySpotted: null,
       impacts: [{
         evidenceId: "r1-mechanics-impact-0000",
         tick: 1_064,
@@ -296,6 +297,58 @@ describe("deterministic mechanics engagement detection", () => {
       "bullet_impact",
       "damage",
     ]);
+  });
+
+  it("reads the demo spotted mask at the exact weapon-fire frame", () => {
+    const round = sourceRound({
+      frames: [{
+        t: 1,
+        players: [
+          { id: P1, x: 0, y: 0, z: 0, yaw: 0, hp: 100, armor: 0, team: 2, spottedBy: [] },
+          { id: P2, x: 100, y: 0, z: 0, yaw: 180, hp: 100, armor: 0, team: 3, spottedBy: [P1] },
+        ],
+      }],
+      weaponFires: [{
+        t: 1,
+        tick: 1_064,
+        shooter: P1,
+        weapon: "ak47",
+        x: 0,
+        y: 0,
+        z: 64,
+        yaw: 0,
+      }],
+    });
+
+    const result = analyzeMechanics(sourceMatch([round]), CONTEXT);
+
+    expect(result.rounds[0].shots[0].enemySpotted).toBe(true);
+  });
+
+  it("keeps spotted state unavailable for legacy frames without the mask", () => {
+    const round = sourceRound({
+      frames: [{
+        t: 1,
+        players: [
+          { id: P1, x: 0, y: 0, z: 0, yaw: 0, hp: 100, armor: 0, team: 2 },
+          { id: P2, x: 100, y: 0, z: 0, yaw: 180, hp: 100, armor: 0, team: 3 },
+        ],
+      }],
+      weaponFires: [{
+        t: 1,
+        tick: 1_064,
+        shooter: P1,
+        weapon: "ak47",
+        x: 0,
+        y: 0,
+        z: 64,
+        yaw: 0,
+      }],
+    });
+
+    const result = analyzeMechanics(sourceMatch([round]), CONTEXT);
+
+    expect(result.rounds[0].shots[0].enemySpotted).toBeNull();
   });
 
   it("assigns same-tick facts to the latest fire ordered before them", () => {
@@ -427,8 +480,8 @@ describe("deterministic mechanics engagement detection", () => {
     ]);
   });
 
-  it("classifies one, two-to-four and five-or-more continuous shots", () => {
-    const shotTimes = [1, 1.5, 1.7, 2.2, 2.3, 2.4, 2.5, 2.6];
+  it("classifies one, two and three-or-more continuous shots", () => {
+    const shotTimes = [1, 1.5, 1.7, 2.2, 2.3, 2.4];
     const round = sourceRound({
       weaponFires: shotTimes.map((t, sequence) => ({
         t,
@@ -462,13 +515,11 @@ describe("deterministic mechanics engagement detection", () => {
       },
       {
         kind: "spray",
-        shotCount: 5,
+        shotCount: 3,
         shotIds: [
           "r1-shot-0003",
           "r1-shot-0004",
           "r1-shot-0005",
-          "r1-shot-0006",
-          "r1-shot-0007",
         ],
       },
     ]);

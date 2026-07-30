@@ -5,6 +5,10 @@ Leetify en juillet 2026. Il sert de cible fonctionnelle pour RoundLab. La cible
 porte sur la hiérarchie de l’information et les familles de métriques, pas sur
 la copie de l’identité visuelle de Leetify.
 
+Il ne couvre que le rapport de match. L'inventaire du produit complet,
+les dépendances de données et la roadmap sont dans
+[`leetify-parity-audit-2026.md`](leetify-parity-audit-2026.md).
+
 ## Navigation principale
 
 1. **Overview**
@@ -107,26 +111,34 @@ Le tableau Overview permet de choisir des colonnes dans quatre familles.
 - opportunités et victoires de clutch 1v1 à 1v5+ ;
 - trade attempts, trade kills et traded deaths ;
 - grenades lancées, flash assists et utilitaires inutilisés à la mort ;
-- ennemis et alliés flashés, durée moyenne d’aveuglement ;
+- ennemis et alliés effectivement flashés par flashbang, durée moyenne du plus
+  long aveuglement et kills réalisés pendant l’aveuglement ;
 - dégâts HE et molotov, y compris les dégâts aux coéquipiers ;
+- Utility Quantity Rating selon la formule publique d’octobre 2025 ;
 - économie par round ;
 - preuves rejouables pour les actions principales ;
 - timeline des rounds.
 
 ### Exposé dans le rapport depuis l’intégration des moteurs avancés
 
+- statistiques par arme avec filtres joueur, équipe, côté et round ;
 - tirs et séquences de spray ;
+- tirs touchés, dégâts associés, dégâts moyens par impact, hitgroups,
+  taps/bursts/sprays et tirs en mouvement ;
 - précision, head accuracy et spray accuracy uniquement lorsque
   l’association tir-dégât est fiable ;
+- précision sur ennemi repéré estimée depuis le masque de visibilité de la
+  démo, uniquement sur les nouveaux imports ;
 - compatibilité du counter-strafe lorsqu’un échantillon de mouvement existe ;
 - time to damage et crosshair placement lorsqu’une géométrie de visibilité
-  est disponible ;
+  est disponible, avec nombre d'échantillons ;
 - visites, temps d’occupation et transitions de zones ;
-- rotations, tradeability et habitudes de trajectoire répétées.
+- rotations, spacing, tradeability et habitudes de trajectoire répétées ;
+- arme et côté T/CT des opening duels ;
+- opportunités, victoires, défaites et taux de réussite des clutches.
 
 ### Calculé par les moteurs mais pas encore présenté dans sa vue dédiée
 
-- spacing détaillé entre coéquipiers ;
 - changements de contrôle de zone ;
 - impacts spatiaux des smokes et molotovs ;
 - détail complet des engagements et duels.
@@ -138,8 +150,8 @@ Le tableau Overview permet de choisir des colonnes dans quatre familles.
 - Aim, Positioning et Utility Rating sur une échelle 0–100 ;
 - benchmarks par niveau ;
 - prévision de victoire ;
-- Utility Quality et Quantity Rating calibrés ;
-- spotted accuracy sans géométrie de visibilité.
+- Utility Quality Rating calibré et Utility Rating global ;
+- spotted accuracy exacte ou garantie équivalente à Leetify.
 
 RoundLab ne doit jamais remplacer ces valeurs absentes par une estimation
 présentée comme équivalente à Leetify. Une valeur indisponible doit rester

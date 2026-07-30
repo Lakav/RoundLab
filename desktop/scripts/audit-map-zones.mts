@@ -118,9 +118,27 @@ async function main(): Promise<void> {
       for (const round of payload.rounds) {
         auditFrames(round.frames ?? []);
       }
+      const splitDirectory = resolve(
+        parsedDirectory,
+        file.replace(/\.json\.gz$/, ""),
+      );
+      const splitFiles = await readdir(splitDirectory).catch(() => []);
+      for (const splitFile of splitFiles
+        .filter((candidate) => candidate.endsWith(".json.gz"))
+        .sort()) {
+        const splitPayload = JSON.parse(
+          gunzipSync(
+            await readFile(resolve(splitDirectory, splitFile)),
+          ).toString("utf8"),
+        ) as ReplayPayload;
+        if (!Array.isArray(splitPayload.frames)) continue;
+        sourceFileCount++;
+        splitRoundFileCount++;
+        auditFrames(splitPayload.frames);
+      }
     }
   }
-  if (splitRoundFileCount > 0) matchCount++;
+  if (splitRoundFileCount > 0 && matchCount === 0) matchCount++;
   const coverage =
     sampleCount === 0 ? 0 : assignedSampleCount / sampleCount;
   const report = {

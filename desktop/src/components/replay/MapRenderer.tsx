@@ -1018,10 +1018,11 @@ export function MapRenderer({
       lastRenderedOverlay = overlay;
 
       const positions = condensed ? [] : sampleFrame(round.frames, time);
-      const radarPositions =
+      const replayRadarPositions =
         condensed && overlay?.mode === "replay" && overlay.replays?.length
           ? habitRadarLayerPositions(overlay.replays, time)
           : positions;
+      const radarPositions = replayRadarPositions;
       const autoRadarLayer = radarLayerForPositions(match.meta.map, radarPositions, "default");
       syncRadarLayer(radarLayerMode === "auto" ? autoRadarLayer : radarLayerMode);
       const scale = size / RADAR_SIZE;
@@ -1503,6 +1504,7 @@ export function MapRenderer({
           spritesRef.current.delete(id);
         }
       }
+
     };
     return startAnimationFrameLoop(loop);
   }, [condensed, radarLayerMode, size]);

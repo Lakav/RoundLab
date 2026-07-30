@@ -54,6 +54,19 @@ describe("Home", () => {
     expect(mocks.push).toHaveBeenCalledWith("/match/?id=match-1");
   });
 
+  it("clearly presents the beta terms and links to bug reporting", async () => {
+    render(<Home />);
+    expect(
+      screen.getByText(/La bêta est entièrement gratuite/),
+    ).toHaveTextContent("L’application finale sera payante");
+    expect(
+      screen.getAllByRole("link", { name: /Signaler (un bug|un problème)/ }).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole("link", { name: /Signaler (un bug|un problème)/ })[0],
+    ).toHaveAttribute("href", "/feedback");
+  });
+
   it("rejects an unsupported local file without invoking the parser", async () => {
     render(<Home />);
     const input = screen.getByLabelText("Choose a local CS2 demo file");

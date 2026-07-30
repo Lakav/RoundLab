@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { analyzeMatch } from "@/lib/analysis/analyze-match";
+import {
+  analyzeMatch,
+  utilityQuantityRating,
+} from "@/lib/analysis/analyze-match";
 import type { Frame, MatchData, PlayerId, Round } from "@/lib/types";
 
 const P1 = "76561198000000001";
@@ -86,8 +89,13 @@ describe("deterministic MatchAnalysis V1", () => {
     expect(player(result, P1).metrics.flashes).toEqual({
       enemiesFlashed: 1,
       teammatesFlashed: 1,
+      effectiveEnemiesFlashed: 1,
+      effectiveTeammatesFlashed: 2,
       enemyBlindDuration: 2.5,
       teammateBlindDuration: 1.25,
+      enemyBlindFlashCount: 1,
+      longestEnemyBlindDuration: 2.5,
+      flashesLeadingToKills: 0,
       averageEnemyBlindDuration: 2.5,
       averageTeammateBlindDuration: 1.25,
     });
@@ -97,6 +105,37 @@ describe("deterministic MatchAnalysis V1", () => {
       fireDamage: 0,
       teammateHeDamage: 0,
       teammateFireDamage: 5,
+    });
+  });
+
+  it("excludes half-blinds and counts team kills during an effective flash", () => {
+    const result = analyzeMatch(match([
+      round(1, {
+        frames: [{
+          ...frame(0),
+          players: [
+            ...frame(0).players,
+            { id: P4, x: 110, y: 0, z: 0, yaw: 180, hp: 100, armor: 100, team: 3 },
+          ],
+        }],
+        events: [
+          { t: 3, tick: 1_192, type: "kill", killer: P3, victim: P2, weapon: "ak47" },
+          { t: 10, tick: 1_640, type: "round_end", winner: "T" },
+        ],
+        flashes: [
+          { t: 2, tick: 1_128, sequence: 0, thrower: P1, victim: P2, duration: 2.5 },
+          { t: 2, tick: 1_128, sequence: 1, thrower: P1, victim: P4, duration: 1.1 },
+        ],
+      }),
+    ]), CONTEXT);
+
+    expect(player(result, P1).metrics.flashes).toMatchObject({
+      enemiesFlashed: 2,
+      effectiveEnemiesFlashed: 1,
+      enemyBlindFlashCount: 1,
+      longestEnemyBlindDuration: 2.5,
+      averageEnemyBlindDuration: 2.5,
+      flashesLeadingToKills: 1,
     });
   });
 
@@ -534,11 +573,36 @@ describe("deterministic MatchAnalysis V1", () => {
       incendiary: 1,
     });
     expect(player(result, P3).metrics.flashAssists).toBe(1);
+    expect(player(result, P1).metrics.utilityQuantityRating).toBeCloseTo(
+      Math.pow(2 / 3, 2 / 3) * 100,
+    );
     expect(player(result, P1).metricEvidence.grenadesThrown).toEqual([
       "r1-grenade-0000",
       "r1-grenade-0001",
     ]);
     expect(player(result, P3).metricEvidence.flashAssists).toEqual(["r1-kill-0000"]);
+  });
+
+  it("caps utility quantity at 100 and excludes decoys", () => {
+    expect(utilityQuantityRating({
+      total: 5,
+      flash: 1,
+      smoke: 1,
+      he: 1,
+      molotov: 1,
+      incendiary: 0,
+      decoy: 1,
+    }, 1)).toBe(100);
+    expect(utilityQuantityRating({
+      total: 3,
+      flash: 0,
+      smoke: 0,
+      he: 0,
+      molotov: 0,
+      incendiary: 0,
+      decoy: 3,
+    }, 1)).toBe(0);
+    expect(utilityQuantityRating(null, 1)).toBeNull();
   });
 
   it("does not publish partial grenade totals when weapon-fire events are absent", () => {
@@ -857,6 +921,8 @@ describe("deterministic MatchAnalysis V1", () => {
       incendiary: 0,
       decoy: 0,
     });
+    expect(one.metrics.unusedUtilityValue).toBe(500);
+    expect(one.metrics.averageUnusedUtilityValue).toBe(500);
     expect(one.bySide.T?.metrics.utilitySavedOnDeath).toEqual(one.metrics.utilitySavedOnDeath);
     expect(one.metricEvidence.utilitySavedOnDeath).toEqual([
       `r1-inventory-${P1}-0001`,
@@ -876,6 +942,8 @@ describe("deterministic MatchAnalysis V1", () => {
     const result = analyzeMatch(match([source]), CONTEXT);
 
     expect(player(result, P1).metrics.utilitySavedOnDeath).toBeNull();
+    expect(player(result, P1).metrics.unusedUtilityValue).toBeNull();
+    expect(player(result, P1).metrics.averageUnusedUtilityValue).toBeNull();
     expect(player(result, P1).unavailableReasons).toContain("missing_predeath_inventory");
   });
 
@@ -965,7 +1033,7 @@ describe("deterministic MatchAnalysis V1", () => {
     expect(player(result, P2).byEconomy.unavailableRounds).toBe(0);
   });
 
-  it("builds chronological key moments and merges categories on the same proof", () => {
+  it("keeps legacy key-moment fields empty instead of selecting replay moments", () => {
     const source = round(1, {
       winner: "T",
       frames: [{
@@ -991,48 +1059,9 @@ describe("deterministic MatchAnalysis V1", () => {
 
     const result = analyzeMatch(match([source]), CONTEXT);
 
-    expect(result.keyMoments).toEqual([
-      {
-        evidenceId: "r1-kill-0000",
-        roundNumber: 1,
-        tick: 1_064,
-        sequence: 1,
-        time: 1,
-        primaryCategory: "opening_win",
-        categories: ["opening_win", "opening_loss"],
-        players: [P2, P3],
-      },
-      {
-        evidenceId: "r1-bomb-0000",
-        roundNumber: 1,
-        tick: 1_096,
-        sequence: 2,
-        time: 1.5,
-        primaryCategory: "bomb_planted",
-        categories: ["bomb_planted"],
-        players: [P1],
-      },
-      {
-        evidenceId: "r1-kill-0003",
-        roundNumber: 1,
-        tick: 1_256,
-        sequence: 5,
-        time: 4,
-        primaryCategory: "multikill",
-        categories: ["multikill", "trade_kill"],
-        players: [P1],
-      },
-      {
-        evidenceId: "r1-round-end",
-        roundNumber: 1,
-        tick: 1_640,
-        sequence: 6,
-        time: 10,
-        primaryCategory: "clutch_win",
-        categories: ["clutch_win"],
-        players: [P1],
-      },
-    ]);
+    expect(result.keyMoments).toEqual([]);
+    expect(result.rounds[0].keyMoments).toEqual([]);
+    expect(result.evidence.length).toBeGreaterThan(0);
   });
 
   it("produces a self-contained overtime round card with unavailable metrics preserved", () => {

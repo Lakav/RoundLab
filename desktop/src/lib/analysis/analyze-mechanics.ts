@@ -124,6 +124,44 @@ function opposingPlayers(
   );
 }
 
+function enemySpottedAtFire(
+  round: Round,
+  shooterId: string,
+  time: number,
+  tickRate: number,
+): boolean | null {
+  const tolerance = Math.max(0.001, 0.5 / tickRate);
+  let sample = round.frames[0];
+  let distance = sample === undefined ? Number.POSITIVE_INFINITY : Math.abs(sample.t - time);
+  for (const frame of round.frames) {
+    const candidateDistance = Math.abs(frame.t - time);
+    if (candidateDistance < distance) {
+      sample = frame;
+      distance = candidateDistance;
+    }
+  }
+  if (sample === undefined || distance > tolerance) return null;
+  const shooter = playerInFrame(sample, shooterId);
+  if (shooter === null || (shooter.team !== 2 && shooter.team !== 3)) return null;
+  const opponents = sample.players.filter(
+    (player) =>
+      player.hp > 0 &&
+      (player.team === 2 || player.team === 3) &&
+      player.team !== shooter.team,
+  );
+  if (opponents.length === 0) return null;
+  if (
+    opponents.some((opponent) =>
+      opponent.spottedBy?.some((spotterId) => id(spotterId) === shooterId)
+    )
+  ) {
+    return true;
+  }
+  return opponents.every((opponent) => opponent.spottedBy !== undefined)
+    ? false
+    : null;
+}
+
 function pair(attackerId: string, victimId: string): [string, string] {
   return attackerId.localeCompare(victimId) <= 0
     ? [attackerId, victimId]
@@ -398,6 +436,12 @@ function analyzeShots(round: Round, tickRate: number): {
         time: fire.t,
         origin: { x: fire.x, y: fire.y, z: fire.z },
         yaw: fire.yaw,
+        enemySpotted: enemySpottedAtFire(
+          round,
+          shooterId,
+          fire.t,
+          tickRate,
+        ),
         impacts: [],
         damages: [],
         unavailableReasons,
@@ -524,7 +568,7 @@ function finalizeFiringSequence(
     roundNumber,
     shooterId: sequence.shooterId,
     weapon: sequence.weapon,
-    kind: shotCount === 1 ? "tap" : shotCount <= 4 ? "burst" : "spray",
+    kind: shotCount === 1 ? "tap" : shotCount === 2 ? "burst" : "spray",
     startTick: first.tick,
     endTick: last.tick,
     startTime: first.time,

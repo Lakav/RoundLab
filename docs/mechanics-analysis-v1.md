@@ -143,10 +143,28 @@ ou de dégâts reste visible via les raisons d'indisponibilité du round.
 Chaque chaîne conserve :
 
 - le tir source, son joueur, son arme, sa position et son orientation ;
+- l'état approximatif « au moins un ennemi repéré » lorsqu'il est exposé par
+  le masque `approximate_spotted_by` de la démo ;
 - les impacts associés avec leurs coordonnées ;
 - les dégâts associés avec victime, dégâts de vie et d'armure, et hitgroup ;
 - les identifiants de preuves ouvrables dans le replay ;
 - les éventuelles raisons d'indisponibilité.
+
+### 5.4 Précision sur ennemi repéré
+
+Le parseur échantillonne explicitement chaque tick de `weapon_fire`. À cet
+instant, un tir est marqué comme effectué sur un ennemi repéré si au moins un
+adversaire vivant indique le Steam ID du tireur dans son masque
+`approximate_spotted_by`.
+
+La précision correspond au nombre de ces tirs ayant au moins un dégât associé,
+divisé par le nombre total de tirs effectués pendant qu'un ennemi est repéré.
+Elle reste indisponible si le masque manque sur une partie des tirs, si aucun
+tir éligible n'existe ou si l'association tir-dégât n'est pas fiable.
+
+Cette mesure est explicitement approximative : elle dépend d'un état réseau de
+la démo que le parseur amont lui-même qualifie d'`approximate`. Elle n'est pas
+présentée comme identique au calcul géométrique ou propriétaire de Leetify.
 
 ## 6. Taps, bursts et sprays V1
 
@@ -162,8 +180,8 @@ Un changement d'arme ou un intervalle strictement supérieur à 250 ms ouvre une
 nouvelle séquence. La séquence est classée selon son nombre de tirs :
 
 - un tir : `tap` ;
-- deux à quatre tirs : `burst` ;
-- cinq tirs ou plus : `spray`.
+- deux tirs : `burst` ;
+- trois tirs ou plus : `spray`.
 
 Cette classification est une convention analytique V1, pas une reconstruction
 de l'état interne du recul de l'arme. Sans télémétrie supplémentaire, elle ne

@@ -15,8 +15,6 @@ import {
   type EconomyCategory,
   type FlashMetrics,
   type GrenadeCounts,
-  type KeyMoment,
-  type KeyMomentCategory,
   type LogicalTeamAnalysis,
   type LogicalTeamId,
   type LogicalTeamMetrics,
@@ -31,6 +29,8 @@ import {
   type RoundEconomyAnalysis,
   type UtilityDamageMetrics,
 } from "./types.ts";
+
+const EFFECTIVE_FLASH_MIN_DURATION_SECONDS = 1.1;
 
 type AnalyzeMatchContext = {
   matchId: string;
@@ -70,8 +70,13 @@ type MutablePlayerAnalysis = {
   flashesAvailable: boolean;
   enemiesFlashed: number;
   teammatesFlashed: number;
+  effectiveEnemiesFlashed: number;
+  effectiveTeammatesFlashed: number;
   enemyBlindDuration: number;
   teammateBlindDuration: number;
+  enemyBlindFlashCount: number;
+  longestEnemyBlindDuration: number;
+  flashesLeadingToKills: number;
   heDamage: number;
   fireDamage: number;
   teammateHeDamage: number;
@@ -79,6 +84,7 @@ type MutablePlayerAnalysis = {
   flashAssists: number;
   utilitySavedAvailable: boolean;
   utilitySavedOnDeath: GrenadeCounts;
+  unusedUtilityValue: number;
   tradeKillEvidenceSeen: Set<string>;
   metricEvidence: PlayerMetricEvidence;
   unavailableReasons: Set<string>;
@@ -138,20 +144,43 @@ function emptyGrenadeCounts(): GrenadeCounts {
   return { total: 0, flash: 0, smoke: 0, he: 0, molotov: 0, incendiary: 0, decoy: 0 };
 }
 
+export function utilityQuantityRating(
+  grenades: GrenadeCounts | null,
+  roundsPlayed: number,
+): number | null {
+  if (grenades === null || roundsPlayed <= 0) return null;
+  const thrownWithoutDecoys = Math.max(0, grenades.total - grenades.decoy);
+  const ratioToThreePerRound = Math.min(
+    1,
+    thrownWithoutDecoys / roundsPlayed / 3,
+  );
+  return Math.pow(ratioToThreePerRound, 2 / 3) * 100;
+}
+
 function flashMetrics(
   enemiesFlashed: number,
   teammatesFlashed: number,
+  effectiveEnemiesFlashed: number,
+  effectiveTeammatesFlashed: number,
   enemyBlindDuration: number,
   teammateBlindDuration: number,
+  enemyBlindFlashCount: number,
+  longestEnemyBlindDuration: number,
+  flashesLeadingToKills: number,
 ): FlashMetrics {
   return {
     enemiesFlashed,
     teammatesFlashed,
+    effectiveEnemiesFlashed,
+    effectiveTeammatesFlashed,
     enemyBlindDuration,
     teammateBlindDuration,
-    averageEnemyBlindDuration: enemiesFlashed === 0
+    enemyBlindFlashCount,
+    longestEnemyBlindDuration,
+    flashesLeadingToKills,
+    averageEnemyBlindDuration: enemyBlindFlashCount === 0
       ? null
-      : enemyBlindDuration / enemiesFlashed,
+      : longestEnemyBlindDuration / enemyBlindFlashCount,
     averageTeammateBlindDuration: teammatesFlashed === 0
       ? null
       : teammateBlindDuration / teammatesFlashed,
@@ -182,6 +211,14 @@ function grenadeKind(weapon: string | undefined): GrenadeKind | null {
   ) return "incendiary";
   if (normalized === "decoy" || normalized === "decoygrenade") return "decoy";
   return null;
+}
+
+function grenadeValue(kind: GrenadeKind): number {
+  if (kind === "flash") return 200;
+  if (kind === "smoke" || kind === "he") return 300;
+  if (kind === "molotov") return 400;
+  if (kind === "incendiary") return 500;
+  return 50;
 }
 
 function utilityDamageKind(weapon: string | undefined): "he" | "fire" | null {
@@ -510,21 +547,36 @@ function sumGrenades(
 function sumFlashes(analyses: BasePlayerAnalysis[]): FlashMetrics | null {
   let enemiesFlashed = 0;
   let teammatesFlashed = 0;
+  let effectiveEnemiesFlashed = 0;
+  let effectiveTeammatesFlashed = 0;
   let enemyBlindDuration = 0;
   let teammateBlindDuration = 0;
+  let enemyBlindFlashCount = 0;
+  let longestEnemyBlindDuration = 0;
+  let flashesLeadingToKills = 0;
   for (const analysis of analyses) {
     const value = analysis.metrics.flashes;
     if (value === null || value === undefined) return null;
     enemiesFlashed += value.enemiesFlashed;
     teammatesFlashed += value.teammatesFlashed;
+    effectiveEnemiesFlashed += value.effectiveEnemiesFlashed;
+    effectiveTeammatesFlashed += value.effectiveTeammatesFlashed;
     enemyBlindDuration += value.enemyBlindDuration;
     teammateBlindDuration += value.teammateBlindDuration;
+    enemyBlindFlashCount += value.enemyBlindFlashCount;
+    longestEnemyBlindDuration += value.longestEnemyBlindDuration;
+    flashesLeadingToKills += value.flashesLeadingToKills;
   }
   return flashMetrics(
     enemiesFlashed,
     teammatesFlashed,
+    effectiveEnemiesFlashed,
+    effectiveTeammatesFlashed,
     enemyBlindDuration,
     teammateBlindDuration,
+    enemyBlindFlashCount,
+    longestEnemyBlindDuration,
+    flashesLeadingToKills,
   );
 }
 
@@ -562,6 +614,11 @@ function aggregateSide(analyses: BasePlayerAnalysis[]): PlayerSideAnalysis | nul
   const openingAttempts = sumNullableMetric(analyses, "openingAttempts");
   const survivedRounds = sumNullableMetric(analyses, "survivedRounds");
   const kastRounds = sumNullableMetric(analyses, "kastRounds");
+  const unusedUtilityValue = sumNullableMetric(
+    analyses,
+    "unusedUtilityValue",
+  );
+  const grenadesThrown = sumGrenades(analyses, "grenadesThrown");
   const metricEvidence = emptyEvidence();
   for (const analysis of analyses) {
     for (const key of Object.keys(metricEvidence) as (keyof PlayerMetricEvidence)[]) {
@@ -597,11 +654,20 @@ function aggregateSide(analyses: BasePlayerAnalysis[]): PlayerSideAnalysis | nul
       tradeDeaths: sumNullableMetric(analyses, "tradeDeaths"),
       kastRounds,
       kastRate: kastRounds === null || roundsPlayed === 0 ? null : kastRounds / roundsPlayed,
-      grenadesThrown: sumGrenades(analyses, "grenadesThrown"),
+      grenadesThrown,
       flashes: sumFlashes(analyses),
       utilityDamage: sumUtilityDamage(analyses),
       flashAssists: sumNullableMetric(analyses, "flashAssists"),
       utilitySavedOnDeath: sumGrenades(analyses, "utilitySavedOnDeath"),
+      unusedUtilityValue,
+      averageUnusedUtilityValue:
+        unusedUtilityValue === null || deaths === 0
+          ? null
+          : unusedUtilityValue / deaths,
+      utilityQuantityRating: utilityQuantityRating(
+        grenadesThrown,
+        roundsPlayed,
+      ),
     },
     metricEvidence,
     unavailableReasons: [...new Set(analyses.flatMap((analysis) => analysis.unavailableReasons))].sort(),
@@ -673,97 +739,11 @@ function aggregateLogicalTeam(
   };
 }
 
-const KEY_MOMENT_PRIORITY: Record<KeyMomentCategory, number> = {
-  clutch_win: 1,
-  opening_win: 2,
-  opening_loss: 2.1,
-  multikill: 3,
-  trade_kill: 4,
-  bomb_planted: 5,
-  bomb_defused: 5,
-};
-
 function compareEvidence(left: AnalysisEvidence, right: AnalysisEvidence): number {
   return left.roundNumber - right.roundNumber ||
     (left.tick ?? Number.MAX_SAFE_INTEGER) - (right.tick ?? Number.MAX_SAFE_INTEGER) ||
     (left.sequence ?? Number.MAX_SAFE_INTEGER) - (right.sequence ?? Number.MAX_SAFE_INTEGER) ||
     left.evidenceId.localeCompare(right.evidenceId);
-}
-
-function buildKeyMoments(
-  players: BasePlayerAnalysis[],
-  evidence: AnalysisEvidence[],
-): KeyMoment[] {
-  const byId = new Map(evidence.map((proof) => [proof.evidenceId, proof]));
-  const candidates = new Map<string, {
-    categories: Set<KeyMomentCategory>;
-    players: Set<string>;
-  }>();
-  const add = (evidenceId: string, category: KeyMomentCategory, actor: string | null) => {
-    if (!byId.has(evidenceId)) return;
-    const candidate = candidates.get(evidenceId) ?? {
-      categories: new Set<KeyMomentCategory>(),
-      players: new Set<string>(),
-    };
-    candidate.categories.add(category);
-    if (actor !== null) candidate.players.add(actor);
-    candidates.set(evidenceId, candidate);
-  };
-
-  for (const player of players) {
-    for (const id of player.metricEvidence.openingWins) add(id, "opening_win", player.playerId);
-    for (const id of player.metricEvidence.openingLosses) add(id, "opening_loss", player.playerId);
-    for (const id of player.metricEvidence.tradeKills) add(id, "trade_kill", player.playerId);
-    for (const id of player.metricEvidence.clutchWins) {
-      if (byId.get(id)?.type === "round_end") add(id, "clutch_win", player.playerId);
-    }
-
-    const killsByRound = new Map<number, AnalysisEvidence[]>();
-    for (const id of player.metricEvidence.kills) {
-      const proof = byId.get(id);
-      if (!proof) continue;
-      const roundKills = killsByRound.get(proof.roundNumber) ?? [];
-      roundKills.push(proof);
-      killsByRound.set(proof.roundNumber, roundKills);
-    }
-    for (const roundKills of killsByRound.values()) {
-      if (roundKills.length < 3) continue;
-      roundKills.sort(compareEvidence);
-      add(roundKills.at(-1)!.evidenceId, "multikill", player.playerId);
-    }
-  }
-
-  for (const proof of evidence) {
-    if (proof.type === "bomb_planted") {
-      add(proof.evidenceId, "bomb_planted", proof.actors[0] ?? null);
-    } else if (proof.type === "bomb_defused") {
-      add(proof.evidenceId, "bomb_defused", proof.actors[0] ?? null);
-    }
-  }
-
-  return [...candidates.entries()]
-    .map(([evidenceId, candidate]) => {
-      const proof = byId.get(evidenceId)!;
-      const categories = [...candidate.categories].sort((left, right) =>
-        KEY_MOMENT_PRIORITY[left] - KEY_MOMENT_PRIORITY[right] ||
-        left.localeCompare(right)
-      );
-      return {
-        evidenceId,
-        roundNumber: proof.roundNumber,
-        tick: proof.tick,
-        sequence: proof.sequence,
-        time: proof.time,
-        primaryCategory: categories[0],
-        categories,
-        players: [...candidate.players].sort(),
-      };
-    })
-    .sort((left, right) => {
-      const leftProof = byId.get(left.evidenceId)!;
-      const rightProof = byId.get(right.evidenceId)!;
-      return compareEvidence(leftProof, rightProof);
-    });
 }
 
 function analyzeMatchBase(match: MatchData, context: AnalyzeMatchContext): BaseMatchAnalysis {
@@ -805,8 +785,13 @@ function analyzeMatchBase(match: MatchData, context: AnalyzeMatchContext): BaseM
       flashesAvailable: true,
       enemiesFlashed: 0,
       teammatesFlashed: 0,
+      effectiveEnemiesFlashed: 0,
+      effectiveTeammatesFlashed: 0,
       enemyBlindDuration: 0,
       teammateBlindDuration: 0,
+      enemyBlindFlashCount: 0,
+      longestEnemyBlindDuration: 0,
+      flashesLeadingToKills: 0,
       heDamage: 0,
       fireDamage: 0,
       teammateHeDamage: 0,
@@ -814,6 +799,7 @@ function analyzeMatchBase(match: MatchData, context: AnalyzeMatchContext): BaseM
       flashAssists: 0,
       utilitySavedAvailable: true,
       utilitySavedOnDeath: emptyGrenadeCounts(),
+      unusedUtilityValue: 0,
       tradeKillEvidenceSeen: new Set(),
       metricEvidence: emptyEvidence(),
       unavailableReasons: new Set(),
@@ -1031,6 +1017,14 @@ function analyzeMatchBase(match: MatchData, context: AnalyzeMatchContext): BaseM
         addUnavailable(participant, "missing_flash_events");
       }
     } else {
+      const flashGroups = new Map<string, {
+        throwerId: string;
+        throwerTeam: number;
+        time: number;
+        longestEnemyDuration: number;
+        effectiveEnemies: Map<string, number>;
+        effectiveTeammates: Set<string>;
+      }>();
       for (const [index, flash] of canonicalFlashes.entries()) {
         if (
           flash.thrower === undefined ||
@@ -1051,12 +1045,72 @@ function analyzeMatchBase(match: MatchData, context: AnalyzeMatchContext): BaseM
         const proof = flashEvidence(round, flash, index);
         recordEvidence(proof);
         thrower.metricEvidence.flashes.push(proof.evidenceId);
+        const groupKey = `${throwerId}:${flash.tick}`;
+        const group = flashGroups.get(groupKey) ?? {
+          throwerId,
+          throwerTeam,
+          time: flash.t,
+          longestEnemyDuration: 0,
+          effectiveEnemies: new Map<string, number>(),
+          effectiveTeammates: new Set<string>(),
+        };
         if (throwerTeam !== victimTeam) {
           thrower.enemiesFlashed++;
           thrower.enemyBlindDuration += flash.duration;
-        } else if (throwerId !== victimId) {
-          thrower.teammatesFlashed++;
-          thrower.teammateBlindDuration += flash.duration;
+          group.longestEnemyDuration = Math.max(
+            group.longestEnemyDuration,
+            flash.duration,
+          );
+          if (flash.duration > EFFECTIVE_FLASH_MIN_DURATION_SECONDS) {
+            group.effectiveEnemies.set(
+              victimId,
+              Math.max(
+                group.effectiveEnemies.get(victimId) ?? 0,
+                flash.duration,
+              ),
+            );
+          }
+        } else {
+          if (throwerId !== victimId) {
+            thrower.teammatesFlashed++;
+            thrower.teammateBlindDuration += flash.duration;
+          }
+          if (flash.duration > EFFECTIVE_FLASH_MIN_DURATION_SECONDS) {
+            group.effectiveTeammates.add(victimId);
+          }
+        }
+        flashGroups.set(groupKey, group);
+      }
+
+      for (const group of flashGroups.values()) {
+        const thrower = players.get(group.throwerId);
+        if (!thrower) continue;
+        thrower.effectiveEnemiesFlashed += group.effectiveEnemies.size;
+        thrower.effectiveTeammatesFlashed += group.effectiveTeammates.size;
+        if (group.longestEnemyDuration > 0) {
+          thrower.enemyBlindFlashCount++;
+          thrower.longestEnemyBlindDuration += group.longestEnemyDuration;
+        }
+        for (const [victimId, duration] of group.effectiveEnemies) {
+          const qualifyingKill = canonicalEvents.find((event) => {
+            if (
+              event.type !== "kill" ||
+              event.victim === undefined ||
+              event.killer === undefined ||
+              playerId(event.victim) !== victimId ||
+              event.t < group.time ||
+              event.t > group.time + duration
+            ) {
+              return false;
+            }
+            const killerTeam = playerTeamAtOrBefore(
+              round,
+              playerId(event.killer),
+              event.t,
+            );
+            return killerTeam === group.throwerTeam;
+          });
+          if (qualifyingKill) thrower.flashesLeadingToKills++;
         }
       }
     }
@@ -1132,6 +1186,13 @@ function analyzeMatchBase(match: MatchData, context: AnalyzeMatchContext): BaseM
       victim.utilitySavedOnDeath.molotov += saved.molotov;
       victim.utilitySavedOnDeath.incendiary += saved.incendiary;
       victim.utilitySavedOnDeath.decoy += saved.decoy;
+      victim.unusedUtilityValue +=
+        saved.flash * grenadeValue("flash") +
+        saved.smoke * grenadeValue("smoke") +
+        saved.he * grenadeValue("he") +
+        saved.molotov * grenadeValue("molotov") +
+        saved.incendiary * grenadeValue("incendiary") +
+        saved.decoy * grenadeValue("decoy");
       victim.metricEvidence.utilitySavedOnDeath.push(proof.evidenceId, deathProof.evidenceId);
     }
 
@@ -1446,8 +1507,13 @@ function analyzeMatchBase(match: MatchData, context: AnalyzeMatchContext): BaseM
             ? flashMetrics(
               player.enemiesFlashed,
               player.teammatesFlashed,
+              player.effectiveEnemiesFlashed,
+              player.effectiveTeammatesFlashed,
               player.enemyBlindDuration,
               player.teammateBlindDuration,
+              player.enemyBlindFlashCount,
+              player.longestEnemyBlindDuration,
+              player.flashesLeadingToKills,
             )
             : null,
           utilityDamage: player.damageAvailable
@@ -1462,13 +1528,23 @@ function analyzeMatchBase(match: MatchData, context: AnalyzeMatchContext): BaseM
           utilitySavedOnDeath: player.utilitySavedAvailable
             ? player.utilitySavedOnDeath
             : null,
+          unusedUtilityValue: player.utilitySavedAvailable
+            ? player.unusedUtilityValue
+            : null,
+          averageUnusedUtilityValue:
+            player.utilitySavedAvailable && player.deaths > 0
+              ? player.unusedUtilityValue / player.deaths
+              : null,
+          utilityQuantityRating: utilityQuantityRating(
+            player.grenadesAvailable ? player.grenadesThrown : null,
+            player.roundsPlayed,
+          ),
         },
         metricEvidence: player.metricEvidence,
         unavailableReasons: [...player.unavailableReasons].sort(),
       };
     });
 
-  const keyMoments = buildKeyMoments(resultPlayers, evidence);
   evidence.sort(compareEvidence);
 
   return {
@@ -1479,7 +1555,9 @@ function analyzeMatchBase(match: MatchData, context: AnalyzeMatchContext): BaseM
     generatedAt: context.generatedAt,
     players: resultPlayers,
     economyRounds,
-    keyMoments,
+    // Kept empty for schema compatibility: RoundLab no longer classifies
+    // replay events into automatically selected "key moments".
+    keyMoments: [],
     evidence,
   };
 }
@@ -1661,7 +1739,7 @@ export function analyzeMatch(match: MatchData, context: AnalyzeMatchContext): Ma
       scoreB,
       players: roundPlayers,
       economy: roundAnalysis.economyRounds,
-      keyMoments: roundAnalysis.keyMoments,
+      keyMoments: [],
       evidenceIds: roundAnalysis.evidence.map((proof) => proof.evidenceId),
     });
     for (const id of participants) {

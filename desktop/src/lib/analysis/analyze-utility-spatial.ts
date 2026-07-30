@@ -114,6 +114,15 @@ function smokeImpact(
   const playerIdsInside = new Set<string>();
   let evaluatedSightlineSamples = geometry === null ? null : 0;
   let blockedSightlineSamples = geometry === null ? null : 0;
+  const blockedPlayerPairs = new Map<
+    string,
+    {
+      playerIds: [string, string];
+      sampleCount: number;
+      firstTime: number;
+      lastTime: number;
+    }
+  >();
   for (const frame of activeFrames(round, effect)) {
     const alive = frame.players.filter((player) => player.hp > 0);
     for (const player of alive) {
@@ -148,6 +157,23 @@ function smokeImpact(
           SMOKE_RADIUS_WORLD
         ) {
           blockedSightlineSamples = (blockedSightlineSamples ?? 0) + 1;
+          const playerIds = [String(first.id), String(second.id)].sort() as [
+            string,
+            string,
+          ];
+          const key = playerIds.join("\u0000");
+          const pair = blockedPlayerPairs.get(key);
+          if (pair) {
+            pair.sampleCount++;
+            pair.lastTime = frame.t;
+          } else {
+            blockedPlayerPairs.set(key, {
+              playerIds,
+              sampleCount: 1,
+              firstTime: frame.t,
+              lastTime: frame.t,
+            });
+          }
         }
       }
     }
@@ -163,6 +189,13 @@ function smokeImpact(
     playerIdsInside: [...playerIdsInside].sort(),
     evaluatedSightlineSamples,
     blockedSightlineSamples,
+    blockedPlayerPairs: [...blockedPlayerPairs.values()].sort((left, right) =>
+      right.sampleCount - left.sampleCount ||
+      left.firstTime - right.firstTime ||
+      left.playerIds.join("\u0000").localeCompare(
+        right.playerIds.join("\u0000"),
+      )
+    ),
     unavailableReasons:
       geometry === null && geometryReason !== null ? [geometryReason] : [],
   };

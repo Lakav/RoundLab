@@ -50,8 +50,13 @@ export type GrenadeCounts = {
 export type FlashMetrics = {
   enemiesFlashed: number;
   teammatesFlashed: number;
+  effectiveEnemiesFlashed: number;
+  effectiveTeammatesFlashed: number;
   enemyBlindDuration: number;
   teammateBlindDuration: number;
+  enemyBlindFlashCount: number;
+  longestEnemyBlindDuration: number;
+  flashesLeadingToKills: number;
   averageEnemyBlindDuration: number | null;
   averageTeammateBlindDuration: number | null;
 };
@@ -113,6 +118,10 @@ export type PlayerAnalysisMetrics = {
   utilityDamage?: UtilityDamageMetrics | null;
   flashAssists: number | null;
   utilitySavedOnDeath: GrenadeCounts | null;
+  unusedUtilityValue?: number | null;
+  averageUnusedUtilityValue?: number | null;
+  /** Public Leetify-compatible quantity formula; excludes decoys. */
+  utilityQuantityRating?: number | null;
 };
 
 export type PlayerAnalysis = {

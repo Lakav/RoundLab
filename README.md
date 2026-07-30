@@ -6,10 +6,10 @@ de rejouer chaque round sur un radar 2D interactif.
 
 **Application publique :** [lakav.github.io/RoundLab](https://lakav.github.io/RoundLab/)
 
-> RoundLab est actuellement un lecteur de replay avancé. La prochaine grande
-> évolution prévue est la construction d'un véritable rapport de partie avec
-> des analyses détaillées pour chaque joueur. Cette roadmap est décrite dans ce
-> document, mais elle n'est pas encore implémentée.
+> RoundLab possède un replay avancé et un moteur de statistiques déterministe
+> couvrant le combat, l'aim, les utilitaires, l'économie et les données
+> spatiales. Le produit ne sélectionne plus automatiquement de « moments clés »
+> et ne formule plus de Review tactique : le joueur explore lui-même le replay.
 
 ## Sommaire
 
@@ -17,6 +17,7 @@ de rejouer chaque round sur un radar 2D interactif.
 - [État actuel](#état-actuel)
 - [Limites actuelles](#limites-actuelles)
 - [Vision produit](#vision-produit)
+- [Expérience statistique cible](#expérience-statistique-cible)
 - [Architecture analytique cible](#architecture-analytique-cible)
 - [Domaines d'analyse prévus](#domaines-danalyse-prévus)
 - [Faisabilité selon les données](#faisabilité-selon-les-données)
@@ -31,8 +32,8 @@ de rejouer chaque round sur un radar 2D interactif.
 - **Traitement local :** aucune démo n'est envoyée vers un serveur.
 - **Résultats explicables :** une statistique doit indiquer comment elle est
   calculée et permettre de retrouver les actions qui la justifient.
-- **Replay comme preuve :** les futures analyses devront ouvrir directement le
-  replay au round et au timestamp concernés.
+- **Replay libre :** les actions factuelles peuvent ouvrir le bon round, mais
+  RoundLab ne choisit pas automatiquement les séquences importantes.
 - **Fiabilité avant quantité :** aucune note globale ne doit être affichée sans
   données suffisantes, formule documentée et validation sérieuse.
 - **Séparation des responsabilités :** le parseur extrait les faits, le moteur
@@ -53,30 +54,34 @@ RoundLab sait aujourd'hui :
 - parcourir la timeline, changer la vitesse et passer d'un round à l'autre ;
 - dessiner des annotations sur la map ;
 - superposer plusieurs rounds d'un même joueur avec le mode condensé ;
+- produire un rapport avec K/D/A, ADR, KAST, openings, clutches, trades,
+  économie et utilitaires ;
+- analyser les tirs, sprays, mouvements au tir, duels et placements initiaux
+  du viseur lorsque les données nécessaires existent ;
+- mesurer zones visitées, transitions, rotations, spacing, tradeability,
+  contrôle de zone et habitudes de trajectoire ;
+- relier les actions principales à un round et un timestamp du replay ;
 - fonctionner comme un site statique déployé sur GitHub Pages.
 
-Le replay interactif constitue la première grande fonctionnalité du produit.
-Il doit rester stable pendant la construction de la partie analytique.
+Le rapport se concentre sur les valeurs mesurées. Le replay, les trajectoires
+et les actions horodatées restent disponibles pour une analyse manuelle.
 
 ## Limites actuelles
 
 RoundLab ne fournit pas encore :
 
-- de rapport statistique complet de la partie ;
-- de fiche analytique par joueur ;
-- d'ADR calculé ni de rapport de dégâts ;
-- d'analyse précise de l'aim, du spray ou du counter-strafe ;
-- d'analyse des lignes de vue et du placement du viseur ;
-- de score de positionnement ;
-- de benchmarks par niveau ;
-- de suivi de progression sur plusieurs matchs ;
-- de recommandations d'entraînement automatiques.
+- de maillages réels validés pour toutes les maps, nécessaires aux lignes de
+  vue et mesures de visibilité les plus fiables ;
+- de benchmarks suffisamment alimentés pour publier des percentiles par
+  niveau, map et côté ;
+- de scores Aim, Positioning ou Utility Quality statistiquement calibrés ;
+- d'interface complète pour l'historique statistique multi-matchs.
 
-Le schéma de replay actuel contient déjà les positions, orientations
-horizontales, inventaires, économies, kills, dégâts détaillés, hitgroups,
-actions de bombe, tirs, impacts et projectiles. Il ne contient pas encore
-toutes les données nécessaires aux analyses les plus avancées : pitch, états
-de mouvement précis, crouch et visibilité réelle entre les joueurs.
+Le schéma de replay contient les positions, yaw et pitch lorsqu'ils sont
+disponibles, états de mouvement, inventaires, économies, kills, dégâts,
+hitgroups, tirs, impacts, flashes et projectiles. Les limites restantes viennent
+surtout de la géométrie réelle des maps, des données parfois absentes dans les
+démos et du manque de corpus de référence.
 
 Le format produit par le parseur est versionné
 [`roundlab.replay.v2`](docs/replay-schema-v2.md). Les Steam IDs y sont des
@@ -84,15 +89,43 @@ chaînes afin de rester exacts dans les navigateurs.
 
 ## Vision produit
 
-La cible est une interface d'analyse post-match approfondie, inspirée par les
+La cible est une interface statistique post-match approfondie, inspirée par les
 meilleures plateformes d'analyse CS2, mais centrée sur trois niveaux de lecture :
 
-1. **Résumé :** comprendre rapidement la partie, les forces et les faiblesses.
-2. **Détail :** explorer les métriques par équipe, joueur, côté et round.
-3. **Preuve :** ouvrir le replay exactement au moment qui explique le résultat.
+1. **Résumé :** lire immédiatement le score et les métriques principales.
+2. **Détail :** explorer les valeurs par équipe, joueur, côté et round.
+3. **Replay :** vérifier manuellement les actions horodatées si nécessaire.
 
-RoundLab ne doit pas devenir un tableau rempli de scores opaques. Une analyse
-doit rester vérifiable, contextualisée et exploitable par un joueur ou un coach.
+RoundLab ne doit ni inventer de conclusion tactique, ni classer arbitrairement
+les actions d'un joueur. Une statistique doit rester calculable, documentée et
+vérifiable.
+
+## Expérience statistique cible
+
+Le rapport est organisé autour de trois vues stables :
+
+1. **Résumé :** résultat et tableau statistique configurable.
+2. **Joueurs :** métriques regroupées par combat, aim, utilitaires et jeu
+   collectif.
+3. **Rounds :** déroulé chronologique, économie et contributions par round.
+
+Le replay libre et les trajectoires restent séparés du rapport. Les lignes
+d'actions (kills, trades, utilitaires, openings) peuvent servir de raccourcis
+vers leur timestamp, sans être présentées comme des moments importants.
+
+### Présentation de la bêta
+
+L'accueil présente explicitement RoundLab comme une bêta régulièrement
+modifiée. Il indique que la bêta est entièrement gratuite et que la version
+finale stable sera payante. La route statique `/feedback` prépare un rapport de
+bug structuré, permet de le copier et ouvre une issue GitHub préremplie. Le
+rapport utilise des définitions contextuelles accessibles au survol et au
+clavier pour les termes statistiques ou techniques.
+
+Le rapport partage désormais un système visuel unique : bandeau de match avec
+radar en arrière-plan, navigation principale et secondaire cohérente, cartes de
+métriques homogènes, tableaux denses avec identité d'équipe et première colonne
+fixe, et états de focus conformes à la navigation clavier.
 
 ## Architecture analytique cible
 
@@ -102,9 +135,9 @@ flowchart LR
     B --> C["Événements normalisés"]
     C --> D["Moteur d'analyse"]
     D --> E["Métriques vérifiables"]
-    D --> F["Erreurs et habitudes"]
+    D --> F["Mesures spatiales"]
     E --> G["Benchmarks et modèles"]
-    F --> H["Rapport de partie"]
+    F --> H["Rapport statistique"]
     G --> H
     H --> I["Replay au bon timestamp"]
 ```
@@ -200,11 +233,9 @@ doit pas modifier silencieusement les anciennes analyses.
 
 - tendances sur les derniers matchs ;
 - évolution par map, côté, arme et rôle ;
-- erreurs récurrentes ;
-- zones faibles ;
-- habitudes d'utilitaires ;
 - comparaison du joueur avec ses propres performances passées ;
-- objectifs d'entraînement mesurables.
+- médianes, dispersions, tailles d'échantillon et couverture ;
+- aucune recommandation ou objectif généré automatiquement.
 
 ## Faisabilité selon les données
 
@@ -276,6 +307,7 @@ moteur d'affichage du replay.
 - [x] conserver dégâts de vie, dégâts d'armure, arme et hitgroup ;
 - [x] extraire les impacts de balles ;
 - [x] ajouter pitch, vitesse et états de mouvement ;
+- [x] conserver le masque approximatif des joueurs ayant repéré chaque cible ;
 - [x] améliorer les informations de flash ;
 - [x] conserver les achats (la valeur d'équipement est déjà extraite).
 
@@ -290,6 +322,9 @@ d'origine et leurs coordonnées XYZ exactes dans `rounds[].bulletImpacts`.
 Chaque position joueur peut désormais conserver le pitch, la vitesse et ses
 composantes XYZ, ainsi que les états en l'air, en marche et d'accroupissement.
 Ces propriétés restent optionnelles lorsqu'elles sont absentes de la démo.
+Les nouveaux imports conservent aussi le masque approximatif des joueurs ayant
+repéré chaque cible au tick échantillonné. Le rapport s'en sert pour calculer
+une précision sur ennemi repéré clairement signalée comme estimation.
 Les événements `player_blind` sont maintenant conservés avec lanceur, victime,
 durée, tick, ordre et timestamp ; ils alimentent aussi directement l'état de
 flash affiché dans les frames.
@@ -309,7 +344,7 @@ confiée au beta testing et ne bloque plus cette feuille de route.
 - [x] calculer survie, économie et utilisation des grenades ;
 - [x] conserver les rounds, ticks, séquences et timestamps servant de preuves ;
 - [x] ajouter des tests déterministes pour chaque formule implémentée ;
-- [x] produire la liste chronologique des moments importants.
+- [x] retirer la liste chronologique automatique de moments importants.
 
 **Critère de sortie :** un rapport JSON stable peut être produit sans lancer
 l'interface.
@@ -333,8 +368,13 @@ partir du dernier inventaire antérieur, en excluant les grenades déjà lancée
 Il classe chaque économie de camp au freeze time selon les seuils V1 documentés.
 Les mêmes métriques joueur sont recalculées séparément pour les rounds eco,
 force-buy et full-buy, avec leurs preuves et le nombre de rounds inclassables.
-Les openings, multikills, trades, clutches gagnés et actions de bombe sont
-également fusionnés dans une chronologie stable de moments importants.
+Le rapport calcule également la composante publique Utility Quantity sur
+100, en excluant les decoys et sans la présenter comme un Utility Rating
+complet. L'audit de parité détaillé est disponible dans
+[`docs/leetify-parity-audit-2026.md`](docs/leetify-parity-audit-2026.md).
+Les openings, multikills, trades, clutches gagnés et actions de bombe restent
+des compteurs factuels. Ils ne sont plus fusionnés dans une chronologie
+automatiquement qualifiée d'importante.
 
 ### Étape 4 — Rapport de partie V1
 
@@ -365,9 +405,8 @@ les agrégats A/B, classe les joueurs, puis affiche une fiche joueur avec résum
 détail, profil graphique, performance T/CT et preuves. Chaque preuve ouvre le
 round concerné trois secondes avant l'action.
 La section Rounds permet aussi de parcourir toute la partie, y compris les
-prolongations, avec score, gagnant logique, côté gagnant, économie, statistiques
-des joueurs et moments importants de chaque round. Ces moments ouvrent eux
-aussi directement le replay.
+prolongations, avec score, gagnant logique, côté gagnant, économie et
+statistiques des joueurs.
 La section Économie synthétise la répartition des side-rounds eco, force-buy et
 full-buy, compare les performances de chaque joueur par catégorie et détaille
 les valeurs d'équipement T/CT de chaque round. Lorsqu'une preuve économique est
@@ -379,10 +418,13 @@ ouverte dans le replay.
 La section Utilitaires détaille les lancers par type, les flash assists et les
 grenades encore détenues à la mort, avec les actions sources rejouables. Elle ne
 prétend pas mesurer l'impact spatial, qui appartient à l'étape 6.
-La section Aim regroupe uniquement les résultats de combat déjà défendables :
-kills, headshots, ADR, openings et multikills, avec leurs preuves. Les mesures
-de placement du viseur, spray et counter-strafe restent explicitement réservées
-au moteur mécanique de l'étape 5.
+La section Aim expose maintenant deux niveaux. Le premier reste purement brut :
+tirs, tirs touchés, dégâts associés, dégâts par impact, impacts tête/corps,
+séquences tap/burst/spray et proportion de tirs en mouvement. Le second présente
+les métriques avancées avec leur nombre d'échantillons : précision sur ennemi
+repéré, time to damage, erreur initiale du viseur, head accuracy, spray accuracy
+et counter-strafe. Une association tir-dégât incomplète laisse volontairement
+les valeurs concernées vides au lieu d'afficher un faux zéro.
 La section Positionnement sert de passerelle vers la vue condensée par joueur :
 elle superpose les trajectoires, morts et utilitaires réellement enregistrés.
 Elle distingue explicitement ces faits disponibles des zones tactiques, lignes
@@ -417,8 +459,8 @@ ambiguës au lieu d'être devinées, et les flux manquants conservent une raison
 d'indisponibilité.
 Les tirs sont ensuite regroupés par joueur et par arme tant que l'intervalle
 entre deux tirs ne dépasse pas 250 ms. La convention V1 classe une séquence
-d'un tir en tap, de deux à quatre tirs en burst, et d'au moins cinq tirs en
-spray. Cette convention et sa limite sont documentées et testées explicitement.
+d'un tir en tap, de deux tirs en burst, et d'au moins trois tirs en spray.
+Cette convention et sa limite sont documentées et testées explicitement.
 Pour chaque tir, le moteur mesure aussi la vitesse horizontale issue de la
 frame récente. Il distingue tir arrêté et tir en mouvement, puis signale les
 arrêts rapides compatibles avec un counter-strafe. Il ne prétend pas connaître
@@ -517,12 +559,10 @@ commandes transforment un replay parsé en analyse métrique, puis un manifeste
 étiqueté en bundle de corpus. Chaque match conserve sa provenance et la base
 autorisant son utilisation ; doublons, chemins sortant du manifeste, provenance
 absente et versions d'analyse incompatibles sont refusés.
-Les bêta-testeurs peuvent aussi utiliser l'action `Benchmark export` sur une
-partie moderne. Ils choisissent leur joueur, leur niveau et la date, puis
-consentent explicitement à créer un fichier local. L'export ne conserve que
-leurs métriques agrégées sous un identifiant aléatoire ; tous les Steam IDs,
-noms et autres joueurs sont supprimés. La commande `benchmark:collect` agrège
-ensuite ces contributions et réapplique les seuils de disponibilité.
+Les outils de collecte restent disponibles pour un corpus construit
+explicitement depuis des fichiers locaux et des manifestes documentés. Aucun
+bouton d'export de benchmark n'est exposé dans un rapport de match : cette
+action n'appartient pas au parcours d'analyse normal d'un joueur.
 L'audit des données locales trouve 17 parties uniques et 602 rounds, mais
 uniquement sur Inferno, sans niveau ni schéma moderne déclaré. Ce n'est pas un
 corpus de benchmark suffisant : la première case reste donc volontairement
@@ -546,18 +586,15 @@ moins 100 valeurs chacune. Chaque contribution expose la valeur, le percentile,
 le sens de la métrique et les points gagnés ou perdus autour d'une base de 50.
 Si une métrique ou une distribution manque, aucun score global n'est fabriqué.
 
-### Étape 8 — Historique et recommandations
+### Étape 8 — Historique statistique
 
 - [x] agréger plusieurs parties d'un même joueur ;
-- [x] détecter tendances et régressions ;
-- [x] identifier les erreurs récurrentes ;
-- [x] générer des objectifs mesurables ;
-- [x] résumer les constats déjà calculés sans IA en V1.
-
-L'IA n'est volontairement pas intégrée en V1 : l'application locale ne possède
-pas de backend sûr pour protéger une clé ni de consentement prévu pour envoyer
-les données joueur à un service externe. Le résumé reste donc déterministe et
-ne peut reformuler que les preuves et métriques déjà produites par le moteur.
+- [x] calculer des tendances statistiques ;
+- [ ] exposer l'historique dans une page joueur ;
+- [ ] ajouter les fenêtres 5, 10, 20 et 50 matchs ;
+- [ ] ajouter médianes, dispersions, échantillons et couverture ;
+- [x] retirer de la cible produit les erreurs, objectifs et recommandations
+  générés automatiquement.
 
 L'historique joueur versionné est décrit dans
 [`docs/player-history-v1.md`](docs/player-history-v1.md). Il ordonne les parties
@@ -568,18 +605,38 @@ Les tendances V1 utilisent ensuite un test de Mann–Kendall par map et côté s
 au moins huit observations. Une amélioration ou régression exige une p-value
 bilatérale inférieure ou égale à 0,05 ; les séries trop courtes ou non
 significatives ne sont pas surinterprétées.
-Une faiblesse récurrente exige au moins trois occurrences sous le 25e
-percentile orienté dans les cinq dernières parties comparables de la même map
-et du même côté. Les matchs concernés sont conservés comme preuves ; un
-benchmark insuffisant rend la série indisponible au lieu de créer une erreur.
-Chaque faiblesse disponible devient un objectif chiffré vers la médiane de son
-benchmark. La réussite exige d'atteindre la cible dans au moins trois des cinq
-prochaines parties comparables ; la valeur initiale, le comparateur et les
-matchs ayant déclenché l'objectif restent attachés au résultat.
-Le résumé joueur V1 assemble enfin les tendances significatives, faiblesses
-récurrentes et objectifs en phrases françaises. Chaque phrase conserve
-l'identifiant du calcul source et les matchs preuves. Les tendances stables ou
-indisponibles ne sont pas transformées en constats.
+Les anciens moteurs d'erreurs récurrentes, objectifs et résumés restent dans le
+dépôt à titre expérimental, mais ne font plus partie de l'interface cible.
+
+### Étape 9 — Rework statistique du rapport
+
+- [x] regrouper le rapport en Résumé, Joueurs et Rounds ;
+- [x] retirer la sélection automatique de moments clés ;
+- [x] retirer le mode Review et les interprétations automatiques ;
+- [x] conserver les raccourcis factuels vers le replay libre ;
+- [x] remplacer les modes Classique, Condensé et Rapport par une navigation
+  unique ;
+- [x] restaurer correctement la map après avoir quitté le rapport ;
+- [x] valider le parcours sur desktop, tablette et mobile ;
+- [x] valider les maps à plusieurs étages ;
+- [x] vérifier que le rework ne conserve pas toutes les frames du match en
+  mémoire.
+
+**Critère de sortie :** le rapport présente uniquement des métriques calculées
+et des événements factuels. Le joueur reste responsable du choix des passages
+à revoir et de leur interprétation.
+
+Les dix découpages de zones ont été réaudités sur 7 555 653 positions vivantes
+dans les fixtures locales actuelles :
+100 % assignées, zéro position hors zone, zéro ambiguïté et aucune zone vide.
+Nuke, Train et Vertigo utilisent bien leurs deux couches de radar sur les
+fixtures réelles. Les rotations et occupations de zones restent des mesures
+brutes et ne sont pas transformées en conclusions tactiques.
+
+La géométrie 3D Valve n'est pas distribuée dans le dépôt. Les interprétations
+qui en dépendent restent donc indisponibles tant qu'un utilisateur n'importe pas
+un maillage local valide ; ce point ne doit pas être présenté comme validé par
+le seul audit des zones.
 
 ## Première version analytique recommandée
 
@@ -600,7 +657,7 @@ métriques fiables :
 - flash assists ;
 - utilitaires conservés à la mort ;
 - performance CT/T ;
-- moments importants reliés au replay.
+- actions factuelles horodatées et ouvrables dans le replay libre.
 
 Cette base doit être validée avant l'ajout d'un score global ou d'analyses de
 positionnement complexes.
@@ -710,18 +767,27 @@ La branche `main` est validée par la CI GitHub. Après réussite des contrôles
 workflow GitHub Pages construit et publie automatiquement l'application sur
 [lakav.github.io/RoundLab](https://lakav.github.io/RoundLab/).
 
-## Prochaine action quand la roadmap reprendra
+## Prochaine action
 
-La spécification versionnée initiale des métriques est rédigée, les événements
-complets de dégâts sont extraits, le replay V2 conserve les Steam IDs sans perte
-et le `MatchAnalysis` déterministe calcule maintenant K/D/A, headshots, ADR,
-openings, multikills, survie, clutches, trades, KAST, lancers de grenades et
-flash assists, avec les mêmes calculs séparés entre CT et T. Les utilitaires
-conservés à la mort sont également calculés lorsque l'inventaire antérieur est
-disponible. Les rounds sont maintenant classés en eco, force-buy ou full-buy
-depuis la valeur d'équipement exacte au freeze time, et les performances sont
-agrégées dans chacune de ces catégories. Les moments importants sont maintenant
-produits dans l'ordre exact du replay. La prochaine tranche du moteur V1 est
-d'ajouter les agrégats équipe et les fiches par round. Les résultats devront
-ensuite être validés sur toutes les démos de référence avant de construire
-l'interface du rapport.
+Le mode Review et la détection automatique de moments clés ont été retirés.
+RoundLab se concentre désormais sur les statistiques factuelles et le replay
+libre.
+
+L'[audit fonctionnel Leetify / RoundLab 2026](docs/leetify-parity-audit-2026.md)
+définit la suite. La première tranche du rapport est intégrée : vue par arme
+filtrable par joueur, équipe, côté et round, contexte T/CT et arme des openings,
+issues gagnées/perdues des clutches, spacing joueur et affichage explicite des
+données de précision indisponibles.
+
+Les prochaines tâches sont :
+
+1. généraliser les filtres aux autres tableaux et compléter le contexte factuel
+   des clutches sans inventer les saves ;
+2. généraliser les indicateurs de couverture et d'indisponibilité ;
+3. fiabiliser visibilité, TTD, crosshair placement, counter-strafe, trades et
+   smokes avec les géométries et données manquantes ;
+4. construire un profil statistique local multi-matchs ;
+5. ajouter éventuellement un journal avec corrélations et intervalles de
+   confiance ;
+6. ne publier des percentiles ou ratings RoundLab qu'après constitution d'un
+   corpus consenti, versionné et audité.

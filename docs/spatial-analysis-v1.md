@@ -118,6 +118,10 @@ yeux se trouvent dans le volume sphérique V1. Il examine aussi les paires
 adverses : une ligne est attribuée à la smoke uniquement si la géométrie statique
 laissait les joueurs se voir avant que le segment ne traverse le volume. Sans
 géométrie, les comptes de lignes valent `null`, jamais zéro.
+Pour chaque paire réellement coupée, le moteur conserve les deux joueurs, le
+nombre d'échantillons ainsi que les premier et dernier timestamps. Le rapport peut
+ainsi montrer une relation concrète au lieu d'un compteur anonyme répété à
+chaque frame.
 
 Pour chaque feu actif, le moteur compte les joueurs dans son rayon horizontal
 avec une tolérance verticale de 64 unités. Les événements de dégâts

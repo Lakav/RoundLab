@@ -37,6 +37,10 @@ pnpm zones:audit -- \
   --min-coverage 0.99
 ```
 
+`--parsed-dir` accepte aussi le dossier local `.roundlab-compare` : le script
+résout alors chaque manifeste scindé et ses fichiers `round-*.json.gz` sans
+mélanger les maps.
+
 A definition is not considered reviewed until its polygons, altitude ranges
 and labels have been checked against real CS2 coordinates and replays.
 Coverage alone is insufficient: every bundled zone must also contain real

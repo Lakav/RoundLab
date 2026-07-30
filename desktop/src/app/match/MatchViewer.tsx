@@ -40,7 +40,7 @@ const MAP_ZOOM_STEP = 0.25;
 const PROJECTILE_DEBUG_KEY = "roundlab.debugProjectiles";
 
 type HabitProjectileKind = "smoke" | "flash" | "he" | "fire" | "decoy";
-type ReviewMode = "classic" | "condensed" | "report";
+type DisplayMode = "classic" | "condensed" | "report";
 type RadarLayerMode = RadarLayer | "auto";
 
 const DEFAULT_HABIT_TYPES: Record<HabitProjectileKind, boolean> = {
@@ -266,7 +266,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [reviewMode, setReviewMode] = useState<ReviewMode>("classic");
+  const [displayMode, setDisplayMode] = useState<DisplayMode>("classic");
   const [condensedPlayerValue, setCondensedPlayerValue] = useState("");
   const [habitLoading, setHabitLoading] = useState(false);
   const [habitStatus, setHabitStatus] = useState("");
@@ -308,7 +308,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
   }, [match]);
 
   useEffect(() => {
-    if (loading || reviewMode === "report") return;
+    if (loading || displayMode === "report") return;
     const el = mainRef.current;
     if (!el) return;
     let raf = 0;
@@ -342,7 +342,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
       ro.disconnect();
       cancelAnimationFrame(raf);
     };
-  }, [loading, mapZoom, reviewMode]);
+  }, [displayMode, loading, mapZoom]);
 
   const [strokesByRound, setStrokesByRound] = useState<Record<number, Stroke[]>>({});
   const strokes = strokesByRound[currentRoundIdx] ?? [];
@@ -530,7 +530,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
       const round = st.match?.rounds[st.currentRoundIdx];
       if (!round || round.frames.length === 0) return;
       const duration = st.durationOverride ?? round.duration;
-      const drawingShortcutsEnabled = reviewMode !== "condensed";
+      const drawingShortcutsEnabled = displayMode !== "condensed";
       if (e.code === "Space") {
         e.preventDefault();
         togglePlay();
@@ -545,7 +545,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [reviewMode, togglePlay, setTime]);
+  }, [displayMode, togglePlay, setTime]);
 
   const invalidateHabitRun = useCallback(() => {
     habitRunRef.current += 1;
@@ -631,13 +631,13 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
   const openPositioningAnalysis = useCallback((playerId: string) => {
     const playerValue = `player:${playerId}`;
     setCondensedPlayerValue(playerValue);
-    setReviewMode("condensed");
+    setDisplayMode("condensed");
     setTool("none");
     setMapDrag(null);
     void runCondensedOverlay(playerValue);
   }, [runCondensedOverlay]);
 
-  const loadAnalysis = useCallback(async () => {
+  const loadAnalysis = useCallback(async (): Promise<void> => {
     const currentMatch = matchRef.current;
     if (!currentMatch || analysisLoading) return;
     const runId = analysisRunRef.current + 1;
@@ -658,18 +658,21 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
         loadTacticalZones(currentMatch.meta.map).catch(() => null),
       ]);
       if (analysisRunRef.current !== runId) return;
-      setAnalysis(analyzeMatch(hydratedMatch, { matchId: id, generatedAt }));
-      setMechanicsAnalysis(analyzeMechanics(hydratedMatch, {
+      const nextAnalysis = analyzeMatch(hydratedMatch, { matchId: id, generatedAt });
+      const nextMechanics = analyzeMechanics(hydratedMatch, {
         matchId: id,
         generatedAt,
         mapGeometry: mapGeometry ?? undefined,
-      }));
-      setSpatialAnalysis(analyzeSpatial(hydratedMatch, {
+      });
+      const nextSpatial = analyzeSpatial(hydratedMatch, {
         matchId: id,
         generatedAt,
         mapGeometry: mapGeometry ?? undefined,
         tacticalZones: tacticalZones ?? undefined,
-      }));
+      });
+      setAnalysis(nextAnalysis);
+      setMechanicsAnalysis(nextMechanics);
+      setSpatialAnalysis(nextSpatial);
     } catch (error) {
       if (analysisRunRef.current === runId) {
         setAnalysisError(error instanceof Error ? error.message : String(error));
@@ -688,7 +691,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
     );
     if (roundIndex < 0) return;
     clearHabitOverlay();
-    setReviewMode("classic");
+    setDisplayMode("classic");
     setRound(roundIndex);
     setTime(Math.max(0, proof.time - 3));
   }, [analysis, clearHabitOverlay, setRound, setTime]);
@@ -736,8 +739,8 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
   const innerSize = contentMapSize * cropScale;
   const cropTx = -crop.x * (contentMapSize / crop.size);
   const cropTy = -crop.y * (contentMapSize / crop.size);
-  const condensedMode = reviewMode === "condensed";
-  const reportMode = reviewMode === "report";
+  const condensedMode = displayMode === "condensed";
+  const reportMode = displayMode === "report";
   const condensedPlayerOptions = match.players.map((player) => ({
     value: `player:${player.steamId}`,
     label: player.name || `#${String(player.steamId).slice(-4)}`,
@@ -763,7 +766,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 gap-1.5 border border-white/10 bg-black/40 px-2.5 text-[11px] font-semibold text-neutral-300 hover:bg-black/60 hover:text-neutral-100"
+            className="h-10 gap-2 rounded-lg border border-white/[0.09] bg-[#111514]/92 px-3 text-[11px] font-semibold text-neutral-300 shadow-[0_10px_28px_rgba(0,0,0,0.24)] backdrop-blur-xl hover:bg-[#171c1a] hover:text-neutral-100"
           >
             <Image
               src={assetPath("/logo.png")}
@@ -776,19 +779,19 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
             Home
           </Button>
         </Link>
-        <nav aria-label="Replay display controls" className="fixed left-4 right-4 top-14 z-50 flex max-w-[calc(100vw-2rem)] items-center gap-2 overflow-x-auto rounded-md border border-white/10 bg-[#0b0d0d]/75 px-2 py-1.5 shadow-xl shadow-black/30 backdrop-blur-md sm:left-28 sm:right-auto sm:top-4 sm:max-w-[calc(100vw-8rem)]">
-        <div className="flex rounded-[3px] border border-white/10 bg-[#151717] p-0.5">
+        <nav aria-label="Replay display controls" className="fixed left-4 right-4 top-16 z-50 flex max-w-[calc(100vw-2rem)] items-center gap-2 overflow-x-auto rounded-lg border border-white/[0.09] bg-[#111514]/92 p-1.5 shadow-[0_14px_34px_rgba(0,0,0,0.28)] backdrop-blur-xl sm:left-32 sm:right-auto sm:top-4 sm:max-w-[calc(100vw-9rem)]">
+        <div className="flex rounded-md bg-black/25 p-0.5">
           {([
-            ["classic", "Classique"],
-            ["condensed", "Condensé"],
             ["report", "Rapport"],
+            ["classic", "Replay libre"],
+            ["condensed", "Trajectoires"],
           ] as const).map(([mode, label]) => (
             <button
               key={mode}
               type="button"
-              aria-pressed={reviewMode === mode}
+              aria-pressed={displayMode === mode}
               onClick={() => {
-                setReviewMode(mode);
+                setDisplayMode(mode);
                 if (mode === "classic") clearHabitOverlay();
                 else if (mode === "condensed") {
                   setTool("none");
@@ -797,7 +800,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
                     if (!condensedPlayerValue) setCondensedPlayerValue(effectiveCondensedPlayerValue);
                     void runCondensedOverlay(effectiveCondensedPlayerValue);
                   }
-                } else {
+                } else if (mode === "report") {
                   clearHabitOverlay();
                   setTool("none");
                   setMapDrag(null);
@@ -807,10 +810,10 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
               className={[
                 // Switching both foreground and background colors used to
                 // create a brief low-contrast state during the transition.
-                "h-7 rounded-[2px] px-2.5 text-[11px] font-semibold",
-                reviewMode === mode
-                  ? "bg-white text-neutral-950"
-                  : "text-neutral-100 hover:bg-white/[0.05] hover:text-white",
+                "h-7 rounded-[4px] px-3 text-[11px] font-semibold transition-colors",
+                displayMode === mode
+                  ? "bg-emerald-300 text-[#0b1410] shadow-[0_4px_12px_rgba(110,231,183,0.12)]"
+                  : "text-neutral-400 hover:bg-white/[0.05] hover:text-white",
               ].join(" ")}
             >
               {label}
@@ -911,20 +914,19 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
         </nav>
       </header>
       <main id="main-content" tabIndex={-1} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-        {reportMode ? (
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <MatchReport
-              analysis={analysis}
-              mechanics={mechanicsAnalysis}
-              spatial={spatialAnalysis}
-              loading={analysisLoading}
-              error={analysisError}
-              onRetry={() => void loadAnalysis()}
-              onOpenEvidence={openAnalysisEvidence}
-              onOpenPositioning={openPositioningAnalysis}
-            />
-          </div>
-        ) : (
+        <div className={reportMode ? "min-h-0 flex-1 overflow-y-auto" : "hidden"}>
+          <MatchReport
+            analysis={analysis}
+            mechanics={mechanicsAnalysis}
+            spatial={spatialAnalysis}
+            loading={analysisLoading}
+            error={analysisError}
+            onRetry={() => void loadAnalysis()}
+            onOpenEvidence={openAnalysisEvidence}
+            onOpenPositioning={openPositioningAnalysis}
+          />
+        </div>
+        {!reportMode && (
           <>
         <h1 className="sr-only">RoundLab match replay</h1>
         {!condensedMode && (
@@ -941,8 +943,9 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
             ref={mainRef}
             data-testid="match-map-stage"
             className={[
-              "relative flex min-h-0 flex-1 items-center justify-center pb-32 pt-12",
+              "relative flex min-h-0 items-center justify-center",
               condensedMode ? "px-6" : "px-0",
+              "flex-1 pb-32 pt-12",
             ].join(" ")}
           >
             <div
@@ -1001,7 +1004,9 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
 
         <div
           data-testid="match-controls-panel"
-          className="absolute inset-x-2 bottom-2 z-40 shrink-0 rounded-md border border-white/10 bg-[#0b0d0d]/78 px-2 pb-2 pt-1 shadow-2xl shadow-black/35 backdrop-blur-md sm:inset-x-4 sm:bottom-4 sm:px-4 sm:pb-3"
+          className={[
+            "absolute inset-x-2 bottom-2 z-40 shrink-0 rounded-md border border-white/10 bg-[#0b0d0d]/78 px-2 pb-2 pt-1 shadow-2xl shadow-black/35 backdrop-blur-md sm:inset-x-4 sm:bottom-4 sm:px-4 sm:pb-3",
+          ].join(" ")}
         >
           {!condensedMode && <RoundList />}
           <div className="flex flex-col items-stretch gap-2 md:flex-row md:items-center md:gap-3">

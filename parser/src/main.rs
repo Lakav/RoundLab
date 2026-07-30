@@ -135,6 +135,8 @@ struct PlayerPos {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     weapons: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    spotted_by: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     flash_left: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     flash_total: Option<f64>,
@@ -248,6 +250,7 @@ struct TickRow {
     team: i64,
     active: Option<u16>,
     weapons: Vec<u16>,
+    spotted_by: Option<Vec<u64>>,
     fire: bool,
     right_click: bool,
     use_key: bool,
@@ -596,7 +599,6 @@ struct RoundBuildContext<'a> {
     projectiles_by_tick: &'a BTreeMap<i32, Vec<ProjectilePos>>,
     weapon_names: &'a [String],
     round_scores: &'a [(i32, i32)],
-    sample_step: i32,
 }
 
 struct ParsedDemoData {
@@ -612,7 +614,6 @@ struct ParsedDemoData {
     team_b: String,
     round_scores: Vec<(i32, i32)>,
     sample_rate: i32,
-    sample_step: i32,
     duration_sec: f64,
     stats: ParserStats,
 }
@@ -824,7 +825,6 @@ fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)>
         projectiles_by_tick: &data.projectiles_by_tick,
         weapon_names: &data.weapon_names,
         round_scores: &data.round_scores,
-        sample_step: data.sample_step,
     };
     let mut rounds = Vec::with_capacity(data.spans.len());
     for idx in 0..data.spans.len() {
@@ -957,7 +957,6 @@ fn parse_demo_data_from_bytes(
         team_b,
         round_scores,
         sample_rate,
-        sample_step,
         duration_sec,
         stats,
     })
@@ -995,7 +994,13 @@ fn build_round_payload(
     let mut last_bomb: Option<BombState> = None;
     let mut plant_starts: HashMap<u64, i32> = HashMap::new();
     let mut utility_starts: HashMap<u64, (String, i32)> = HashMap::new();
-    for tick in (span.start..=span.end).step_by(ctx.sample_step as usize) {
+    // parse_ticks already contains regular samples plus exact action/event ticks.
+    // Iterating by sample_step here used to discard those additional exact ticks.
+    for tick in ctx
+        .rows_by_tick
+        .range(span.start..=span.end)
+        .map(|(tick, _)| *tick)
+    {
         while event_idx < span_events.len() {
             let event = span_events[event_idx];
             let event_tick = get_i64(event, "tick").unwrap_or_default() as i32;
@@ -1698,6 +1703,7 @@ fn parse_ticks(bytes: &[u8], huf: &Vec<(u8, u8)>, ticks: Vec<i32>) -> Result<Tic
             "team_num".into(),
             "active_weapon_name".into(),
             "inventory".into(),
+            "approximate_spotted_by".into(),
             "FIRE".into(),
             "RIGHTCLICK".into(),
             "USE".into(),
@@ -1783,6 +1789,7 @@ fn tick_rows_from_helper(helper: &OutputSerdeHelperStruct) -> (Vec<TickRow>, Vec
             team: helper_i64(helper, "team_num", idx).unwrap_or_default(),
             active,
             weapons,
+            spotted_by: helper_u64_vec(helper, "approximate_spotted_by", idx),
             fire: helper_bool(helper, "FIRE", idx).unwrap_or(false),
             right_click: helper_bool(helper, "RIGHTCLICK", idx).unwrap_or(false),
             use_key: helper_bool(helper, "USE", idx).unwrap_or(false),
@@ -2166,6 +2173,13 @@ fn helper_string_vec(
     }
 }
 
+fn helper_u64_vec(helper: &OutputSerdeHelperStruct, name: &str, idx: usize) -> Option<Vec<u64>> {
+    match helper_column(helper, name)?.data.as_ref()? {
+        VarVec::U64Vec(values) => values.get(idx).cloned(),
+        _ => None,
+    }
+}
+
 fn group_tick_rows(rows: Vec<TickRow>) -> BTreeMap<i32, Vec<TickRow>> {
     let mut out: BTreeMap<i32, Vec<TickRow>> = BTreeMap::new();
     for row in rows {
@@ -2343,6 +2357,10 @@ fn player_pos_from_row(
             .iter()
             .filter_map(|id| weapon_names.get(*id as usize).cloned())
             .collect(),
+        spotted_by: row
+            .spotted_by
+            .as_ref()
+            .map(|players| players.iter().map(ToString::to_string).collect()),
         flash_left: blind.map(|b| (b.end - t).max(0.0)),
         flash_total: blind.map(|b| b.total),
         use_key: row.use_key,
@@ -3578,7 +3596,6 @@ pub fn parse_demo_bytes_to_json(
                 projectiles_by_tick: &data.projectiles_by_tick,
                 weapon_names: &data.weapon_names,
                 round_scores: &data.round_scores,
-                sample_step: data.sample_step,
             };
             let mut rounds = Vec::with_capacity(data.spans.len());
             for idx in 0..data.spans.len() {
@@ -4106,6 +4123,7 @@ mod tests {
                     team: 2,
                     active: Some(0),
                     weapons: vec![0],
+                    spotted_by: None,
                     fire: false,
                     right_click: false,
                     use_key: false,
@@ -4124,7 +4142,6 @@ mod tests {
             projectiles_by_tick: &projectiles_by_tick,
             weapon_names: &weapon_names,
             round_scores: &round_scores,
-            sample_step: 1,
         };
 
         let round = build_round_payload(&ctx, 0, 0).expect("round payload");
@@ -4215,6 +4232,7 @@ mod tests {
                     team: 2,
                     active,
                     weapons,
+                    spotted_by: None,
                     fire: false,
                     right_click: false,
                     use_key: false,
@@ -4242,7 +4260,6 @@ mod tests {
             projectiles_by_tick: &projectiles_by_tick,
             weapon_names: &weapon_names,
             round_scores: &round_scores,
-            sample_step: 1,
         };
 
         let round = build_round_payload(&ctx, 0, 0).expect("round payload");
@@ -4345,6 +4362,7 @@ mod tests {
                     team: 2,
                     active: Some(0),
                     weapons: vec![0],
+                    spotted_by: None,
                     fire: false,
                     right_click: false,
                     use_key: false,
@@ -4363,7 +4381,6 @@ mod tests {
             projectiles_by_tick: &projectiles_by_tick,
             weapon_names: &weapon_names,
             round_scores: &round_scores,
-            sample_step: 1,
         };
 
         let round = build_round_payload(&ctx, 0, 0).expect("round payload");
@@ -4441,6 +4458,7 @@ mod tests {
                     team: 2,
                     active,
                     weapons,
+                    spotted_by: None,
                     fire: false,
                     right_click: false,
                     use_key: false,
@@ -4459,7 +4477,6 @@ mod tests {
             projectiles_by_tick: &projectiles_by_tick,
             weapon_names: &weapon_names,
             round_scores: &round_scores,
-            sample_step: 1,
         };
 
         let round = build_round_payload(&ctx, 0, 0).expect("round payload");
@@ -5140,6 +5157,7 @@ mod tests {
                 team: 2,
                 active: None,
                 weapons: Vec::new(),
+                spotted_by: None,
                 fire: false,
                 right_click: false,
                 use_key: false,
@@ -5201,6 +5219,7 @@ mod tests {
                 team: 3,
                 active: None,
                 weapons: Vec::new(),
+                spotted_by: None,
                 fire: false,
                 right_click: false,
                 use_key: false,
@@ -5233,6 +5252,7 @@ mod tests {
                 team: 3,
                 active: None,
                 weapons: Vec::new(),
+                spotted_by: None,
                 fire: false,
                 right_click: false,
                 use_key: false,
@@ -5265,6 +5285,7 @@ mod tests {
                 team: 3,
                 active: None,
                 weapons: Vec::new(),
+                spotted_by: None,
                 fire: false,
                 right_click: false,
                 use_key: false,
@@ -5331,6 +5352,7 @@ mod tests {
                 team: 2,
                 active: None,
                 weapons: Vec::new(),
+                spotted_by: None,
                 fire: false,
                 right_click: false,
                 use_key: false,
@@ -5457,6 +5479,7 @@ mod tests {
             team: 2,
             active: None,
             weapons: Vec::new(),
+            spotted_by: Some(vec![7_656_119_800_000_123]),
             fire: false,
             right_click: false,
             use_key: false,
@@ -5472,11 +5495,16 @@ mod tests {
         assert_eq!(player.airborne, Some(true));
         assert_eq!(player.walking, Some(false));
         assert_eq!(player.duck_amount, Some(0.65));
+        assert_eq!(
+            player.spotted_by,
+            Some(vec!["7656119800000123".to_string()])
+        );
         let serialized = serde_json::to_value(player).unwrap();
         assert_eq!(serialized["velocityX"], 120.0);
         assert_eq!(serialized["velocityY"], -98.0);
         assert_eq!(serialized["velocityZ"], 4.0);
         assert_eq!(serialized["duckAmount"], 0.65);
+        assert_eq!(serialized["spottedBy"][0], "7656119800000123");
     }
 
     #[test]

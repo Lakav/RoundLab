@@ -121,7 +121,7 @@
 
 /* --- RoundLab design tokens ----------------------------------------------
  *
- * The review viewport sets the tone for the whole app: dark, dense, tactical.
+ * The replay viewport sets the tone for the whole app: dark, dense, tactical.
  * These tokens are consumed via `theme(...)` or arbitrary-value Tailwind
  * (`bg-[var(--rl-surface)]`). Keeping them centralized means the home page
  * and any future panels share the same language as the match viewer.
@@ -145,6 +145,8 @@
   /* Accent */
   --rl-accent: #6ee7b7;     /* emerald-300 */
   --rl-accent-soft: rgba(110, 231, 183, 0.15);
+  --rl-blue: #8fb7ff;
+  --rl-warm: #e8b86d;
 }
 
 @layer base {
@@ -164,5 +166,188 @@
   svg,
   canvas {
     -webkit-user-drag: none;
+  }
+}
+
+@layer components {
+  .report-shell {
+    position: relative;
+    isolation: isolate;
+    --report-surface: rgba(17, 21, 20, 0.96);
+    --report-surface-raised: rgba(21, 26, 24, 0.97);
+    --report-border: rgba(255, 255, 255, 0.078);
+    --report-border-strong: rgba(255, 255, 255, 0.115);
+  }
+
+  .report-shell::before {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    content: "";
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 11% 1%, rgba(54, 120, 93, 0.14), transparent 31rem),
+      radial-gradient(circle at 91% 8%, rgba(57, 79, 112, 0.1), transparent 34rem),
+      linear-gradient(180deg, #0c0f0e 0%, #101312 36%, #0c0f0e 100%);
+  }
+
+  .report-hero {
+    border-color: rgba(255, 255, 255, 0.1);
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.045), transparent 48%),
+      #111514;
+    box-shadow:
+      0 28px 90px rgba(0, 0, 0, 0.32),
+      inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  }
+
+  .report-primary-nav,
+  .report-secondary-nav {
+    scrollbar-width: none;
+  }
+
+  .report-primary-nav::-webkit-scrollbar,
+  .report-secondary-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .report-shell article[class*="border"],
+  .report-shell details[class*="border"] {
+    border-radius: 0.75rem;
+    border-color: var(--report-border);
+    background:
+      linear-gradient(145deg, rgba(255, 255, 255, 0.018), transparent 35%),
+      var(--report-surface);
+    box-shadow:
+      0 16px 42px rgba(0, 0, 0, 0.17),
+      inset 0 1px 0 rgba(255, 255, 255, 0.022);
+  }
+
+  .report-shell article[class*="border"]:hover,
+  .report-shell details[class*="border"]:hover {
+    border-color: rgba(255, 255, 255, 0.105);
+  }
+
+  .report-metric {
+    background:
+      radial-gradient(circle at 90% 0%, rgba(110, 231, 183, 0.055), transparent 45%),
+      linear-gradient(145deg, rgba(255, 255, 255, 0.023), transparent 55%),
+      rgba(18, 23, 21, 0.94);
+    box-shadow:
+      0 12px 34px rgba(0, 0, 0, 0.14),
+      inset 0 1px 0 rgba(255, 255, 255, 0.025);
+    transition:
+      border-color 160ms ease,
+      background-color 160ms ease,
+      transform 160ms ease;
+  }
+
+  .report-metric:hover {
+    border-color: rgba(110, 231, 183, 0.18);
+    transform: translateY(-1px);
+  }
+
+  .report-shell table {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .report-shell table thead,
+  .report-shell table thead[class] {
+    background: rgba(5, 7, 7, 0.36);
+  }
+
+  .report-shell table thead th {
+    height: 2.75rem;
+    color: rgba(163, 163, 163, 0.82);
+    letter-spacing: 0.025em;
+    white-space: nowrap;
+  }
+
+  .report-shell table tbody td,
+  .report-shell table tbody th {
+    height: 3.1rem;
+    border-color: rgba(255, 255, 255, 0.055);
+  }
+
+  .report-shell table tbody tr {
+    transition:
+      background-color 140ms ease,
+      box-shadow 140ms ease;
+  }
+
+  .report-shell table tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.028);
+    box-shadow: inset 2px 0 0 rgba(110, 231, 183, 0.38);
+  }
+
+  .report-shell table tbody tr:hover td,
+  .report-shell table tbody tr:hover th {
+    color: rgba(245, 245, 245, 0.96);
+  }
+
+  .report-shell table th:first-child:not([colspan]),
+  .report-shell table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background-color: rgba(17, 21, 20, 0.985);
+    box-shadow: 1px 0 0 rgba(255, 255, 255, 0.055);
+  }
+
+  .report-shell table thead th:first-child:not([colspan]) {
+    z-index: 2;
+    background-color: #101312;
+  }
+
+  .report-shell table tbody tr:hover > :first-child {
+    background-color: #171b1a;
+  }
+
+  .report-shell [class*="overflow-x-auto"] {
+    scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+    scrollbar-width: thin;
+  }
+
+  .report-shell [class*="overflow-x-auto"]::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  .report-shell [class*="overflow-x-auto"]::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  .report-shell [class*="overflow-x-auto"]::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .report-shell select {
+    min-height: 2.5rem;
+    transition:
+      border-color 140ms ease,
+      background-color 140ms ease,
+      box-shadow 140ms ease;
+  }
+
+  .report-shell select:hover,
+  .report-shell select:focus-visible {
+    border-color: rgba(110, 231, 183, 0.28);
+    background-color: #111513;
+    box-shadow: 0 0 0 3px rgba(110, 231, 183, 0.055);
+  }
+
+  .report-shell button:focus-visible,
+  .report-shell summary:focus-visible {
+    outline: 2px solid rgba(110, 231, 183, 0.65);
+    outline-offset: 2px;
+  }
+
+  .product-grid {
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: linear-gradient(to bottom, black 0%, transparent 78%);
   }
 }

@@ -39,6 +39,8 @@ export type ShotAssociation = {
   time: number;
   origin: { x: number; y: number; z: number };
   yaw: number;
+  /** Whether at least one living opponent was spotted by the shooter at fire time. */
+  enemySpotted?: boolean | null;
   impacts: ShotImpact[];
   damages: ShotDamage[];
   unavailableReasons: string[];

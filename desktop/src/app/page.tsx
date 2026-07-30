@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -480,10 +481,8 @@ export default function Home() {
   };
 
   return (
-    <div
-      className="min-h-screen text-neutral-100"
-      style={{ background: "#1d1f1f" }}
-    >
+    <div className="relative min-h-screen overflow-hidden bg-[#0d100f] text-neutral-100">
+      <div className="product-grid pointer-events-none absolute inset-x-0 top-0 h-[42rem] opacity-70" />
       {opening && (
         <div
           role="status"
@@ -544,21 +543,34 @@ export default function Home() {
         </div>
       )}
 
-      <header className="flex items-center justify-between border-b border-white/[0.06] px-6 py-3">
-        <div className="flex items-center gap-3">
-          <Image
-            src={assetPath("/logo.png")}
-            alt="RoundLab"
-            width={36}
-            height={37}
-            loading="eager"
-            className="object-contain"
-          />
-          <h1 className="text-sm font-semibold">RoundLab</h1>
+      <header className="relative z-10 border-b border-white/[0.07] bg-[#0d100f]/88 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-5 sm:px-8">
+          <div className="flex items-center gap-3">
+            <Image
+              src={assetPath("/logo.png")}
+              alt=""
+              width={28}
+              height={29}
+              loading="eager"
+              className="object-contain"
+            />
+            <h1 className="text-[15px] font-semibold tracking-[-0.01em]">RoundLab</h1>
+            <span className="rounded border border-emerald-200/15 bg-emerald-200/[0.055] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-emerald-200/80">
+              Bêta
+            </span>
+          </div>
+          <nav aria-label="Navigation principale" className="flex items-center gap-1">
+            <Link
+              href="/feedback"
+              className="rounded-md px-3 py-2 text-xs font-semibold text-neutral-400 transition-colors hover:bg-white/[0.04] hover:text-neutral-100"
+            >
+              Signaler un bug
+            </Link>
+          </nav>
         </div>
       </header>
 
-      <main id="main-content" tabIndex={-1} className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-6 py-8 sm:py-10">
+      <main id="main-content" tabIndex={-1} className="relative z-10 mx-auto flex w-full max-w-6xl flex-col gap-8 px-5 py-10 sm:px-8 sm:py-14">
         <input
           ref={fileInputRef}
           data-testid="demo-file-input"
@@ -569,65 +581,108 @@ export default function Home() {
           tabIndex={-1}
           onChange={onFileSelected}
         />
-        <div
-          onClick={onPickAndParse}
-          onKeyDown={onImportKeyDown}
-          onDragEnter={(event) => {
-            event.preventDefault();
-            setDragging(true);
-          }}
-          onDragOver={(event) => {
-            event.preventDefault();
-            setDragging(true);
-          }}
-          onDragLeave={(event) => {
-            event.preventDefault();
-            setDragging(false);
-          }}
-          onDrop={onBrowserDrop}
-          role="button"
-          aria-label="Open a local CS2 demo file"
-          aria-disabled={uploading}
-          tabIndex={0}
-          className={[
-            "flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border px-6 py-12 text-center transition-colors",
-            uploading
-              ? "cursor-wait border-emerald-300/30"
-              : dragging
-                ? "border-emerald-300/50 bg-emerald-300/[0.04]"
-                : "border-white/10 hover:border-emerald-300/30 hover:bg-white/[0.02]",
-          ].join(" ")}
-        >
-          {uploading ? (
-            <>
-              <Loader2 className="size-6 animate-spin text-emerald-300" />
-              <div className="w-full max-w-xs">
-                <div className="text-[13px] text-neutral-200">Parsing demo…</div>
-                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/40">
-                  <div
-                    className="h-full rounded-full bg-emerald-300 transition-[width] duration-300"
-                    style={{ width: `${Math.round(shownProgress * 100)}%` }}
-                  />
-                </div>
-                <div className="mt-2 text-[11px] text-neutral-400">
-                  {formatDuration(elapsedMs)} elapsed · {estimateExceeded ? "still parsing" : `about ${formatDuration(remainingMs)} left`}
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              <Upload className="size-6 text-emerald-300" strokeWidth={2} />
+        <section className="grid items-stretch gap-8 lg:grid-cols-[0.92fr_1.08fr]">
+          <div className="flex flex-col justify-center py-3 lg:py-8">
+            <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-200/70">
+              Analyse locale de démos CS2
+            </span>
+            <h2 className="mt-4 max-w-xl text-4xl font-semibold leading-[1.08] tracking-[-0.035em] text-white sm:text-5xl">
+              Lis ton match avec des faits, pas des approximations.
+            </h2>
+            <p className="mt-5 max-w-lg text-[15px] leading-7 text-neutral-400">
+              RoundLab transforme une démo CS2 en replay interactif et en rapport statistique détaillé.
+              L’analyse reste dans ton navigateur.
+            </p>
+            <div className="mt-7 grid max-w-lg grid-cols-3 border-y border-white/[0.07] py-4">
               <div>
-                <div className="text-[14px] font-medium text-neutral-100">
-                  {dragging ? "Drop to parse" : "Open a CS2 demo"}
-                </div>
-                <div className="mt-1 text-[12px] text-neutral-400">
-                  Drop a .dem or .dem.zst, or click to browse
-                </div>
+                <div className="text-sm font-semibold text-neutral-100">Local</div>
+                <div className="mt-1 text-[11px] text-neutral-500">Aucun upload serveur</div>
               </div>
-            </>
-          )}
-        </div>
+              <div className="border-l border-white/[0.07] pl-4">
+                <div className="text-sm font-semibold text-neutral-100">Détaillé</div>
+                <div className="mt-1 text-[11px] text-neutral-500">Rounds et joueurs</div>
+              </div>
+              <div className="border-l border-white/[0.07] pl-4">
+                <div className="text-sm font-semibold text-neutral-100">Rejouable</div>
+                <div className="mt-1 text-[11px] text-neutral-500">Preuves sur la map</div>
+              </div>
+            </div>
+          </div>
+
+          <article className="overflow-hidden rounded-xl border border-white/[0.09] bg-[#131716]/95 shadow-[0_30px_90px_rgba(0,0,0,0.35)]">
+            <div className="flex items-center justify-between border-b border-white/[0.07] px-5 py-4">
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-100">Importer une démo</h3>
+                <p className="mt-1 text-[11px] text-neutral-500">Formats .dem et .dem.zst · limite 1 Go</p>
+              </div>
+              <span className="text-[10px] font-medium text-neutral-600">Traitement local</span>
+            </div>
+            <div
+              onClick={onPickAndParse}
+              onKeyDown={onImportKeyDown}
+              onDragEnter={(event) => {
+                event.preventDefault();
+                setDragging(true);
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={(event) => {
+                event.preventDefault();
+                setDragging(false);
+              }}
+              onDrop={onBrowserDrop}
+              role="button"
+              aria-label="Open a local CS2 demo file"
+              aria-disabled={uploading}
+              tabIndex={0}
+              className={[
+                "group m-4 flex min-h-64 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed px-6 py-12 text-center outline-none transition-all focus-visible:ring-2 focus-visible:ring-emerald-200/60",
+                uploading
+                  ? "cursor-wait border-emerald-300/30 bg-emerald-300/[0.025]"
+                  : dragging
+                    ? "border-emerald-300/55 bg-emerald-300/[0.055]"
+                    : "border-white/12 bg-black/10 hover:border-emerald-300/32 hover:bg-emerald-300/[0.02]",
+              ].join(" ")}
+            >
+              {uploading ? (
+                <>
+                  <Loader2 className="size-6 animate-spin text-emerald-300" />
+                  <div className="mt-3 w-full max-w-xs">
+                    <div className="text-[13px] text-neutral-200">Analyse de la démo…</div>
+                    <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/40">
+                      <div
+                        className="h-full rounded-full bg-emerald-300 transition-[width] duration-300"
+                        style={{ width: `${Math.round(shownProgress * 100)}%` }}
+                      />
+                    </div>
+                    <div className="mt-2 text-[11px] text-neutral-400">
+                      {formatDuration(elapsedMs)} écoulées · {estimateExceeded ? "analyse en cours" : `environ ${formatDuration(remainingMs)} restantes`}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex size-11 items-center justify-center rounded-lg border border-white/10 bg-white/[0.035] transition-colors group-hover:border-emerald-200/20 group-hover:bg-emerald-200/[0.05]">
+                    <Upload className="size-5 text-emerald-200/85" strokeWidth={1.8} />
+                  </div>
+                  <div className="mt-4">
+                    <div className="text-[14px] font-semibold text-neutral-100">
+                      {dragging ? "Dépose la démo ici" : "Open a CS2 demo"}
+                    </div>
+                    <div className="mt-1.5 text-[12px] text-neutral-500">
+                      Glisse un fichier ou clique pour le sélectionner
+                    </div>
+                  </div>
+                  <span className="mt-5 rounded border border-white/[0.08] px-2.5 py-1 text-[10px] font-medium text-neutral-500">
+                    Les données ne quittent pas cet appareil
+                  </span>
+                </>
+              )}
+            </div>
+          </article>
+        </section>
 
         {error && (
           <div role="alert" className="whitespace-pre-wrap rounded-md border border-red-500/30 bg-red-500/[0.06] px-3 py-2 text-[12px] text-red-200">
@@ -635,12 +690,36 @@ export default function Home() {
           </div>
         )}
 
+        <aside className="grid gap-5 rounded-xl border border-amber-100/10 bg-[#171714] px-5 py-5 sm:grid-cols-[1fr_auto] sm:items-center sm:px-6">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-amber-100/55">Version bêta</div>
+            <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-neutral-200">
+              RoundLab évolue régulièrement : certaines statistiques et interfaces peuvent encore changer.
+            </p>
+            <p className="mt-1 text-xs leading-5 text-neutral-400">
+              La bêta est entièrement gratuite. L’application finale sera payante lorsque sa version stable sera disponible.
+            </p>
+          </div>
+          <Link
+            href="/feedback"
+            className="inline-flex h-10 items-center justify-center rounded-md border border-white/10 bg-white/[0.035] px-4 text-xs font-semibold text-neutral-200 transition-colors hover:border-white/20 hover:bg-white/[0.07]"
+          >
+            Signaler un problème
+          </Link>
+        </aside>
+
         {matches.length > 0 && (
-          <section className="space-y-2">
-            <h2 className="px-1 text-[11px] font-medium uppercase tracking-wider text-neutral-400">
-              Recent matches
-            </h2>
-            <div className="overflow-hidden rounded-lg border border-white/[0.08]">
+          <section className="space-y-3">
+            <div className="flex items-end justify-between px-1">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-neutral-400">Bibliothèque locale</span>
+                <h2 className="mt-1 text-lg font-semibold tracking-[-0.02em] text-neutral-100">
+                  Matchs récents
+                </h2>
+              </div>
+              <span className="text-[11px] tabular-nums text-neutral-400">{matches.length} enregistré{matches.length > 1 ? "s" : ""}</span>
+            </div>
+            <div className="overflow-hidden rounded-xl border border-white/[0.08] bg-[#121514]/85 shadow-[0_18px_50px_rgba(0,0,0,0.16)]">
               {matches.map((m, i) => (
                 <MatchRow
                   key={m.id}
@@ -655,6 +734,11 @@ export default function Home() {
           </section>
         )}
       </main>
+
+      <footer className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between border-t border-white/[0.06] px-5 py-6 text-[11px] text-neutral-400 sm:px-8">
+        <span>RoundLab · Analyse locale de démos CS2</span>
+        <Link href="/feedback" className="transition-colors hover:text-neutral-300">Signaler un bug</Link>
+      </footer>
 
       {renameTarget && (
         <Modal onClose={() => setRenameTarget(null)} title="Rename match">

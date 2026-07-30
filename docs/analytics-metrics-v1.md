@@ -308,7 +308,8 @@ seule durée de blindage.
 
 ### 4.12 Utilitaires conservés à la mort
 
-**Identifiants :** `utilitySavedOnDeath.total` et détail par type
+**Identifiants :** `utilitySavedOnDeath.total` et détail par type,
+`unusedUtilityValue`, `averageUnusedUtilityValue`
 
 Pour chaque mort du joueur, compter les grenades encore présentes dans son
 inventaire au dernier état canonique strictement antérieur à la mort. Une
@@ -316,6 +317,9 @@ grenade active déjà lancée ou dont l'événement de lancer précède la mort 
 pas conservée.
 
 Le compteur de match est la somme des unités, pas le nombre de morts concernées.
+La valeur utilise les prix nominaux : flash `$200`, smoke et HE `$300`,
+molotov `$400`, incendiaire `$500` et decoy `$50`.
+`averageUnusedUtilityValue` divise la valeur totale par le nombre de morts.
 Si l'inventaire précédant une mort manque, toute la métrique agrégée vaut
 `null`.
 
@@ -379,28 +383,18 @@ côtés T/CT.
 
 **Identifiant :** `keyMoments`
 
-Liste chronologique, sans score opaque, des preuves déjà calculées appartenant
-à l'une des catégories suivantes :
-
-1. clutch gagné ;
-2. opening gagné ou perdu ;
-3. round à 3 kills ou plus ;
-4. trade kill ;
-5. pose ou désamorçage de bombe.
-
-Un même événement peut porter plusieurs catégories mais ne produit qu'un seul
-moment. L'ordre de priorité ci-dessus départage les catégories principales.
-Le moment conserve toutes ses catégories, les joueurs concernés et
-l'identifiant de sa preuve principale. Les égalités opening sont départagées
-par `opening_win` avant `opening_loss`.
-La V1 ne limite pas le nombre de moments dans les données ; l'interface peut
-en afficher un sous-ensemble sans modifier l'analyse.
+Cette sortie est retirée du produit. Le champ reste présent et vide dans le
+schéma V1 pour ne pas casser les analyses et contributions déjà sérialisées.
+RoundLab ne classe plus automatiquement les événements d'un match selon leur
+importance.
 
 ### 4.17 Efficacité des flashes
 
 **Identifiants :** `flashes.enemiesFlashed`, `flashes.teammatesFlashed`,
+`flashes.effectiveEnemiesFlashed`, `flashes.effectiveTeammatesFlashed`,
 `flashes.averageEnemyBlindDuration`,
-`flashes.averageTeammateBlindDuration`
+`flashes.averageTeammateBlindDuration`,
+`flashes.flashesLeadingToKills`
 
 Chaque événement `player_blind` valide est attribué à son lanceur et à sa
 victime. Une victime adverse augmente `enemiesFlashed` et la durée ennemie
@@ -408,8 +402,16 @@ cumulée. Une victime alliée différente du lanceur augmente
 `teammatesFlashed` et la durée alliée cumulée. Un joueur qui se flashe
 lui-même n'est compté dans aucune des deux catégories.
 
-La durée moyenne est la durée cumulée divisée par le nombre d'événements de la
-catégorie. Sans événement, elle vaut `null`.
+Les compteurs `effective*` excluent les aveuglements de `1,1 s` ou moins.
+`effectiveTeammatesFlashed` inclut le lanceur lorsqu'il s'aveugle lui-même,
+conformément à la définition de comparaison retenue.
+
+Pour chaque flashbang, le moteur conserve la plus longue durée d'aveuglement
+ennemie. `averageEnemyBlindDuration` est la moyenne de ces maxima, pas la
+moyenne de tous les événements `player_blind`. Une élimination adverse compte
+dans `flashesLeadingToKills` si elle survient pendant un aveuglement effectif
+et si le killer appartient au camp du lanceur. Sans flash ayant touché un
+adversaire, la durée moyenne vaut `null`.
 
 ### 4.18 Dégâts utilitaires
 
@@ -421,11 +423,23 @@ sont séparés des dégâts d'arme. Les dégâts adverses et alliés sont conser
 dans des compteurs distincts. Ils restent `null` si le flux complet de dégâts
 ou le contexte d'équipe manque.
 
+### 4.19 Utility Quantity Rating
+
+**Identifiant :** `utilityQuantityRating`
+
+Le nombre de grenades lancées hors decoys est divisé par le nombre de rounds,
+puis comparé à la cible publique de trois grenades par round. Le ratio est
+plafonné à `1`, élevé à la puissance `2/3`, puis multiplié par `100`.
+
+Cette métrique reproduit la composante Quantity publiée par Leetify en octobre
+2025. Elle ne constitue pas un Utility Rating global : la composante Quality
+dépend de benchmarks de population absents de RoundLab.
+
 ## 5. Disponibilité avec le parseur actuel
 
 | État | Métriques |
 | --- | --- |
-| Calculables après normalisation des événements existants | K/D/A, headshot rate, openings, multikills, clutches, trade kills, morts tradées, survie, flash assists, efficacité des flashes, grenades utilisées, catégories économiques, CT/T, moments importants |
+| Calculables après normalisation des événements existants | K/D/A, headshot rate, openings, multikills, clutches, trade kills, morts tradées, survie, flash assists, efficacité des flashes, grenades utilisées, catégories économiques, CT/T |
 | Nécessitent les événements complets de dégâts | ADR, tentatives de trade, dégâts HE et molotov |
 | Nécessitent un inventaire canonique juste avant la mort | Utilitaires conservés à la mort |
 | Dépend des métriques précédentes | KAST |

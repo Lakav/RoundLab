@@ -44,7 +44,7 @@ async function seedReplay(page: Page, map = "de_nuke"): Promise<void> {
       projectileFrames: [],
     };
     await new Promise<void>((resolve, reject) => {
-      const request = indexedDB.open("roundlab-web", 1);
+      const request = indexedDB.open("roundlab-web", 2);
       request.onupgradeneeded = () => {
         const db = request.result;
         if (!db.objectStoreNames.contains("matches")) db.createObjectStore("matches", { keyPath: "id" });
@@ -52,6 +52,10 @@ async function seedReplay(page: Page, map = "de_nuke"): Promise<void> {
           const store = db.createObjectStore("rounds", { keyPath: "key" });
           store.createIndex("matchId", "matchId", { unique: false });
         }
+        const metadataStore = db.objectStoreNames.contains("meta")
+          ? request.transaction!.objectStore("meta")
+          : db.createObjectStore("meta", { keyPath: "key" });
+        metadataStore.put({ key: "schema", version: 2 });
       };
       request.onerror = () => reject(request.error);
       request.onsuccess = () => {
@@ -197,7 +201,7 @@ test("all replay command groups expose names, states and keyboard operation", as
   await page.mouse.up();
   await expect.poll(() => content.evaluate((element) => (element as HTMLElement).style.transform)).not.toBe(transformBeforePan);
 
-  const condensed = page.getByRole("button", { name: "Condensé" });
+  const condensed = page.getByRole("button", { name: "Trajectoires" });
   await condensed.focus();
   await page.keyboard.press("Enter");
   await expect(condensed).toHaveAttribute("aria-pressed", "true");
