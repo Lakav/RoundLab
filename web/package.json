@@ -15,7 +15,7 @@
     "benchmark:analyze": "node --no-warnings --experimental-strip-types scripts/analyze-benchmark-match.mts",
     "benchmark:build": "node --no-warnings --experimental-strip-types scripts/build-benchmark-corpus.mts",
     "benchmark:collect": "node --no-warnings --experimental-strip-types scripts/collect-benchmark-contributions.mts",
-    "parser:wasm": "cd ../parser && cargo build --target wasm32-unknown-unknown --release --lib && wasm-bindgen target/wasm32-unknown-unknown/release/roundlab_parser.wasm --target web --out-dir ../desktop/src/wasm/roundlab_parser --out-name roundlab_parser --remove-name-section --remove-producers-section",
+    "parser:wasm": "cd ../parser && cargo build --target wasm32-unknown-unknown --release --lib && wasm-bindgen target/wasm32-unknown-unknown/release/roundlab_parser.wasm --target web --out-dir ../web/src/wasm/roundlab_parser --out-name roundlab_parser --remove-name-section --remove-producers-section",
     "lint": "eslint",
     "test:unit": "vitest run",
     "test:coverage": "vitest run --coverage",

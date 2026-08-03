@@ -21,48 +21,48 @@ jobs:
         with:
           node-version: "24"
           cache: pnpm
-          cache-dependency-path: desktop/pnpm-lock.yaml
+          cache-dependency-path: web/pnpm-lock.yaml
 
       - name: Install web app dependencies
-        working-directory: desktop
+        working-directory: web
         run: pnpm install --frozen-lockfile
 
       - name: Audit web dependencies
-        working-directory: desktop
+        working-directory: web
         run: pnpm audit --audit-level high
 
       - name: Lint web app
-        working-directory: desktop
+        working-directory: web
         run: pnpm lint
 
       - name: Typecheck web app
-        working-directory: desktop
+        working-directory: web
         run: pnpm exec tsc --noEmit
 
       - name: Test web app with coverage thresholds
-        working-directory: desktop
+        working-directory: web
         run: pnpm test:coverage
 
       - name: Build web app
-        working-directory: desktop
+        working-directory: web
         run: pnpm build
 
       - name: Enforce production asset budgets
         run: python3 scripts/check-performance-budgets.py
 
       - name: Run browser accessibility checks
-        working-directory: desktop
+        working-directory: web
         run: pnpm test:e2e:a11y
 
       - name: Validate static export output
-        run: python3 scripts/audit-static-export-output.py
+        run: python3 scripts/audit-static-export-artifact.py
 
       - name: Upload frontend coverage report
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: frontend-coverage
-          path: desktop/coverage
+          path: web/coverage
           if-no-files-found: error
 
       - name: Upload browser accessibility report
@@ -70,7 +70,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: browser-accessibility-report
-          path: desktop/playwright-report
+          path: web/playwright-report
           if-no-files-found: error
 
   rust:
@@ -97,8 +97,8 @@ jobs:
             scripts/audit-replay-fixture-coverage.py \
             scripts/audit-replay-rendering.py \
             scripts/audit-security-baseline.py \
-            scripts/audit-static-web-export.py \
-            scripts/audit-static-export-output.py \
+            scripts/audit-static-export-source.py \
+            scripts/audit-static-export-artifact.py \
             scripts/audit-web-portability.py \
             scripts/benchmark-native-parser.py \
             scripts/check-performance-budgets.py \
@@ -106,13 +106,13 @@ jobs:
             scripts/summarize-browser-benchmark.py \
             scripts/verify-wasm-reproducibility.py
           python3 -m json.tool docs/replay-fixture-coverage.json >/dev/null
-          python3 -m json.tool parser/reference_demos.json >/dev/null
+          python3 -m json.tool parser/reference-demos.json >/dev/null
 
       - name: Validate web portability
         run: python3 scripts/audit-web-portability.py
 
       - name: Validate static web export
-        run: python3 scripts/audit-static-web-export.py
+        run: python3 scripts/audit-static-export-source.py
 
       - name: Validate browser parser locality
         run: python3 scripts/audit-browser-parser-locality.py

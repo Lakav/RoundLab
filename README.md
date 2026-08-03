@@ -138,7 +138,7 @@ présenté comme une validation Awpy réussie.
 
 ### Réimporter un match ancien
 
-Lance l’application avec `cd desktop && pnpm dev`, ouvre **Importer**, choisis
+Lance l’application avec `cd web && pnpm dev`, ouvre **Importer**, choisis
 de nouveau la démo GOTV originale puis le mode **Précision maximale**. Le nouvel
 import V2 est créé à côté de l’entrée historique : RoundLab ne supprime ni ne
 remplace automatiquement l’ancien match. Sans le fichier GOTV original, les
@@ -431,7 +431,7 @@ tant que le flux `bullet_impact` n'est pas réellement disponible ; le reste a
 l'interface.
 
 Une première tranche du moteur pur est implémentée dans
-[`desktop/src/lib/analysis`](desktop/src/lib/analysis). Elle produit un
+[`web/src/lib/analysis`](web/src/lib/analysis). Elle produit un
 `MatchAnalysis` versionné avec K/D/A, headshot rate, dégâts de vie, ADR,
 openings, multikills, survie, clutches, trades, KAST, lancers de grenades,
 flash assists, agrégats CT/T, raisons d'indisponibilité et preuves reliées au
@@ -761,7 +761,7 @@ positionnement complexes.
 ## Structure du dépôt
 
 ```text
-desktop/         Application web Next.js, interface et moteur de replay
+web/         Application web Next.js, interface et moteur de replay
 parser/          Parseur Rust et point d'entrée WebAssembly
 vendor/          Dépendances du parseur conservées dans le dépôt
 scripts/         Audits, validations et outils de développement
@@ -783,7 +783,7 @@ Prérequis :
 - `wasm-bindgen-cli` pour reconstruire le parseur navigateur.
 
 ```bash
-cd desktop
+cd web
 pnpm install
 pnpm dev
 ```
@@ -793,7 +793,7 @@ L'application est ensuite disponible sur `http://localhost:3000`.
 Après une modification du parseur Rust :
 
 ```bash
-cd desktop
+cd web
 pnpm parser:wasm
 ```
 
@@ -802,7 +802,7 @@ pnpm parser:wasm
 Vérifications principales de l'interface :
 
 ```bash
-cd desktop
+cd web
 pnpm lint
 pnpm exec tsc --noEmit
 pnpm test:coverage
@@ -830,7 +830,7 @@ tests d'intégrité et de performance grâce aux variables
 
 Les références et invariants du parseur sont décrits dans
 [`docs/parser-rust-only.md`](docs/parser-rust-only.md) et
-[`parser/reference_demos.json`](parser/reference_demos.json).
+[`parser/reference-demos.json`](parser/reference-demos.json).
 
 ## Navigateurs
 

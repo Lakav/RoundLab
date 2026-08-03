@@ -31,7 +31,7 @@ explicite de leurs droits de redistribution.
 
 ## 2. Convertir pour RoundLab
 
-Depuis `desktop` :
+Depuis `web` :
 
 ```bash
 pnpm geometry:import -- \

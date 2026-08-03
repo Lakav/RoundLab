@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Audit the generated Next static export.
 
-Run this after `cd desktop && pnpm build`. Source-level checks can prove config
-intent, but this checks the actual `desktop/out` artifact that would be hosted.
+Run this after `cd web && pnpm build`. Source-level checks can prove config
+intent, but this checks the actual `web/out` artifact that would be hosted.
 """
 
 from __future__ import annotations
@@ -14,9 +14,9 @@ from urllib.parse import urlparse
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "desktop" / "out"
-MAPS_TS = ROOT / "desktop" / "src" / "lib" / "maps.ts"
-PUBLIC_MAPS = ROOT / "desktop" / "public" / "cs2lens-maps"
+OUT = ROOT / "web" / "out"
+MAPS_TS = ROOT / "web" / "src" / "lib" / "maps.ts"
+PUBLIC_MAPS = ROOT / "web" / "public" / "cs2lens-maps"
 
 REF_RE = re.compile(r"""(?:href|src)=["']([^"']+)["']""")
 CALIB_RE = re.compile(r"(de_[a-z0-9_]+):\s*\{\s*posX:")
@@ -58,7 +58,7 @@ def calibrated_maps() -> set[str]:
 
 def assert_required_output(errors: list[str]) -> None:
     if not OUT.exists():
-        raise AssertionError("desktop/out is missing; run `cd desktop && pnpm build` before this audit")
+        raise AssertionError("web/out is missing; run `cd web && pnpm build` before this audit")
     for path in [
         OUT / "index.html",
         OUT / "match" / "index.html",
@@ -126,7 +126,7 @@ def assert_html_content(errors: list[str]) -> None:
             "/logo.png",
         ]:
             if snippet not in text:
-                errors.append(f"desktop/out/index.html is missing {snippet!r}")
+                errors.append(f"web/out/index.html is missing {snippet!r}")
     if match.exists():
         text = read(match)
         for snippet in [
@@ -135,7 +135,7 @@ def assert_html_content(errors: list[str]) -> None:
             "/_next/static/chunks/",
         ]:
             if snippet not in text:
-                errors.append(f"desktop/out/match/index.html is missing {snippet!r}")
+                errors.append(f"web/out/match/index.html is missing {snippet!r}")
 
 
 def assert_internal_refs_resolve(errors: list[str]) -> None:
@@ -149,7 +149,7 @@ def assert_internal_refs_resolve(errors: list[str]) -> None:
             target = OUT / parsed.path.lstrip("/")
             if not target.exists():
                 # GitHub Pages project sites expose the export below /<repository>.
-                # The prefix is a hosting concern and is not part of desktop/out.
+                # The prefix is a hosting concern and is not part of web/out.
                 parts = Path(parsed.path.lstrip("/")).parts
                 if len(parts) > 1:
                     prefixed_target = OUT.joinpath(*parts[1:])

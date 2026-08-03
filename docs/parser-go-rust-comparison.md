@@ -1,7 +1,7 @@
 # Rust Parser Validation and Historical Go Comparison
 
 This document is now historical. The active parser workflow is Rust-only:
-`parser/reference_demos.json`, `ROUNDLAB_TEST_DEMOS`, parser structural tests,
+`parser/reference-demos.json`, `ROUNDLAB_TEST_DEMOS`, parser structural tests,
 and `ROUNDLAB_STATS` are the normal validation and optimization tools. The
 archived Go parser is only a debug aid for old investigations; it is not a
 product dependency, fallback, or daily oracle.
@@ -32,7 +32,7 @@ Round-audit Markdown also includes an `Audit Summary` section that aggregates
 diff fields, missing/extra Rust counts, classification totals, and any remaining
 unclassified mismatches across all demos.
 `scripts/audit-reference-snapshots.py` is a read-only guard for saved reports:
-it checks that `parser/reference_demos.json` still matches the Rust side of a
+it checks that `parser/reference-demos.json` still matches the Rust side of a
 full-quality Go/Rust round audit, that filename/Go/Rust scores agree, and that
 the report has no unclassified or critical kill/bomb signature deltas. The
 round-audit JSON now carries the same compact Rust snapshot signatures used by
@@ -43,7 +43,7 @@ summary. It intentionally does not regenerate snapshots and does not claim exact
 tick-by-tick parity.
 
 The Rust integration tests can also validate the local reference demos directly
-without committing demo files. These tests use `parser/reference_demos.json` as
+without committing demo files. These tests use `parser/reference-demos.json` as
 strict lightweight metric snapshots, not loose lower bounds, so intentional
 parser output changes must update the snapshot deliberately. The snapshots now
 include both aggregate demo metrics and compact per-round metrics for scores,
@@ -179,7 +179,7 @@ Summary: Rust full quality outputs are smaller and faster than Go on most demos 
 - Rust reconstructs terminal flash detonations from projectile frames when demoparser Rust misses a `flashbang_detonate` at round end. This fixes the Anubis round 18 missing unique flash. Dust 7 and Inferno 13 were confirmed as Go duplicate/bucket artifacts, not missing Rust flashes.
 - Decoy timing now uses the projectile's first stationary tick instead of `decoy_detonate - 15s`. Ancient 12/16 now match deduped effect signatures. The harness now compares deduped effects with tolerance and classifies the only remaining deduped utility mismatch: Inferno round 2 decoy is `29.25s` in Rust vs `29.406s` in Go, same team and position, classified as `decoy_stationary_vs_event_timing`. Projectile frames show the decoy reaches its final position at `29.25s`, so this is not treated as a missing replay feature.
 - Classified non-weapon tolerances are now snapshotted by exact compact
-  signatures in `parser/reference_demos.json`: bomb-event timing mismatches,
+  signatures in `parser/reference-demos.json`: bomb-event timing mismatches,
   bomb-state window missing/extra deltas, deduped utility-effect mismatches,
   and projectile-track mismatches/missing/extra deltas. This does not make Go
   and Rust exactly identical, but it prevents known classifiers such as
@@ -212,7 +212,7 @@ Summary: Rust full quality outputs are smaller and faster than Go on most demos 
   fires, which confirms that the remaining gap is not caused by that protobuf
   type alias alone.
 - Those remaining weapon-fire tolerances are now snapshotted by exact compact
-  signatures in `parser/reference_demos.json`, including classification,
+  signatures in `parser/reference-demos.json`, including classification,
   timestamp, shooter, weapon, team, bucketed position, and yaw. This does not
   make exact parity true, but it prevents the broad `near_related_kill`
   classifier from silently hiding new missing Rust fires or changed unmatched

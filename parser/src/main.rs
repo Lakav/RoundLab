@@ -7143,8 +7143,8 @@ mod tests {
     fn expected_snapshot_for_demo(input: &str) -> Option<ExpectedReplaySnapshot> {
         let file_name = Path::new(input).file_name()?.to_str()?;
         let snapshots: Vec<ExpectedReplaySnapshot> =
-            serde_json::from_str(include_str!("../reference_demos.json"))
-                .expect("valid parser/reference_demos.json");
+            serde_json::from_str(include_str!("../reference-demos.json"))
+                .expect("valid parser/reference-demos.json");
         snapshots
             .into_iter()
             .find(|demo| demo.file_name == file_name)

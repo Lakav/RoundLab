@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DESKTOP = ROOT / "desktop"
+WEB_APP = ROOT / "web"
 
 PY_COMPILE_TARGETS = [
     "scripts/audit-browser-parser-locality.py",
@@ -19,8 +19,8 @@ PY_COMPILE_TARGETS = [
     "scripts/audit-replay-fixture-coverage.py",
     "scripts/audit-replay-rendering.py",
     "scripts/audit-security-baseline.py",
-    "scripts/audit-static-web-export.py",
-    "scripts/audit-static-export-output.py",
+    "scripts/audit-static-export-source.py",
+    "scripts/audit-static-export-artifact.py",
     "scripts/audit-web-portability.py",
     "scripts/benchmark-native-parser.py",
     "scripts/check-performance-budgets.py",
@@ -30,14 +30,14 @@ PY_COMPILE_TARGETS = [
 
 CI_SAFE_AUDITS = [
     ["python3", "scripts/audit-web-portability.py"],
-    ["python3", "scripts/audit-static-web-export.py"],
+    ["python3", "scripts/audit-static-export-source.py"],
     ["python3", "scripts/audit-browser-parser-locality.py"],
     ["python3", "scripts/audit-public-assets.py"],
     ["python3", "scripts/audit-reference-snapshots.py", "--reference-only"],
     ["python3", "scripts/audit-replay-fixture-coverage.py"],
     ["python3", "scripts/audit-replay-rendering.py", "--assets-only"],
     ["python3", "scripts/audit-security-baseline.py"],
-    ["python3", "scripts/audit-static-export-output.py"],
+    ["python3", "scripts/audit-static-export-artifact.py"],
 ]
 
 
@@ -56,21 +56,21 @@ def main() -> int:
     parser.add_argument(
         "--skip-frontend",
         action="store_true",
-        help="skip pnpm lint/typecheck/build; desktop/out must already be current",
+        help="skip pnpm lint/typecheck/build; web/out must already be current",
     )
     args = parser.parse_args()
 
     if not args.skip_frontend:
-        run(["pnpm", "audit", "--audit-level", "high"], DESKTOP)
-        run(["pnpm", "lint"], DESKTOP)
-        run(["pnpm", "exec", "tsc", "--noEmit"], DESKTOP)
-        run(["pnpm", "test:coverage"], DESKTOP)
-        run(["pnpm", "build"], DESKTOP)
-        run(["pnpm", "test:e2e:a11y"], DESKTOP)
+        run(["pnpm", "audit", "--audit-level", "high"], WEB_APP)
+        run(["pnpm", "lint"], WEB_APP)
+        run(["pnpm", "exec", "tsc", "--noEmit"], WEB_APP)
+        run(["pnpm", "test:coverage"], WEB_APP)
+        run(["pnpm", "build"], WEB_APP)
+        run(["pnpm", "test:e2e:a11y"], WEB_APP)
 
     run(["python3", "-m", "py_compile", *PY_COMPILE_TARGETS])
     run_quiet(["python3", "-m", "json.tool", "docs/replay-fixture-coverage.json"])
-    run_quiet(["python3", "-m", "json.tool", "parser/reference_demos.json"])
+    run_quiet(["python3", "-m", "json.tool", "parser/reference-demos.json"])
     for cmd in CI_SAFE_AUDITS:
         run(cmd)
 

@@ -150,7 +150,7 @@ const PRELOADABLE_ICON_PATHS = new Set([
   "/icons/awp.svg",
   "/icons/bayonet.svg",
   "/icons/bizon.svg",
-  "/icons/burningFlammes.svg",
+  "/icons/burning-flames.svg",
   "/icons/c4.svg",
   "/icons/cz75a.svg",
   "/icons/deagle.svg",

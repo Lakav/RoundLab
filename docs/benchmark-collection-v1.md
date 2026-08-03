@@ -19,7 +19,7 @@ Une analyse peut être générée depuis un match parsé complet, JSON ou JSON
 compressé :
 
 ```sh
-cd desktop
+cd web
 pnpm benchmark:analyze -- \
   --input data/parsed/<match>.json.gz \
   --output benchmark/analyses/<match>.json \
@@ -71,7 +71,7 @@ pour un manifeste minimal valide.
 ## 3. Construction et audit
 
 ```sh
-cd desktop
+cd web
 pnpm benchmark:build -- \
   --manifest benchmark/manifest.json \
   --output benchmark/corpus-bundle.json
@@ -88,7 +88,7 @@ Les contributions exportées par plusieurs bêta-testeurs peuvent être agrégé
 directement :
 
 ```sh
-cd desktop
+cd web
 pnpm benchmark:collect -- \
   --input-dir benchmark/contributions \
   --output benchmark/corpus-bundle.json \

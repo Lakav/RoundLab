@@ -16,9 +16,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DESKTOP = ROOT / "desktop"
-NEXT_CONFIG = DESKTOP / "next.config.ts"
-PACKAGE = DESKTOP / "package.json"
+WEB_APP = ROOT / "web"
+NEXT_CONFIG = WEB_APP / "next.config.ts"
+PACKAGE = WEB_APP / "package.json"
 
 SERVER_FILE_NAMES = {
     "route.ts",
@@ -94,7 +94,7 @@ def assert_next_static_export() -> list[str]:
     ]
     for snippet in required:
         if snippet not in text:
-            errors.append(f"desktop/next.config.ts is missing {snippet!r}")
+            errors.append(f"web/next.config.ts is missing {snippet!r}")
     forbidden = [
         "rewrites(",
         "redirects(",
@@ -103,7 +103,7 @@ def assert_next_static_export() -> list[str]:
     ]
     for snippet in forbidden:
         if snippet in text:
-            errors.append(f"desktop/next.config.ts contains server-oriented config {snippet!r}")
+            errors.append(f"web/next.config.ts contains server-oriented config {snippet!r}")
     return errors
 
 
@@ -112,11 +112,11 @@ def assert_package_build_is_static() -> list[str]:
     scripts = data.get("scripts") or {}
     errors: list[str] = []
     if scripts.get("build") != "next build":
-        errors.append("desktop/package.json build script must stay `next build`; static export is controlled by next.config.ts")
+        errors.append("web/package.json build script must stay `next build`; static export is controlled by next.config.ts")
     for name, command in scripts.items():
         lowered = str(command).lower()
         if "next start" in lowered:
-            errors.append(f"desktop/package.json script {name!r} uses next start, which requires a server")
+            errors.append(f"web/package.json script {name!r} uses next start, which requires a server")
     return errors
 
 
@@ -124,21 +124,21 @@ def assert_no_server_files(files: list[str]) -> list[str]:
     errors: list[str] = []
     for path in files:
         parts = Path(path).parts
-        if not path.startswith("desktop/src/"):
+        if not path.startswith("web/src/"):
             continue
         if Path(path).name in SERVER_FILE_NAMES:
             errors.append(f"{path} is a server route/middleware surface, not static-export portable")
-        if len(parts) >= 4 and parts[:3] == ("desktop", "src", "app") and parts[3] == "api":
-            errors.append(f"{path} is under desktop/src/app/api, which requires a server route")
+        if len(parts) >= 4 and parts[:3] == ("web", "src", "app") and parts[3] == "api":
+            errors.append(f"{path} is under web/src/app/api, which requires a server route")
     return errors
 
 
 def assert_src_has_no_node_or_server_apis(files: list[str]) -> list[str]:
     errors: list[str] = []
     for path in files:
-        if not path.startswith("desktop/src/") or not path.endswith((".ts", ".tsx", ".js", ".jsx")):
+        if not path.startswith("web/src/") or not path.endswith((".ts", ".tsx", ".js", ".jsx")):
             continue
-        if path.startswith("desktop/src/wasm/"):
+        if path.startswith("web/src/wasm/"):
             continue
         text = read(ROOT / path)
         for match in IMPORT_RE.finditer(text):
