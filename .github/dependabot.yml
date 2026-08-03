@@ -1,0 +1,49 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Paris
+    open-pull-requests-limit: 5
+    groups:
+      next-and-react:
+        patterns:
+          - next
+          - react
+          - react-dom
+          - eslint-config-next
+      testing:
+        patterns:
+          - "@playwright/*"
+          - "@testing-library/*"
+          - "@vitest/*"
+          - vitest
+
+  - package-ecosystem: cargo
+    directory: /parser
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:15"
+      timezone: Europe/Paris
+    open-pull-requests-limit: 5
+    groups:
+      rust-patch-updates:
+        update-types:
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+      day: monday
+      time: "06:30"
+      timezone: Europe/Paris
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        patterns:
+          - "*"

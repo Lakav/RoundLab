@@ -1,6 +1,3 @@
-export const METRIC_QUALITY_SCHEMA_VERSION =
-  "roundlab.metric-quality.v1" as const;
-
 export type MetricProvenance = "observed" | "reconstructed" | "estimated";
 
 export type MetricConfidence = "high" | "medium" | "low" | "unavailable";
@@ -85,10 +82,4 @@ export function unavailableMetric<T>(
     confidence: "unavailable",
     unavailableReasons: input.reasons,
   });
-}
-
-export function metricValue<T>(
-  metric: QualityMetric<T> | null | undefined,
-): T | null {
-  return metric?.value ?? null;
 }

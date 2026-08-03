@@ -64,8 +64,6 @@ export type PlayerPos = {
 /** A player's last known position in a round, even after death. The HUD
  *  uses this so dead players keep showing their final inventory/money
  *  rather than blanking out. */
-export type LastKnownPos = PlayerPos;
-
 export type BombState = {
   x: number;
   y: number;

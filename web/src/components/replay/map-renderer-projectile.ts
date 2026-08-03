@@ -1030,7 +1030,7 @@ export function formatProjectileDebugNumber(value: number): number | null {
   return Number.isFinite(value) ? Number(value.toFixed(3)) : null;
 }
 
-export function projectileDebugDistance(
+function projectileDebugDistance(
   projectile: ProjectilePos,
   effect: UtilityEffect,
 ): number {

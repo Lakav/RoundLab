@@ -62,16 +62,37 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check-git", action="store_true", help="also require the generated artifacts to match Git")
     parser.add_argument(
+        "--check-tool-only",
+        action="store_true",
+        help="validate the wasm-bindgen CLI without rebuilding artifacts",
+    )
+    parser.add_argument(
         "--artifact-dir",
         type=Path,
         help="copy the deterministic generated artifacts to this directory",
     )
     args = parser.parse_args()
 
-    version = subprocess.run(["wasm-bindgen", "--version"], text=True, capture_output=True, check=True).stdout.strip()
+    try:
+        version = subprocess.run(
+            ["wasm-bindgen", "--version"],
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout.strip()
+    except FileNotFoundError as error:
+        raise SystemExit(
+            "wasm-bindgen CLI is missing; install it with "
+            "`cargo install wasm-bindgen-cli --version 0.2.126 --locked`"
+        ) from error
     if version != "wasm-bindgen 0.2.126":
-        raise AssertionError(f"expected wasm-bindgen 0.2.126, got {version!r}")
+        raise SystemExit(
+            f"expected wasm-bindgen 0.2.126 to match Cargo.lock, got {version!r}; "
+            "install the pinned CLI with `cargo install wasm-bindgen-cli --version 0.2.126 --locked`"
+        )
     print(version)
+    if args.check_tool_only:
+        return
 
     with tempfile.TemporaryDirectory(prefix="roundlab-wasm-repro-") as temporary:
         temporary_root = Path(temporary)

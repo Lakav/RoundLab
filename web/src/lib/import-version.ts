@@ -1,8 +1,6 @@
 import { MECHANICS_ANALYSIS_SPEC_VERSION } from "./analysis/mechanics-types.ts";
 import type { MatchData } from "./types.ts";
 
-export const IMPORT_MANIFEST_VERSION = "roundlab.import.v1" as const;
-
 export type CurrentParserQuality = "full" | "high";
 
 const BASE_CAPABILITIES = [

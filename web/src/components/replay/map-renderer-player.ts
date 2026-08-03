@@ -11,9 +11,9 @@ import type {
   HabitReplayRound,
 } from "@/lib/replay-store";
 
-export const BOMB_CARRIER_COLOR = 0xef4444;
-export const SHOOT_ROTATION_OFFSET = 0;
-export const PLAYER_ARROW_TIP_OFFSET = 9;
+const BOMB_CARRIER_COLOR = 0xef4444;
+const SHOOT_ROTATION_OFFSET = 0;
+const PLAYER_ARROW_TIP_OFFSET = 9;
 
 const PLAYER_DESTROY_OPTIONS = { children: true, context: true, style: true } as const;
 

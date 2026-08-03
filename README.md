@@ -29,6 +29,8 @@ statistiques vérifiables et permet de rejouer chaque round sur un radar 2D.
 - import local des fichiers `.dem` et `.dem.zst` ;
 - parseur Rust compilé en WebAssembly et exécuté dans un Web Worker ;
 - stockage des matchs et des rounds dans IndexedDB ;
+- demande explicite de stockage persistant et affichage de l'usage/quota lorsque le navigateur le permet ;
+- sauvegarde versionnée d'un match ou de toute la bibliothèque, restauration validée et collisions explicites ;
 - coexistence des anciens imports avec le schéma actuel
   [`roundlab.replay.v2`](docs/replay-schema-v2.md).
 
@@ -188,6 +190,10 @@ besoin utilisent `ROUNDLAB_TEST_DEMOS` et `ROUNDLAB_BENCHMARK_DEMOS`.
 | Collecte des benchmarks | [`docs/benchmark-collection-v1.md`](docs/benchmark-collection-v1.md) |
 | Invariants du parseur | [`docs/parser-rust-only.md`](docs/parser-rust-only.md) |
 | Snapshots de référence | [`parser/reference-demos.json`](parser/reference-demos.json) |
+| Architecture frontend | [`docs/frontend-module-boundaries-2026-08-03.md`](docs/frontend-module-boundaries-2026-08-03.md) |
+| Couverture et matrice navigateur | [`docs/testing-coverage.md`](docs/testing-coverage.md) |
+| Sécurité | [`SECURITY.md`](SECURITY.md) |
+| Contribution | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 
 ## Navigateurs
 
@@ -196,8 +202,17 @@ Le parseur local nécessite Web Workers, WebAssembly, IndexedDB, la File API et
 
 - Chrome : validé avec de vraies démos et des fichiers volumineux ;
 - Edge : basé sur Chromium, mais pas validé séparément ;
-- Safari : pas encore validé ;
-- Firefox : pas encore validé.
+- Firefox : parcours critiques validés par Playwright en CI ;
+- WebKit : parcours critiques validés comme signal inter-moteur, sans prétendre valider Safari sur matériel Apple ;
+- Safari réel : pas encore validé sur Mac ou iPhone physique.
+
+## Versions internes
+
+Le dépôt ne publie plus de releases ni de tags. `roundlab-web` reste un package npm privé et
+`roundlab-parser` n'est pas publié sur crates.io : leurs numéros (`0.1.40` et `0.1.0`) identifient
+uniquement les manifests et artefacts internes actuels. Ils ne constituent ni une promesse SemVer,
+ni une version publique du produit. L'ancien incrément web est conservé pour ne pas fabriquer une
+fausse normalisation historique.
 
 ## Déploiement
 

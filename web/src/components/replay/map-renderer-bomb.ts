@@ -250,14 +250,14 @@ export type BombRenderState = {
   defuse: DefuseVisualState | null;
 };
 
-export type BombRadarPoint = {
+type BombRadarPoint = {
   x: number;
   y: number;
 };
 
 type BombTextureLoader = (path: string) => Promise<Texture>;
 
-export function createBombSprite(
+function createBombSprite(
   layer: Container,
   loadTexture: BombTextureLoader,
 ): BombSprite {
@@ -281,7 +281,7 @@ export function createBombSprite(
   return sprite;
 }
 
-export function drawBombExplosion(
+function drawBombExplosion(
   layer: Container,
   explosion: { bomb: BombState; age: number },
   toRadar: (x: number, y: number, z?: number) => BombRadarPoint,

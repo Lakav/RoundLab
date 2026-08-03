@@ -1,0 +1,9 @@
+* @Lakav
+
+/.github/workflows/ @Lakav
+/parser/ @Lakav
+/web/src/lib/backends/ @Lakav
+/web/src/lib/backends/browser-migrations.ts @Lakav
+/web/src/lib/storage-safety.ts @Lakav
+/web/src/lib/local-diagnostic.ts @Lakav
+/SECURITY.md @Lakav

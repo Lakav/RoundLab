@@ -7,7 +7,7 @@ import {
 } from "pixi.js";
 
 export const MAX_DEFERRED_DESTROY_OBJECTS = 192;
-export const DISPLAY_OBJECT_DESTROY_OPTIONS = {
+const DISPLAY_OBJECT_DESTROY_OPTIONS = {
   children: true,
   context: true,
   style: true,

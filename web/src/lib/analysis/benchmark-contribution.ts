@@ -13,7 +13,6 @@ import {
 export {
   BENCHMARK_CONTRIBUTION_VERSION,
   faceitBenchmarkLevel,
-  normalizeBenchmarkContributionSettings,
   premierBenchmarkLevel,
   type BenchmarkContributionSettings,
 } from "./benchmark-contribution-settings.ts";
