@@ -1,0 +1,92 @@
+name: monitor-production
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: production-monitor
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      INCIDENT_TITLE: "[Supervision] Incident production RoundLab"
+      ROUNDLAB_PRODUCTION_URL: https://lakav.github.io/RoundLab/
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Probe production pages and parser artifact
+        id: monitor
+        continue-on-error: true
+        run: >-
+          python3 scripts/monitor-production.py
+          --url "$ROUNDLAB_PRODUCTION_URL"
+          --output monitor-report.json
+          --markdown-output monitor-report.md
+
+      - name: Publish monitor summary
+        if: always()
+        run: |
+          if [[ -f monitor-report.md ]]; then
+            cat monitor-report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## Supervision RoundLab" >> "$GITHUB_STEP_SUMMARY"
+            echo "Le rapport de supervision n'a pas été produit." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Retain monitor evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-monitor-${{ github.run_id }}
+          path: |
+            monitor-report.json
+            monitor-report.md
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Open or update an incident
+        if: steps.monitor.outcome == 'failure'
+        run: |
+          issue_number="$(gh issue list \
+            --repo "$GITHUB_REPOSITORY" \
+            --state open \
+            --search "$INCIDENT_TITLE in:title" \
+            --json number \
+            --jq '.[0].number // empty')"
+          if [[ -n "$issue_number" ]]; then
+            gh issue comment "$issue_number" \
+              --repo "$GITHUB_REPOSITORY" \
+              --body-file monitor-report.md
+          else
+            gh issue create \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$INCIDENT_TITLE" \
+              --body-file monitor-report.md
+          fi
+          exit 1
+
+      - name: Close a recovered incident
+        if: steps.monitor.outcome == 'success'
+        run: |
+          issue_number="$(gh issue list \
+            --repo "$GITHUB_REPOSITORY" \
+            --state open \
+            --search "$INCIDENT_TITLE in:title" \
+            --json number \
+            --jq '.[0].number // empty')"
+          if [[ -n "$issue_number" ]]; then
+            gh issue comment "$issue_number" \
+              --repo "$GITHUB_REPOSITORY" \
+              --body "La sonde est de nouveau opérationnelle. Voir le run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
+            gh issue close "$issue_number" --repo "$GITHUB_REPOSITORY"
+          fi
