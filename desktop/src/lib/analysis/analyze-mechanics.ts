@@ -8,7 +8,7 @@ import type {
   PlayerPos,
   Round,
   WeaponFireEvent,
-} from "@/lib/types";
+} from "../types.ts";
 import {
   MECHANICS_ANALYSIS_SPEC_VERSION,
   type CrosshairPlacement,
@@ -22,12 +22,13 @@ import {
   type ShotAssociation,
   type ShotMovementAnalysis,
   type UnmatchedShotFact,
-} from "./mechanics-types";
+} from "./mechanics-types.ts";
 import {
-  hasClearLineOfSight,
   type MapGeometry,
   validMapGeometry,
-} from "./visibility-geometry";
+} from "./visibility-geometry.ts";
+import { buildDataQualityReport } from "./data-quality.ts";
+import { evaluateTemporalVisibility } from "./temporal-visibility.ts";
 
 export const ENGAGEMENT_GAP_SECONDS = 5;
 export const SHOT_ASSOCIATION_MAX_TICKS = 2;
@@ -124,6 +125,21 @@ function opposingPlayers(
   );
 }
 
+function playerPositionAtOrBefore(
+  round: Round,
+  playerId: string,
+  time: number,
+  maxAgeSeconds: number,
+): PlayerPos | null {
+  for (let index = round.frames.length - 1; index >= 0; index--) {
+    const frame = round.frames[index];
+    if (frame.t > time) continue;
+    if (time - frame.t > maxAgeSeconds) return null;
+    return playerInFrame(frame, playerId);
+  }
+  return null;
+}
+
 function enemySpottedAtFire(
   round: Round,
   shooterId: string,
@@ -186,7 +202,10 @@ function normalizedBallisticWeapon(weapon: string | undefined): string | null {
   ) {
     return null;
   }
-  return normalized;
+  return {
+    m4a1_silencer: "m4a1",
+    usp_silencer: "hkp2000",
+  }[normalized] ?? normalized;
 }
 
 function compareOrderedShotFacts(
@@ -221,7 +240,11 @@ function matchingFire(
   fires: OrderedFire[],
   fact: OrderedShotFact,
   weapon: string | null,
-): { fire: OrderedFire | null; reason: UnmatchedShotFact["reason"] | null } {
+): {
+  fire: OrderedFire | null;
+  reason: UnmatchedShotFact["reason"] | null;
+  uncertainFires: OrderedFire[];
+} {
   const candidates = fires
     .filter(
       (candidate) =>
@@ -243,11 +266,19 @@ function matchingFire(
         },
       ) || right.sourceIndex - left.sourceIndex
     );
-  if (candidates.length === 0) return { fire: null, reason: "no_matching_fire" };
-  if (candidates.length > 1 && sameFireOrder(candidates[0], candidates[1])) {
-    return { fire: null, reason: "ambiguous_fire" };
+  if (candidates.length === 0) {
+    return { fire: null, reason: "no_matching_fire", uncertainFires: [] };
   }
-  return { fire: candidates[0], reason: null };
+  if (candidates.length > 1 && sameFireOrder(candidates[0], candidates[1])) {
+    return {
+      fire: null,
+      reason: "ambiguous_fire",
+      uncertainFires: candidates.filter((candidate) =>
+        sameFireOrder(candidate, candidates[0])
+      ),
+    };
+  }
+  return { fire: candidates[0], reason: null, uncertainFires: [] };
 }
 
 function evidenceForDamage(
@@ -390,10 +421,15 @@ function finalizeEngagement(
   };
 }
 
-function analyzeShots(round: Round, tickRate: number): {
+function analyzeShots(
+  round: Round,
+  tickRate: number,
+  streamAvailability: { fires: boolean; impacts: boolean; damages: boolean },
+): {
   shots: ShotAssociation[];
   unmatchedImpacts: UnmatchedShotFact[];
   unmatchedDamages: UnmatchedShotFact[];
+  unmatchedKills: UnmatchedShotFact[];
   excludedWeaponFireEvents: number;
   evidence: MechanicsEvidence[];
 } {
@@ -415,10 +451,10 @@ function analyzeShots(round: Round, tickRate: number): {
     const proof = evidenceForFire(round, fire, sourceIndex, shooterId);
     evidence.push(proof);
     const unavailableReasons: string[] = [];
-    if (round.bulletImpacts === undefined) {
+    if (!streamAvailability.impacts) {
       unavailableReasons.push("missing_bullet_impact_events");
     }
-    if (round.damages === undefined) unavailableReasons.push("missing_damage_events");
+    if (!streamAvailability.damages) unavailableReasons.push("missing_damage_events");
     orderedFires.push({
       sourceIndex,
       shooterId,
@@ -442,6 +478,7 @@ function analyzeShots(round: Round, tickRate: number): {
           fire.t,
           tickRate,
         ),
+        associationStatus: "incomplete",
         impacts: [],
         damages: [],
         unavailableReasons,
@@ -471,6 +508,8 @@ function analyzeShots(round: Round, tickRate: number): {
   }
 
   const unmatchedImpacts: UnmatchedShotFact[] = [];
+  const ambiguousShotIds = new Set<string>();
+  const incompleteShotIds = new Set<string>();
   for (const [sourceIndex, impact] of (round.bulletImpacts ?? []).entries()) {
     const shooterId = impact.shooter === undefined ? null : id(impact.shooter);
     const proof = evidenceForImpact(round, impact, sourceIndex, shooterId);
@@ -493,6 +532,11 @@ function analyzeShots(round: Round, tickRate: number): {
         evidenceId: proof.evidenceId,
         reason: match.reason ?? "no_matching_fire",
       });
+      if (match.reason === "ambiguous_fire") {
+        match.uncertainFires.forEach((candidate) =>
+          ambiguousShotIds.add(candidate.shot.shotId)
+        );
+      }
       continue;
     }
     match.fire.shot.impacts.push({
@@ -514,6 +558,21 @@ function analyzeShots(round: Round, tickRate: number): {
     const proof = evidenceForDamage(round, damage, sourceIndex, attackerId, victimId);
     if (damage.weapon === undefined) {
       unmatchedDamages.push({ evidenceId: proof.evidenceId, reason: "missing_weapon" });
+      const uncertain = matchingFire(
+        firesByShooter.get(attackerId) ?? [],
+        {
+          tick: damage.tick,
+          sequence: damage.sequence ?? null,
+          time: damage.t,
+        },
+        null,
+      );
+      if (uncertain.fire !== null) {
+        incompleteShotIds.add(uncertain.fire.shot.shotId);
+      }
+      uncertain.uncertainFires.forEach((candidate) =>
+        incompleteShotIds.add(candidate.shot.shotId)
+      );
       continue;
     }
     const weapon = normalizedBallisticWeapon(damage.weapon);
@@ -532,6 +591,11 @@ function analyzeShots(round: Round, tickRate: number): {
         evidenceId: proof.evidenceId,
         reason: match.reason ?? "no_matching_fire",
       });
+      if (match.reason === "ambiguous_fire") {
+        match.uncertainFires.forEach((candidate) =>
+          ambiguousShotIds.add(candidate.shot.shotId)
+        );
+      }
       continue;
     }
     match.fire.shot.damages.push({
@@ -542,13 +606,112 @@ function analyzeShots(round: Round, tickRate: number): {
       damageHealth: damage.damageHealth,
       damageArmor: damage.damageArmor,
       hitgroup: damage.hitgroup ?? null,
+      distanceWorld: (() => {
+        const attacker = playerPositionAtOrBefore(
+          round,
+          attackerId,
+          damage.t,
+          MOVEMENT_SAMPLE_MAX_AGE_SECONDS,
+        );
+        const victim = playerPositionAtOrBefore(
+          round,
+          victimId,
+          damage.t,
+          MOVEMENT_SAMPLE_MAX_AGE_SECONDS,
+        );
+        return attacker === null || victim === null
+          ? null
+          : Math.hypot(
+            attacker.x - victim.x,
+            attacker.y - victim.y,
+            attacker.z - victim.z,
+          );
+      })(),
     });
+  }
+
+  const unmatchedKills: UnmatchedShotFact[] = [];
+  for (const [sourceIndex, event] of round.events.entries()) {
+    if (
+      event.type !== "kill" ||
+      event.killer === undefined ||
+      event.victim === undefined
+    ) {
+      continue;
+    }
+    const killerId = id(event.killer);
+    const victimId = id(event.victim);
+    if (!opposingPlayers(round, killerId, victimId, event.t)) continue;
+    const proof = evidenceForKill(round, event, sourceIndex, killerId, victimId);
+    if (event.weapon === undefined) {
+      unmatchedKills.push({ evidenceId: proof.evidenceId, reason: "missing_weapon" });
+      const uncertain = matchingFire(
+        firesByShooter.get(killerId) ?? [],
+        {
+          tick: event.tick ?? Math.round(round.startTick + event.t * tickRate),
+          sequence: event.sequence ?? null,
+          time: event.t,
+        },
+        null,
+      );
+      if (uncertain.fire !== null) {
+        incompleteShotIds.add(uncertain.fire.shot.shotId);
+      }
+      uncertain.uncertainFires.forEach((candidate) =>
+        incompleteShotIds.add(candidate.shot.shotId)
+      );
+      continue;
+    }
+    const weapon = normalizedBallisticWeapon(event.weapon);
+    if (weapon === null) continue;
+    const match = matchingFire(
+      firesByShooter.get(killerId) ?? [],
+      {
+        tick: event.tick ?? Math.round(round.startTick + event.t * tickRate),
+        sequence: event.sequence ?? null,
+        time: event.t,
+      },
+      weapon,
+    );
+    if (match.fire === null) {
+      unmatchedKills.push({
+        evidenceId: proof.evidenceId,
+        reason: match.reason ?? "no_matching_fire",
+      });
+      if (match.reason === "ambiguous_fire") {
+        match.uncertainFires.forEach((candidate) =>
+          ambiguousShotIds.add(candidate.shot.shotId)
+        );
+      }
+      continue;
+    }
+    (match.fire.shot.kills ??= []).push({
+      evidenceId: proof.evidenceId,
+      tick: event.tick ?? null,
+      time: event.t,
+      victimId,
+      headshot: event.hs === true,
+      penetratedSurfaces: Math.max(0, event.penetrated ?? 0),
+    });
+  }
+
+  for (const fire of orderedFires) {
+    fire.shot.associationStatus =
+      fire.shot.unavailableReasons.includes("missing_damage_events") ||
+        incompleteShotIds.has(fire.shot.shotId)
+        ? "incomplete"
+        : ambiguousShotIds.has(fire.shot.shotId)
+          ? "ambiguous"
+          : fire.shot.damages.length > 0 || (fire.shot.kills?.length ?? 0) > 0
+            ? "reliable_hit"
+            : "reliable_miss";
   }
 
   return {
     shots: orderedFires.map((fire) => fire.shot),
     unmatchedImpacts,
     unmatchedDamages,
+    unmatchedKills,
     excludedWeaponFireEvents,
     evidence,
   };
@@ -644,6 +807,21 @@ function analyzeShotMovements(
   shots: ShotAssociation[],
 ): ShotMovementAnalysis[] {
   return shots.map((shot) => {
+    let scopedSample: {
+      value: boolean;
+      time: number;
+      ageSeconds: number;
+    } | null = null;
+    for (let index = round.frames.length - 1; index >= 0; index--) {
+      const frame = round.frames[index];
+      if (frame.t >= shot.time) continue;
+      const ageSeconds = shot.time - frame.t;
+      if (ageSeconds > MOVEMENT_SAMPLE_MAX_AGE_SECONDS) break;
+      const player = playerInFrame(frame, shot.shooterId);
+      if (player?.scoped === undefined) continue;
+      scopedSample = { value: player.scoped, time: frame.t, ageSeconds };
+      break;
+    }
     let sampleIndex = -1;
     for (let index = round.frames.length - 1; index >= 0; index--) {
       if (round.frames[index].t <= shot.time) {
@@ -659,6 +837,11 @@ function analyzeShotMovements(
         sampleAgeSeconds: null,
         horizontalSpeed: null,
         speedSource: null,
+        duckAmount: null,
+        scoped: scopedSample?.value ?? null,
+        scopedSampleTime: scopedSample?.time ?? null,
+        scopedSampleAgeSeconds: scopedSample?.ageSeconds ?? null,
+        stance: "unavailable",
         movementState: "unavailable",
         counterStrafeAssessment: "unavailable",
         referenceTime: null,
@@ -680,6 +863,15 @@ function analyzeShotMovements(
         sampleAgeSeconds,
         horizontalSpeed: null,
         speedSource: null,
+        duckAmount: player?.duckAmount ?? null,
+        scoped: scopedSample?.value ?? null,
+        scopedSampleTime: scopedSample?.time ?? null,
+        scopedSampleAgeSeconds: scopedSample?.ageSeconds ?? null,
+        stance: player === null
+          ? "unavailable"
+          : (player.duckAmount ?? 0) >= 0.5
+            ? "crouched"
+            : "standing",
         movementState: "unavailable",
         counterStrafeAssessment: "unavailable",
         referenceTime: null,
@@ -698,6 +890,11 @@ function analyzeShotMovements(
         sampleAgeSeconds,
         horizontalSpeed: null,
         speedSource: null,
+        duckAmount: player.duckAmount ?? null,
+        scoped: scopedSample?.value ?? null,
+        scopedSampleTime: scopedSample?.time ?? null,
+        scopedSampleAgeSeconds: scopedSample?.ageSeconds ?? null,
+        stance: (player.duckAmount ?? 0) >= 0.5 ? "crouched" : "standing",
         movementState: "unavailable",
         counterStrafeAssessment: "unavailable",
         referenceTime: null,
@@ -715,6 +912,11 @@ function analyzeShotMovements(
         sampleAgeSeconds,
         horizontalSpeed: speed.value,
         speedSource: speed.source,
+        duckAmount: player.duckAmount ?? null,
+        scoped: scopedSample?.value ?? null,
+        scopedSampleTime: scopedSample?.time ?? null,
+        scopedSampleAgeSeconds: scopedSample?.ageSeconds ?? null,
+        stance: (player.duckAmount ?? 0) >= 0.5 ? "crouched" : "standing",
         movementState,
         counterStrafeAssessment: "not_observed",
         referenceTime: null,
@@ -744,6 +946,11 @@ function analyzeShotMovements(
       sampleAgeSeconds,
       horizontalSpeed: speed.value,
       speedSource: speed.source,
+      duckAmount: player.duckAmount ?? null,
+      scoped: scopedSample?.value ?? null,
+      scopedSampleTime: scopedSample?.time ?? null,
+      scopedSampleAgeSeconds: scopedSample?.ageSeconds ?? null,
+      stance: (player.duckAmount ?? 0) >= 0.5 ? "crouched" : "standing",
       movementState,
       counterStrafeAssessment:
         reference !== null
@@ -798,6 +1005,10 @@ function analyzeFirstVisibilities(
         time: null,
         tick: null,
         geometryId: geometry?.geometryId ?? null,
+        method: null,
+        confidence: "unavailable",
+        observerIds: [],
+        limitations: [],
         evidenceId: null,
         unavailableReasons: [geometryReason ?? "missing_map_geometry"],
       };
@@ -815,13 +1026,15 @@ function analyzeFirstVisibilities(
       ) {
         continue;
       }
-      if (
-        hasClearLineOfSight(
-          eyePosition(first),
-          eyePosition(second),
-          geometry,
-        )
-      ) {
+      const temporal = evaluateTemporalVisibility(
+        round,
+        frame.t,
+        geometry,
+        first,
+        second,
+        eyePosition,
+      );
+      if (temporal.visible) {
         const proof = evidenceForVisibility(round, engagement, frame.t, tickRate);
         evidence.push(proof);
         return {
@@ -829,6 +1042,10 @@ function analyzeFirstVisibilities(
           time: frame.t,
           tick: proof.tick,
           geometryId: geometry.geometryId,
+          method: temporal.method,
+          confidence: temporal.confidence,
+          observerIds: temporal.observerIds,
+          limitations: temporal.limitations,
           evidenceId: proof.evidenceId,
           unavailableReasons: [],
         };
@@ -839,6 +1056,10 @@ function analyzeFirstVisibilities(
       time: null,
       tick: null,
       geometryId: geometry.geometryId,
+      method: "geometry_fov_smoke_flash",
+      confidence: "low",
+      observerIds: [],
+      limitations: ["dynamic_obstacles_not_modeled"],
       evidenceId: null,
       unavailableReasons: ["no_visible_frame_before_engagement"],
     };
@@ -1019,6 +1240,7 @@ function analyzeRound(
   tickRate: number,
   mapName: string,
   geometry: MapGeometry | undefined,
+  capabilities: string[] | undefined,
 ): {
   analysis: RoundMechanicsAnalysis;
   evidence: MechanicsEvidence[];
@@ -1122,7 +1344,20 @@ function analyzeRound(
     finalizeEngagement(round.number, index, engagement)
   );
 
-  const shotAnalysis = analyzeShots(round, tickRate);
+  const fireStreamAvailable = capabilities === undefined
+    ? round.weaponFires !== undefined
+    : capabilities.includes("weapon_fires");
+  const impactStreamAvailable = capabilities === undefined
+    ? round.bulletImpacts !== undefined
+    : capabilities.includes("bullet_impacts");
+  const damageStreamAvailable = capabilities === undefined
+    ? round.damages !== undefined
+    : capabilities.includes("damage_events");
+  const shotAnalysis = analyzeShots(round, tickRate, {
+    fires: fireStreamAvailable,
+    impacts: impactStreamAvailable,
+    damages: damageStreamAvailable,
+  });
   const firingSequences = analyzeFiringSequences(
     round.number,
     shotAnalysis.shots,
@@ -1149,11 +1384,11 @@ function analyzeRound(
     crosshairPlacements,
   );
   const unavailableReasons = new Set<string>();
-  if (round.damages === undefined) unavailableReasons.add("missing_damage_events");
-  if (round.weaponFires === undefined) {
+  if (!damageStreamAvailable) unavailableReasons.add("missing_damage_events");
+  if (!fireStreamAvailable) {
     unavailableReasons.add("missing_weapon_fire_events");
   }
-  if (round.bulletImpacts === undefined) {
+  if (!impactStreamAvailable) {
     unavailableReasons.add("missing_bullet_impact_events");
   }
   const roundEvidence = [
@@ -1176,6 +1411,7 @@ function analyzeRound(
       shotMovements,
       unmatchedImpacts: shotAnalysis.unmatchedImpacts,
       unmatchedDamages: shotAnalysis.unmatchedDamages,
+      unmatchedKills: shotAnalysis.unmatchedKills,
       excludedWeaponFireEvents: shotAnalysis.excludedWeaponFireEvents,
       excludedDamageEvents,
       excludedKillEvents,
@@ -1199,6 +1435,7 @@ export function analyzeMechanics(
       match.meta.tickRate,
       match.meta.map,
       context.mapGeometry,
+      match.capabilities,
     );
     rounds.push(result.analysis);
     evidence.push(...result.evidence);
@@ -1209,6 +1446,12 @@ export function analyzeMechanics(
     parserVersion: match.parserVersion ?? "unknown",
     matchId: context.matchId,
     generatedAt: context.generatedAt,
+    dataQuality: buildDataQualityReport(
+      match,
+      rounds,
+      context.mapGeometry,
+      MECHANICS_ANALYSIS_SPEC_VERSION,
+    ),
     rounds,
     evidence,
   };

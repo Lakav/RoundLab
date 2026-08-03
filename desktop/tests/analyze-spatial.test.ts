@@ -172,6 +172,10 @@ describe("spatial zone analysis", () => {
       specVersion: "roundlab.spatial.v1",
       map: "de_test",
       zonesVersion: "test-zones-v1",
+      zoneLabels: {
+        a: "Zone A",
+        b: "Zone B",
+      },
     });
     expect(result.rounds[0]).toMatchObject({
       roundNumber: 1,
@@ -217,6 +221,20 @@ describe("spatial zone analysis", () => {
       time: 2,
       tick: 1_128,
     }]);
+    expect(result.players.p1).toMatchObject({
+      zoneAssignmentRate: {
+        value: 1,
+        sampleCount: 3,
+        usableSampleCount: 3,
+        coverage: 1,
+        provenance: "reconstructed",
+        confidence: "high",
+        unavailableReasons: [],
+      },
+      uniqueZonesVisited: { value: 2 },
+      zoneTransitions: { value: 1 },
+      rotations: { value: 0 },
+    });
   });
 
   it("tracks contested intervals and a takeover by the last exclusive opponent", () => {
@@ -277,6 +295,27 @@ describe("spatial zone analysis", () => {
     expect(result.zoneVisits).toHaveLength(2);
     expect(result.zoneTransitions).toEqual([]);
     expect(result.outsideZoneSamples).toBe(1);
+    const quality = analyzeSpatial(match(round([
+      { t: 0, players: [player("p1", 5)] },
+      { t: 1, players: [player("p1", 50)] },
+      { t: 2, players: [player("p1", 15)] },
+    ])), {
+      ...CONTEXT,
+      tacticalZones: ZONES,
+    }).players.p1;
+    expect(quality.zoneAssignmentRate).toMatchObject({
+      value: 2 / 3,
+      sampleCount: 3,
+      usableSampleCount: 2,
+      coverage: 2 / 3,
+      confidence: "medium",
+      unavailableReasons: ["incomplete_zone_assignment"],
+    });
+    expect(quality.uniqueZonesVisited).toMatchObject({
+      value: null,
+      confidence: "unavailable",
+      unavailableReasons: ["incomplete_zone_assignment"],
+    });
   });
 
   it("detects a same-side rotation into one zone at the inclusive time boundary", () => {
@@ -341,6 +380,21 @@ describe("spatial zone analysis", () => {
       maxDistance3d: 4,
       meanHorizontalDistance: 3.5,
     }]);
+    expect(analyzeSpatial(match(sourceRound), CONTEXT).players.p1).toMatchObject({
+      meanTeammateDistance: {
+        value: 3.5,
+        sampleCount: 2,
+        usableSampleCount: 2,
+        coverage: 1,
+        provenance: "estimated",
+        confidence: "medium",
+      },
+      spacingSamples: {
+        value: 2,
+        sampleCount: 2,
+        usableSampleCount: 2,
+      },
+    });
   });
 
   it("records a living teammate with static sight of the killer as covering", () => {
@@ -475,6 +529,14 @@ describe("spatial zone analysis", () => {
       zoneVisits: [],
       unavailableReasons: ["missing_tactical_zones"],
     });
+    expect(analyzeSpatial(sourceMatch, CONTEXT).players.p1.zoneAssignmentRate)
+      .toMatchObject({
+        value: null,
+        sampleCount: 1,
+        usableSampleCount: 0,
+        coverage: 0,
+        unavailableReasons: ["missing_tactical_zones"],
+      });
     expect(analyzeSpatial(sourceMatch, {
       ...CONTEXT,
       tacticalZones: { ...ZONES, map: "de_other" },

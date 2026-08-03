@@ -6,6 +6,11 @@ import {
   parseGlb,
   type GltfDocument,
 } from "../src/lib/analysis/gltf-map-geometry.ts";
+import {
+  AwpyTriGeometryError,
+  importMapGeometryFromAwpyTri,
+} from "../src/lib/analysis/awpy-tri-map-geometry.ts";
+import type { MapGeometry } from "../src/lib/analysis/visibility-geometry.ts";
 
 type Arguments = {
   input: string;
@@ -20,7 +25,7 @@ type Arguments = {
 function usage(): string {
   return [
     "Usage:",
-    "  pnpm geometry:import -- --input <map.gltf|map.glb> --map <de_name>",
+    "  pnpm geometry:import -- --input <map.gltf|map.glb|map.tri> --map <de_name>",
     "    --geometry-id <version> --output <geometry.json> [--scale <number>]",
     "    [--keep-gltf-axes] [--force]",
   ].join("\n");
@@ -127,32 +132,47 @@ async function main(): Promise<void> {
   const arguments_ = parseArguments(process.argv.slice(2));
   const extension = extname(arguments_.input).toLowerCase();
   const inputBytes = new Uint8Array(await readFile(arguments_.input));
-  let document: GltfDocument;
-  let binaryChunk: Uint8Array | undefined;
-  if (extension === ".glb") {
-    const parsed = parseGlb(inputBytes);
-    document = parsed.document;
-    binaryChunk = parsed.binaryChunk;
-  } else if (extension === ".gltf") {
-    try {
-      document = JSON.parse(new TextDecoder().decode(inputBytes));
-    } catch {
-      throw new Error("Input glTF JSON is invalid.");
-    }
+  let geometry: MapGeometry;
+  let triangleCount: number;
+  let meshInstanceCount: number;
+  if (extension === ".tri") {
+    geometry = importMapGeometryFromAwpyTri(inputBytes, {
+      map: arguments_.map,
+      geometryId: arguments_.geometryId,
+    });
+    triangleCount = geometry.triangles.length;
+    meshInstanceCount = 1;
   } else {
-    throw new Error("Input must use the .gltf or .glb extension.");
+    let document: GltfDocument;
+    let binaryChunk: Uint8Array | undefined;
+    if (extension === ".glb") {
+      const parsed = parseGlb(inputBytes);
+      document = parsed.document;
+      binaryChunk = parsed.binaryChunk;
+    } else if (extension === ".gltf") {
+      try {
+        document = JSON.parse(new TextDecoder().decode(inputBytes));
+      } catch {
+        throw new Error("Input glTF JSON is invalid.");
+      }
+    } else {
+      throw new Error("Input must use the .gltf, .glb or Awpy .tri extension.");
+    }
+    const buffers = await loadBuffers(
+      document,
+      arguments_.input,
+      binaryChunk,
+    );
+    const result = importMapGeometryFromGltf(document, buffers, {
+      map: arguments_.map,
+      geometryId: arguments_.geometryId,
+      convertYUpToSource: arguments_.convertYUpToSource,
+      scale: arguments_.scale,
+    });
+    geometry = result.geometry;
+    triangleCount = result.triangleCount;
+    meshInstanceCount = result.meshInstanceCount;
   }
-  const buffers = await loadBuffers(
-    document,
-    arguments_.input,
-    binaryChunk,
-  );
-  const result = importMapGeometryFromGltf(document, buffers, {
-    map: arguments_.map,
-    geometryId: arguments_.geometryId,
-    convertYUpToSource: arguments_.convertYUpToSource,
-    scale: arguments_.scale,
-  });
   if (!arguments_.force && await outputExists(arguments_.output)) {
     throw new Error(
       `Output already exists: ${arguments_.output}. Pass --force to replace it.`,
@@ -161,18 +181,20 @@ async function main(): Promise<void> {
   await mkdir(dirname(arguments_.output), { recursive: true });
   await writeFile(
     arguments_.output,
-    `${JSON.stringify(result.geometry)}\n`,
+    `${JSON.stringify(geometry)}\n`,
     "utf8",
   );
   process.stdout.write(
-    `Imported ${result.triangleCount} triangles from ` +
-      `${result.meshInstanceCount} mesh instances into ${arguments_.output}\n`,
+    `Imported ${triangleCount} triangles from ` +
+      `${meshInstanceCount} mesh instances into ${arguments_.output}\n`,
   );
 }
 
 main().catch((error: unknown) => {
   const message =
-    error instanceof GltfGeometryImportError || error instanceof Error
+    error instanceof GltfGeometryImportError ||
+      error instanceof AwpyTriGeometryError ||
+      error instanceof Error
       ? error.message
       : String(error);
   process.stderr.write(`${message}\n`);

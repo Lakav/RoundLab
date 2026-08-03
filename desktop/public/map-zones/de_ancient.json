@@ -1,10 +1,10 @@
 {
   "map": "de_ancient",
-  "zonesVersion": "roundlab.de_ancient.coarse.v1",
+  "zonesVersion": "roundlab.de_ancient.coarse.v2",
   "zones": [
     {
       "zoneId": "b_site",
-      "label": "B site",
+      "label": "B Site / Cave",
       "polygon": [
         { "x": -2953, "y": 2164 },
         { "x": -953, "y": 2164 },
@@ -17,7 +17,7 @@
     },
     {
       "zoneId": "b_approach",
-      "label": "B approach",
+      "label": "B Ramp / Lane",
       "polygon": [
         { "x": -2953, "y": 264 },
         { "x": -953, "y": 264 },
@@ -30,7 +30,7 @@
     },
     {
       "zoneId": "t_west",
-      "label": "T west route",
+      "label": "Ruins / B Halls",
       "polygon": [
         { "x": -2953, "y": -836 },
         { "x": -953, "y": -836 },
@@ -43,7 +43,7 @@
     },
     {
       "zoneId": "ct_spawn",
-      "label": "CT spawn",
+      "label": "CT Spawn / Temple",
       "polygon": [
         { "x": -953, "y": 2164 },
         { "x": 297, "y": 2164 },
@@ -56,7 +56,7 @@
     },
     {
       "zoneId": "middle",
-      "label": "Middle",
+      "label": "Mid / Donut",
       "polygon": [
         { "x": -953, "y": 864 },
         { "x": 297, "y": 864 },
@@ -69,7 +69,7 @@
     },
     {
       "zoneId": "t_spawn",
-      "label": "T spawn",
+      "label": "T Spawn / Split",
       "polygon": [
         { "x": -953, "y": -1086 },
         { "x": 297, "y": -1086 },
@@ -82,7 +82,7 @@
     },
     {
       "zoneId": "a_site",
-      "label": "A site",
+      "label": "A Site / Temple",
       "polygon": [
         { "x": 297, "y": 2164 },
         { "x": 2167, "y": 2164 },
@@ -95,7 +95,7 @@
     },
     {
       "zoneId": "a_approach",
-      "label": "A approach",
+      "label": "A Main / Donut",
       "polygon": [
         { "x": 297, "y": -436 },
         { "x": 2167, "y": -436 },
@@ -108,7 +108,7 @@
     },
     {
       "zoneId": "t_east",
-      "label": "T east route",
+      "label": "A Halls / Stairs",
       "polygon": [
         { "x": 297, "y": -1336 },
         { "x": 2167, "y": -1336 },

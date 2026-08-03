@@ -16,12 +16,16 @@ import {
   type FlashMetrics,
   type GrenadeCounts,
   type LogicalTeamAnalysis,
+  type LogicalTeamCombatQualityAnalysis,
+  type LogicalTeamEconomyAnalysis,
   type LogicalTeamId,
   type LogicalTeamMetrics,
   type MatchAnalysis,
   type MultiKillRoundCounts,
   type PlayerAnalysis,
   type PlayerAnalysisMetrics,
+  type PlayerEconomyQualityAnalysis,
+  type PlayerUtilityQualityAnalysis,
   type PlayerEconomyAnalysis,
   type PlayerMetricEvidence,
   type PlayerSideAnalysis,
@@ -29,8 +33,12 @@ import {
   type RoundEconomyAnalysis,
   type UtilityDamageMetrics,
 } from "./types.ts";
+import { qualityMetric } from "./metric-quality.ts";
 
 const EFFECTIVE_FLASH_MIN_DURATION_SECONDS = 1.1;
+const ECONOMY_FORMULA_VERSION = "roundlab.economy.v2.freeze-equipment";
+const COMBAT_FORMULA_VERSION = "roundlab.combat.v2.numerical-advantage";
+const UTILITY_FORMULA_VERSION = "roundlab.utility.v2.quality";
 
 type AnalyzeMatchContext = {
   matchId: string;
@@ -377,6 +385,783 @@ function economyCategory(averageEquipmentValue: number): EconomyCategory {
   if (averageEquipmentValue < 2_000) return "eco";
   if (averageEquipmentValue < 3_500) return "force_buy";
   return "full_buy";
+}
+
+function economyQuality(
+  averageEquipmentValue: number | null,
+  category: EconomyCategory | null,
+  sampleCount: number,
+  usableSampleCount: number,
+  unavailableReason: string | null,
+): RoundEconomyAnalysis["quality"] {
+  const unavailableReasons = unavailableReason === null ? [] : [unavailableReason];
+  return {
+    averageEquipmentValue: qualityMetric({
+      value: averageEquipmentValue,
+      unit: "equipment_value",
+      sampleCount,
+      usableSampleCount,
+      provenance: "observed",
+      confidence: "high",
+      unavailableReasons,
+      formulaVersion: `${ECONOMY_FORMULA_VERSION}.averageEquipmentValue`,
+    }),
+    category: qualityMetric({
+      value: category,
+      unit: "category",
+      sampleCount,
+      usableSampleCount,
+      provenance: "reconstructed",
+      confidence: "high",
+      unavailableReasons,
+      formulaVersion: `${ECONOMY_FORMULA_VERSION}.category`,
+    }),
+  };
+}
+
+function logicalTeamEconomyAnalysis(
+  rounds: RoundAnalysis[],
+  logicalTeam: LogicalTeamId,
+): LogicalTeamEconomyAnalysis {
+  const teamRounds = rounds.map((round) => {
+    const sides = new Set(
+      round.players
+        .filter((player) => player.logicalTeam === logicalTeam && player.side !== null)
+        .map((player) => player.side as "T" | "CT"),
+    );
+    if (sides.size !== 1) {
+      return {
+        round,
+        opponentCategory: null as EconomyCategory | null,
+      };
+    }
+    const side = [...sides][0];
+    const opponentSide = side === "T" ? "CT" : "T";
+    const opponentEconomy = round.economy.find(
+      (economy) => economy.side === opponentSide,
+    );
+    return {
+      round,
+      opponentCategory: opponentEconomy?.category ?? null,
+    };
+  });
+  const classifiedRounds = teamRounds.filter(
+    (sample) => sample.opponentCategory !== null,
+  );
+  const classificationComplete =
+    teamRounds.length > 0 && classifiedRounds.length === teamRounds.length;
+  const classificationReasons = teamRounds.length === 0
+    ? ["no_logical_team_rounds"]
+    : classificationComplete
+      ? []
+      : ["incomplete_opponent_economy"];
+  const antiEcoRounds = classifiedRounds.filter(
+    (sample) => sample.opponentCategory === "eco",
+  );
+  const outcomeRounds = antiEcoRounds.filter(
+    (sample) => sample.round.logicalWinner !== null,
+  );
+  const outcomesComplete =
+    classificationComplete && outcomeRounds.length === antiEcoRounds.length;
+  const outcomeReasons = !classificationComplete
+    ? classificationReasons
+    : outcomesComplete
+      ? []
+      : ["incomplete_anti_eco_outcomes"];
+  const wins = outcomeRounds.filter(
+    (sample) => sample.round.logicalWinner === logicalTeam,
+  ).length;
+  const losses = outcomeRounds.filter(
+    (sample) => sample.round.logicalWinner !== logicalTeam,
+  ).length;
+  const countMetric = (
+    metricId: string,
+    value: number | null,
+    sampleCount: number,
+    usableSampleCount: number,
+    unavailableReasons: string[],
+  ) => qualityMetric({
+    value,
+    unit: "rounds",
+    sampleCount,
+    usableSampleCount,
+    provenance: "reconstructed" as const,
+    confidence: "high" as const,
+    unavailableReasons,
+    formulaVersion: `${ECONOMY_FORMULA_VERSION}.${metricId}`,
+  });
+
+  return {
+    antiEcoRounds: countMetric(
+      "antiEcoRounds",
+      classificationComplete ? antiEcoRounds.length : null,
+      teamRounds.length,
+      classifiedRounds.length,
+      classificationReasons,
+    ),
+    antiEcoWins: countMetric(
+      "antiEcoWins",
+      outcomesComplete ? wins : null,
+      antiEcoRounds.length,
+      outcomeRounds.length,
+      outcomeReasons,
+    ),
+    antiEcoWinRate: qualityMetric({
+      value:
+        outcomesComplete && antiEcoRounds.length > 0
+          ? wins / antiEcoRounds.length
+          : null,
+      unit: "ratio",
+      sampleCount: antiEcoRounds.length,
+      usableSampleCount: outcomeRounds.length,
+      provenance: "reconstructed",
+      confidence: "high",
+      unavailableReasons:
+        outcomesComplete && antiEcoRounds.length === 0
+          ? ["no_anti_eco_rounds"]
+          : outcomeReasons,
+      formulaVersion: `${ECONOMY_FORMULA_VERSION}.antiEcoWinRate`,
+    }),
+    lossesAgainstEco: countMetric(
+      "lossesAgainstEco",
+      outcomesComplete ? losses : null,
+      antiEcoRounds.length,
+      outcomeRounds.length,
+      outcomeReasons,
+    ),
+  };
+}
+
+function logicalTeamAdvantageAnalysis(
+  match: MatchData,
+  rounds: RoundAnalysis[],
+  logicalTeam: LogicalTeamId,
+): LogicalTeamCombatQualityAnalysis {
+  const samples = match.rounds.map((round, index) => {
+    const analysis = rounds[index];
+    if (
+      analysis === undefined ||
+      round.disconnects === undefined ||
+      !round.events.some((event) => event.type === "round_end") ||
+      analysis.players.some((player) => player.logicalTeam === null)
+    ) {
+      return { usable: false, opportunity: false, won: false };
+    }
+    const logicalTeamByPlayer = new Map(
+      analysis.players.map((player) => [player.playerId, player.logicalTeam]),
+    );
+    const alive: Record<LogicalTeamId, Set<string>> = {
+      A: new Set(),
+      B: new Set(),
+    };
+    for (const player of analysis.players) {
+      if (player.logicalTeam !== null) {
+        alive[player.logicalTeam].add(player.playerId);
+      }
+    }
+    const roundEnd = round.events
+      .filter((event) => event.type === "round_end")
+      .at(-1);
+    if (roundEnd === undefined) {
+      return { usable: false, opportunity: false, won: false };
+    }
+    const stateChanges = [
+      ...canonicalFacts(round.events, round, match.meta.tickRate)
+        .filter((event) =>
+          event.type === "kill" &&
+          event.victim !== undefined &&
+          event.t <= roundEnd.t
+        )
+        .map((event) => ({
+          time: event.t,
+          sequence: event.sequence ?? Number.MAX_SAFE_INTEGER,
+          playerId: playerId(event.victim as PlayerId),
+        })),
+      ...canonicalFacts(round.disconnects, round, match.meta.tickRate)
+        .filter((event) => event.player !== undefined && event.t <= roundEnd.t)
+        .map((event) => ({
+          time: event.t,
+          sequence: event.sequence ?? Number.MAX_SAFE_INTEGER,
+          playerId: playerId(event.player as PlayerId),
+        })),
+    ].sort((left, right) =>
+      left.time - right.time ||
+      left.sequence - right.sequence ||
+      left.playerId.localeCompare(right.playerId)
+    );
+    let opportunity = false;
+    for (const change of stateChanges) {
+      const team = logicalTeamByPlayer.get(change.playerId);
+      if (team === undefined || team === null) {
+        return { usable: false, opportunity: false, won: false };
+      }
+      alive[team].delete(change.playerId);
+      if (alive[logicalTeam].size > alive[oppositeLogicalTeam(logicalTeam)].size) {
+        opportunity = true;
+      }
+    }
+    return {
+      usable: analysis.logicalWinner !== null,
+      opportunity,
+      won: analysis.logicalWinner === logicalTeam,
+    };
+  });
+  const usableSamples = samples.filter((sample) => sample.usable);
+  const complete = samples.length > 0 && usableSamples.length === samples.length;
+  const opportunities = usableSamples.filter((sample) => sample.opportunity);
+  const wins = opportunities.filter((sample) => sample.won).length;
+  const classificationReasons = samples.length === 0
+    ? ["no_logical_team_rounds"]
+    : complete
+      ? []
+      : ["incomplete_advantage_context"];
+  const countMetric = (
+    metricId: string,
+    value: number | null,
+    sampleCount: number,
+    usableSampleCount: number,
+    unavailableReasons: string[],
+  ) => qualityMetric({
+    value,
+    unit: "rounds",
+    sampleCount,
+    usableSampleCount,
+    provenance: "reconstructed" as const,
+    confidence: "high" as const,
+    unavailableReasons,
+    formulaVersion: `${COMBAT_FORMULA_VERSION}.${metricId}`,
+  });
+
+  return {
+    advantageRounds: countMetric(
+      "advantageRounds",
+      complete ? opportunities.length : null,
+      samples.length,
+      usableSamples.length,
+      classificationReasons,
+    ),
+    advantageWins: countMetric(
+      "advantageWins",
+      complete ? wins : null,
+      opportunities.length,
+      complete ? opportunities.length : 0,
+      classificationReasons,
+    ),
+    advantageConversionRate: qualityMetric({
+      value:
+        complete && opportunities.length > 0
+          ? wins / opportunities.length
+          : null,
+      unit: "ratio",
+      sampleCount: opportunities.length,
+      usableSampleCount: complete ? opportunities.length : 0,
+      provenance: "reconstructed",
+      confidence: "high",
+      unavailableReasons:
+        complete && opportunities.length === 0
+          ? ["no_numerical_advantage_rounds"]
+          : classificationReasons,
+      formulaVersion: `${COMBAT_FORMULA_VERSION}.advantageConversionRate`,
+    }),
+  };
+}
+
+const PRIMARY_WEAPONS = new Set([
+  "ak47",
+  "m4a1",
+  "m4a1s",
+  "m4a1silencer",
+  "famas",
+  "galilar",
+  "aug",
+  "sg553",
+  "awp",
+  "ssg08",
+  "scar20",
+  "g3sg1",
+  "mac10",
+  "mp9",
+  "mp7",
+  "mp5sd",
+  "ump45",
+  "p90",
+  "bizon",
+  "nova",
+  "xm1014",
+  "mag7",
+  "sawedoff",
+  "m249",
+  "negev",
+]);
+
+function normalizedEquipmentName(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/^weapon_/, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function hasPrimaryWeapon(weapons: string[]): boolean {
+  return weapons.some((weapon) =>
+    PRIMARY_WEAPONS.has(normalizedEquipmentName(weapon))
+  );
+}
+
+type PlayerEconomyAccumulator = {
+  purchaseEvents: number;
+  purchaseStreamIncomplete: boolean;
+  deaths: number;
+  usableDeaths: number;
+  equipmentValueLost: number;
+  lostRounds: number;
+  usableLostRounds: number;
+  savedPrimaryWeaponRounds: number;
+  incompleteRoundOutcomes: boolean;
+  valueLostEvidence: Set<string>;
+  savedWeaponEvidence: Set<string>;
+};
+
+function playerEconomyAnalyses(
+  match: MatchData,
+  recordEvidence: (proof: AnalysisEvidence) => void,
+): Map<string, PlayerEconomyQualityAnalysis> {
+  const accumulators = new Map<string, PlayerEconomyAccumulator>(
+    match.players.map((player) => [
+      playerId(player.steamId),
+      {
+        purchaseEvents: 0,
+        purchaseStreamIncomplete: false,
+        deaths: 0,
+        usableDeaths: 0,
+        equipmentValueLost: 0,
+        lostRounds: 0,
+        usableLostRounds: 0,
+        savedPrimaryWeaponRounds: 0,
+        incompleteRoundOutcomes: false,
+        valueLostEvidence: new Set<string>(),
+        savedWeaponEvidence: new Set<string>(),
+      },
+    ]),
+  );
+
+  for (const round of match.rounds) {
+    if (round.purchases === undefined) {
+      for (const accumulator of accumulators.values()) {
+        accumulator.purchaseStreamIncomplete = true;
+      }
+    } else {
+      for (const purchase of round.purchases) {
+        if (purchase.player === undefined) continue;
+        const accumulator = accumulators.get(playerId(purchase.player));
+        if (accumulator) accumulator.purchaseEvents++;
+      }
+    }
+    const canonicalEvents = canonicalFacts(round.events, round, match.meta.tickRate);
+    const deaths = new Map<string, string>();
+    let killIndex = 0;
+    for (const event of canonicalEvents) {
+      if (event.type !== "kill") continue;
+      const deathEvidenceId = evidenceId(round, "kill", killIndex++);
+      if (event.victim === undefined) continue;
+      const victimId = playerId(event.victim);
+      const accumulator = accumulators.get(victimId);
+      if (!accumulator) continue;
+      deaths.set(victimId, deathEvidenceId);
+      accumulator.deaths++;
+      accumulator.valueLostEvidence.add(deathEvidenceId);
+
+      let snapshotIndex = -1;
+      let snapshotTime = Number.NEGATIVE_INFINITY;
+      let equipmentValue: number | undefined;
+      for (const [frameIndex, frame] of round.frames.entries()) {
+        if (frame.t >= event.t || frame.t < snapshotTime) continue;
+        const position = frame.players.find(
+          (candidate) => playerId(candidate.id) === victimId,
+        );
+        if (!position) continue;
+        snapshotIndex = frameIndex;
+        snapshotTime = frame.t;
+        equipmentValue = position.equipmentValue;
+      }
+      if (
+        snapshotIndex < 0 ||
+        equipmentValue === undefined ||
+        !Number.isFinite(equipmentValue) ||
+        equipmentValue < 0
+      ) continue;
+      const proof = inventoryEvidence(
+        round,
+        victimId,
+        snapshotIndex,
+        snapshotTime,
+        match.meta.tickRate,
+      );
+      recordEvidence(proof);
+      accumulator.valueLostEvidence.add(proof.evidenceId);
+      accumulator.usableDeaths++;
+      accumulator.equipmentValueLost += equipmentValue;
+    }
+
+    const participants = new Set(
+      round.frames.flatMap((frame) => frame.players.map(
+        (player) => playerId(player.id),
+      )),
+    );
+    const teams = participantTeams(round, participants);
+    const winnerTeam = roundWinnerTeam(round);
+    const roundEnd = round.events
+      .filter((event) => event.type === "round_end")
+      .at(-1);
+
+    for (const id of participants) {
+      const accumulator = accumulators.get(id);
+      if (!accumulator) continue;
+      const team = teams.get(id);
+      if (winnerTeam === null || team === undefined) {
+        accumulator.incompleteRoundOutcomes = true;
+        continue;
+      }
+      if (team === winnerTeam) continue;
+      accumulator.lostRounds++;
+      const deathEvidenceId = deaths.get(id);
+      if (deathEvidenceId !== undefined) {
+        accumulator.usableLostRounds++;
+        accumulator.savedWeaponEvidence.add(deathEvidenceId);
+        continue;
+      }
+      if (roundEnd === undefined) continue;
+
+      let snapshotIndex = -1;
+      let snapshotTime = Number.NEGATIVE_INFINITY;
+      let hp: number | undefined;
+      let weapons: string[] | undefined;
+      for (const [frameIndex, frame] of round.frames.entries()) {
+        if (frame.t > roundEnd.t || frame.t < snapshotTime) continue;
+        const position = frame.players.find(
+          (candidate) => playerId(candidate.id) === id,
+        );
+        if (!position) continue;
+        snapshotIndex = frameIndex;
+        snapshotTime = frame.t;
+        hp = position.hp;
+        weapons = position.weapons;
+      }
+      if (snapshotIndex < 0 || hp === undefined) continue;
+      if (hp > 0 && weapons === undefined) continue;
+
+      const proof = inventoryEvidence(
+        round,
+        id,
+        snapshotIndex,
+        snapshotTime,
+        match.meta.tickRate,
+      );
+      recordEvidence(proof);
+      accumulator.savedWeaponEvidence.add(`r${round.number}-round-end`);
+      accumulator.savedWeaponEvidence.add(proof.evidenceId);
+      accumulator.usableLostRounds++;
+      if (hp > 0 && weapons !== undefined && hasPrimaryWeapon(weapons)) {
+        accumulator.savedPrimaryWeaponRounds++;
+      }
+    }
+  }
+
+  return new Map(
+    [...accumulators.entries()].map(([id, accumulator]) => {
+      const deathCoverageComplete =
+        accumulator.usableDeaths === accumulator.deaths;
+      const deathReasons = deathCoverageComplete
+        ? []
+        : ["incomplete_predeath_equipment_values"];
+      const saveCoverageComplete =
+        !accumulator.incompleteRoundOutcomes &&
+        accumulator.usableLostRounds === accumulator.lostRounds;
+      const saveReasons = accumulator.incompleteRoundOutcomes
+        ? ["incomplete_round_outcomes"]
+        : saveCoverageComplete
+          ? []
+          : ["incomplete_round_end_inventory"];
+      const metric = (
+        metricId: string,
+        value: number | null,
+        unit: string,
+        sampleCount: number,
+        usableSampleCount: number,
+        unavailableReasons: string[],
+      ) => qualityMetric({
+        value,
+        unit,
+        sampleCount,
+        usableSampleCount,
+        provenance: "reconstructed" as const,
+        confidence: "high" as const,
+        unavailableReasons,
+        formulaVersion: `${ECONOMY_FORMULA_VERSION}.${metricId}`,
+      });
+      const analysis: PlayerEconomyQualityAnalysis = {
+        netSpend: metric(
+          "netSpend",
+          null,
+          "currency",
+          accumulator.purchaseEvents,
+          0,
+          accumulator.purchaseStreamIncomplete
+            ? ["missing_purchase_events"]
+            : ["unvalidated_purchase_event_semantics"],
+        ),
+        equipmentValueLostOnDeath: metric(
+          "equipmentValueLostOnDeath",
+          deathCoverageComplete ? accumulator.equipmentValueLost : null,
+          "equipment_value",
+          accumulator.deaths,
+          accumulator.usableDeaths,
+          deathReasons,
+        ),
+        averageEquipmentValueLostPerDeath: metric(
+          "averageEquipmentValueLostPerDeath",
+          deathCoverageComplete && accumulator.deaths > 0
+            ? accumulator.equipmentValueLost / accumulator.deaths
+            : null,
+          "equipment_value_per_death",
+          accumulator.deaths,
+          accumulator.usableDeaths,
+          deathCoverageComplete && accumulator.deaths === 0
+            ? ["no_deaths"]
+            : deathReasons,
+        ),
+        savedPrimaryWeaponRounds: metric(
+          "savedPrimaryWeaponRounds",
+          saveCoverageComplete ? accumulator.savedPrimaryWeaponRounds : null,
+          "rounds",
+          accumulator.lostRounds,
+          accumulator.usableLostRounds,
+          saveReasons,
+        ),
+        valueLostEvidence: [...accumulator.valueLostEvidence].sort(),
+        savedWeaponEvidence: [...accumulator.savedWeaponEvidence].sort(),
+      };
+      return [id, analysis];
+    }),
+  );
+}
+
+function playerUtilityQuality(
+  player: BasePlayerAnalysis,
+): PlayerUtilityQualityAnalysis {
+  const metrics = player.metrics;
+  const grenades = metrics.grenadesThrown;
+  const flashes = metrics.flashes;
+  const damage = metrics.utilityDamage;
+  const rounds = metrics.roundsPlayed;
+  const deaths = metrics.deaths;
+  const metric = (
+    metricId: string,
+    value: number | null,
+    unit: string,
+    sampleCount: number,
+    usableSampleCount: number,
+    unavailableReasons: string[],
+  ) => qualityMetric({
+    value,
+    unit,
+    sampleCount,
+    usableSampleCount,
+    provenance: "reconstructed" as const,
+    confidence: "high" as const,
+    unavailableReasons,
+    formulaVersion: `${UTILITY_FORMULA_VERSION}.${metricId}`,
+  });
+  const grenadeReasons = grenades === null
+    ? ["missing_weapon_fire_events"]
+    : rounds === 0
+      ? ["no_rounds"]
+      : [];
+  const flashSamples = grenades?.flash ?? 0;
+  const flashReasons = grenades === null
+    ? ["missing_weapon_fire_events"]
+    : flashes === null || flashes === undefined
+      ? ["missing_flash_events"]
+      : flashSamples === 0
+        ? ["no_flash_grenades"]
+        : [];
+  const heSamples = grenades?.he ?? 0;
+  const heReasons = grenades === null
+    ? ["missing_weapon_fire_events"]
+    : damage === null || damage === undefined
+      ? ["missing_damage_events"]
+      : heSamples === 0
+        ? ["no_he_grenades"]
+        : [];
+  const savedReasons =
+    metrics.averageUnusedUtilityValue !== null &&
+      metrics.averageUnusedUtilityValue !== undefined
+      ? []
+      : deaths === 0
+        ? ["no_deaths"]
+        : ["incomplete_predeath_inventory"];
+  return {
+    grenadesThrown: metric(
+      "grenadesThrown",
+      grenades?.total ?? null,
+      "grenades",
+      rounds,
+      grenades === null ? 0 : rounds,
+      grenadeReasons,
+    ),
+    flashGrenades: metric(
+      "flashGrenades",
+      grenades?.flash ?? null,
+      "grenades",
+      rounds,
+      grenades === null ? 0 : rounds,
+      grenadeReasons,
+    ),
+    smokeGrenades: metric(
+      "smokeGrenades",
+      grenades?.smoke ?? null,
+      "grenades",
+      rounds,
+      grenades === null ? 0 : rounds,
+      grenadeReasons,
+    ),
+    heGrenades: metric(
+      "heGrenades",
+      grenades?.he ?? null,
+      "grenades",
+      rounds,
+      grenades === null ? 0 : rounds,
+      grenadeReasons,
+    ),
+    fireGrenades: metric(
+      "fireGrenades",
+      grenades === null ? null : grenades.molotov + grenades.incendiary,
+      "grenades",
+      rounds,
+      grenades === null ? 0 : rounds,
+      grenadeReasons,
+    ),
+    utilityQuantityRating: metric(
+      "utilityQuantityRating",
+      metrics.utilityQuantityRating ?? null,
+      "score_0_100",
+      rounds,
+      metrics.utilityQuantityRating === null ||
+          metrics.utilityQuantityRating === undefined
+        ? 0
+        : rounds,
+      grenadeReasons,
+    ),
+    effectiveEnemiesFlashed: metric(
+      "effectiveEnemiesFlashed",
+      flashes?.effectiveEnemiesFlashed ?? null,
+      "players",
+      flashSamples,
+      flashes === null || flashes === undefined ? 0 : flashSamples,
+      flashes === null || flashes === undefined ? ["missing_flash_events"] : [],
+    ),
+    effectiveTeammatesFlashed: metric(
+      "effectiveTeammatesFlashed",
+      flashes?.effectiveTeammatesFlashed ?? null,
+      "players",
+      flashSamples,
+      flashes === null || flashes === undefined ? 0 : flashSamples,
+      flashes === null || flashes === undefined ? ["missing_flash_events"] : [],
+    ),
+    flashesLeadingToKills: metric(
+      "flashesLeadingToKills",
+      flashes?.flashesLeadingToKills ?? null,
+      "kills",
+      flashSamples,
+      flashes === null || flashes === undefined ? 0 : flashSamples,
+      flashes === null || flashes === undefined ? ["missing_flash_events"] : [],
+    ),
+    heDamage: metric(
+      "heDamage",
+      damage?.heDamage ?? null,
+      "damage",
+      heSamples,
+      damage === null || damage === undefined ? 0 : heSamples,
+      damage === null || damage === undefined ? ["missing_damage_events"] : [],
+    ),
+    teammateHeDamage: metric(
+      "teammateHeDamage",
+      damage?.teammateHeDamage ?? null,
+      "damage",
+      heSamples,
+      damage === null || damage === undefined ? 0 : heSamples,
+      damage === null || damage === undefined ? ["missing_damage_events"] : [],
+    ),
+    enemiesPerFlash: metric(
+      "enemiesPerFlash",
+      flashReasons.length === 0
+        ? (flashes?.effectiveEnemiesFlashed ?? 0) / flashSamples
+        : null,
+      "players_per_grenade",
+      flashSamples,
+      flashReasons.length === 0 ? flashSamples : 0,
+      flashReasons,
+    ),
+    teammatesPerFlash: metric(
+      "teammatesPerFlash",
+      flashReasons.length === 0
+        ? (flashes?.effectiveTeammatesFlashed ?? 0) / flashSamples
+        : null,
+      "players_per_grenade",
+      flashSamples,
+      flashReasons.length === 0 ? flashSamples : 0,
+      flashReasons,
+    ),
+    flashKillsPerFlash: metric(
+      "flashKillsPerFlash",
+      flashReasons.length === 0
+        ? (flashes?.flashesLeadingToKills ?? 0) / flashSamples
+        : null,
+      "kills_per_grenade",
+      flashSamples,
+      flashReasons.length === 0 ? flashSamples : 0,
+      flashReasons,
+    ),
+    averageEnemyBlindDuration: metric(
+      "averageEnemyBlindDuration",
+      flashes?.averageEnemyBlindDuration ?? null,
+      "seconds",
+      flashes?.enemyBlindFlashCount ?? 0,
+      flashes?.enemyBlindFlashCount ?? 0,
+      flashes === null || flashes === undefined
+        ? ["missing_flash_events"]
+        : flashes.enemyBlindFlashCount === 0
+          ? ["no_enemy_blind_flashes"]
+          : [],
+    ),
+    heDamagePerGrenade: metric(
+      "heDamagePerGrenade",
+      heReasons.length === 0
+        ? (damage?.heDamage ?? 0) / heSamples
+        : null,
+      "damage_per_grenade",
+      heSamples,
+      heReasons.length === 0 ? heSamples : 0,
+      heReasons,
+    ),
+    teammateHeDamagePerGrenade: metric(
+      "teammateHeDamagePerGrenade",
+      heReasons.length === 0
+        ? (damage?.teammateHeDamage ?? 0) / heSamples
+        : null,
+      "damage_per_grenade",
+      heSamples,
+      heReasons.length === 0 ? heSamples : 0,
+      heReasons,
+    ),
+    averageUnusedUtilityValue: metric(
+      "averageUnusedUtilityValue",
+      metrics.averageUnusedUtilityValue ?? null,
+      "currency_per_death",
+      deaths,
+      savedReasons.length === 0 ? deaths : 0,
+      savedReasons,
+    ),
+  };
 }
 
 function roundEndEvidence(round: Round): AnalysisEvidence {
@@ -830,11 +1615,22 @@ function analyzeMatchBase(match: MatchData, context: AnalyzeMatchContext): BaseM
     }
 
     for (const [side, team] of [["T", 2], ["CT", 3]] as const) {
-      const unavailable = (reason: string): RoundEconomyAnalysis => ({
+      const unavailable = (
+        reason: string,
+        sampleCount = 0,
+        usableSampleCount = 0,
+      ): RoundEconomyAnalysis => ({
         roundNumber: round.number,
         side,
         averageEquipmentValue: null,
         category: null,
+        quality: economyQuality(
+          null,
+          null,
+          sampleCount,
+          usableSampleCount,
+          reason,
+        ),
         evidenceId: null,
         unavailableReason: reason,
       });
@@ -854,7 +1650,11 @@ function analyzeMatchBase(match: MatchData, context: AnalyzeMatchContext): BaseM
         teamPlayers.length === 0 ||
         teamPlayers.some((player) => player.equipmentValue === undefined)
       ) {
-        economyRounds.push(unavailable("missing_equipment_values"));
+        economyRounds.push(unavailable(
+          "missing_equipment_values",
+          teamPlayers.length,
+          teamPlayers.filter((player) => player.equipmentValue !== undefined).length,
+        ));
         continue;
       }
       const averageEquipmentValue = teamPlayers.reduce(
@@ -874,6 +1674,13 @@ function analyzeMatchBase(match: MatchData, context: AnalyzeMatchContext): BaseM
         side,
         averageEquipmentValue,
         category: economyCategory(averageEquipmentValue),
+        quality: economyQuality(
+          averageEquipmentValue,
+          economyCategory(averageEquipmentValue),
+          teamPlayers.length,
+          teamPlayers.length,
+          null,
+        ),
         evidenceId: proof.evidenceId,
         unavailableReason: null,
       });
@@ -1564,6 +2371,12 @@ function analyzeMatchBase(match: MatchData, context: AnalyzeMatchContext): BaseM
 
 export function analyzeMatch(match: MatchData, context: AnalyzeMatchContext): MatchAnalysis {
   const base = analyzeMatchBase(match, context);
+  const evidenceIds = new Set(base.evidence.map((proof) => proof.evidenceId));
+  const playerEconomyById = playerEconomyAnalyses(match, (proof) => {
+    if (evidenceIds.has(proof.evidenceId)) return;
+    evidenceIds.add(proof.evidenceId);
+    base.evidence.push(proof);
+  });
   type EconomyBucket = { analyses: BasePlayerAnalysis[]; evidence: string[] };
   type LogicalTeamBucket = {
     analyses: BasePlayerAnalysis[];
@@ -1772,6 +2585,8 @@ export function analyzeMatch(match: MatchData, context: AnalyzeMatchContext): Ma
     const playerBuckets = buckets.get(player.playerId) ?? emptyBuckets();
     return {
       ...player,
+      economy: playerEconomyById.get(player.playerId),
+      utility: playerUtilityQuality(player),
       bySide: {
         T: aggregateSide(playerBuckets.T),
         CT: aggregateSide(playerBuckets.CT),
@@ -1797,7 +2612,7 @@ export function analyzeMatch(match: MatchData, context: AnalyzeMatchContext): Ma
       ? lastRoundWithScore?.scoreA ?? match.meta.scoreA ?? null
       : lastRoundWithScore?.scoreB ?? match.meta.scoreB ?? null;
     const name = logicalTeam === "A" ? match.meta.teamA : match.meta.teamB;
-    return aggregateLogicalTeam(
+    const team = aggregateLogicalTeam(
       logicalTeam,
       name,
       score,
@@ -1807,6 +2622,11 @@ export function analyzeMatch(match: MatchData, context: AnalyzeMatchContext): Ma
       bucket.roundsWon,
       bucket.unavailableReasons,
     );
+    return {
+      ...team,
+      combat: logicalTeamAdvantageAnalysis(match, rounds, logicalTeam),
+      economy: logicalTeamEconomyAnalysis(rounds, logicalTeam),
+    };
   });
 
   return { ...base, players, teams, rounds };

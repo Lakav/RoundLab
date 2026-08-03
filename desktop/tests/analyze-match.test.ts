@@ -555,6 +555,7 @@ describe("deterministic MatchAnalysis V1", () => {
         { t: 2, tick: 1_128, sequence: 2, shooter: P1, weapon: "flashbang", x: 0, y: 0, z: 0, yaw: 0 },
         { t: 2.5, tick: 1_160, shooter: P1, weapon: "ak47", x: 0, y: 0, z: 0, yaw: 0 },
       ],
+      flashes: [],
     });
 
     const result = analyzeMatch(match([source]), CONTEXT);
@@ -580,6 +581,49 @@ describe("deterministic MatchAnalysis V1", () => {
       "r1-grenade-0000",
       "r1-grenade-0001",
     ]);
+    expect(player(result, P1).utility).toMatchObject({
+      grenadesThrown: {
+        value: 2,
+        sampleCount: 1,
+        usableSampleCount: 1,
+        coverage: 1,
+        provenance: "reconstructed",
+        confidence: "high",
+        unavailableReasons: [],
+      },
+      flashGrenades: {
+        value: 1,
+        sampleCount: 1,
+        usableSampleCount: 1,
+        coverage: 1,
+      },
+      smokeGrenades: {
+        value: 1,
+        sampleCount: 1,
+        usableSampleCount: 1,
+        coverage: 1,
+      },
+      heGrenades: {
+        value: 0,
+        sampleCount: 1,
+        usableSampleCount: 1,
+        coverage: 1,
+      },
+      effectiveEnemiesFlashed: {
+        value: 0,
+        sampleCount: 1,
+        usableSampleCount: 1,
+        coverage: 1,
+      },
+      enemiesPerFlash: {
+        value: 0,
+        sampleCount: 1,
+        usableSampleCount: 1,
+        coverage: 1,
+      },
+    });
+    expect(player(result, P1).utility?.utilityQuantityRating.value)
+      .toBeCloseTo(Math.pow(2 / 3, 2 / 3) * 100);
     expect(player(result, P3).metricEvidence.flashAssists).toEqual(["r1-kill-0000"]);
   });
 
@@ -613,6 +657,13 @@ describe("deterministic MatchAnalysis V1", () => {
 
     expect(player(result, P1).metrics.grenadesThrown).toBeNull();
     expect(player(result, P1).unavailableReasons).toContain("missing_weapon_fire_events");
+    expect(player(result, P1).utility?.grenadesThrown).toMatchObject({
+      value: null,
+      sampleCount: 1,
+      usableSampleCount: 0,
+      coverage: 0,
+      unavailableReasons: ["missing_weapon_fire_events"],
+    });
   });
 
   it("recalculates metrics and evidence on each side after a team switch", () => {
@@ -923,6 +974,13 @@ describe("deterministic MatchAnalysis V1", () => {
     });
     expect(one.metrics.unusedUtilityValue).toBe(500);
     expect(one.metrics.averageUnusedUtilityValue).toBe(500);
+    expect(one.utility?.averageUnusedUtilityValue).toMatchObject({
+      value: 500,
+      sampleCount: 1,
+      usableSampleCount: 1,
+      coverage: 1,
+      unavailableReasons: [],
+    });
     expect(one.bySide.T?.metrics.utilitySavedOnDeath).toEqual(one.metrics.utilitySavedOnDeath);
     expect(one.metricEvidence.utilitySavedOnDeath).toEqual([
       `r1-inventory-${P1}-0001`,
@@ -974,6 +1032,7 @@ describe("deterministic MatchAnalysis V1", () => {
         side: "T",
         averageEquipmentValue: 2_000,
         category: "force_buy",
+        quality: expect.any(Object),
         evidenceId: "r1-economy-t",
         unavailableReason: null,
       },
@@ -982,10 +1041,31 @@ describe("deterministic MatchAnalysis V1", () => {
         side: "CT",
         averageEquipmentValue: 3_500,
         category: "full_buy",
+        quality: expect.any(Object),
         evidenceId: "r1-economy-ct",
         unavailableReason: null,
       },
     ]);
+    expect(result.economyRounds[0].quality.averageEquipmentValue).toMatchObject({
+      value: 2_000,
+      sampleCount: 2,
+      usableSampleCount: 2,
+      coverage: 1,
+      provenance: "observed",
+      confidence: "high",
+      unavailableReasons: [],
+      formulaVersion: "roundlab.economy.v2.freeze-equipment.averageEquipmentValue",
+    });
+    expect(result.economyRounds[0].quality.category).toMatchObject({
+      value: "force_buy",
+      sampleCount: 2,
+      usableSampleCount: 2,
+      coverage: 1,
+      provenance: "reconstructed",
+      confidence: "high",
+      unavailableReasons: [],
+      formulaVersion: "roundlab.economy.v2.freeze-equipment.category",
+    });
     expect(result.evidence.filter((item) => item.type === "economy_snapshot")).toHaveLength(2);
     expect(player(result, P1).byEconomy.forceBuy?.metrics).toMatchObject({
       roundsPlayed: 1,
@@ -1022,6 +1102,14 @@ describe("deterministic MatchAnalysis V1", () => {
       category: null,
       unavailableReason: "missing_equipment_values",
     });
+    expect(result.economyRounds[0].quality.averageEquipmentValue).toMatchObject({
+      value: null,
+      sampleCount: 1,
+      usableSampleCount: 0,
+      coverage: 0,
+      confidence: "unavailable",
+      unavailableReasons: ["missing_equipment_values"],
+    });
     expect(result.economyRounds[1]).toMatchObject({
       side: "CT",
       averageEquipmentValue: 1_999,
@@ -1031,6 +1119,254 @@ describe("deterministic MatchAnalysis V1", () => {
     expect(player(result, P1).byEconomy.eco).toBeNull();
     expect(player(result, P2).byEconomy.eco?.metrics.roundsPlayed).toBe(1);
     expect(player(result, P2).byEconomy.unavailableRounds).toBe(0);
+  });
+
+  it("measures anti-eco conversion with opponent-economy coverage", () => {
+    const freezeFrame = (): Frame => ({
+      t: 1,
+      players: [
+        { id: P1, x: 0, y: 0, z: 0, yaw: 0, hp: 100, armor: 100, team: 2, equipmentValue: 4_000 },
+        { id: P3, x: 10, y: 0, z: 0, yaw: 0, hp: 100, armor: 100, team: 2, equipmentValue: 4_000 },
+        { id: P2, x: 100, y: 0, z: 0, yaw: 180, hp: 100, armor: 0, team: 3, equipmentValue: 1_000 },
+        { id: P4, x: 110, y: 0, z: 0, yaw: 180, hp: 100, armor: 0, team: 3, equipmentValue: 1_000 },
+        { id: P5, x: 120, y: 0, z: 0, yaw: 180, hp: 100, armor: 0, team: 3, equipmentValue: 1_000 },
+      ],
+    });
+    const result = analyzeMatch(match([
+      round(1, {
+        freezeEndTick: 1_064,
+        scoreA: 1,
+        scoreB: 0,
+        winner: "T",
+        frames: [freezeFrame()],
+        events: [{ t: 10, tick: 1_640, type: "round_end", winner: "T" }],
+      }),
+      round(2, {
+        freezeEndTick: 2_064,
+        scoreA: 1,
+        scoreB: 1,
+        winner: "CT",
+        frames: [freezeFrame()],
+        events: [{ t: 10, tick: 2_640, type: "round_end", winner: "CT" }],
+      }),
+    ]), CONTEXT);
+
+    const alpha = result.teams.find((team) => team.logicalTeam === "A");
+    const bravo = result.teams.find((team) => team.logicalTeam === "B");
+    expect(alpha?.economy?.antiEcoRounds).toMatchObject({
+      value: 2,
+      sampleCount: 2,
+      usableSampleCount: 2,
+      coverage: 1,
+      confidence: "high",
+      unavailableReasons: [],
+    });
+    expect(alpha?.economy?.antiEcoWins.value).toBe(1);
+    expect(alpha?.economy?.antiEcoWinRate.value).toBe(0.5);
+    expect(alpha?.economy?.lossesAgainstEco.value).toBe(1);
+    expect(bravo?.economy?.antiEcoRounds.value).toBe(0);
+    expect(bravo?.economy?.antiEcoWinRate).toMatchObject({
+      value: null,
+      sampleCount: 0,
+      usableSampleCount: 0,
+      confidence: "unavailable",
+      unavailableReasons: ["no_anti_eco_rounds"],
+    });
+  });
+
+  it("does not publish partial anti-eco counts when opponent equipment is missing", () => {
+    const source = round(1, {
+      freezeEndTick: 1_064,
+      scoreA: 1,
+      scoreB: 0,
+      winner: "T",
+      frames: [{
+        t: 1,
+        players: [
+          { id: P1, x: 0, y: 0, z: 0, yaw: 0, hp: 100, armor: 100, team: 2, equipmentValue: 4_000 },
+          { id: P2, x: 100, y: 0, z: 0, yaw: 180, hp: 100, armor: 0, team: 3 },
+        ],
+      }],
+      events: [{ t: 10, tick: 1_640, type: "round_end", winner: "T" }],
+    });
+    const result = analyzeMatch(match([source]), CONTEXT);
+    const alpha = result.teams.find((team) => team.logicalTeam === "A");
+
+    expect(alpha?.economy?.antiEcoRounds).toMatchObject({
+      value: null,
+      sampleCount: 1,
+      usableSampleCount: 0,
+      coverage: 0,
+      confidence: "unavailable",
+      unavailableReasons: ["incomplete_opponent_economy"],
+    });
+    expect(alpha?.economy?.antiEcoWinRate.value).toBeNull();
+  });
+
+  it("measures pre-death equipment value and primary weapons saved in lost rounds", () => {
+    const source = round(1, {
+      winner: "CT",
+      frames: [
+        {
+          t: 0,
+          players: [
+            { id: P1, x: 0, y: 0, z: 0, yaw: 0, hp: 100, armor: 100, team: 2, equipmentValue: 4_000, weapons: ["AK-47"] },
+            { id: P3, x: 10, y: 0, z: 0, yaw: 0, hp: 100, armor: 100, team: 2, equipmentValue: 5_000, weapons: ["AWP"] },
+            { id: P2, x: 100, y: 0, z: 0, yaw: 180, hp: 100, armor: 100, team: 3, equipmentValue: 4_000, weapons: ["M4A1-S"] },
+          ],
+        },
+        {
+          t: 5,
+          players: [
+            { id: P1, x: 5, y: 0, z: 0, yaw: 0, hp: 25, armor: 20, team: 2, equipmentValue: 4_000, weapons: ["AK-47"] },
+            { id: P3, x: 15, y: 0, z: 0, yaw: 0, hp: 100, armor: 100, team: 2, equipmentValue: 5_000, weapons: ["AWP"] },
+            { id: P2, x: 95, y: 0, z: 0, yaw: 180, hp: 100, armor: 100, team: 3, equipmentValue: 4_000, weapons: ["M4A1-S"] },
+          ],
+        },
+        {
+          t: 10,
+          players: [
+            { id: P3, x: 20, y: 0, z: 0, yaw: 0, hp: 100, armor: 100, team: 2, equipmentValue: 5_000, weapons: ["AWP"] },
+            { id: P2, x: 90, y: 0, z: 0, yaw: 180, hp: 100, armor: 100, team: 3, equipmentValue: 4_000, weapons: ["M4A1-S"] },
+          ],
+        },
+      ],
+      events: [
+        { t: 6, tick: 1_384, sequence: 1, type: "kill", killer: P2, victim: P1, weapon: "m4a1_silencer" },
+        { t: 10, tick: 1_640, sequence: 2, type: "round_end", winner: "CT" },
+      ],
+    });
+    const result = analyzeMatch(match([source]), CONTEXT);
+
+    expect(player(result, P1).economy?.equipmentValueLostOnDeath).toMatchObject({
+      value: 4_000,
+      sampleCount: 1,
+      usableSampleCount: 1,
+      coverage: 1,
+      provenance: "reconstructed",
+      confidence: "high",
+      unavailableReasons: [],
+    });
+    expect(player(result, P1).economy?.netSpend).toMatchObject({
+      value: null,
+      usableSampleCount: 0,
+      confidence: "unavailable",
+      unavailableReasons: ["missing_purchase_events"],
+    });
+    expect(player(result, P1).economy?.averageEquipmentValueLostPerDeath.value).toBe(4_000);
+    expect(player(result, P1).economy?.savedPrimaryWeaponRounds.value).toBe(0);
+    expect(player(result, P3).economy?.savedPrimaryWeaponRounds).toMatchObject({
+      value: 1,
+      sampleCount: 1,
+      usableSampleCount: 1,
+      coverage: 1,
+      unavailableReasons: [],
+    });
+    expect(player(result, P3).economy?.savedWeaponEvidence).toEqual([
+      `r1-inventory-${P3}-0002`,
+      "r1-round-end",
+    ]);
+  });
+
+  it("keeps value lost unavailable when a pre-death equipment sample is missing", () => {
+    const source = round(1, {
+      winner: "CT",
+      frames: [{
+        t: 0,
+        players: [
+          { id: P1, x: 0, y: 0, z: 0, yaw: 0, hp: 100, armor: 0, team: 2 },
+          { id: P2, x: 100, y: 0, z: 0, yaw: 180, hp: 100, armor: 100, team: 3, equipmentValue: 4_000, weapons: ["M4A1-S"] },
+        ],
+      }],
+      events: [
+        { t: 5, tick: 1_320, type: "kill", killer: P2, victim: P1, weapon: "m4a1_silencer" },
+        { t: 10, tick: 1_640, type: "round_end", winner: "CT" },
+      ],
+    });
+    const result = analyzeMatch(match([source]), CONTEXT);
+
+    expect(player(result, P1).economy?.equipmentValueLostOnDeath).toMatchObject({
+      value: null,
+      sampleCount: 1,
+      usableSampleCount: 0,
+      coverage: 0,
+      confidence: "unavailable",
+      unavailableReasons: ["incomplete_predeath_equipment_values"],
+    });
+  });
+
+  it("measures numerical-advantage conversion after kill and disconnect state changes", () => {
+    const initialPlayers = [
+      { id: P1, x: 0, y: 0, z: 0, yaw: 0, hp: 100, armor: 100, team: 2 },
+      { id: P3, x: 10, y: 0, z: 0, yaw: 0, hp: 100, armor: 100, team: 2 },
+      { id: P2, x: 100, y: 0, z: 0, yaw: 180, hp: 100, armor: 100, team: 3 },
+      { id: P4, x: 110, y: 0, z: 0, yaw: 180, hp: 100, armor: 100, team: 3 },
+    ];
+    const result = analyzeMatch(match([
+      round(1, {
+        scoreA: 1,
+        scoreB: 0,
+        winner: "T",
+        frames: [{ t: 0, players: initialPlayers }],
+        events: [
+          { t: 2, tick: 1_128, sequence: 1, type: "kill", killer: P1, victim: P2, weapon: "ak47" },
+          { t: 10, tick: 1_640, sequence: 2, type: "round_end", winner: "T" },
+        ],
+        disconnects: [],
+      }),
+      round(2, {
+        scoreA: 1,
+        scoreB: 1,
+        winner: "CT",
+        frames: [{ t: 0, players: initialPlayers }],
+        events: [
+          { t: 2, tick: 2_128, sequence: 1, type: "kill", killer: P1, victim: P2, weapon: "ak47" },
+          { t: 3, tick: 2_192, sequence: 2, type: "kill", killer: P4, victim: P1, weapon: "m4a1_silencer" },
+          { t: 4, tick: 2_256, sequence: 3, type: "kill", killer: P4, victim: P3, weapon: "m4a1_silencer" },
+          { t: 10, tick: 2_640, sequence: 4, type: "round_end", winner: "CT" },
+        ],
+        disconnects: [],
+      }),
+    ]), CONTEXT);
+    const alpha = result.teams.find((team) => team.logicalTeam === "A");
+    const bravo = result.teams.find((team) => team.logicalTeam === "B");
+
+    expect(alpha?.combat?.advantageRounds).toMatchObject({
+      value: 2,
+      sampleCount: 2,
+      usableSampleCount: 2,
+      coverage: 1,
+      unavailableReasons: [],
+    });
+    expect(alpha?.combat?.advantageWins.value).toBe(1);
+    expect(alpha?.combat?.advantageConversionRate.value).toBe(0.5);
+    expect(bravo?.combat?.advantageRounds.value).toBe(1);
+    expect(bravo?.combat?.advantageWins.value).toBe(1);
+    expect(bravo?.combat?.advantageConversionRate.value).toBe(1);
+  });
+
+  it("does not publish advantage conversion when disconnect coverage is unknown", () => {
+    const source = round(1, {
+      scoreA: 1,
+      scoreB: 0,
+      winner: "T",
+      events: [
+        { t: 2, tick: 1_128, type: "kill", killer: P1, victim: P2, weapon: "ak47" },
+        { t: 10, tick: 1_640, type: "round_end", winner: "T" },
+      ],
+    });
+    delete source.disconnects;
+    const result = analyzeMatch(match([source]), CONTEXT);
+    const alpha = result.teams.find((team) => team.logicalTeam === "A");
+
+    expect(alpha?.combat?.advantageRounds).toMatchObject({
+      value: null,
+      sampleCount: 1,
+      usableSampleCount: 0,
+      coverage: 0,
+      confidence: "unavailable",
+      unavailableReasons: ["incomplete_advantage_context"],
+    });
   });
 
   it("keeps legacy key-moment fields empty instead of selecting replay moments", () => {

@@ -42,6 +42,7 @@ export type PlayerPos = {
   airborne?: boolean;
   walking?: boolean;
   duckAmount?: number;
+  scoped?: boolean;
   hp: number;
   armor: number;
   money?: number;
@@ -228,6 +229,14 @@ export type UtilityEffect = {
 export type MatchData = {
   schemaVersion?: "roundlab.replay.v2";
   parserVersion?: string;
+  /** Formula version selected when the import manifest was created. */
+  mechanicsFormulaVersion?: string;
+  /** Explicit import fidelity. Missing means a legacy, unversioned import. */
+  importQuality?: "complete" | "partial" | "insufficient" | "legacy";
+  /** Parser streams and sampling guarantees available to downstream analysis. */
+  capabilities?: string[];
+  /** Local geometry identifier, or null when no geometry was attached at import. */
+  geometryVersion?: string | null;
   meta: MatchMeta;
   players: Player[];
   rounds: Round[];

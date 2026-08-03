@@ -3,6 +3,7 @@ import { saveParsedMatch } from "@/lib/backends/browser-store";
 import { browserParserMemoryError, browserParserStrategy } from "@/lib/parser-memory";
 import type { BrowserParseMode } from "@/lib/parser-memory";
 import type { MatchData } from "@/lib/types";
+import { versionCurrentImport } from "@/lib/import-version";
 
 const ZSTD_MAGIC = [0x28, 0xb5, 0x2f, 0xfd] as const;
 const MAX_DEMO_SIZE = 1024 * 1024 * 1024;
@@ -111,7 +112,10 @@ async function parseDemo(request: ParseRequest): Promise<string> {
   const json = parse_demo_bytes_to_json(bytes, strategy.quality, false, false);
 
   postProgress(0.86, "Storing parsed match locally...", "storing");
-  const data = JSON.parse(json) as MatchData;
+  const data = versionCurrentImport(
+    JSON.parse(json) as MatchData,
+    strategy.quality,
+  );
   validatePlayableMatch(data);
   const id = crypto.randomUUID();
   await saveParsedMatch(id, displayName(request.name), request.size, data);

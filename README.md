@@ -15,6 +15,7 @@ de rejouer chaque round sur un radar 2D interactif.
 
 - [Principes du projet](#principes-du-projet)
 - [État actuel](#état-actuel)
+- [État du chantier fiabilité](#état-du-chantier-fiabilité)
 - [Limites actuelles](#limites-actuelles)
 - [Vision produit](#vision-produit)
 - [Expérience statistique cible](#expérience-statistique-cible)
@@ -65,6 +66,83 @@ RoundLab sait aujourd'hui :
 
 Le rapport se concentre sur les valeurs mesurées. Le replay, les trajectoires
 et les actions horodatées restent disponibles pour une analyse manuelle.
+
+## État du chantier fiabilité
+
+Cette section est l’état d’avancement de référence. Les anciennes étapes de la
+roadmap décrivent l’historique du produit ; elles ne suffisent pas à déclarer le
+moteur validé.
+
+| Phase | État vérifié | Reste à faire |
+| --- | --- | --- |
+| Contrat de qualité | Le contrat central expose valeur/null, unité, échantillons, couverture, provenance, confiance, raisons et version. Aim, économie avancée, conversion d’avantage, agrégats joueur de positionnement et utilitaires joueur l’utilisent. | Étendre ce contrat aux agrégats historiques non migrés. |
+| Diagnostic | Le rapport affiche tirs, impacts, dégâts, hitgroups, angles, vélocité, `spottedBy`, état scoped, engagements, associations et géométrie. Il agrège aussi les couvertures économie, avantage numérique, attribution des zones, spacing, flux et efficacité utilitaires. Le rendu Aim a été contrôlé sur une réimportation full réelle de Dust2. | Ajouter les signaux des futurs agrégats au moment de leur migration, sans inventer de couverture rétroactive. |
+| Imports | Les nouveaux imports Rust/WASM enregistrent parseur, schéma, formules, qualité, capacités et géométrie. Les imports anciens restent intacts, sont classés `legacy` et proposent une réimportation. Les fixtures d’import historique et la coexistence en IndexedDB sont testées. | Une vraie réimportation reste volontaire : l’ancien match n’est jamais écrasé. |
+| Association | Chaque tir est `reliable_hit`, `reliable_miss`, `ambiguous` ou `incomplete`; impacts multiples, dégâts multiples, shotgun, kill terminal et pénétration sont testés. Sur les cinq démos réimportées en full, les 13 904 tirs balistiques sont tous associables : 2 446 `reliable_hit`, 11 458 `reliable_miss`, 0 ambigu, 0 incomplet, soit 100 % de couverture et aucun dégât/kill balistique non associé. | `bullet_impact` reste indisponible dans le décodeur amont : la couverture valide ici la chaîne tir→dégât/kill, pas des trajectoires d’impact absentes. |
+| Corpus parseur | Les cinq démos locales passent les snapshots Rust release stricts. RoundLab et demoparser2 0.41.4 concordent exactement sur 3 144 dégâts et 17 550 tirs ; les kills concordent sauf sept suicides monde post-round omis par demoparser2. Position, yaw et pitch concordent sur 15 125 états joueur répartis sur les cinq cartes. Le contrôle exhaustif Dust2 concorde sur 485 810 états et 485 378 vélocités RoundLab, hors 20 vitesses aberrantes produites uniquement par la requête externe. Les 3 940 430 échantillons pitch/yaw RoundLab sont exploitables et 3 937 347 vélocités sur 3 940 430 le sont (99,922 %), les valeurs aberrantes étant laissées absentes plutôt que forcées à zéro. | `bullet_impact` est absent des deux sorties sur ce corpus et classé indisponible, pas zéro. La vélocité n’est pas prétendue exhaustive sur les quatre autres cartes : les requêtes demoparser2 clairsemées la faussent. Awpy reste bloqué par son agrégateur Polars. |
+| Géométrie | Import déterministe glTF/GLB et Awpy `.tri`, validation, BVH et cache sont testés. Les maps absentes sont explicites. | Aucun asset réel n’est distribué ni validé ici; tester les maps compétitives sur des assets locaux autorisés. |
+| Visibilité | La visibilité combine géométrie, hauteur d’œil/posture, FOV supposé, smokes, flash et `spottedBy` secondaire. Chaque engagement expose méthode, confiance et limites. | Portes et props dynamiques ne sont pas modélisés; validation réelle bloquée par l’absence d’assets locaux. |
+| Aim | Précision globale/par arme, hitgroups, dégâts/hit, tap/burst/spray, première balle, mouvement, counter-strafe, crouch, scoped, wallbang, distance, visibilité, délais et erreurs angulaires sont calculés avec qualité. | Flick, tracking et recoil exacts restent impossibles depuis une GOTV. |
+| Diversification | Combat V1, côtés, armes, spacing, tradeability, routes, rotations, zones, contrôle et smokes/feux restent couverts par les tests existants. Les conversions d’avantage, métriques économie avancées, zones/transitions/rotations/spacing/habitudes joueur et utilitaires joueur exposent maintenant valeur, couverture, provenance, confiance, raisons et formule. | Étendre ces contrats aux agrégats historiques restants. Les dépenses restent retenues tant que la sémantique temporelle du flux d’achats n’est pas validée. |
+| Benchmarks | Médianes, percentiles, tailles, intervalles et segmentation map/niveau/côté existent avec une porte minimale. | Le corpus local reste insuffisant; aucun score Aim global n’est publié. |
+
+Validation exécutée pendant ce chantier : TypeScript, lint complet, 392 tests
+unitaires front, 50 tests Rust pour chacune des cibles bibliothèque et binaire,
+ainsi que les deux tests d’intégration Rust release sur les cinq démos pour les
+deux cibles. Les cinq démos ont aussi été réimportées avec le manifest V2 puis
+auditées par `mechanics:audit`, qui refuse tout NaN ou infini. Le build
+production passe. L’E2E passe avec sept tests réussis et le test de performance
+réelle ignoré sans son option d’environnement. Le contrôle visuel a été fait
+sur une réimportation full de Dust2, du rapport Aim au replay.
+
+L’état scoped est présent sur 100 % des échantillons joueur émis par les cinq
+démos réelles, en qualité full comme réduite. Sur la réimportation full Dust2,
+485 810 échantillons sur 485 810 portent l’état, dont 26 855 à `true`. Le calcul
+Aim V3 attribue 50 tirs scoped parmi 1 611 tirs, avec une couverture de 100 %
+pour chaque joueur. Cette attribution reste classée `estimated` : elle utilise
+la dernière frame strictement antérieure au tir dans une fenêtre de 250 ms,
+car la frame du tick de tir peut déjà refléter le déscopage post-événement.
+
+L’audit économie sur une réimportation full de Dust2 classe les 14 rounds pour
+les deux équipes. Il mesure 5 victoires en 5 opportunités anti-eco pour
+`team_jusssya`, contre 0 sur 2 et donc 2 pertes contre eco pour `team_-ipX`.
+Les 104 morts ont toutes un snapshot d’équipement pré-mort exploitable
+(390 500 $ de `current_equip_value` agrégé) et les 70 player-rounds perdus ont
+tous un état de sauvegarde classable ; aucune arme principale sauvegardée n’est
+observée sur ce match. Les 377 événements d’achat portent tous un coût, mais
+leur chronologie réelle contient des achats tardifs et des rafales répétées qui
+n’ont pas encore été validés sémantiquement contre une autre source. RoundLab
+ne publie donc pas encore de dépenses à partir de ce flux.
+
+Sur ce même match, `team_jusssya` obtient un avantage numérique dans 13 rounds
+et les convertit tous ; `team_-ipX` en obtient un dans 6 rounds et n’en
+convertit qu’un. Les 28 team-rounds ont un roster, un flux de déconnexions et
+une issue exploitables, soit 100 % de couverture pour cette reconstruction.
+
+L'audit utilitaire de cette réimportation Dust2 retrouve 230 grenades sur 140
+player-rounds tous exploitables. Les 69 flashes et 55 HE utilisées comme
+dénominateurs ont une couverture de 100 %, tout comme les inventaires
+pré-mort des 104 décès. Un joueur sans flash ou sans HE reçoit une métrique de
+ratio indisponible avec la raison correspondante, pas un faux zéro. L'audit
+spatial assigne également les 485 810 positions vivantes de Dust2 sans
+position hors zone ni ambiguïté ; cette couverture valide l'exhaustivité du
+découpage grossier, pas sa précision tactique au mètre près.
+
+Le comparateur optionnel
+[`scripts/compare-roundlab-demoparser2.py`](scripts/compare-roundlab-demoparser2.py)
+aligne chaque flux sur les ticks des rounds RoundLab et compare les signatures
+complètes. Awpy 2.0.2 a été tenté dans un environnement Python 3.12 temporaire,
+mais son agrégation plante actuellement dans Polars sur ces fichiers. Le backend
+demoparser2 a donc été interrogé directement. Ce problème externe n’est pas
+présenté comme une validation Awpy réussie.
+
+### Réimporter un match ancien
+
+Lance l’application avec `cd desktop && pnpm dev`, ouvre **Importer**, choisis
+de nouveau la démo GOTV originale puis le mode **Précision maximale**. Le nouvel
+import V2 est créé à côté de l’entrée historique : RoundLab ne supprime ni ne
+remplace automatiquement l’ancien match. Sans le fichier GOTV original, les
+faits absents d’un import legacy ne peuvent pas être reconstruits fidèlement.
 
 ## Limites actuelles
 
@@ -242,7 +320,7 @@ doit pas modifier silencieusement les anciennes analyses.
 | Niveau | Analyses concernées |
 | --- | --- |
 | Déjà largement calculables | K/D, headshots, ADR, dégâts par arme et utilitaire, hitgroups, openings, multikills, survie, situations de clutch, trades temporels, économie approximative, grenades lancées, routes et rotations simples |
-| Parseur à enrichir | Impacts de balles, spray accuracy, crouch, vitesse exacte, pitch et événements de flash détaillés |
+| Parseur à enrichir | Éventuels états d'obstacles dynamiques ; les impacts lorsqu'ils existent, dégâts, hitgroups, pitch, vélocité, crouch, scoped et flashes sont déjà extraits |
 | Géométrie des maps nécessaire | Visibilité réelle, placement du viseur, temps de réaction, angles exposés, contrôle des zones et positionnement avancé |
 | Corpus de parties nécessaire | Percentiles, benchmarks par niveau, probabilité de victoire, scores globaux et comparaisons fiables |
 
@@ -305,7 +383,7 @@ moteur d'affichage du replay.
 
 - [x] ajouter les événements complets de dégâts ;
 - [x] conserver dégâts de vie, dégâts d'armure, arme et hitgroup ;
-- [x] extraire les impacts de balles ;
+- [ ] exposer les impacts de balles depuis le décodeur CS2 actuel ;
 - [x] ajouter pitch, vitesse et états de mouvement ;
 - [x] conserver le masque approximatif des joueurs ayant repéré chaque cible ;
 - [x] améliorer les informations de flash ;
@@ -317,8 +395,11 @@ recalculées sans déductions fragiles depuis les seules variations de HP.
 Une première tranche est implémentée : chaque round conserve désormais les
 événements `player_hurt` avec attaquant et arme lorsqu'ils sont fournis,
 victime, dégâts de vie et d'armure, état restant, hitgroup, tick et timestamp.
-Les événements `bullet_impact` conservent également le tireur, le tick, l'ordre
-d'origine et leurs coordonnées XYZ exactes dans `rounds[].bulletImpacts`.
+Le schéma sait conserver les événements `bullet_impact` avec tireur, tick,
+ordre d'origine et coordonnées XYZ dans `rounds[].bulletImpacts`, mais le
+décodeur CS2 actuel ne les expose pas sur le corpus de référence. Les nouveaux
+imports ne déclarent donc pas la capacité `bullet_impacts` et les métriques
+concernées restent `null`, jamais zéro.
 Chaque position joueur peut désormais conserver le pitch, la vitesse et ses
 composantes XYZ, ainsi que les états en l'air, en marche et d'accroupissement.
 Ces propriétés restent optionnelles lorsqu'elles sont absentes de la démo.
@@ -331,9 +412,9 @@ flash affiché dans les frames.
 Les achats effectués pendant le freeze time sont conservés avec joueur, objet,
 coût, slot d'inventaire et statut de remboursement lorsqu'il est disponible.
 Les frames conservent également la valeur d'équipement courante et incluent
-désormais le tick exact de fin du freeze time. L'implémentation prévue pour
-cette étape est complète. La validation terrain sur des démos réelles est
-confiée au beta testing et ne bloque plus cette feuille de route.
+désormais le tick exact de fin du freeze time. Cette étape reste incomplète
+tant que le flux `bullet_impact` n'est pas réellement disponible ; le reste a
+été validé sur les cinq démos locales.
 
 ### Étape 3 — Moteur d'analyse V1
 
@@ -427,9 +508,13 @@ et counter-strafe. Une association tir-dégât incomplète laisse volontairement
 les valeurs concernées vides au lieu d'afficher un faux zéro.
 La section Positionnement sert de passerelle vers la vue condensée par joueur :
 elle superpose les trajectoires, morts et utilitaires réellement enregistrés.
-Elle distingue explicitement ces faits disponibles des zones tactiques, lignes
-de vue, espacements et rotations qui nécessitent encore le moteur spatial de
-l'étape 6. L'interface prévue pour cette étape est désormais complète.
+Le moteur spatial fournit désormais zones tactiques, espacements et rotations
+lorsque les données nécessaires sont disponibles. Les dix maps calibrées
+utilisent des libellés V2 fondés sur les callouts CS2 courants ; les polygones
+restent grossiers, donc les zones qui couvrent plusieurs lieux affichent un
+libellé composite plutôt qu'une précision fictive.
+La vue Comparer permet de choisir deux joueurs distincts parmi tout le match,
+y compris deux coéquipiers ; l'équipe est indiquée dans chaque option.
 
 ### Étape 5 — Analyse mécanique avancée
 
@@ -445,7 +530,7 @@ l'étape 6. L'interface prévue pour cette étape est désormais complète.
 rejouable.
 
 Le moteur mécanique possède sa propre spécification versionnée dans
-[`docs/mechanics-analysis-v1.md`](docs/mechanics-analysis-v1.md), car ces
+[`docs/mechanics-analysis-v2.md`](docs/mechanics-analysis-v2.md), car ces
 formules étaient explicitement hors périmètre de `roundlab.metrics.v1`.
 La première brique regroupe maintenant, de manière déterministe, les dégâts et
 kills adverses d'une même paire dans une fenêtre maximale de cinq secondes. Elle

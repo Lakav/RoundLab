@@ -1,10 +1,10 @@
 {
   "map": "de_dust2",
-  "zonesVersion": "roundlab.de_dust2.coarse.v1",
+  "zonesVersion": "roundlab.de_dust2.coarse.v2",
   "zones": [
     {
       "zoneId": "b_site",
-      "label": "B site",
+      "label": "B Site / Back Plat",
       "polygon": [
         { "x": -2476, "y": 3239 },
         { "x": -716, "y": 3239 },
@@ -17,7 +17,7 @@
     },
     {
       "zoneId": "b_approach",
-      "label": "B approach",
+      "label": "Upper Tunnels / B Doors",
       "polygon": [
         { "x": -2476, "y": 1699 },
         { "x": -716, "y": 1699 },
@@ -30,7 +30,7 @@
     },
     {
       "zoneId": "t_west",
-      "label": "T west route",
+      "label": "Lower Tunnels / Outside B",
       "polygon": [
         { "x": -2476, "y": 599 },
         { "x": -716, "y": 599 },
@@ -43,7 +43,7 @@
     },
     {
       "zoneId": "ct_spawn",
-      "label": "CT spawn",
+      "label": "CT Spawn / Mid Doors",
       "polygon": [
         { "x": -716, "y": 3239 },
         { "x": 384, "y": 3239 },
@@ -56,7 +56,7 @@
     },
     {
       "zoneId": "middle",
-      "label": "Middle",
+      "label": "Mid / Xbox / Short",
       "polygon": [
         { "x": -716, "y": 1919 },
         { "x": 384, "y": 1919 },
@@ -69,7 +69,7 @@
     },
     {
       "zoneId": "t_spawn",
-      "label": "T spawn",
+      "label": "T Spawn / Suicide",
       "polygon": [
         { "x": -716, "y": 159 },
         { "x": 384, "y": 159 },
@@ -82,7 +82,7 @@
     },
     {
       "zoneId": "a_site",
-      "label": "A site",
+      "label": "A Site / Short",
       "polygon": [
         { "x": 384, "y": 3239 },
         { "x": 2029.6, "y": 3239 },
@@ -95,7 +95,7 @@
     },
     {
       "zoneId": "a_approach",
-      "label": "A approach",
+      "label": "Long A / A Ramp",
       "polygon": [
         { "x": 384, "y": 1699 },
         { "x": 2029.6, "y": 1699 },
@@ -108,7 +108,7 @@
     },
     {
       "zoneId": "t_east",
-      "label": "T east route",
+      "label": "Outside Long / Long Doors",
       "polygon": [
         { "x": 384, "y": 379 },
         { "x": 2029.6, "y": 379 },

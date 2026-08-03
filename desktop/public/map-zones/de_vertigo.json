@@ -1,10 +1,10 @@
 {
   "map": "de_vertigo",
-  "zonesVersion": "roundlab.de_vertigo.coarse.v1",
+  "zonesVersion": "roundlab.de_vertigo.coarse.v2",
   "zones": [
     {
       "zoneId": "lower_north",
-      "label": "Lower north route",
+      "label": "Lower / Elevator",
       "polygon": [
         { "x": -3168, "y": 1762 },
         { "x": 928, "y": 1762 },
@@ -17,7 +17,7 @@
     },
     {
       "zoneId": "lower_t_spawn",
-      "label": "Lower T spawn and route",
+      "label": "T Spawn / Lower Ramp",
       "polygon": [
         { "x": -3168, "y": -286 },
         { "x": 928, "y": -286 },
@@ -30,7 +30,7 @@
     },
     {
       "zoneId": "a_site",
-      "label": "A site",
+      "label": "A Site / Sandbags",
       "polygon": [
         { "x": -3168, "y": 1762 },
         { "x": -1632, "y": 1762 },
@@ -43,7 +43,7 @@
     },
     {
       "zoneId": "ct_spawn",
-      "label": "CT spawn and north-east",
+      "label": "CT Spawn / Elevator",
       "polygon": [
         { "x": -1632, "y": 1762 },
         { "x": 928, "y": 1762 },
@@ -56,7 +56,7 @@
     },
     {
       "zoneId": "a_approach",
-      "label": "A approach",
+      "label": "A Ramp / Scaffold",
       "polygon": [
         { "x": -3168, "y": 226 },
         { "x": -1632, "y": 226 },
@@ -69,7 +69,7 @@
     },
     {
       "zoneId": "middle",
-      "label": "Middle",
+      "label": "Mid / Ladder",
       "polygon": [
         { "x": -1632, "y": 226 },
         { "x": -608, "y": 226 },
@@ -82,7 +82,7 @@
     },
     {
       "zoneId": "b_site",
-      "label": "B site and approach",
+      "label": "B Site / B Stairs",
       "polygon": [
         { "x": -608, "y": 226 },
         { "x": 928, "y": 226 },

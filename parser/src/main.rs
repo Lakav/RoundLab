@@ -30,6 +30,8 @@ const TICK_RATE: f64 = 64.0;
 const JSON_WRITE_BUFFER_BYTES: usize = 256 * 1024;
 const REPLAY_SCHEMA_VERSION: &str = "roundlab.replay.v2";
 const PARSER_VERSION: &str = env!("CARGO_PKG_VERSION");
+const MECHANICS_FORMULA_VERSION: &str = "roundlab.mechanics.v2";
+const MAX_PLAUSIBLE_PLAYER_VELOCITY: f64 = 5_000.0;
 
 #[derive(Debug, Default)]
 struct Args {
@@ -117,6 +119,8 @@ struct PlayerPos {
     walking: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     duck_amount: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scoped: Option<bool>,
     hp: i64,
     armor: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -240,6 +244,7 @@ struct TickRow {
     airborne: Option<bool>,
     walking: Option<bool>,
     duck_amount: Option<f64>,
+    scoped: Option<bool>,
     hp: i64,
     armor: i64,
     money: Option<i64>,
@@ -492,6 +497,13 @@ struct Output {
     schema_version: &'static str,
     #[serde(rename = "parserVersion")]
     parser_version: &'static str,
+    #[serde(rename = "mechanicsFormulaVersion")]
+    mechanics_formula_version: &'static str,
+    #[serde(rename = "importQuality")]
+    import_quality: &'static str,
+    capabilities: Vec<&'static str>,
+    #[serde(rename = "geometryVersion")]
+    geometry_version: Option<&'static str>,
     meta: Meta,
     players: Vec<Player>,
     rounds: Vec<Round>,
@@ -503,6 +515,13 @@ struct ManifestOutput<'a> {
     schema_version: &'static str,
     #[serde(rename = "parserVersion")]
     parser_version: &'static str,
+    #[serde(rename = "mechanicsFormulaVersion")]
+    mechanics_formula_version: &'static str,
+    #[serde(rename = "importQuality")]
+    import_quality: &'static str,
+    capabilities: &'a [&'static str],
+    #[serde(rename = "geometryVersion")]
+    geometry_version: Option<&'static str>,
     meta: &'a Meta,
     players: &'a [Player],
     rounds: Vec<ManifestRound>,
@@ -854,6 +873,10 @@ fn parse_demo_to_output_with_stats(args: &Args) -> Result<(Output, ParserStats)>
     let output = Output {
         schema_version: REPLAY_SCHEMA_VERSION,
         parser_version: PARSER_VERSION,
+        mechanics_formula_version: MECHANICS_FORMULA_VERSION,
+        import_quality: import_quality(&args.quality),
+        capabilities: parser_capabilities(args),
+        geometry_version: None,
         meta: Meta {
             map: data.map,
             tick_rate: TICK_RATE,
@@ -911,7 +934,12 @@ fn parse_demo_data_from_bytes(
     let sample_step = sample_step(&args.quality);
     let sample_rate = (TICK_RATE as i32 / sample_step).max(1);
     let wanted_ticks = timed(&mut stats.sample_ticks_ms, || {
-        Ok(sample_ticks(&spans, sample_step, &events))
+        Ok(sample_ticks(
+            &spans,
+            sample_step,
+            &events,
+            !args.skip_weapon_fires,
+        ))
     })?;
     let tick_data = timed(&mut stats.parse_ticks_ms, || {
         parse_ticks(bytes, &huf, wanted_ticks)
@@ -1693,6 +1721,7 @@ fn parse_ticks(bytes: &[u8], huf: &Vec<(u8, u8)>, ticks: Vec<i32>) -> Result<Tic
             "is_airborne".into(),
             "is_walking".into(),
             "duck_amount".into(),
+            "is_scoped".into(),
             "health".into(),
             "armor_value".into(),
             "balance".into(),
@@ -1779,6 +1808,7 @@ fn tick_rows_from_helper(helper: &OutputSerdeHelperStruct) -> (Vec<TickRow>, Vec
             airborne: helper_bool(helper, "is_airborne", idx),
             walking: helper_bool(helper, "is_walking", idx),
             duck_amount: helper_f64(helper, "duck_amount", idx),
+            scoped: helper_bool(helper, "is_scoped", idx),
             hp: helper_i64(helper, "health", idx).unwrap_or_default(),
             armor: helper_i64(helper, "armor_value", idx).unwrap_or_default(),
             money: helper_i64(helper, "balance", idx),
@@ -1974,7 +2004,47 @@ fn sample_step(quality: &str) -> i32 {
     }
 }
 
-fn sample_ticks(spans: &[RoundSpan], step: i32, events: &[Value]) -> Vec<i32> {
+fn import_quality(quality: &str) -> &'static str {
+    // The current upstream event decoder does not expose CS2 bullet_impact on
+    // the reference corpus, so even full frame sampling is analytically partial.
+    let _ = quality;
+    "partial"
+}
+
+fn parser_capabilities(args: &Args) -> Vec<&'static str> {
+    let mut capabilities = vec![
+        "round_events",
+        "damage_events",
+        "hitgroups",
+        "player_positions",
+        "pitch_yaw",
+        "velocity",
+        "spotted_by",
+        "scoped_state",
+        "flash_events",
+        "purchase_events",
+        "utility_effects",
+    ];
+    if !args.skip_weapon_fires {
+        capabilities.push("weapon_fires");
+    }
+    if !args.skip_projectiles {
+        capabilities.push("projectile_positions");
+    }
+    capabilities.push(if args.quality.eq_ignore_ascii_case("full") {
+        "full_frame_sampling"
+    } else {
+        "reduced_frame_sampling"
+    });
+    capabilities
+}
+
+fn sample_ticks(
+    spans: &[RoundSpan],
+    step: i32,
+    events: &[Value],
+    include_weapon_fires: bool,
+) -> Vec<i32> {
     let mut ticks = Vec::new();
     for span in spans {
         let mut tick = span.start;
@@ -1985,19 +2055,21 @@ fn sample_ticks(spans: &[RoundSpan], step: i32, events: &[Value]) -> Vec<i32> {
         ticks.push(span.end);
     }
     for event in events {
-        if matches!(
-            get_str(event, "event_name").unwrap_or(""),
-            "weapon_fire"
-                | "round_freeze_end"
-                | "bomb_beginplant"
-                | "bomb_planted"
-                | "bomb_dropped"
-                | "bomb_pickup"
-                | "bomb_begindefuse"
-                | "bomb_abortdefuse"
-                | "bomb_defused"
-                | "bomb_exploded"
-        ) {
+        let event_name = get_str(event, "event_name").unwrap_or("");
+        if (include_weapon_fires && event_name == "weapon_fire")
+            || matches!(
+                event_name,
+                "round_freeze_end"
+                    | "bomb_beginplant"
+                    | "bomb_planted"
+                    | "bomb_dropped"
+                    | "bomb_pickup"
+                    | "bomb_begindefuse"
+                    | "bomb_abortdefuse"
+                    | "bomb_defused"
+                    | "bomb_exploded"
+            )
+        {
             if let Some(tick) = get_i64(event, "tick") {
                 ticks.push(tick as i32);
             }
@@ -2329,6 +2401,11 @@ fn player_pos_from_row(
             .iter()
             .filter_map(|id| weapon_names.get(*id as usize))
             .any(|weapon| weapon_is_bomb(weapon));
+    let plausible_velocity = |value: Option<f64>| {
+        value.filter(|component| {
+            component.is_finite() && component.abs() <= MAX_PLAUSIBLE_PLAYER_VELOCITY
+        })
+    };
     Some(PlayerPos {
         id,
         x: row.x,
@@ -2336,13 +2413,14 @@ fn player_pos_from_row(
         z: row.z,
         yaw: row.yaw,
         pitch: row.pitch,
-        speed: row.speed,
-        velocity_x: row.velocity_x,
-        velocity_y: row.velocity_y,
-        velocity_z: row.velocity_z,
+        speed: plausible_velocity(row.speed),
+        velocity_x: plausible_velocity(row.velocity_x),
+        velocity_y: plausible_velocity(row.velocity_y),
+        velocity_z: plausible_velocity(row.velocity_z),
         airborne: row.airborne,
         walking: row.walking,
         duck_amount: row.duck_amount,
+        scoped: row.scoped,
         hp: row.hp,
         armor: row.armor,
         money: row.money,
@@ -3288,6 +3366,10 @@ fn write_json_gz(path: &str, output: &Output) -> Result<WriteStats> {
     let manifest = ManifestOutput {
         schema_version: REPLAY_SCHEMA_VERSION,
         parser_version: PARSER_VERSION,
+        mechanics_formula_version: output.mechanics_formula_version,
+        import_quality: output.import_quality,
+        capabilities: &output.capabilities,
+        geometry_version: output.geometry_version,
         meta: &output.meta,
         players: &output.players,
         rounds: manifest_rounds,
@@ -3623,6 +3705,10 @@ pub fn parse_demo_bytes_to_json(
             let output = Output {
                 schema_version: REPLAY_SCHEMA_VERSION,
                 parser_version: PARSER_VERSION,
+                mechanics_formula_version: MECHANICS_FORMULA_VERSION,
+                import_quality: import_quality(&args.quality),
+                capabilities: parser_capabilities(&args),
+                geometry_version: None,
                 meta: Meta {
                     map: data.map,
                     tick_rate: TICK_RATE,
@@ -3654,8 +3740,8 @@ mod tests {
         round_weapon_fires, sample_step, sample_ticks, seconds_since, write_json_gz, ActiveAction,
         Args, BombState, DamageEvent, DisconnectEvent, Event, Frame, KillDetails, Output, Player,
         ProjectileFrame, ProjectileKind, ProjectilePos, ProjectileRow, Round, RoundBuildContext,
-        RoundSpan, TickRow, UtilityEffect, WeaponFireEvent, MAX_DEMO_SIZE, PARSER_VERSION,
-        REPLAY_SCHEMA_VERSION,
+        RoundSpan, TickRow, UtilityEffect, WeaponFireEvent, MAX_DEMO_SIZE,
+        MECHANICS_FORMULA_VERSION, PARSER_VERSION, REPLAY_SCHEMA_VERSION,
     };
     use flate2::{read::GzDecoder, Compression};
     use serde::Deserialize;
@@ -3963,9 +4049,26 @@ mod tests {
             "event_name": "round_freeze_end"
         })];
 
-        let ticks = sample_ticks(&spans, 64, &events);
+        let ticks = sample_ticks(&spans, 64, &events, false);
 
         assert!(ticks.contains(&173));
+    }
+
+    #[test]
+    fn sample_ticks_omit_weapon_fires_when_the_stream_is_skipped() {
+        let spans = vec![RoundSpan {
+            start: 100,
+            end: 300,
+            round_end: 300,
+            winner: "T".into(),
+        }];
+        let events = vec![json!({
+            "tick": 173,
+            "event_name": "weapon_fire"
+        })];
+
+        assert!(sample_ticks(&spans, 64, &events, true).contains(&173));
+        assert!(!sample_ticks(&spans, 64, &events, false).contains(&173));
     }
 
     #[test]
@@ -4113,6 +4216,7 @@ mod tests {
                     airborne: None,
                     walking: None,
                     duck_amount: None,
+                    scoped: None,
                     hp: 100,
                     armor: 0,
                     money: None,
@@ -4222,6 +4326,7 @@ mod tests {
                     airborne: None,
                     walking: None,
                     duck_amount: None,
+                    scoped: None,
                     hp: 100,
                     armor: 0,
                     money: None,
@@ -4352,6 +4457,7 @@ mod tests {
                     airborne: None,
                     walking: None,
                     duck_amount: None,
+                    scoped: None,
                     hp: 100,
                     armor: 0,
                     money: None,
@@ -4448,6 +4554,7 @@ mod tests {
                     airborne: None,
                     walking: None,
                     duck_amount: None,
+                    scoped: None,
                     hp: 100,
                     armor: 0,
                     money: None,
@@ -5147,6 +5254,7 @@ mod tests {
                 airborne: None,
                 walking: None,
                 duck_amount: None,
+                scoped: None,
                 hp: 100,
                 armor: 100,
                 money: None,
@@ -5209,6 +5317,7 @@ mod tests {
                 airborne: None,
                 walking: None,
                 duck_amount: None,
+                scoped: None,
                 hp: 100,
                 armor: 100,
                 money: None,
@@ -5242,6 +5351,7 @@ mod tests {
                 airborne: None,
                 walking: None,
                 duck_amount: None,
+                scoped: None,
                 hp: 100,
                 armor: 100,
                 money: None,
@@ -5275,6 +5385,7 @@ mod tests {
                 airborne: None,
                 walking: None,
                 duck_amount: None,
+                scoped: None,
                 hp: 87,
                 armor: 50,
                 money: None,
@@ -5342,6 +5453,7 @@ mod tests {
                 airborne: None,
                 walking: None,
                 duck_amount: None,
+                scoped: None,
                 hp: 100,
                 armor: 100,
                 money: None,
@@ -5454,7 +5566,7 @@ mod tests {
 
     #[test]
     fn player_frames_preserve_pitch_velocity_and_movement_state() {
-        let row = TickRow {
+        let mut row = TickRow {
             tick: 1_064,
             steamid: 7,
             x: 100.0,
@@ -5469,6 +5581,7 @@ mod tests {
             airborne: Some(true),
             walking: Some(false),
             duck_amount: Some(0.65),
+            scoped: Some(true),
             hp: 100,
             armor: 50,
             money: Some(3_500),
@@ -5495,6 +5608,7 @@ mod tests {
         assert_eq!(player.airborne, Some(true));
         assert_eq!(player.walking, Some(false));
         assert_eq!(player.duck_amount, Some(0.65));
+        assert_eq!(player.scoped, Some(true));
         assert_eq!(
             player.spotted_by,
             Some(vec!["7656119800000123".to_string()])
@@ -5504,7 +5618,16 @@ mod tests {
         assert_eq!(serialized["velocityY"], -98.0);
         assert_eq!(serialized["velocityZ"], 4.0);
         assert_eq!(serialized["duckAmount"], 0.65);
+        assert_eq!(serialized["scoped"], true);
         assert_eq!(serialized["spottedBy"][0], "7656119800000123");
+
+        row.speed = Some(190_000.0);
+        row.velocity_x = Some(-120_000.0);
+        row.velocity_y = Some(75_000.0);
+        let implausible = player_pos_from_row(&row, &[], &[], 1.0, None).expect("alive player");
+        assert_eq!(implausible.speed, None);
+        assert_eq!(implausible.velocity_x, None);
+        assert_eq!(implausible.velocity_y, None);
     }
 
     #[test]
@@ -5878,6 +6001,7 @@ mod tests {
             assert_replay_output_is_usable(&output);
             assert_round_level_replay_integrity(&output);
             assert_projectiles_are_not_duplicated_in_frames(&output);
+            assert_scoped_state_is_complete(&output);
             if let Some(expected) = expected_snapshot_for_demo(&args.input) {
                 assert_reference_demo_snapshot(&output, &expected);
             }
@@ -5925,6 +6049,7 @@ mod tests {
             assert_round_level_core_integrity(&output);
             assert_eq!(output.meta.sample_rate, 2);
             assert_skip_options_removed_heavy_payloads(&output);
+            assert_scoped_state_is_complete(&output);
             if let Some(expected) = expected_snapshot_for_demo(&args.input) {
                 assert_reference_demo_identity(&output, &expected);
                 assert_metrics_match_reference(
@@ -6212,6 +6337,10 @@ mod tests {
             &[
                 "schemaVersion",
                 "parserVersion",
+                "mechanicsFormulaVersion",
+                "importQuality",
+                "capabilities",
+                "geometryVersion",
                 "meta",
                 "players",
                 "rounds",
@@ -6223,6 +6352,16 @@ mod tests {
             Some(REPLAY_SCHEMA_VERSION)
         );
         assert_eq!(manifest["parserVersion"].as_str(), Some(PARSER_VERSION));
+        assert_eq!(
+            manifest["mechanicsFormulaVersion"].as_str(),
+            Some(MECHANICS_FORMULA_VERSION)
+        );
+        assert!(matches!(
+            manifest["importQuality"].as_str(),
+            Some("complete" | "partial")
+        ));
+        assert!(manifest["capabilities"].as_array().is_some());
+        assert!(manifest["geometryVersion"].is_null());
         assert_object_has_keys(
             &manifest["meta"],
             &[
@@ -7075,6 +7214,31 @@ mod tests {
             output.meta.score_b, expected.score_b,
             "reference demo score B changed for {}",
             expected.label
+        );
+    }
+
+    fn assert_scoped_state_is_complete(output: &Output) {
+        assert!(
+            output.capabilities.contains(&"scoped_state"),
+            "current parser must declare scoped_state"
+        );
+        let players = output
+            .rounds
+            .iter()
+            .flat_map(|round| &round.frames)
+            .flat_map(|frame| &frame.players)
+            .collect::<Vec<_>>();
+        assert!(
+            !players.is_empty(),
+            "scoped-state audit requires player samples"
+        );
+        assert_eq!(
+            players
+                .iter()
+                .filter(|player| player.scoped.is_some())
+                .count(),
+            players.len(),
+            "every emitted alive-player sample must preserve scoped state"
         );
     }
 

@@ -1,3 +1,5 @@
+import type { QualityMetric } from "./metric-quality";
+
 export const SPATIAL_ANALYSIS_SPEC_VERSION = "roundlab.spatial.v1" as const;
 
 export type PlayerZoneVisit = {
@@ -198,7 +200,19 @@ export type SpatialAnalysis = {
   generatedAt: string;
   map: string;
   zonesVersion: string | null;
+  zoneLabels: Record<string, string>;
+  players: Record<string, PlayerSpatialQualityAnalysis>;
   rounds: RoundSpatialAnalysis[];
   trajectoryComparisons: TrajectoryComparison[];
   repeatedTrajectoryHabits: RepeatedTrajectoryHabit[];
+};
+
+export type PlayerSpatialQualityAnalysis = {
+  zoneAssignmentRate: QualityMetric<number>;
+  uniqueZonesVisited: QualityMetric<number>;
+  zoneTransitions: QualityMetric<number>;
+  rotations: QualityMetric<number>;
+  meanTeammateDistance: QualityMetric<number>;
+  spacingSamples: QualityMetric<number>;
+  repeatedTrajectoryHabits: QualityMetric<number>;
 };

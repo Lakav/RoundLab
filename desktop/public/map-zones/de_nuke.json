@@ -1,10 +1,10 @@
 {
   "map": "de_nuke",
-  "zonesVersion": "roundlab.de_nuke.coarse.v1",
+  "zonesVersion": "roundlab.de_nuke.coarse.v2",
   "zones": [
     {
       "zoneId": "t_side",
-      "label": "T side",
+      "label": "T Spawn / Lobby / Roof",
       "polygon": [
         { "x": -3453, "y": 2887 },
         { "x": -1353, "y": 2887 },
@@ -17,7 +17,7 @@
     },
     {
       "zoneId": "upper_yard",
-      "label": "Upper yard",
+      "label": "Outside / Yard / Garage",
       "polygon": [
         { "x": -1353, "y": 2887 },
         { "x": 1447, "y": 2887 },
@@ -30,7 +30,7 @@
     },
     {
       "zoneId": "lower_north",
-      "label": "Lower north",
+      "label": "Secret / Lower",
       "polygon": [
         { "x": -1353, "y": 2887 },
         { "x": 1447, "y": 2887 },
@@ -43,7 +43,7 @@
     },
     {
       "zoneId": "a_site_upper",
-      "label": "A site upper",
+      "label": "A Site / Hut / Squeaky",
       "polygon": [
         { "x": -1353, "y": 87 },
         { "x": 1447, "y": 87 },
@@ -56,7 +56,7 @@
     },
     {
       "zoneId": "b_site_lower",
-      "label": "B site and lower south",
+      "label": "B Site / Decon / Tunnels",
       "polygon": [
         { "x": -1353, "y": 87 },
         { "x": 1447, "y": 87 },
@@ -69,7 +69,7 @@
     },
     {
       "zoneId": "upper_south",
-      "label": "Upper south",
+      "label": "Ramp / Trophy / Radio",
       "polygon": [
         { "x": -1353, "y": -2013 },
         { "x": 1447, "y": -2013 },
@@ -82,7 +82,7 @@
     },
     {
       "zoneId": "ct_side",
-      "label": "CT side",
+      "label": "CT Spawn / Heaven / Main",
       "polygon": [
         { "x": 1447, "y": 2887 },
         { "x": 3715, "y": 2887 },

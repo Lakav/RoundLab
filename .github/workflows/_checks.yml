@@ -175,13 +175,17 @@ jobs:
         run: cargo install wasm-bindgen-cli --version 0.2.126 --locked
 
       - name: Verify committed browser WASM artifacts
-        run: python3 scripts/verify-wasm-reproducibility.py --check-git
+        run: >-
+          python3 scripts/verify-wasm-reproducibility.py
+          --artifact-dir /tmp/roundlab-wasm-linux
+          --check-git
 
       - name: Upload Linux browser WASM artifacts
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: browser-wasm-linux
-          path: desktop/src/wasm/roundlab_parser
+          path: /tmp/roundlab-wasm-linux
           if-no-files-found: error
 
       - name: Clippy Rust parser

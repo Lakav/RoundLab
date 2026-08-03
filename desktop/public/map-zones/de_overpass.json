@@ -1,10 +1,10 @@
 {
   "map": "de_overpass",
-  "zonesVersion": "roundlab.de_overpass.coarse.v1",
+  "zonesVersion": "roundlab.de_overpass.coarse.v2",
   "zones": [
     {
       "zoneId": "north_route",
-      "label": "North route",
+      "label": "A Long / Bathrooms",
       "polygon": [
         { "x": -4831, "y": 1781 },
         { "x": -2751, "y": 1781 },
@@ -17,7 +17,7 @@
     },
     {
       "zoneId": "west_middle",
-      "label": "West middle",
+      "label": "Bathrooms / Party",
       "polygon": [
         { "x": -4831, "y": -39 },
         { "x": -2751, "y": -39 },
@@ -30,7 +30,7 @@
     },
     {
       "zoneId": "t_west",
-      "label": "T west route",
+      "label": "Playground / Fountain",
       "polygon": [
         { "x": -4831, "y": -1859 },
         { "x": -2751, "y": -1859 },
@@ -43,7 +43,7 @@
     },
     {
       "zoneId": "a_site_ct",
-      "label": "A site and CT",
+      "label": "A Site / Bank / CT",
       "polygon": [
         { "x": -2751, "y": 1781 },
         { "x": -1451, "y": 1781 },
@@ -56,7 +56,7 @@
     },
     {
       "zoneId": "middle",
-      "label": "Middle",
+      "label": "Connector / Lower Park",
       "polygon": [
         { "x": -2751, "y": 221 },
         { "x": -1451, "y": 221 },
@@ -69,7 +69,7 @@
     },
     {
       "zoneId": "t_center",
-      "label": "T center route",
+      "label": "T Spawn / Fountain",
       "polygon": [
         { "x": -2751, "y": -1859 },
         { "x": -1451, "y": -1859 },
@@ -82,7 +82,7 @@
     },
     {
       "zoneId": "b_site",
-      "label": "B site",
+      "label": "B Site / Heaven / Water",
       "polygon": [
         { "x": -1451, "y": 1781 },
         { "x": 493.8, "y": 1781 },
@@ -95,7 +95,7 @@
     },
     {
       "zoneId": "b_approach",
-      "label": "B approach",
+      "label": "Monster / Short B",
       "polygon": [
         { "x": -1451, "y": -559 },
         { "x": 493.8, "y": -559 },
@@ -108,7 +108,7 @@
     },
     {
       "zoneId": "t_spawn",
-      "label": "T spawn",
+      "label": "T Spawn / Canal",
       "polygon": [
         { "x": -1451, "y": -1859 },
         { "x": 493.8, "y": -1859 },

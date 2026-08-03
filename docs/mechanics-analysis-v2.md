@@ -1,7 +1,7 @@
-# Spécification mécanique RoundLab — V1
+# Spécification mécanique RoundLab — V2
 
-**Identifiant :** `roundlab.mechanics.v1`  
-**Statut :** en cours d'implémentation  
+**Identifiant :** `roundlab.mechanics.v2`
+**Statut :** implémentée ; validation géométrique réelle encore externe
 **Dépendance :** faits normalisés `roundlab.replay.v2`
 
 Cette spécification est séparée de `roundlab.metrics.v1`. Elle couvre les
@@ -68,10 +68,9 @@ Un engagement basé sur les événements de combat ne détermine pas encore :
 - la qualité du placement ou du mouvement.
 
 La première visibilité exige une géométrie de map et un test de ligne de vue
-fiables. Elle n'est pas approximée par la seule distance ou par l'angle du
-joueur. Le moteur de calcul existe désormais. Sa validation sur les maillages
-réels des maps est reportée au bêta-test et n'est plus un critère de blocage de
-la roadmap.
+fiables. Elle n'est pas approximée par la seule distance. Le moteur combine
+désormais géométrie, orientation, fumées et état flashé ; sa validation sur les
+maillages réels des maps reste une limite externe explicite.
 
 ## 3. Première visibilité V1
 
@@ -83,14 +82,27 @@ respectivement `missing_map_geometry`, `invalid_map_geometry` ou
 Pour chaque engagement, les frames sont parcourues chronologiquement jusqu'au
 premier événement de combat. Les deux participants doivent être vivants,
 présents et adversaires. Leur hauteur d'œil interpole entre 64 unités debout et
-46 unités accroupi. La première frame dont le segment œil-à-œil ne traverse
-aucun triangle devient la première visibilité et produit une preuve rejouable.
+46 unités accroupi. Pour chaque observateur potentiel, le moteur exige :
+
+- une ligne œil-à-tête non bloquée par le maillage statique ;
+- une cible dans un FOV horizontal supposé de 106° ;
+- une cible dans un FOV vertical supposé de 74° lorsque le pitch existe ;
+- aucune smoke active coupant le segment ;
+- un état flashé inférieur ou égal à 0,1 seconde lorsqu'il est disponible.
+
+La première frame visible par au moins un participant devient la première
+visibilité et produit une preuve rejouable. `spottedBy` est conservé comme
+signal secondaire : son absence réduit la confiance, mais sa présence ne
+remplace ni la géométrie ni le FOV.
 
 Le test segment-triangle est tridimensionnel et ignore les contacts limités aux
-deux extrémités. Cette V1 ne traite pour l'instant que la géométrie statique :
-elle ne modélise pas encore les smokes, portes ou autres obstacles dynamiques,
-et ne teste pas plusieurs points du corps. Les maillages synthétiques servent
-uniquement à valider le moteur ; ils ne rendent pas une map réelle disponible.
+deux extrémités. Les portes, props mobiles et autres obstacles dynamiques ne
+sont pas reconstruits ; chaque résultat porte
+`dynamic_obstacles_not_modeled`. La méthode publiée est
+`geometry_fov_smoke_flash`, avec confiance `medium` lorsque seule cette limite
+subsiste et `low` lorsque pitch, flash, utilitaires ou `spottedBy` manquent. Les
+maillages synthétiques servent uniquement à valider le moteur ; ils ne rendent
+pas une map réelle disponible.
 
 ## 4. Placement du viseur V1
 
@@ -140,6 +152,22 @@ ou de dégâts reste visible via les raisons d'indisponibilité du round.
 
 ### 5.3 Résultat
 
+Chaque chaîne est classée dans exactement un des états suivants :
+
+- `reliable_hit` : le tir possède au moins un dégât balistique associé ;
+- `reliable_miss` : les flux tirs et dégâts sont disponibles, sans dégât
+  associé ;
+- `ambiguous` : au moins un impact ou dégât admissible ne peut pas être
+  départagé entre plusieurs tirs ;
+- `incomplete` : un flux indispensable manque ou le tir n'a pas les données
+  minimales nécessaires.
+
+Plusieurs impacts, dégâts et kills peuvent appartenir à un même tir, notamment
+pour les shotguns. Un kill balistique terminal conserve la victime, le
+headshot, le nombre de surfaces pénétrées et sa preuve. La précision n'utilise
+que `reliable_hit` et `reliable_miss`; sa couverture est le nombre de ces tirs
+sur le nombre total de tirs éligibles.
+
 Chaque chaîne conserve :
 
 - le tir source, son joueur, son arme, sa position et son orientation ;
@@ -166,7 +194,7 @@ Cette mesure est explicitement approximative : elle dépend d'un état réseau d
 la démo que le parseur amont lui-même qualifie d'`approximate`. Elle n'est pas
 présentée comme identique au calcul géométrique ou propriétaire de Leetify.
 
-## 6. Taps, bursts et sprays V1
+## 6. Taps, bursts et sprays V2
 
 ### 6.1 Définition opérationnelle
 
@@ -209,6 +237,17 @@ certitude un counter-strafe actif d'un autre arrêt rapide. Le moteur conserve
 donc `not_observed` ou `unavailable` plutôt que d'affirmer ce qu'il ne sait pas.
 Une frame trop ancienne, un joueur absent ou une vitesse manquante produisent
 une raison d'indisponibilité explicite.
+
+Les frames conservent l'état `scoped` observé sur le pawn. Le nombre de tirs
+scoped utilise la dernière frame strictement antérieure au tir, au plus 250 ms
+avant celui-ci. La frame du tick du tir n'est pas utilisée : sur les armes à
+lunette, l'état peut déjà être repassé à faux après le départ du coup. Cette
+métrique est donc `estimated`, avec l'âge exact de son échantillon ; elle n'est
+pas déduite de l'arme active ni du flag `noscope` d'un kill.
+
+Le total vaut `null` si au moins un tir ne possède pas d'échantillon scoped
+exploitable, avec le nombre d'échantillons, la couverture et
+`incomplete_scoped_samples`.
 
 ## 8. Contexte des duels V1
 
@@ -279,6 +318,8 @@ le contexte mesurable et ses limites.
 - tir strictement au-dessus du seuil classé en mouvement ;
 - priorité des composantes de vélocité et repli sur la vitesse du parseur ;
 - vitesse manquante conservée comme indisponible.
+- état scoped vrai et faux au moment du tir ;
+- sous-total scoped laissé indisponible lorsque la couverture est incomplète.
 
 ### 9.7 Contexte des duels
 

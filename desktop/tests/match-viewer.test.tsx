@@ -179,9 +179,23 @@ describe("MatchViewer", () => {
     expect(screen.getByRole("columnheader", { name: "Arrêt avant tir" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Joueurs" }));
     expect(screen.getByRole("navigation", { name: "Analyses des joueurs" })).toBeInTheDocument();
+    const persistentPlayerSelector = screen.getByRole("combobox", {
+      name: "Joueur analysé dans toutes les statistiques",
+    });
+    await user.selectOptions(persistentPlayerSelector, "3");
+    expect(persistentPlayerSelector).toHaveValue("3");
     await user.click(screen.getByRole("button", { name: "Général" }));
     expect(screen.queryByRole("columnheader", { name: "HLTV" })).not.toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Performance" })).not.toBeInTheDocument();
+    expect(screen.getByText("Contextes d’avantage")).toBeInTheDocument();
+    expect(screen.getByText("Équipement pré-mort")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Conversion des avantages" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Conversion de l’avantage" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Performance anti-eco" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Conversion anti-eco" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Économie du joueur" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Dépenses nettes" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Valeur perdue à la mort" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Rounds" }));
     expect(screen.getByRole("heading", { name: "Round 1" })).toBeInTheDocument();
@@ -194,6 +208,7 @@ describe("MatchViewer", () => {
     expect(screen.getByText("Données brutes de tir")).toBeInTheDocument();
     expect(screen.getByText("Afficher")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Métriques avancées" })).toBeInTheDocument();
+    expect(screen.getByText("Tirs scoped")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Dégâts / impact" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Tap" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Burst" })).toBeInTheDocument();
@@ -201,6 +216,8 @@ describe("MatchViewer", () => {
     expect(screen.getByRole("columnheader", { name: "Tirs ennemi repéré" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Accuracy all" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Arrêt avant tir" })).toBeInTheDocument();
+    expect(screen.getAllByRole("row", { name: /Player Three/ })).toHaveLength(2);
+    expect(screen.queryByRole("row", { name: /Player One/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Actions de combat" })).not.toBeInTheDocument();
     expect(screen.queryByRole("complementary", { name: "Panneau Review" }))
       .not.toBeInTheDocument();
@@ -211,17 +228,15 @@ describe("MatchViewer", () => {
 
     expect(screen.getByRole("heading", { name: "Utilitaires" })).toBeInTheDocument();
     expect(screen.getByText("Usage par joueur")).toBeInTheDocument();
-    expect(screen.getByText("Répartition par équipe")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", {
-        name: "Grenade lancée, Player One, round 1, ouvrir dans le replay",
-      }),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Répartition de Player Three")).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
         name: "Flash assist, Player Three, round 1, ouvrir dans le replay",
       }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("button", {
+      name: "Grenade lancée, Player One, round 1, ouvrir dans le replay",
+    })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Trades" }));
     expect(screen.getByRole("heading", { name: "Trades" })).toBeInTheDocument();
@@ -229,14 +244,12 @@ describe("MatchViewer", () => {
     expect(screen.getByRole("columnheader", { name: "Réussite des trades" })).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
-        name: "Trade kill, Player One, round 1, ouvrir dans le replay",
-      }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", {
         name: "Mort tradée, Player Three, round 1, ouvrir dans le replay",
       }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("button", {
+      name: "Trade kill, Player One, round 1, ouvrir dans le replay",
+    })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Activité" }));
     expect(screen.getByRole("columnheader", { name: "Dégâts HE" })).toBeInTheDocument();
@@ -244,7 +257,7 @@ describe("MatchViewer", () => {
 
     await user.click(screen.getByRole("button", { name: "Armes" }));
     expect(screen.getByRole("heading", { name: "Statistiques par arme" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Joueur" })).toBeInTheDocument();
+    expect(screen.getAllByText("Player Three").length).toBeGreaterThan(0);
     expect(screen.getByRole("combobox", { name: "Équipe" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Côté" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Round" })).toBeInTheDocument();
@@ -266,9 +279,21 @@ describe("MatchViewer", () => {
 
     await user.click(screen.getByRole("button", { name: "Comparer" }));
     expect(screen.getAllByText("Kills").length).toBeGreaterThan(0);
+    const comparedPlayerA = screen.getByRole("combobox", {
+      name: "Joueur A à comparer",
+    });
+    const comparedPlayerB = screen.getByRole("combobox", {
+      name: "Joueur B à comparer",
+    });
+    expect(comparedPlayerA).toHaveValue("1");
+    await user.selectOptions(comparedPlayerB, "3");
+    expect(comparedPlayerB).toHaveValue("3");
+    expect(comparedPlayerA).toHaveValue("1");
+    expect(screen.getByRole("option", { name: /Player Three · / }))
+      .toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Profil" }));
-    expect(screen.getByRole("heading", { name: "Player One" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Player Three" })).toBeInTheDocument();
     expect(screen.getByText("Combat")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Positionnement" }));
@@ -277,10 +302,10 @@ describe("MatchViewer", () => {
     expect(screen.getByText("Espacement")).toBeInTheDocument();
     await user.click(
       screen.getByRole("button", {
-        name: "Voir les trajectoires de Player One",
+        name: "Voir les trajectoires de Player Three",
       }),
     );
-    expect(screen.getByRole("combobox", { name: "Compared player" })).toHaveValue("player:1");
+    expect(screen.getByRole("combobox", { name: "Compared player" })).toHaveValue("player:3");
     await waitFor(() => expect(screen.getByText("1 rounds")).toBeInTheDocument());
   });
 

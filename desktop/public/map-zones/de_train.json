@@ -1,10 +1,10 @@
 {
   "map": "de_train",
-  "zonesVersion": "roundlab.de_train.coarse.v1",
+  "zonesVersion": "roundlab.de_train.coarse.v2",
   "zones": [
     {
       "zoneId": "upper_interior",
-      "label": "Upper interior",
+      "label": "Upper Halls / Ladders",
       "polygon": [
         { "x": -2308, "y": 2078 },
         { "x": 1872.046848, "y": 2078 },
@@ -17,7 +17,7 @@
     },
     {
       "zoneId": "t_spawn",
-      "label": "T spawn",
+      "label": "T Spawn / Showers",
       "polygon": [
         { "x": -2308, "y": 2078 },
         { "x": -740.482432, "y": 2078 },
@@ -30,7 +30,7 @@
     },
     {
       "zoneId": "north_yard",
-      "label": "North yard",
+      "label": "A Yard / Ivy",
       "polygon": [
         { "x": -740.482432, "y": 2078 },
         { "x": 1872.046848, "y": 2078 },
@@ -43,7 +43,7 @@
     },
     {
       "zoneId": "west_route",
-      "label": "West route",
+      "label": "A Main / Olof",
       "polygon": [
         { "x": -2308, "y": 771.73536 },
         { "x": -740.482432, "y": 771.73536 },
@@ -56,7 +56,7 @@
     },
     {
       "zoneId": "b_site",
-      "label": "B site and middle yard",
+      "label": "B Site / Upper B",
       "polygon": [
         { "x": -740.482432, "y": 771.73536 },
         { "x": 827.081136, "y": 771.73536 },
@@ -69,7 +69,7 @@
     },
     {
       "zoneId": "east_route",
-      "label": "East route",
+      "label": "CT Spawn / Connector",
       "polygon": [
         { "x": 827.081136, "y": 771.73536 },
         { "x": 1872.046848, "y": 771.73536 },
@@ -82,7 +82,7 @@
     },
     {
       "zoneId": "south_west",
-      "label": "South-west route",
+      "label": "Ivy / Popdog",
       "polygon": [
         { "x": -2308, "y": -697.81236 },
         { "x": -740.482432, "y": -697.81236 },
@@ -95,7 +95,7 @@
     },
     {
       "zoneId": "a_site",
-      "label": "A site",
+      "label": "A Site / E Box",
       "polygon": [
         { "x": -740.482432, "y": -697.81236 },
         { "x": 43.299168, "y": -697.81236 },
@@ -108,7 +108,7 @@
     },
     {
       "zoneId": "south_center",
-      "label": "South-center route",
+      "label": "Lower B / Connector",
       "polygon": [
         { "x": 43.299168, "y": -697.81236 },
         { "x": 827.081136, "y": -697.81236 },

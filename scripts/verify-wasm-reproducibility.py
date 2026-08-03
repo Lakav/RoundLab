@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -60,6 +61,11 @@ def build_once(output: Path) -> dict[str, str]:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check-git", action="store_true", help="also require the generated artifacts to match Git")
+    parser.add_argument(
+        "--artifact-dir",
+        type=Path,
+        help="copy the deterministic generated artifacts to this directory",
+    )
     args = parser.parse_args()
 
     version = subprocess.run(["wasm-bindgen", "--version"], text=True, capture_output=True, check=True).stdout.strip()
@@ -80,6 +86,13 @@ def main() -> None:
         if first != second:
             raise AssertionError(f"WASM outputs differ between clean builds: first={first}, second={second}")
         print("two clean WASM builds produced byte-identical artifacts")
+
+        if args.artifact_dir is not None:
+            artifact_dir = args.artifact_dir.resolve()
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            for name in ARTIFACTS:
+                shutil.copy2(second_output / name, artifact_dir / name)
+            print(f"generated WASM artifacts copied to {artifact_dir}")
 
         if args.check_git:
             mismatches = [name for name in ARTIFACTS if (second_output / name).read_bytes() != (OUTPUT / name).read_bytes()]

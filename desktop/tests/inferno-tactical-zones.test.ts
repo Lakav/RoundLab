@@ -32,7 +32,7 @@ describe("Inferno tactical zones", () => {
     expect(validTacticalMapDefinition(DEFINITION)).toBe(true);
     expect(DEFINITION).toMatchObject({
       map: "de_inferno",
-      zonesVersion: "roundlab.de_inferno.coarse.v1",
+      zonesVersion: "roundlab.de_inferno.coarse.v2",
     });
     expect(new Set(DEFINITION.zones.map((zone) => zone.zoneId)).size).toBe(9);
   });

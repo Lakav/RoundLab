@@ -155,8 +155,9 @@ describe.each(MAP_CASES)("$map tactical zones", (mapCase) => {
     expect(validTacticalMapDefinition(source)).toBe(true);
     expect(source.map).toBe(mapCase.map);
     expect(source.zonesVersion).toBe(
-      `roundlab.${mapCase.map}.coarse.v1`,
+      `roundlab.${mapCase.map}.coarse.v2`,
     );
+    expect(source.zones.every((zone) => zone.label.trim().length > 0)).toBe(true);
   });
 
   it.each(mapCase.references)(

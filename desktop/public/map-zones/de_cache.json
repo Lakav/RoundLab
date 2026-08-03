@@ -1,10 +1,10 @@
 {
   "map": "de_cache",
-  "zonesVersion": "roundlab.de_cache.coarse.v1",
+  "zonesVersion": "roundlab.de_cache.coarse.v2",
   "zones": [
     {
       "zoneId": "b_site",
-      "label": "B site",
+      "label": "B Site / Heaven",
       "polygon": [
         { "x": -1964, "y": 3250 },
         { "x": 383.161572, "y": 3250 },
@@ -17,7 +17,7 @@
     },
     {
       "zoneId": "ct_spawn",
-      "label": "CT spawn",
+      "label": "CT Spawn / Connector",
       "polygon": [
         { "x": -1964, "y": 1339.519651 },
         { "x": 383.161572, "y": 1339.519651 },
@@ -30,7 +30,7 @@
     },
     {
       "zoneId": "a_site",
-      "label": "A site",
+      "label": "A Site / Truck",
       "polygon": [
         { "x": -1964, "y": -298.034934 },
         { "x": 383.161572, "y": -298.034934 },
@@ -43,7 +43,7 @@
     },
     {
       "zoneId": "b_approach",
-      "label": "B approach",
+      "label": "B Main / Checkers",
       "polygon": [
         { "x": 383.161572, "y": 3250 },
         { "x": 1856.960699, "y": 3250 },
@@ -56,7 +56,7 @@
     },
     {
       "zoneId": "middle",
-      "label": "Middle",
+      "label": "Mid / Boost",
       "polygon": [
         { "x": 383.161572, "y": 1339.519651 },
         { "x": 1856.960699, "y": 1339.519651 },
@@ -69,7 +69,7 @@
     },
     {
       "zoneId": "a_approach",
-      "label": "A approach",
+      "label": "A Main / Squeaky",
       "polygon": [
         { "x": 383.161572, "y": -570.960699 },
         { "x": 1856.960699, "y": -570.960699 },
@@ -82,7 +82,7 @@
     },
     {
       "zoneId": "t_spawn",
-      "label": "T spawn",
+      "label": "T Spawn / Garage",
       "polygon": [
         { "x": 1856.960699, "y": 3250 },
         { "x": 3625.519651, "y": 3250 },

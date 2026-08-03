@@ -1,4 +1,6 @@
-export const MECHANICS_ANALYSIS_SPEC_VERSION = "roundlab.mechanics.v1" as const;
+export const MECHANICS_ANALYSIS_SPEC_VERSION = "roundlab.mechanics.v2" as const;
+
+import type { DataQualityReport } from "./data-quality";
 
 export type MechanicsEvidence = {
   evidenceId: string;
@@ -27,6 +29,17 @@ export type ShotDamage = {
   damageHealth: number;
   damageArmor: number;
   hitgroup: string | null;
+  /** Sampled attacker-to-victim distance at damage time, in Hammer units. */
+  distanceWorld: number | null;
+};
+
+export type ShotKill = {
+  evidenceId: string;
+  tick: number | null;
+  time: number;
+  victimId: string;
+  headshot: boolean;
+  penetratedSurfaces: number;
 };
 
 export type ShotAssociation = {
@@ -41,8 +54,15 @@ export type ShotAssociation = {
   yaw: number;
   /** Whether at least one living opponent was spotted by the shooter at fire time. */
   enemySpotted?: boolean | null;
+  associationStatus:
+    | "reliable_hit"
+    | "reliable_miss"
+    | "ambiguous"
+    | "incomplete";
   impacts: ShotImpact[];
   damages: ShotDamage[];
+  /** Present when at least one player_death was deterministically linked. */
+  kills?: ShotKill[];
   unavailableReasons: string[];
 };
 
@@ -70,6 +90,11 @@ export type ShotMovementAnalysis = {
   sampleAgeSeconds: number | null;
   horizontalSpeed: number | null;
   speedSource: "velocity_components" | "speed" | null;
+  duckAmount: number | null;
+  scoped: boolean | null;
+  scopedSampleTime: number | null;
+  scopedSampleAgeSeconds: number | null;
+  stance: "standing" | "crouched" | "unavailable";
   movementState: "stationary" | "moving" | "unavailable";
   counterStrafeAssessment: "compatible" | "not_observed" | "unavailable";
   referenceTime: number | null;
@@ -121,6 +146,10 @@ export type FirstVisibility = {
   time: number | null;
   tick: number | null;
   geometryId: string | null;
+  method: "geometry_fov_smoke_flash" | null;
+  confidence: "medium" | "low" | "unavailable";
+  observerIds: string[];
+  limitations: string[];
   evidenceId: string | null;
   unavailableReasons: string[];
 };
@@ -174,6 +203,7 @@ export type RoundMechanicsAnalysis = {
   shotMovements: ShotMovementAnalysis[];
   unmatchedImpacts: UnmatchedShotFact[];
   unmatchedDamages: UnmatchedShotFact[];
+  unmatchedKills?: UnmatchedShotFact[];
   excludedWeaponFireEvents: number;
   excludedDamageEvents: number;
   excludedKillEvents: number;
@@ -186,6 +216,8 @@ export type MechanicsAnalysis = {
   parserVersion: string;
   matchId: string;
   generatedAt: string;
+  /** Absent only on mechanics analyses serialized before data-quality V1. */
+  dataQuality?: DataQualityReport;
   rounds: RoundMechanicsAnalysis[];
   evidence: MechanicsEvidence[];
 };

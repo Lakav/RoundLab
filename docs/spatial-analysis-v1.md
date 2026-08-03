@@ -170,7 +170,25 @@ Trois occurrences constituent une convention analytique minimale, pas la
 preuve d'une intention tactique. Les seuils sont versionnés et devront être
 recalibrés sur le corpus de benchmarks prévu à l'étape 7.
 
-## 11. Disponibilité
+## 11. Contrat de qualité joueur
+
+**Version de formule :** `roundlab.spatial.v2.quality`
+
+Chaque joueur expose sous `SpatialAnalysis.players` la couverture
+d'attribution des zones, le nombre de zones visitées, les transitions,
+rotations, distances moyennes aux coéquipiers et habitudes répétées sous forme
+de `QualityMetric`.
+
+Le taux d'attribution peut être publié avec une couverture partielle. En
+revanche, les comptes dérivés des zones restent `null` dès qu'une position
+vivante du joueur n'a pas pu être affectée sans ambiguïté : une trajectoire
+partielle ne doit pas être présentée comme exhaustive. Le spacing est
+`estimated`, avec confiance moyenne, car il repose sur les paires de positions
+échantillonnées dans les frames plutôt que sur une trajectoire client continue.
+Le rapport affiche les échantillons, la provenance et les raisons
+d'indisponibilité de ces métriques.
+
+## 12. Disponibilité
 
 Les définitions sont chargées depuis `/map-zones/<map>.json`. Une définition
 absente, invalide ou associée à une autre map produit une raison
@@ -179,21 +197,21 @@ d'indisponibilité. Un round sans frames produit `missing_frame_payload`.
 Le moteur est validé sur des zones synthétiques et sur dix découpages réels
 grossiers :
 
-- Ancient `roundlab.de_ancient.coarse.v1` : 591 066 positions vivantes ;
-- Anubis `roundlab.de_anubis.coarse.v1` : 1 119 460 positions vivantes ;
-- Cache `roundlab.de_cache.coarse.v1` : 959 645 positions vivantes ;
-- Dust2 `roundlab.de_dust2.coarse.v1` : 485 810 positions vivantes ;
-- Inferno `roundlab.de_inferno.coarse.v1` : 17 parties et 3 793 470
+- Ancient `roundlab.de_ancient.coarse.v2` : 591 066 positions vivantes ;
+- Anubis `roundlab.de_anubis.coarse.v2` : 1 119 460 positions vivantes ;
+- Cache `roundlab.de_cache.coarse.v2` : 959 645 positions vivantes ;
+- Dust2 `roundlab.de_dust2.coarse.v2` : 485 810 positions vivantes ;
+- Inferno `roundlab.de_inferno.coarse.v2` : 17 parties et 3 793 470
   positions vivantes ;
-- Mirage `roundlab.de_mirage.coarse.v1` : une partie et 299 244 positions
+- Mirage `roundlab.de_mirage.coarse.v2` : une partie et 299 244 positions
   vivantes ;
-- Nuke `roundlab.de_nuke.coarse.v1` : une partie et 610 885 positions
+- Nuke `roundlab.de_nuke.coarse.v2` : une partie et 610 885 positions
   vivantes, avec séparation des étages A et B par altitude ;
-- Overpass `roundlab.de_overpass.coarse.v1` : une partie et 753 803 positions
+- Overpass `roundlab.de_overpass.coarse.v2` : une partie et 753 803 positions
   vivantes ;
-- Train `roundlab.de_train.coarse.v1` : une partie et 471 190 positions
+- Train `roundlab.de_train.coarse.v2` : une partie et 471 190 positions
   vivantes, avec séparation de l'intérieur supérieur ;
-- Vertigo `roundlab.de_vertigo.coarse.v1` : une partie et 994 291 positions
+- Vertigo `roundlab.de_vertigo.coarse.v2` : une partie et 994 291 positions
   vivantes, avec séparation des niveaux inférieur et supérieur.
 
 Chaque audit assigne 100 % des positions, sans position hors zone ni ambiguïté.
@@ -203,11 +221,13 @@ zones Cache initialement vides et une zone Nuke presque vide ont été fusionné
 après l'audit. Chaque map calibrée et prise en charge possède désormais sa
 définition relue.
 
-Ces frontières V1 restent volontairement grossières. Une couverture de 100 %
+Les frontières restent volontairement grossières. La V2 conserve les polygones
+audités de la V1 et remplace les directions génériques par des libellés
+composites issus des callouts CS2 courants. Une couverture de 100 %
 ne prouve pas à elle seule leur qualité tactique ; le bêta-test devra notamment
 confirmer que les regroupements restent compréhensibles pour les joueurs.
 
-## 12. Tests obligatoires
+## 13. Tests obligatoires
 
 - validation des identifiants, polygones et altitudes ;
 - appartenance aux frontières ;

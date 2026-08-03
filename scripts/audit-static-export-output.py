@@ -7,6 +7,7 @@ intent, but this checks the actual `desktop/out` artifact that would be hosted.
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 from urllib.parse import urlparse
@@ -121,7 +122,7 @@ def assert_html_content(errors: list[str]) -> None:
             "RoundLab",
             "Open a CS2 demo",
             "data-testid=\"demo-file-input\"",
-            "Drop a .dem or .dem.zst",
+            "Glisse un fichier ou clique pour le sélectionner",
             "/logo.png",
         ]:
             if snippet not in text:
@@ -154,6 +155,13 @@ def assert_internal_refs_resolve(errors: list[str]) -> None:
                     prefixed_target = OUT.joinpath(*parts[1:])
                     if prefixed_target.exists():
                         target = prefixed_target
+                elif (
+                    len(parts) == 1
+                    and parsed.path.endswith("/")
+                    and parts[0]
+                    == os.environ.get("GITHUB_REPOSITORY", "").rsplit("/", 1)[-1]
+                ):
+                    target = OUT
             if not target.exists():
                 errors.append(f"{rel(html)} references missing static asset {ref}")
 
