@@ -1,7 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const repositoryName = process.env.GITHUB_REPOSITORY?.split("/")[1];
-const basePath = process.env.GITHUB_ACTIONS === "true" && repositoryName ? `/${repositoryName}` : "";
 const benchmarkRun = Boolean(process.env.ROUNDLAB_BENCHMARK_DEMOS);
 const reportRoot = benchmarkRun ? "./benchmark-results" : ".";
 
@@ -15,7 +13,7 @@ export default defineConfig({
   reporter: [["list"], ["html", { outputFolder: `${reportRoot}/playwright-report`, open: "never" }]],
   outputDir: `${reportRoot}/test-results`,
   use: {
-    baseURL: `http://127.0.0.1:4173${basePath}/`,
+    baseURL: "http://127.0.0.1:4173/",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "off",
@@ -23,15 +21,36 @@ export default defineConfig({
   webServer: {
     command: benchmarkRun
       ? "python3 -m http.server 4173 --bind 127.0.0.1 --directory out"
-      : "pnpm dev --hostname 127.0.0.1 --port 4173",
-    url: `http://127.0.0.1:4173${basePath}/`,
+      : "ROUNDLAB_E2E_STATIC=1 pnpm build && python3 -m http.server 4173 --bind 127.0.0.1 --directory out",
+    url: "http://127.0.0.1:4173/",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"], channel: "chrome" },
+      testIgnore: /mobile\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "firefox",
+      testIgnore: [/accessibility\.spec\.ts/, /mobile\.spec\.ts/, /performance\.spec\.ts/],
+      use: { ...devices["Desktop Firefox"] },
+    },
+    {
+      name: "webkit",
+      testIgnore: [/accessibility\.spec\.ts/, /mobile\.spec\.ts/, /performance\.spec\.ts/],
+      use: { ...devices["Desktop Safari"] },
+    },
+    {
+      name: "mobile-chrome",
+      testMatch: /mobile\.spec\.ts/,
+      use: { ...devices["Pixel 7"] },
+    },
+    {
+      name: "mobile-webkit",
+      testMatch: /mobile\.spec\.ts/,
+      use: { ...devices["iPhone 15"] },
     },
   ],
 });

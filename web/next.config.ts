@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const projectRoot = dirname(fileURLToPath(import.meta.url));
 const repositoryName = process.env.GITHUB_REPOSITORY?.split("/")[1];
-const deployBasePath = process.env.GITHUB_ACTIONS === "true" && repositoryName
+const deployBasePath = process.env.ROUNDLAB_E2E_STATIC !== "1" && process.env.GITHUB_ACTIONS === "true" && repositoryName
   ? `/${repositoryName}`
   : "";
 

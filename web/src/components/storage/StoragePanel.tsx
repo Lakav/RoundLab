@@ -141,7 +141,7 @@ export function StoragePanel({
             <h2 className="text-sm font-semibold text-neutral-100">Stockage local</h2>
             <p className="mt-1 text-xs text-neutral-400">{persistenceLabel}</p>
             {status && (
-              <p className="mt-1 text-[11px] text-neutral-500">
+              <p className="mt-1 text-[11px] text-neutral-400">
                 {formatBytes(status.usageBytes)} utilisés sur {formatBytes(status.quotaBytes)} disponibles
               </p>
             )}
@@ -178,7 +178,7 @@ export function StoragePanel({
           />
         </div>
       </div>
-      <p className="mt-3 text-[11px] leading-5 text-neutral-500">
+      <p className="mt-3 text-[11px] leading-5 text-neutral-400">
         Les données restent sur cet appareil. Une sauvegarde est créée en mémoire avant le téléchargement ; pour une grosse bibliothèque, exporte plutôt les matchs un par un.
       </p>
       {message && <p role="status" className="mt-3 text-xs text-emerald-200">{message}</p>}

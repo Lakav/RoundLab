@@ -20,7 +20,7 @@
     "test:unit": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "test:e2e:a11y": "playwright test tests-e2e/accessibility.spec.ts"
+    "test:e2e:a11y": "playwright test tests-e2e/accessibility.spec.ts --project=chromium"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
