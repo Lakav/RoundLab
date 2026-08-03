@@ -21,6 +21,12 @@ const backend: RoundLabBackend = {
       size: 2,
     }),
   },
+  storage: {
+    getStatus: vi.fn().mockResolvedValue({ supported: true, persisted: false, usageBytes: 1, quotaBytes: 2 }),
+    requestPersistence: vi.fn().mockResolvedValue({ supported: true, persisted: true, usageBytes: 1, quotaBytes: 2 }),
+    exportLibrary: vi.fn().mockResolvedValue({ schema: "roundlab.library-backup.v1", exportedAt: "2026-08-03T00:00:00.000Z", matches: [] }),
+    restoreLibrary: vi.fn().mockResolvedValue({ restored: [], skippedIds: [] }),
+  },
   diagnostics: {
     getDebugInfo: vi.fn().mockResolvedValue({ runtime: "test" }),
     writeDebugLog: vi.fn().mockResolvedValue(undefined),
@@ -42,6 +48,10 @@ import {
   getCompleteMatch,
   getMatchMetadata,
   getRound,
+  getStorageStatus,
+  requestStoragePersistence,
+  exportLibrary,
+  restoreLibrary,
   listMatches,
   onParseProgress,
   parseDemo,
@@ -98,5 +108,16 @@ describe("public browser API", () => {
     expect(backend.diagnostics.writeDebugLog).toHaveBeenCalledWith("source", "message");
     expect(backend.shell.enterMatchFullscreen).toHaveBeenCalledOnce();
     expect(backend.shell.exitMatchFullscreen).toHaveBeenCalledOnce();
+  });
+
+  it("delegates storage status, export and restore calls", async () => {
+    const backup = await exportLibrary("m");
+    await getStorageStatus();
+    await requestStoragePersistence();
+    await restoreLibrary(backup, "skip");
+    expect(backend.storage.exportLibrary).toHaveBeenCalledWith("m");
+    expect(backend.storage.getStatus).toHaveBeenCalledOnce();
+    expect(backend.storage.requestPersistence).toHaveBeenCalledOnce();
+    expect(backend.storage.restoreLibrary).toHaveBeenCalledWith(backup, "skip");
   });
 });

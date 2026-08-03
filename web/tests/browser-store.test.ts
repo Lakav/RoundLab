@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   deleteStoredMatch,
+  createLibraryBackup,
   listStoredMatches,
   readCompleteStoredMatch,
   readStoredMetadata,
@@ -8,7 +9,9 @@ import {
   renameStoredMatch,
   saveParsedMatch,
   saveStoredBenchmarkContribution,
+  restoreLibraryBackup,
 } from "@/lib/backends/browser-store";
+import { LibraryBackupConflictError } from "@/lib/backends/library-backup";
 import {
   BROWSER_DB_VERSION,
   META_STORE,
@@ -351,5 +354,58 @@ describe("IndexedDB match store", () => {
   it("reports missing rename targets", async () => {
     await saveParsedMatch("seed", "Seed", 1, replayMatch());
     await expect(renameStoredMatch("missing", "Name")).rejects.toThrow("Match not found: missing");
+  });
+
+  it("exports and restores a complete match without losing round payloads", async () => {
+    const original = replayMatch([replayRound(1), replayRound(2)]);
+    await saveParsedMatch("match-1", "Demo", 42, original);
+    const backup = await createLibraryBackup("match-1");
+    expect(backup).toMatchObject({
+      schema: "roundlab.library-backup.v1",
+      matches: [{ summary: { id: "match-1", name: "Demo", size: 42 } }],
+    });
+    expect(backup.matches[0].data).toEqual(original);
+
+    await deleteStoredMatch("match-1");
+    const result = await restoreLibraryBackup(backup);
+    expect(result.restored).toEqual([backup.matches[0].summary]);
+    expect(await readCompleteStoredMatch("match-1")).toEqual(original);
+  });
+
+  it("requires an explicit collision policy and supports skip, replace and duplicate", async () => {
+    await saveParsedMatch("match-1", "Original", 1, replayMatch([replayRound(1)]));
+    const backup = await createLibraryBackup("match-1");
+    backup.matches[0].summary.name = "Restored";
+    backup.matches[0].data = replayMatch([replayRound(7)]);
+
+    await expect(restoreLibraryBackup(backup)).rejects.toBeInstanceOf(LibraryBackupConflictError);
+    expect((await listStoredMatches())[0].name).toBe("Original");
+
+    expect((await restoreLibraryBackup(backup, "skip")).skippedIds).toEqual(["match-1"]);
+    expect((await readStoredRound("match-1", 1)).number).toBe(1);
+
+    await restoreLibraryBackup(backup, "replace");
+    expect((await listStoredMatches())[0].name).toBe("Restored");
+    await expect(readStoredRound("match-1", 1)).rejects.toThrow("Round not found");
+    expect((await readStoredRound("match-1", 7)).number).toBe(7);
+
+    const duplicate = await restoreLibraryBackup(backup, "duplicate");
+    expect(duplicate.restored[0].id).not.toBe("match-1");
+    expect(duplicate.restored[0].name).toBe("Restored (restauré)");
+    expect(await readCompleteStoredMatch(duplicate.restored[0].id)).toEqual(backup.matches[0].data);
+  });
+
+  it("validates every backup entry before writing anything", async () => {
+    const valid = replayMatch();
+    const backup = {
+      schema: "roundlab.library-backup.v1" as const,
+      exportedAt: new Date().toISOString(),
+      matches: [
+        { summary: { id: "valid", name: "Valid", createdAt: 1, size: 1 }, data: valid },
+        { summary: { id: "broken", name: "Broken", createdAt: 1, size: 1 }, data: replayMatch([]) },
+      ],
+    };
+    await expect(restoreLibraryBackup(backup)).rejects.toThrow("aucune manche exploitable");
+    expect(await listStoredMatches()).toEqual([]);
   });
 });

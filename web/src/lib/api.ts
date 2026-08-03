@@ -2,8 +2,11 @@ import type { MatchData, Round } from "@/lib/types";
 import type { BenchmarkContributionSettings } from "@/lib/analysis/benchmark-contribution";
 import { getBackend } from "@/lib/backends";
 import type { DemoSource, ParseOptions, ParseProgress, ProgressListener } from "@/lib/backends/types";
+import type { BackupCollisionPolicy, LibraryBackup, RestoreLibraryResult } from "@/lib/backends/library-backup";
+import type { StorageStatus } from "@/lib/storage-safety";
 
 export type { DemoSource, ParseOptions, ParseProgress };
+export type { BackupCollisionPolicy, LibraryBackup, RestoreLibraryResult, StorageStatus };
 
 export type MatchSummary = {
   id: string;
@@ -49,6 +52,25 @@ export async function saveBenchmarkContribution(
   settings: BenchmarkContributionSettings,
 ): Promise<MatchSummary> {
   return getBackend().matches.saveBenchmarkContribution(id, settings);
+}
+
+export async function getStorageStatus(): Promise<StorageStatus> {
+  return getBackend().storage.getStatus();
+}
+
+export async function requestStoragePersistence(): Promise<StorageStatus> {
+  return getBackend().storage.requestPersistence();
+}
+
+export async function exportLibrary(matchId?: string): Promise<LibraryBackup> {
+  return getBackend().storage.exportLibrary(matchId);
+}
+
+export async function restoreLibrary(
+  backup: LibraryBackup,
+  collisionPolicy: BackupCollisionPolicy = "fail",
+): Promise<RestoreLibraryResult> {
+  return getBackend().storage.restoreLibrary(backup, collisionPolicy);
 }
 
 /** Parse a local .dem or .dem.zst file. Returns the new match id. */

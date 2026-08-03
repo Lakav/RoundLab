@@ -10,6 +10,15 @@ import {
   ROUND_STORE,
   runBrowserStoreMigrations,
 } from "@/lib/backends/browser-store-migrations";
+import {
+  LIBRARY_BACKUP_SCHEMA,
+  LibraryBackupConflictError,
+  assertLibraryBackup,
+  type BackupCollisionPolicy,
+  type LibraryBackup,
+  type RestoreLibraryResult,
+} from "@/lib/backends/library-backup";
+import { actionableStorageError } from "@/lib/storage-safety";
 
 const DB_NAME = "roundlab-web";
 
@@ -40,7 +49,12 @@ function openDb(): Promise<IDBDatabase> {
         event.newVersion,
       );
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const db = req.result;
+      db.onversionchange = () => db.close();
+      resolve(db);
+    };
+    req.onblocked = () => reject(new Error("La base locale est ouverte dans un autre onglet. Ferme les autres onglets RoundLab puis réessaie."));
     req.onerror = () => reject(req.error ?? new Error("IndexedDB open failed"));
   });
 }
@@ -71,6 +85,24 @@ function requestResultWithTransactionWork<T>(req: IDBRequest<T>, work: (result: 
       }
     };
     req.onerror = () => reject(req.error ?? new Error("IndexedDB request failed"));
+  });
+}
+
+function deleteStoredRoundsForMatches(store: IDBObjectStore, matchIds: Set<string>): Promise<void> {
+  if (matchIds.size === 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const request = store.openCursor();
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) {
+        resolve();
+        return;
+      }
+      const item = cursor.value as StoredRound;
+      if (matchIds.has(item.matchId)) cursor.delete();
+      cursor.continue();
+    };
+    request.onerror = () => reject(request.error ?? new Error("IndexedDB cursor failed"));
   });
 }
 
@@ -234,6 +266,79 @@ export async function readCompleteStoredMatch(id: string): Promise<MatchData> {
   return { ...metadata, rounds };
 }
 
+export async function createLibraryBackup(matchId?: string): Promise<LibraryBackup> {
+  const summaries = await listStoredMatches();
+  const selected = matchId ? summaries.filter((summary) => summary.id === matchId) : summaries;
+  if (matchId && selected.length === 0) throw new Error(`Match not found: ${matchId}`);
+  const matches = [];
+  for (const summary of selected) {
+    matches.push({ summary, data: await readCompleteStoredMatch(summary.id) });
+  }
+  return { schema: LIBRARY_BACKUP_SCHEMA, exportedAt: new Date().toISOString(), matches };
+}
+
+function duplicateId(): string {
+  if (!globalThis.crypto?.randomUUID) {
+    throw new Error("Ce navigateur ne sait pas générer un identifiant sûr pour dupliquer le match.");
+  }
+  return globalThis.crypto.randomUUID();
+}
+
+export async function restoreLibraryBackup(
+  backup: LibraryBackup,
+  collisionPolicy: BackupCollisionPolicy = "fail",
+): Promise<RestoreLibraryResult> {
+  assertLibraryBackup(backup);
+  for (const entry of backup.matches) assertStorableMatch(entry.data);
+  const existing = new Set((await listStoredMatches()).map((match) => match.id));
+  const conflicts = backup.matches.filter((entry) => existing.has(entry.summary.id)).map((entry) => entry.summary.id);
+  if (conflicts.length > 0 && collisionPolicy === "fail") throw new LibraryBackupConflictError(conflicts);
+
+  const skippedIds: string[] = [];
+  const prepared = backup.matches.flatMap((entry) => {
+    const conflictsWithExisting = existing.has(entry.summary.id);
+    if (conflictsWithExisting && collisionPolicy === "skip") {
+      skippedIds.push(entry.summary.id);
+      return [];
+    }
+    if (conflictsWithExisting && collisionPolicy === "duplicate") {
+      const id = duplicateId();
+      return [{ ...entry, summary: { ...entry.summary, id, name: `${entry.summary.name} (restauré)` } }];
+    }
+    return [entry];
+  });
+  if (prepared.length === 0) return { restored: [], skippedIds };
+
+  const db = await openDb();
+  try {
+    const tx = db.transaction([MATCH_STORE, ROUND_STORE], "readwrite");
+    const matchStore = tx.objectStore(MATCH_STORE);
+    const roundStore = tx.objectStore(ROUND_STORE);
+    const replacedIds = new Set(
+      collisionPolicy === "replace" ? conflicts : [],
+    );
+    await deleteStoredRoundsForMatches(roundStore, replacedIds);
+    for (const entry of prepared) {
+      const metadata: MatchData = { ...entry.data, rounds: entry.data.rounds.map(stripRoundPayload) };
+      matchStore.put({ ...entry.summary, metadata } satisfies StoredMatch);
+      for (const round of entry.data.rounds) {
+        roundStore.put({
+          key: roundKey(entry.summary.id, round.number),
+          matchId: entry.summary.id,
+          number: round.number,
+          round,
+        } satisfies StoredRound);
+      }
+    }
+    await txDone(tx);
+    return { restored: prepared.map((entry) => entry.summary), skippedIds };
+  } catch (error) {
+    throw actionableStorageError(error);
+  } finally {
+    db.close();
+  }
+}
+
 export async function readStoredRound(matchId: string, number: number): Promise<Round> {
   const db = await openDb();
   try {
@@ -352,6 +457,8 @@ export async function saveParsedMatch(id: string, name: string, size: number, da
     );
     await txDone(tx);
     return summary;
+  } catch (error) {
+    throw actionableStorageError(error);
   } finally {
     db.close();
   }

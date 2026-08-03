@@ -7,7 +7,10 @@ import {
   readStoredRound,
   renameStoredMatch,
   saveStoredBenchmarkContribution,
+  createLibraryBackup,
+  restoreLibraryBackup,
 } from "@/lib/backends/browser-store";
+import { readStorageStatus, requestPersistentStorage } from "@/lib/storage-safety";
 
 class BrowserProgressBus {
   private listeners = new Set<ProgressListener>();
@@ -117,6 +120,12 @@ export function createBrowserBackend(): RoundLabBackend {
       deleteMatch: deleteStoredMatch,
       renameMatch: renameStoredMatch,
       saveBenchmarkContribution: saveStoredBenchmarkContribution,
+    },
+    storage: {
+      getStatus: readStorageStatus,
+      requestPersistence: requestPersistentStorage,
+      exportLibrary: createLibraryBackup,
+      restoreLibrary: restoreLibraryBackup,
     },
     diagnostics: {
       async getDebugInfo() {

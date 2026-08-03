@@ -13,6 +13,7 @@ import {
   MoreHorizontal,
   Pencil,
   Trash2,
+  Download,
   X,
 } from "lucide-react";
 import {
@@ -38,6 +39,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { StoragePanel, downloadLibraryBackup } from "@/components/storage/StoragePanel";
 
 const PARSE_DURATION_KEY = "roundlab.parseDurationMs";
 const PARSE_ESTIMATE_KEY = "roundlab.parseEstimate.v2";
@@ -229,13 +231,12 @@ export default function Home() {
   const estimateExceeded = uploading && parseStartedAt && elapsedMs >= effectiveEstimateMs && backendPct < 0.95;
 
   const refreshMatches = useCallback(async (cancelled?: () => boolean) => {
-    listMatches()
-      .then((items) => {
-        if (!cancelled?.()) setMatches(items);
-      })
-      .catch((e) => {
-        if (!cancelled?.()) setError(e instanceof Error ? e.message : String(e));
-      });
+    try {
+      const items = await listMatches();
+      if (!cancelled?.()) setMatches(items);
+    } catch (cause) {
+      if (!cancelled?.()) setError(cause instanceof Error ? cause.message : String(cause));
+    }
   }, []);
 
   const parseSource = useCallback(
@@ -337,11 +338,17 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false;
-    refreshMatches(() => cancelled);
+    void listMatches()
+      .then((items) => {
+        if (!cancelled) setMatches(items);
+      })
+      .catch((cause) => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
+      });
     return () => {
       cancelled = true;
     };
-  }, [refreshMatches]);
+  }, []);
 
   const onPickAndParse = () => {
     if (uploading) return;
@@ -477,6 +484,15 @@ export default function Home() {
       setMatches((items) => items.filter((m) => m.id !== target.id));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const onExport = async (match: MatchSummary) => {
+    try {
+      setError(null);
+      await downloadLibraryBackup(match.id);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "L’export a échoué.");
     }
   };
 
@@ -708,6 +724,8 @@ export default function Home() {
           </Link>
         </aside>
 
+        <StoragePanel matchCount={matches.length} onLibraryChanged={refreshMatches} />
+
         {matches.length > 0 && (
           <section className="space-y-3">
             <div className="flex items-end justify-between px-1">
@@ -727,6 +745,7 @@ export default function Home() {
                   first={i === 0}
                   onOpen={() => void openMatch(m.id)}
                   onRename={() => onRename(m)}
+                  onExport={() => void onExport(m)}
                   onDelete={() => onDelete(m)}
                 />
               ))}
@@ -967,12 +986,14 @@ function MatchRow({
   first,
   onOpen,
   onRename,
+  onExport,
   onDelete,
 }: {
   match: MatchSummary;
   first: boolean;
   onOpen: () => void;
   onRename: () => void;
+  onExport: () => void;
   onDelete: () => void;
 }) {
   const date = new Date(m.createdAt);
@@ -1022,6 +1043,10 @@ function MatchRow({
           <DropdownMenuItem onClick={onRename} className="text-xs">
             <Pencil className="size-3.5" />
             Rename
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onExport} className="text-xs">
+            <Download className="size-3.5" />
+            Exporter
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={onDelete}

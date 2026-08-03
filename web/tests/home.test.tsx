@@ -8,6 +8,10 @@ const mocks = vi.hoisted(() => ({
   cancelParse: vi.fn(),
   deleteMatch: vi.fn(),
   getMatchMetadata: vi.fn(),
+  getStorageStatus: vi.fn(),
+  requestStoragePersistence: vi.fn(),
+  exportLibrary: vi.fn(),
+  restoreLibrary: vi.fn(),
   listMatches: vi.fn(),
   onParseProgress: vi.fn(),
   parseDemo: vi.fn(),
@@ -23,6 +27,10 @@ vi.mock("@/lib/api", async () => {
     cancelParse: mocks.cancelParse,
     deleteMatch: mocks.deleteMatch,
     getMatchMetadata: mocks.getMatchMetadata,
+    getStorageStatus: mocks.getStorageStatus,
+    requestStoragePersistence: mocks.requestStoragePersistence,
+    exportLibrary: mocks.exportLibrary,
+    restoreLibrary: mocks.restoreLibrary,
     listMatches: mocks.listMatches,
     onParseProgress: mocks.onParseProgress,
     parseDemo: mocks.parseDemo,
@@ -41,6 +49,10 @@ describe("Home", () => {
     mocks.listMatches.mockResolvedValue([summary]);
     mocks.onParseProgress.mockResolvedValue(() => undefined);
     mocks.getMatchMetadata.mockResolvedValue({});
+    mocks.getStorageStatus.mockResolvedValue({ supported: true, persisted: false, usageBytes: 1024, quotaBytes: 4096 });
+    mocks.requestStoragePersistence.mockResolvedValue({ supported: true, persisted: true, usageBytes: 1024, quotaBytes: 4096 });
+    mocks.exportLibrary.mockResolvedValue({ schema: "roundlab.library-backup.v1", exportedAt: "2026-08-03T00:00:00.000Z", matches: [] });
+    mocks.restoreLibrary.mockResolvedValue({ restored: [], skippedIds: [] });
     mocks.renameMatch.mockImplementation(async (id: string, name: string) => ({ ...summary, id, name }));
     mocks.deleteMatch.mockResolvedValue(undefined);
   });
@@ -138,5 +150,14 @@ describe("Home", () => {
     expect(await screen.findByText("Practice match")).toBeInTheDocument();
     await user.click(screen.getByLabelText("Match actions"));
     expect(screen.queryByText("Benchmark export")).not.toBeInTheDocument();
+  });
+
+  it("shows storage durability and lets the user explicitly request persistence", async () => {
+    const user = userEvent.setup();
+    render(<Home />);
+    expect(await screen.findByText("Stockage révocable par le navigateur")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Protéger le stockage/ }));
+    expect(mocks.requestStoragePersistence).toHaveBeenCalledOnce();
+    expect(await screen.findByText("Stockage persistant")).toBeInTheDocument();
   });
 });
