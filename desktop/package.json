@@ -49,7 +49,6 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^4.1.10",
-    "autoprefixer": "^10.5.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.11",
     "fake-indexeddb": "^6.2.5",

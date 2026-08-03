@@ -764,7 +764,6 @@ positionnement complexes.
 desktop/         Application web Next.js, interface et moteur de replay
 parser/          Parseur Rust et point d'entrée WebAssembly
 vendor/          Dépendances du parseur conservées dans le dépôt
-ressources/      Ressources graphiques sources
 scripts/         Audits, validations et outils de développement
 docs/            Notes techniques et données de référence
 ```

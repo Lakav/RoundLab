@@ -26,7 +26,6 @@ PY_COMPILE_TARGETS = [
     "scripts/check-performance-budgets.py",
     "scripts/run-local-ci-checks.py",
     "scripts/summarize-browser-benchmark.py",
-    "scripts/validate-release-version.py",
 ]
 
 CI_SAFE_AUDITS = [
