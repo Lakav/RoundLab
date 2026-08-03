@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail when desktop/Tauri-only artifacts are reintroduced.
+"""Fail when native Tauri artifacts are reintroduced into the web app.
 
 RoundLab is now a browser app with local Web Worker/WASM parsing. This audit is
 deliberately narrow: it checks tracked files and runtime/config surfaces where a
@@ -50,47 +50,47 @@ SCAN_PATHS = {
     ".github/workflows/_checks.yml",
     ".github/workflows/ci.yml",
     ".gitignore",
-    "desktop/.gitignore",
-    "desktop/package.json",
-    "desktop/pnpm-lock.yaml",
-    "desktop/pnpm-workspace.yaml",
-    "desktop/src",
+    "web/.gitignore",
+    "web/package.json",
+    "web/pnpm-lock.yaml",
+    "web/pnpm-workspace.yaml",
+    "web/src",
 }
 
 GITIGNORE_PATHS = {
     ".gitignore",
-    "desktop/.gitignore",
+    "web/.gitignore",
 }
 
 REQUIRED_GITIGNORE_PATTERNS = {
     ".gitignore": {
         ".tauri-keys/",
         "src-tauri/",
-        "desktop/src-tauri/",
+        "web/src-tauri/",
         "tauri.conf.json",
     },
-    "desktop/.gitignore": {
+    "web/.gitignore": {
         "/src-tauri/",
         "tauri.conf.json",
     },
 }
 
 DIAGNOSTIC_CONTRACT_SNIPPETS = {
-    "desktop/src/lib/backends/types.ts": [
+    "web/src/lib/backends/types.ts": [
         "writeDebugLog(source: string, message: string): Promise<void>;",
     ],
-    "desktop/src/lib/api.ts": [
+    "web/src/lib/api.ts": [
         "export async function writeDebugLog(source: string, message: string): Promise<void>",
         "await getBackend().diagnostics.writeDebugLog(source, message);",
     ],
-    "desktop/src/lib/backends/browser.ts": [
+    "web/src/lib/backends/browser.ts": [
         "async writeDebugLog(source: string, message: string)",
         "console.log(`[${source}] ${message}`);",
     ],
 }
 
 IGNORED_TEXT_PATHS = {
-    "desktop/src/wasm",
+    "web/src/wasm",
 }
 
 DEPENDENCY_MANIFEST_NAMES = {
@@ -134,11 +134,11 @@ def read_text(path: str) -> str | None:
 
 
 def assert_package_scripts_are_portable() -> None:
-    package_path = ROOT / "desktop" / "package.json"
+    package_path = ROOT / "web" / "package.json"
     data = json.loads(package_path.read_text(encoding="utf-8"))
     scripts = data.get("scripts") or {}
     failures = [
-        f"desktop/package.json script {name!r} contains {pattern!r}"
+        f"web/package.json script {name!r} contains {pattern!r}"
         for name, command in scripts.items()
         for pattern in FORBIDDEN_TEXT_PATTERNS
         if pattern in str(command).lower()
@@ -175,7 +175,7 @@ def assert_browser_diagnostics_contract() -> list[str]:
         for snippet in snippets:
             if snippet not in text:
                 errors.append(f"{path} is missing browser diagnostics contract {snippet!r}")
-    browser_backend = read_text("desktop/src/lib/backends/browser.ts") or ""
+    browser_backend = read_text("web/src/lib/backends/browser.ts") or ""
     write_debug_start = browser_backend.find("async writeDebugLog")
     if write_debug_start >= 0:
         write_debug_block = browser_backend[write_debug_start:browser_backend.find("},", write_debug_start)]
@@ -206,7 +206,7 @@ def main() -> None:
         for pattern in sorted(FORBIDDEN_TEXT_PATTERNS):
             if pattern in lower_text:
                 errors.append(f"{path} contains forbidden desktop-only pattern {pattern!r}")
-        if path.startswith("desktop/src/"):
+        if path.startswith("web/src/"):
             for pattern in sorted(FORBIDDEN_BROWSER_DIAGNOSTIC_PATTERNS):
                 if pattern in text:
                     errors.append(f"{path} contains forbidden desktop diagnostics pattern {pattern!r}")

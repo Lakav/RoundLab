@@ -22,9 +22,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_COMPARE_DIR = ROOT / ".roundlab-compare"
-DEFAULT_PARSED_DIR = ROOT / "desktop" / "data" / "parsed"
-DEFAULT_PUBLIC_DIR = ROOT / "desktop" / "public"
-MAPS_TS = ROOT / "desktop" / "src" / "lib" / "maps.ts"
+DEFAULT_PARSED_DIR = ROOT / "web" / "data" / "parsed"
+DEFAULT_PUBLIC_DIR = ROOT / "web" / "public"
+MAPS_TS = ROOT / "web" / "src" / "lib" / "maps.ts"
 RADAR_SIZE = 1024
 
 CALIB_RE = re.compile(

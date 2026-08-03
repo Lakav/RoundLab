@@ -13,10 +13,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-BACKEND_DIR = ROOT / "desktop" / "src" / "lib" / "backends"
-API_TS = ROOT / "desktop" / "src" / "lib" / "api.ts"
-HOME_TSX = ROOT / "desktop" / "src" / "app" / "page.tsx"
-WORKER_DIR = ROOT / "desktop" / "src" / "workers"
+BACKEND_DIR = ROOT / "web" / "src" / "lib" / "backends"
+API_TS = ROOT / "web" / "src" / "lib" / "api.ts"
+HOME_TSX = ROOT / "web" / "src" / "app" / "page.tsx"
+WORKER_DIR = ROOT / "web" / "src" / "workers"
 WORKER_TS = WORKER_DIR / "web-parser.worker.ts"
 ZSTD_WORKER_TS = WORKER_DIR / "zstd-decompress.worker.ts"
 BROWSER_STORE_TS = BACKEND_DIR / "browser-store.ts"
@@ -113,7 +113,7 @@ def assert_required_local_path() -> None:
                 errors.append(f"{path.relative_to(ROOT)} is missing local parser invariant {snippet!r}")
     index_text = read(BACKEND_DIR / "index.ts")
     if "tauri" in index_text.lower() or "native" in index_text.lower():
-        errors.append("desktop/src/lib/backends/index.ts references non-browser backend routing")
+        errors.append("web/src/lib/backends/index.ts references non-browser backend routing")
     if errors:
         raise AssertionError("; ".join(errors))
 

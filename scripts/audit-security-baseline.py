@@ -11,8 +11,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DESKTOP_SRC = ROOT / "desktop" / "src"
-LAYOUT = DESKTOP_SRC / "app" / "layout.tsx"
+WEB_SRC = ROOT / "web" / "src"
+LAYOUT = WEB_SRC / "app" / "layout.tsx"
 WORKFLOW = ROOT / ".github" / "workflows" / "_checks.yml"
 
 DANGEROUS_RUNTIME_PATTERNS = {
@@ -26,7 +26,7 @@ DANGEROUS_RUNTIME_PATTERNS = {
 def source_files() -> list[Path]:
     return sorted(
         path
-        for path in DESKTOP_SRC.rglob("*")
+        for path in WEB_SRC.rglob("*")
         if path.suffix in {".ts", ".tsx"} and "wasm" not in path.parts
     )
 
@@ -47,7 +47,7 @@ def main() -> None:
     ]
     for snippet in required_csp:
         if snippet not in layout:
-            errors.append(f"desktop/src/app/layout.tsx is missing CSP/referrer control {snippet!r}")
+            errors.append(f"web/src/app/layout.tsx is missing CSP/referrer control {snippet!r}")
 
     for path in source_files():
         text = path.read_text(encoding="utf-8")

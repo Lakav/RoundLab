@@ -2,7 +2,7 @@
 """Validate committed Rust reference snapshots.
 
 The default daily guard is --reference-only: it validates
-parser/reference_demos.json structure, score truth, per-round list lengths, and
+parser/reference-demos.json structure, score truth, per-round list lengths, and
 aggregate totals without running parsers or requiring Go. The optional --report
 mode is intentionally historical/read-only; it checks that the saved snapshots
 still match the Rust side of a scripts/compare-parsers.py --round-audit JSON
@@ -19,7 +19,7 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_REFERENCE = ROOT / "parser" / "reference_demos.json"
+DEFAULT_REFERENCE = ROOT / "parser" / "reference-demos.json"
 DEFAULT_REPORT = ROOT / ".roundlab-compare" / "full-round-audit-current.json"
 
 METRIC_FIELDS = [
@@ -654,7 +654,7 @@ def main() -> int:
     parser.add_argument(
         "--reference-only",
         action="store_true",
-        help="validate parser/reference_demos.json structure without a Go/Rust report",
+        help="validate parser/reference-demos.json structure without a Go/Rust report",
     )
     args = parser.parse_args()
 

@@ -18,9 +18,9 @@ def total_bytes(root: Path, suffix: str) -> tuple[int, int]:
 
 
 def main() -> int:
-    output = Path("desktop/out")
+    output = Path("web/out")
     if not output.is_dir():
-        raise SystemExit("desktop/out is missing; run the production build first")
+        raise SystemExit("web/out is missing; run the production build first")
     js_files, js_bytes = total_bytes(output, ".js")
     wasm_files, wasm_bytes = total_bytes(output, ".wasm")
     print(f"production JavaScript: {js_bytes} bytes across {js_files} files (budget {JS_BUDGET_BYTES})")

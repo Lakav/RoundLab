@@ -44,14 +44,14 @@ jobs:
         with:
           node-version: "24"
           cache: pnpm
-          cache-dependency-path: desktop/pnpm-lock.yaml
+          cache-dependency-path: web/pnpm-lock.yaml
 
       - name: Install web app dependencies
-        working-directory: desktop
+        working-directory: web
         run: pnpm install --frozen-lockfile
 
       - name: Build static site
-        working-directory: desktop
+        working-directory: web
         run: pnpm build
 
       - name: Configure GitHub Pages
@@ -60,7 +60,7 @@ jobs:
       - name: Upload static site
         uses: actions/upload-pages-artifact@v5
         with:
-          path: desktop/out
+          path: web/out
 
       - name: Deploy GitHub Pages
         id: deployment

@@ -20,9 +20,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_COMPARE_DIR = ROOT / ".roundlab-compare"
 DEFAULT_MANIFEST = ROOT / "docs" / "replay-fixture-coverage.json"
-MAPS_TS = ROOT / "desktop" / "src" / "lib" / "maps.ts"
-PUBLIC_MAPS = ROOT / "desktop" / "public" / "cs2lens-maps"
-MAP_RENDERER = ROOT / "desktop" / "src" / "components" / "replay" / "MapRenderer.tsx"
+MAPS_TS = ROOT / "web" / "src" / "lib" / "maps.ts"
+PUBLIC_MAPS = ROOT / "web" / "public" / "cs2lens-maps"
+MAP_RENDERER = ROOT / "web" / "src" / "components" / "replay" / "MapRenderer.tsx"
 
 CALIB_RE = re.compile(r"(de_[a-z0-9_]+):\s*\{\s*posX:")
 

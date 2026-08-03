@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PARSER = ROOT / "parser"
-OUTPUT = ROOT / "desktop" / "src" / "wasm" / "roundlab_parser"
+OUTPUT = ROOT / "web" / "src" / "wasm" / "roundlab_parser"
 ARTIFACTS = (
     "roundlab_parser.d.ts",
     "roundlab_parser.js",

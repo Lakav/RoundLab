@@ -9,8 +9,8 @@ import statistics
 from pathlib import Path
 
 
-DEFAULT_INPUT = Path("desktop/benchmark-results/browser-benchmark-raw.json")
-DEFAULT_OUTPUT = Path("desktop/benchmark-results/browser-benchmark-summary.json")
+DEFAULT_INPUT = Path("web/benchmark-results/browser-benchmark-raw.json")
+DEFAULT_OUTPUT = Path("web/benchmark-results/browser-benchmark-summary.json")
 IMPORT_BUDGETS_MS = (
     (140_000_000, 20_000),
     (180_000_000, 30_000),

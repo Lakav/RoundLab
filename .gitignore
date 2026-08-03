@@ -22,7 +22,7 @@ pnpm-debug.log*
 .env.*
 !.env.example
 
-# Desktop frontend caches
+# Web frontend caches
 .next/
 
 # OS / editor
@@ -37,7 +37,7 @@ pnpm-debug.log*
 *.dem
 *.dem.zst
 *.json.gz
-desktop/data/
+web/data/
 test.json
 test.json.gz
 
@@ -47,7 +47,7 @@ parser/target/
 # legacy Tauri artifacts
 .tauri-keys/
 src-tauri/
-desktop/src-tauri/
+web/src-tauri/
 tauri.conf.json
 
 # temp / caches
@@ -58,8 +58,8 @@ __pycache__/
 *.pyc
 
 # Local test and benchmark reports
-desktop/playwright-report/
-desktop/test-results/
-desktop/benchmark-results/
+web/playwright-report/
+web/test-results/
+web/benchmark-results/
 parser/coverage/
 parser/benchmark-results/

@@ -10,7 +10,7 @@ block Rust optimization unless it exposes a clear Rust replay bug.
 - Keep the web replay JSON contract stable: `meta`, `players`, manifest `rounds`,
   split round files, and per-round `frames`, `events`, `effects`,
   `weaponFires`, and `projectileFrames`.
-- Use `parser/reference_demos.json` and `ROUNDLAB_TEST_DEMOS` as the replay
+- Use `parser/reference-demos.json` and `ROUNDLAB_TEST_DEMOS` as the replay
   regression source of truth.
 - Do not optimize by dropping replay features. Full quality must keep kills,
   bomb events/states, utility effects, weapon-fire pose fields, and projectile

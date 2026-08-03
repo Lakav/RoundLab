@@ -15,10 +15,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PUBLIC = ROOT / "desktop" / "public"
-ICONS_TS = ROOT / "desktop" / "src" / "lib" / "icons.ts"
-MAPS_TS = ROOT / "desktop" / "src" / "lib" / "maps.ts"
-MAP_RENDERER = ROOT / "desktop" / "src" / "components" / "replay" / "MapRenderer.tsx"
+PUBLIC = ROOT / "web" / "public"
+ICONS_TS = ROOT / "web" / "src" / "lib" / "icons.ts"
+MAPS_TS = ROOT / "web" / "src" / "lib" / "maps.ts"
+MAP_RENDERER = ROOT / "web" / "src" / "components" / "replay" / "MapRenderer.tsx"
 
 PUBLIC_PATH_RE = re.compile(r"""["'`](/(?:icons|logo|app-icon|favicon|cs2lens-maps|radars)[^"'`$]*)["'`]""")
 ICON_MAP_VALUE_RE = re.compile(r"""["'][^"']+["']\s*:\s*["']([^"']+)["']""")
@@ -38,7 +38,7 @@ VERTICAL_SECTION_RE = re.compile(
 
 def tracked_files() -> list[str]:
     result = subprocess.run(
-        ["git", "ls-files", "desktop/src"],
+        ["git", "ls-files", "web/src"],
         cwd=ROOT,
         check=True,
         text=True,
@@ -62,7 +62,7 @@ def png_size(path: Path) -> tuple[int, int]:
 def source_public_paths() -> set[str]:
     paths: set[str] = set()
     for rel in tracked_files():
-        if rel.startswith("desktop/src/wasm/") or not rel.endswith((".ts", ".tsx", ".js", ".jsx")):
+        if rel.startswith("web/src/wasm/") or not rel.endswith((".ts", ".tsx", ".js", ".jsx")):
             continue
         for match in PUBLIC_PATH_RE.finditer(read(ROOT / rel)):
             paths.add(match.group(1))
@@ -74,7 +74,7 @@ def weapon_icon_paths() -> set[str]:
     paths: set[str] = set()
     map_body_match = re.search(r"WEAPON_ICON_MAP:[^{]+=\s*\{(?P<body>.*?)\};", icons, re.S)
     if not map_body_match:
-        raise AssertionError("could not parse WEAPON_ICON_MAP from desktop/src/lib/icons.ts")
+        raise AssertionError("could not parse WEAPON_ICON_MAP from web/src/lib/icons.ts")
     for value in ICON_MAP_VALUE_RE.findall(map_body_match.group("body")):
         paths.add(f"/icons/{value}.svg")
     paths.update(ICON_LITERAL_RE.findall(icons))
@@ -92,7 +92,7 @@ def preloadable_icon_paths() -> set[str]:
 def calibrated_map_paths() -> set[str]:
     maps = set(calibrated_maps())
     if not maps:
-        raise AssertionError("could not parse calibrated maps from desktop/src/lib/maps.ts")
+        raise AssertionError("could not parse calibrated maps from web/src/lib/maps.ts")
     paths = {f"/cs2lens-maps/{map_name}.png" for map_name in maps}
     paths.update(f"/cs2lens-maps/{map_name}_lower.png" for map_name in multi_level_maps())
     return paths
@@ -154,14 +154,14 @@ def assert_map_contract() -> list[str]:
         if token not in renderer:
             errors.append(f"MapRenderer radar layer contract is missing {token!r}")
     for rel in tracked_files():
-        if rel.startswith("desktop/src/wasm/") or not rel.endswith((".ts", ".tsx", ".js", ".jsx")):
+        if rel.startswith("web/src/wasm/") or not rel.endswith((".ts", ".tsx", ".js", ".jsx")):
             continue
         text = read(ROOT / rel)
         if "/radars/" in text:
             errors.append(f"{rel} references legacy /radars assets; replay maps must use /cs2lens-maps")
     legacy_radars = sorted((PUBLIC / "radars").glob("*.png")) if (PUBLIC / "radars").exists() else []
     for asset in legacy_radars:
-        errors.append(f"{asset.relative_to(ROOT)} is a legacy radar asset; replay maps must use desktop/public/cs2lens-maps")
+        errors.append(f"{asset.relative_to(ROOT)} is a legacy radar asset; replay maps must use web/public/cs2lens-maps")
     for map_name, (pos_x, pos_y, scale) in sorted(calibrations.items()):
         if scale <= 0:
             errors.append(f"{map_name} calibration scale must be positive")
