@@ -142,6 +142,17 @@ pnpm parser:wasm
 Cette commande reconstruit le parseur puis régénère
 `web/src/wasm/roundlab_parser`.
 
+Les artefacts versionnés sont canoniquement produits sous Ubuntu 24.04 avec
+Rust 1.95 et `wasm-bindgen-cli` 0.2.126. Deux builds propres sont identiques sur
+un même système, mais LLVM ne garantit pas ici un binaire identique entre
+macOS et Linux. Après une modification du parseur depuis macOS, la CI fournit
+l’artefact `browser-wasm-linux`, y compris lorsque la comparaison initiale
+échoue : télécharge-le dans la branche de la PR, remplace les quatre fichiers
+générés puis relance la CI. Seule la CI Linux impose l’identité exacte avec les
+artefacts committés ; localement,
+`python3 scripts/verify-wasm-reproducibility.py` vérifie le déterminisme du
+système courant sans prétendre à une reproductibilité inter-OS.
+
 ## Validation
 
 Contrôles web principaux :

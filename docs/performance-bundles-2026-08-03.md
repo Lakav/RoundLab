@@ -11,8 +11,8 @@ only after user interaction.
 | Initial `/` JavaScript | 931,804 B | 933,975 B | +0.2% |
 | Initial `/feedback/` JavaScript | 822,906 B | 801,884 B | -2.6% |
 | Initial `/match/` JavaScript | 1,530,645 B | 1,405,707 B | -8.2% |
-| Parser WASM | 2,953,515 B | 2,340,198 B | -613,317 B (-20.8%) |
-| Static export | 9,412,608 B | 7,121,144 B | -24.3% |
+| Parser WASM | 2,953,515 B | 2,338,716 B | -614,799 B (-20.8%) |
+| Static export | 9,412,608 B | 7,120,329 B | -24.4% |
 | `logo.png` | 496,772 B | 167,949 B | -66.2% |
 
 The total JavaScript output grows slightly because deferred entry chunks still
@@ -22,7 +22,8 @@ initial budgets for every public route.
 
 The parser release profile now optimizes for size with one codegen unit. This
 both absorbs the patched `anyhow` and `memmap2` versions and removes about
-613 KB from the generated WASM. Two clean builds produced the same hash.
+615 KB from the canonical Linux WASM. Two clean builds in the pinned Linux
+toolchain produced the same hash.
 
 ## Analyzer findings
 
