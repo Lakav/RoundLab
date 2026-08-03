@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { DebugConsoleHost } from "@/components/DebugConsoleHost";
+import { UnhandledErrorMonitor } from "@/components/UnhandledErrorMonitor";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { assetPath } from "@/lib/paths";
 import "./globals.css";
@@ -38,6 +39,7 @@ export default function RootLayout({
           </a>
         </nav>
         <TooltipProvider delay={300}>{children}</TooltipProvider>
+        <UnhandledErrorMonitor />
         <DebugConsoleHost />
       </body>
     </html>

@@ -81,6 +81,10 @@ export function createBrowserBackend(): RoundLabBackend {
               if (activeParseRun !== runId || activeWorker !== worker) return;
               reject(new Error(event.message));
             };
+            worker.onmessageerror = () => {
+              if (activeParseRun !== runId || activeWorker !== worker) return;
+              reject(new Error("Browser parser worker returned an unreadable message."));
+            };
             worker.postMessage(
               {
                 type: "parse",
