@@ -13,7 +13,7 @@ and workers. The comparable baseline changed as follows:
 | Scope | Statements | Branches | Functions | Lines |
 | --- | ---: | ---: | ---: | ---: |
 | Previous partial scope | 78.76% | 71.78% | 86.36% | 81.74% |
-| Full runtime scope (2026-08-03) | 78.91% | 69.85% | 81.86% | 81.51% |
+| Full runtime scope (2026-08-03) | 78.94% | 69.90% | 81.90% | 81.54% |
 
 The lower branch and function percentages are a scope correction, not a code
 regression. Global thresholds leave a small margin while targeted thresholds

@@ -2,12 +2,11 @@
 
 import "pixi.js/unsafe-eval";
 import { useEffect, useRef, useState } from "react";
-import { Assets, Container, Graphics, Sprite, Texture } from "pixi.js";
+import { Container, Graphics, Sprite } from "pixi.js";
 import { type HabitOverlay, type HabitOverlayTrail, type HabitReplayEffect, type HabitReplayProjectile, type HabitReplayRound, useReplay } from "@/lib/replay-store";
 import { MAP_CALIBRATION, RADAR_SIZE, radarImagePath, radarLayerForPositions, type RadarLayer, worldToRadar } from "@/lib/maps";
-import type { Frame, MatchData, PlayerId, ProjectilePos, Round, UtilityEffect, WeaponFireEvent } from "@/lib/types";
+import type { MatchData, PlayerId, ProjectilePos, Round, UtilityEffect, WeaponFireEvent } from "@/lib/types";
 import { iconPathFor } from "@/lib/icons";
-import { assetPath } from "@/lib/paths";
 import {
   activeBombPlantTime,
   activeDefuse,
@@ -137,218 +136,20 @@ import {
   type DisposableDisplayObject,
   type MapRendererPixiScene,
 } from "./map-renderer-pixi";
+import {
+  clamp01,
+  easeOutCubic,
+  heightLift,
+  lastKnownTeams,
+  mixColor,
+} from "./map-renderer-math";
+import {
+  cachedIconTexture,
+  loadIconTexture,
+  preloadRoundIconTextures,
+} from "./map-renderer-icons";
 
-const iconTextureCache = new Map<string, Promise<Texture>>();
-const iconTextureReadyCache = new Map<string, Texture>();
-const roundIconPreloadCache = new WeakMap<Round, string[]>();
 type RadarLayerMode = RadarLayer | "auto";
-
-const PRELOADABLE_ICON_PATHS = new Set([
-  "/icons/ak47.svg",
-  "/icons/armor_helmet.svg",
-  "/icons/aug.svg",
-  "/icons/awp.svg",
-  "/icons/bayonet.svg",
-  "/icons/bizon.svg",
-  "/icons/burning-flames.svg",
-  "/icons/c4.svg",
-  "/icons/cz75a.svg",
-  "/icons/deagle.svg",
-  "/icons/decoy.svg",
-  "/icons/defuser.svg",
-  "/icons/elite.svg",
-  "/icons/famas.svg",
-  "/icons/fiveseven.svg",
-  "/icons/flashbang.svg",
-  "/icons/g3sg1.svg",
-  "/icons/galilar.svg",
-  "/icons/glock.svg",
-  "/icons/hegrenade.svg",
-  "/icons/hkp2000.svg",
-  "/icons/incgrenade.svg",
-  "/icons/kevlar.svg",
-  "/icons/knife.svg",
-  "/icons/knife_bowie.svg",
-  "/icons/knife_butterfly.svg",
-  "/icons/knife_canis.svg",
-  "/icons/knife_cord.svg",
-  "/icons/knife_css.svg",
-  "/icons/knife_flip.svg",
-  "/icons/knife_gut.svg",
-  "/icons/knife_gypsy_jackknife.svg",
-  "/icons/knife_karambit.svg",
-  "/icons/knife_kukri.svg",
-  "/icons/knife_m9_bayonet.svg",
-  "/icons/knife_outdoor.svg",
-  "/icons/knife_push.svg",
-  "/icons/knife_skeleton.svg",
-  "/icons/knife_slash.svg",
-  "/icons/knife_stiletto.svg",
-  "/icons/knife_survival_bowie.svg",
-  "/icons/knife_t.svg",
-  "/icons/knife_tactical.svg",
-  "/icons/knife_twinblade.svg",
-  "/icons/knife_ursus.svg",
-  "/icons/knife_widowmaker.svg",
-  "/icons/m249.svg",
-  "/icons/m4a1.svg",
-  "/icons/m4a1_silencer.svg",
-  "/icons/mac10.svg",
-  "/icons/mag7.svg",
-  "/icons/molotov.svg",
-  "/icons/mp5sd.svg",
-  "/icons/mp7.svg",
-  "/icons/mp9.svg",
-  "/icons/negev.svg",
-  "/icons/nova.svg",
-  "/icons/p2000.svg",
-  "/icons/p250.svg",
-  "/icons/p90.svg",
-  "/icons/revolver.svg",
-  "/icons/sawedoff.svg",
-  "/icons/scar20.svg",
-  "/icons/sg556.svg",
-  "/icons/smokegrenade.svg",
-  "/icons/ssg08.svg",
-  "/icons/taser.svg",
-  "/icons/tec9.svg",
-  "/icons/ump45.svg",
-  "/icons/usp_silencer.svg",
-  "/icons/xm1014.svg",
-]);
-
-// Pixi's SVG asset pipeline has been brittle across runtimes. Loading the bytes
-// ourselves and feeding a blob URL into a vanilla HTMLImageElement keeps utility
-// icons rendering consistently in the browser.
-async function loadSvgTextureDirect(path: string): Promise<Texture> {
-  const res = await fetch(path);
-  if (!res.ok) throw new Error(`fetch ${path}: ${res.status}`);
-  const text = await res.text();
-  const blob = new Blob([text], { type: "image/svg+xml" });
-  const url = URL.createObjectURL(blob);
-  try {
-    const image = new Image();
-    image.decoding = "async";
-    image.src = url;
-    await image.decode();
-    const canvas = document.createElement("canvas");
-    canvas.width = image.naturalWidth || image.width || 64;
-    canvas.height = image.naturalHeight || image.height || 64;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error(`canvas context unavailable for ${path}`);
-    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-    return Texture.from(canvas);
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-
-function loadIconTexture(path: string): Promise<Texture> {
-  const ready = iconTextureReadyCache.get(path);
-  if (ready) return Promise.resolve(ready);
-  let p = iconTextureCache.get(path);
-  if (!p) {
-    const resolvedPath = assetPath(path);
-    const loader = path.toLowerCase().endsWith(".svg")
-      ? loadSvgTextureDirect(resolvedPath)
-      : (Assets.load(resolvedPath) as Promise<Texture>);
-    // Don't poison the cache with a rejected promise — drop it so the next
-    // call gets a fresh attempt instead of replaying the failure forever.
-    p = loader
-      .then((tex) => {
-        iconTextureReadyCache.set(path, tex);
-        return tex;
-      })
-      .catch((err) => {
-        iconTextureCache.delete(path);
-        iconTextureReadyCache.delete(path);
-        console.error(`[icons] failed to load ${path}`, err);
-        throw err;
-      });
-    iconTextureCache.set(path, p);
-  }
-  return p;
-}
-
-function cachedIconTexture(path: string): Texture | undefined {
-  return iconTextureReadyCache.get(path);
-}
-
-function addPreloadPath(out: Set<string>, path: string | null): void {
-  if (path && PRELOADABLE_ICON_PATHS.has(path)) out.add(path);
-}
-
-function preloadIconPathSet(paths: Set<string>): void {
-  for (const path of paths) {
-    if (!cachedIconTexture(path)) void loadIconTexture(path).catch(() => {});
-  }
-}
-
-function yieldToMainThread(): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, 0));
-}
-
-async function collectRoundIconPreloadPaths(round: Round, shouldCancel: () => boolean): Promise<string[]> {
-  const cached = roundIconPreloadCache.get(round);
-  if (cached) return cached;
-  const paths = new Set<string>([
-    "/icons/c4.svg",
-    "/icons/smokegrenade.svg",
-    "/icons/flashbang.svg",
-    "/icons/hegrenade.svg",
-    "/icons/molotov.svg",
-    "/icons/incgrenade.svg",
-    "/icons/decoy.svg",
-  ]);
-
-  for (let index = 0; index < round.frames.length; index++) {
-    if (shouldCancel()) return [];
-    const frame = round.frames[index];
-    for (const player of frame.players) {
-      addPreloadPath(paths, iconPathFor(player.active));
-      for (const weapon of player.weapons ?? []) addPreloadPath(paths, iconPathFor(weapon));
-      if (player.activeAction) {
-        addPreloadPath(paths, iconPathFor(player.activeAction.type === "plant" ? "c4" : player.activeAction.item));
-      }
-    }
-    for (const projectile of frame.projectiles ?? []) {
-      addPreloadPath(paths, iconPathFor(projectile.type));
-    }
-    if (index % 160 === 159) await yieldToMainThread();
-  }
-
-  const projectileFrames = round.projectileFrames ?? [];
-  for (let index = 0; index < projectileFrames.length; index++) {
-    if (shouldCancel()) return [];
-    const frame = projectileFrames[index];
-    for (const projectile of frame.projectiles) {
-      addPreloadPath(paths, iconPathFor(projectile.type));
-    }
-    if (index % 240 === 239) await yieldToMainThread();
-  }
-
-  for (const fire of round.weaponFires ?? []) {
-    addPreloadPath(paths, iconPathFor(fire.weapon));
-  }
-
-  for (const effect of round.effects ?? []) {
-    if (effect.type === "fire") addPreloadPath(paths, iconPathFor(effect.variant === "incendiary" ? "incgrenade" : "molotov"));
-    else addPreloadPath(paths, iconPathFor(effect.type));
-  }
-
-  const result = [...paths];
-  roundIconPreloadCache.set(round, result);
-  return result;
-}
-
-async function preloadRoundIconTextures(rounds: Round[], shouldCancel: () => boolean): Promise<void> {
-  const paths = new Set<string>();
-  for (const round of rounds) {
-    if (shouldCancel()) return;
-    for (const path of await collectRoundIconPreloadPaths(round, shouldCancel)) paths.add(path);
-    preloadIconPathSet(paths);
-  }
-}
 
 type RoundRenderCache = {
   projectileFrames: ProjectileSample[];
@@ -528,15 +329,6 @@ function renderHabitReplayScene(
   return scene;
 }
 
-function lastKnownTeams(frames: Frame[], time: number): Map<PlayerId, number> {
-  const out = new Map<PlayerId, number>();
-  for (const frame of frames) {
-    if (frame.t > time) break;
-    for (const player of frame.players) out.set(player.id, player.team);
-  }
-  return out;
-}
-
 function getRoundRenderCache(round: Round): RoundRenderCache {
   const cached = roundRenderCache.get(round);
   if (cached) return cached;
@@ -570,34 +362,6 @@ function getRoundRenderCache(round: Round): RoundRenderCache {
   };
   roundRenderCache.set(round, cache);
   return cache;
-}
-
-function clamp01(value: number) {
-  return Math.max(0, Math.min(1, value));
-}
-
-function easeOutCubic(value: number) {
-  const t = clamp01(value);
-  return 1 - Math.pow(1 - t, 3);
-}
-
-function mixColor(from: number, to: number, amount: number) {
-  const t = clamp01(amount);
-  const fr = (from >> 16) & 0xff;
-  const fg = (from >> 8) & 0xff;
-  const fb = from & 0xff;
-  const tr = (to >> 16) & 0xff;
-  const tg = (to >> 8) & 0xff;
-  const tb = to & 0xff;
-  return (
-    (Math.round(fr + (tr - fr) * t) << 16) |
-    (Math.round(fg + (tg - fg) * t) << 8) |
-    Math.round(fb + (tb - fb) * t)
-  );
-}
-
-function heightLift(z: number) {
-  return Math.max(0, Math.min(22, Math.abs(z) / 35));
 }
 
 function drawUtilityIcon(
