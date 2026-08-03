@@ -11,7 +11,7 @@ only after user interaction.
 | Initial `/` JavaScript | 931,804 B | 928,369 B | -0.4% |
 | Initial `/feedback/` JavaScript | 822,906 B | 796,237 B | -3.2% |
 | Initial `/match/` JavaScript | 1,530,645 B | 1,399,536 B | -8.6% |
-| Parser WASM | 2,953,515 B | 2,953,515 B | unchanged |
+| Parser WASM | 2,953,515 B | 2,953,213 B | -302 B |
 | `logo.png` | 496,772 B | 167,949 B | -66.2% |
 
 The total JavaScript output grows slightly because deferred entry chunks still
