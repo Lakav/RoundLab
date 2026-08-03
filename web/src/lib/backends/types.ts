@@ -1,7 +1,7 @@
 import type { MatchData, Round } from "@/lib/types";
 import type { MatchSummary } from "@/lib/api";
 import type { BrowserParseMode } from "@/lib/parser-memory";
-import type { BenchmarkContributionSettings } from "@/lib/analysis/benchmark-contribution";
+import type { BenchmarkContributionSettings } from "@/lib/analysis/benchmark-contribution-settings";
 import type {
   BackupCollisionPolicy,
   LibraryBackup,

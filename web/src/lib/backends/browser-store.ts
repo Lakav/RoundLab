@@ -3,7 +3,7 @@ import type { MatchData, Round } from "@/lib/types";
 import {
   normalizeBenchmarkContributionSettings,
   type BenchmarkContributionSettings,
-} from "@/lib/analysis/benchmark-contribution";
+} from "@/lib/analysis/benchmark-contribution-settings";
 import {
   BROWSER_DB_VERSION,
   MATCH_STORE,

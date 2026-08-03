@@ -87,7 +87,19 @@ test("exports, deletes, restores and opens replay plus report", async ({ page })
   await expect(page.getByText("1 match(s) restauré(s).", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Open", exact: true }).click();
   await expect(page.getByRole("img", { name: "Interactive replay radar" })).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  const replayScripts = new Set(await page.evaluate(() =>
+    performance.getEntriesByType("resource")
+      .filter((entry) => (entry as PerformanceResourceTiming).initiatorType === "script")
+      .map((entry) => entry.name),
+  ));
   await page.getByRole("button", { name: "Rapport" }).click();
   await expect(page.getByRole("heading", { name: "Rapport du match" })).toBeVisible();
   await expect(page.getByText("1 round · 2 joueurs analysés", { exact: true })).toBeVisible();
+  const reportScripts = new Set(await page.evaluate(() =>
+    performance.getEntriesByType("resource")
+      .filter((entry) => (entry as PerformanceResourceTiming).initiatorType === "script")
+      .map((entry) => entry.name),
+  ));
+  expect(reportScripts.size).toBeGreaterThan(replayScripts.size);
 });

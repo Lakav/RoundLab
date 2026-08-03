@@ -1,6 +1,7 @@
 "use client";
 
 import { startTransition, useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import { type HabitOverlay, type HabitReplayEffect, type HabitReplayRound, useReplay } from "@/lib/replay-store";
@@ -14,7 +15,6 @@ import { PlayerHUD } from "@/components/replay/PlayerHUD";
 import { RoundClock } from "@/components/replay/RoundClock";
 import { KillFeed } from "@/components/replay/KillFeed";
 import { ReplayAccessibilitySummary } from "@/components/replay/ReplayAccessibilitySummary";
-import { MatchReport } from "@/components/report/MatchReport";
 import { Loader2, Maximize2, Minimize2, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { MatchData, PlayerId, PlayerPos, Round, UtilityEffect } from "@/lib/types";
@@ -29,6 +29,25 @@ import { analyzeSpatial } from "@/lib/analysis/analyze-spatial";
 import type { SpatialAnalysis } from "@/lib/analysis/spatial-types";
 import { loadMapGeometry } from "@/lib/analysis/map-geometry-loader";
 import { loadTacticalZones } from "@/lib/analysis/tactical-zone-loader";
+
+const MatchReport = dynamic(
+  () => import("@/components/report/MatchReport").then((module) => module.MatchReport),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        role="status"
+        aria-live="polite"
+        className="mx-auto mt-8 w-[min(100%-2rem,72rem)] animate-pulse space-y-4"
+      >
+        <span className="sr-only">Chargement du rapport du match…</span>
+        <div className="h-28 rounded-xl border border-white/10 bg-white/[0.04]" />
+        <div className="h-12 rounded-xl border border-white/10 bg-white/[0.03]" />
+        <div className="h-64 rounded-xl border border-white/10 bg-white/[0.025]" />
+      </div>
+    ),
+  },
+);
 
 const DRAW_WIDTH = 3;
 const BASE_MAP_VIEW_SCALE = 1;
@@ -914,18 +933,20 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
         </nav>
       </header>
       <main id="main-content" tabIndex={-1} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className={reportMode ? "min-h-0 flex-1 overflow-y-auto" : "hidden"}>
-          <MatchReport
-            analysis={analysis}
-            mechanics={mechanicsAnalysis}
-            spatial={spatialAnalysis}
-            loading={analysisLoading}
-            error={analysisError}
-            onRetry={() => void loadAnalysis()}
-            onOpenEvidence={openAnalysisEvidence}
-            onOpenPositioning={openPositioningAnalysis}
-          />
-        </div>
+        {reportMode && (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <MatchReport
+              analysis={analysis}
+              mechanics={mechanicsAnalysis}
+              spatial={spatialAnalysis}
+              loading={analysisLoading}
+              error={analysisError}
+              onRetry={() => void loadAnalysis()}
+              onOpenEvidence={openAnalysisEvidence}
+              onOpenPositioning={openPositioningAnalysis}
+            />
+          </div>
+        )}
         {!reportMode && (
           <>
         <h1 className="sr-only">RoundLab match replay</h1>

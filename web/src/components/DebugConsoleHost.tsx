@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { DebugConsole } from "@/components/DebugConsole";
+import dynamic from "next/dynamic";
+
+const DebugConsole = dynamic(
+  () => import("@/components/DebugConsole").then((module) => module.DebugConsole),
+  { ssr: false },
+);
 
 export function DebugConsoleHost() {
   const [open, setOpen] = useState(false);
@@ -17,5 +22,5 @@ export function DebugConsoleHost() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  return <DebugConsole isOpen={open} onClose={() => setOpen(false)} />;
+  return open ? <DebugConsole isOpen onClose={() => setOpen(false)} /> : null;
 }

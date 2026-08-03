@@ -1,5 +1,5 @@
 import type { MatchData, Round } from "@/lib/types";
-import type { BenchmarkContributionSettings } from "@/lib/analysis/benchmark-contribution";
+import type { BenchmarkContributionSettings } from "@/lib/analysis/benchmark-contribution-settings";
 import { getBackend } from "@/lib/backends";
 import type { DemoSource, ParseOptions, ParseProgress, ProgressListener } from "@/lib/backends/types";
 import type { BackupCollisionPolicy, LibraryBackup, RestoreLibraryResult } from "@/lib/backends/library-backup";
