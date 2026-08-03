@@ -52,7 +52,7 @@ async function seedMatch(page: Page): Promise<void> {
   await page.reload();
 }
 
-test("home exposes required browser APIs and durable IndexedDB", async ({ page }) => {
+test("home exposes required browser APIs, durable IndexedDB and storage fallback", async ({ page }) => {
   await page.goto("./");
   await expect(page.getByRole("heading", { level: 1, name: "RoundLab" })).toBeVisible();
   const support = await page.evaluate(() => ({
@@ -61,10 +61,13 @@ test("home exposes required browser APIs and durable IndexedDB", async ({ page }
     indexedDb: typeof indexedDB !== "undefined",
     storageManager: Boolean(navigator.storage),
   }));
-  expect(support).toEqual({ worker: true, wasm: true, indexedDb: true, storageManager: true });
+  expect(support).toMatchObject({ worker: true, wasm: true, indexedDb: true });
   await seedMatch(page);
   await expect(page.getByText("Cross-browser fixture", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Stockage local" })).toBeVisible();
+  if (!support.storageManager) {
+    await expect(page.getByText("API de stockage indisponible", { exact: true })).toBeVisible();
+  }
 });
 
 test("exports, deletes, restores and opens replay plus report", async ({ page }) => {
