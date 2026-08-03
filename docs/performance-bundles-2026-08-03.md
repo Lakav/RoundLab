@@ -7,17 +7,22 @@ only after user interaction.
 
 | Asset or route | Before | After | Change |
 | --- | ---: | ---: | ---: |
-| All JavaScript, including deferred chunks | 2,127,110 B | 2,178,057 B | +2.4% |
-| Initial `/` JavaScript | 931,804 B | 928,369 B | -0.4% |
-| Initial `/feedback/` JavaScript | 822,906 B | 796,237 B | -3.2% |
-| Initial `/match/` JavaScript | 1,530,645 B | 1,399,536 B | -8.6% |
-| Parser WASM | 2,953,515 B | 2,953,213 B | -302 B |
+| All JavaScript, including deferred chunks | 2,127,110 B | 2,182,930 B | +2.6% |
+| Initial `/` JavaScript | 931,804 B | 933,975 B | +0.2% |
+| Initial `/feedback/` JavaScript | 822,906 B | 801,884 B | -2.6% |
+| Initial `/match/` JavaScript | 1,530,645 B | 1,405,707 B | -8.2% |
+| Parser WASM | 2,953,515 B | 2,339,531 B | -613,984 B (-20.8%) |
+| Static export | 9,412,608 B | 7,121,144 B | -24.3% |
 | `logo.png` | 496,772 B | 167,949 B | -66.2% |
 
 The total JavaScript output grows slightly because deferred entry chunks still
 exist in the export. That cost no longer blocks the initial render. The global
 2.4 MB ceiling remains a coarse build guardrail, while CI now enforces tighter
 initial budgets for every public route.
+
+The parser release profile now optimizes for size with LTO and one codegen
+unit. This both absorbs the patched `anyhow` and `memmap2` versions and removes
+about 614 KB from the generated WASM. Two clean builds produced the same hash.
 
 ## Analyzer findings
 

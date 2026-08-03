@@ -19,6 +19,7 @@ PUBLIC = ROOT / "web" / "public"
 ICONS_TS = ROOT / "web" / "src" / "lib" / "icons.ts"
 MAPS_TS = ROOT / "web" / "src" / "lib" / "maps.ts"
 MAP_RENDERER = ROOT / "web" / "src" / "components" / "replay" / "MapRenderer.tsx"
+MAP_RENDERER_ICONS = ROOT / "web" / "src" / "components" / "replay" / "map-renderer-icons.ts"
 
 PUBLIC_PATH_RE = re.compile(r"""["'`](/(?:icons|logo|app-icon|favicon|cs2lens-maps|radars)[^"'`$]*)["'`]""")
 ICON_MAP_VALUE_RE = re.compile(r"""["'][^"']+["']\s*:\s*["']([^"']+)["']""")
@@ -82,10 +83,12 @@ def weapon_icon_paths() -> set[str]:
 
 
 def preloadable_icon_paths() -> set[str]:
-    renderer = read(MAP_RENDERER)
-    match = PRELOADABLE_ICON_SET_RE.search(renderer)
+    icon_loader = read(MAP_RENDERER_ICONS)
+    match = PRELOADABLE_ICON_SET_RE.search(icon_loader)
     if not match:
-        raise AssertionError("could not parse PRELOADABLE_ICON_PATHS from MapRenderer.tsx")
+        raise AssertionError(
+            "could not parse PRELOADABLE_ICON_PATHS from map-renderer-icons.ts"
+        )
     return set(ICON_LITERAL_RE.findall(match.group("body")))
 
 
