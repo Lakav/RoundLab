@@ -73,7 +73,7 @@ réussit. Elle doit passer les contrôles fonctionnels et les audits du projet.
 - reproductibilité de l'artefact WASM ;
 - invariants de sécurité, de portabilité et de localité des données.
 
-### Indicateurs de production à ajouter
+### Indicateurs de production suivis
 
 - disponibilité de la page d'accueil ;
 - disponibilité d'une route exportée, par exemple `/feedback/` ;
@@ -96,7 +96,7 @@ ferme l'incident existant.
 
 | Indicateur | Avertissement | Critique |
 | --- | --- | --- |
-| Page publique | une sonde échouée | deux sondes consécutives échouées |
+| Page publique | réponse supérieure à 2 s | erreur fonctionnelle ou réponse supérieure à 5 s |
 | Réponse HTTP | plus de 2 s | plus de 5 s ou code non-2xx/3xx |
 | Ressource WASM | sans objet | absente ou non chargeable |
 | CI de `main` | sans objet | un job obligatoire échoue |
