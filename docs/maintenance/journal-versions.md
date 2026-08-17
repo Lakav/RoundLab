@@ -2,16 +2,23 @@
 
 ## État de la traçabilité
 
-La version `0.1.41` est préparée dans le `CHANGELOG.md` à la racine. Aucun tag Git
-n'est disponible localement et plusieurs changements importants ont été
-intégrés depuis la préparation de la version `0.1.40`.
+La révision de maintenance publiée le 17 août 2026 est documentée dans le
+`CHANGELOG.md` à la racine. Aucun tag Git n'est utilisé : la traçabilité repose
+sur la pull request, le commit intégré, les contrôles automatisés et la preuve
+de publication.
 
-Par conséquent, ce document ne prétend pas que tous les changements ci-dessous
-ont été publiés sous le numéro `0.1.40`. Ils sont placés dans « Non publié » tant
-qu'un numéro, un commit de livraison et une preuve de déploiement ne sont pas
-associés.
+Les changements ci-dessous sont rattachés à des preuves consultables. Les
+évolutions futures devront suivre la même règle avant d'être présentées comme
+publiées.
 
-## 0.1.41 - À publier
+## Révision de maintenance publiée le 17 août 2026
+
+- changement principal : `f1a559b` ;
+- intégration : `c479298` ;
+- suivi : [pull request #23](https://github.com/Lakav/RoundLab/pull/23) ;
+- validation : [GitHub Actions](https://github.com/Lakav/RoundLab/actions/runs/32021552440) ;
+- publication : [GitHub Pages](https://github.com/Lakav/RoundLab/actions/runs/32021948177) ;
+- contrôle public : [sonde de production](https://github.com/Lakav/RoundLab/actions/runs/32022029821).
 
 ### Maintenance opérationnelle
 
@@ -25,8 +32,9 @@ associés.
   Rust.
 - correction de 16 avis npm, dont 6 élevés, avec audit final à zéro avis connu.
 
-La date, le commit, le run CI, le déploiement et le premier contrôle distant
-restent à compléter après publication. Ils ne doivent pas être anticipés.
+La chaîne complète a été observée : validation avant intégration, nouvelle
+validation sur `main`, publication du site, puis contrôle public des pages et du
+parseur WebAssembly.
 
 ## Changements postérieurs au candidat 0.1.40
 
@@ -53,11 +61,14 @@ restent à compléter après publication. Ils ne doivent pas être anticipés.
 
 ### Limites connues
 
-- supervision périodique prête mais pas encore active sur la branche par défaut ;
-- validation Safari et Firefox incomplète ;
-- absence de corpus assez large pour publier des percentiles fiables ;
-- pas de correspondance fiable entre l'historique récent et une version
-  déployée.
+- la sonde vérifie la disponibilité et l'intégrité des ressources, mais pas
+  encore l'import complet d'une démo dans un navigateur ;
+- Playwright couvre Firefox et WebKit, mais une campagne Safari sur matériel
+  Apple reste à réaliser ;
+- le corpus local n'est pas encore assez large pour publier des percentiles de
+  performance fiables ;
+- aucun retour d'un utilisateur distinct n'est encore rattaché à un correctif
+  puis à un re-test.
 
 ## Modèle pour la prochaine version
 

@@ -4,7 +4,14 @@ Ce journal suit les changements livrables de RoundLab. La version applicative
 est issue de `web/package.json`. Un numéro n'est considéré comme livré qu'avec
 un commit identifié, une CI réussie et une preuve de déploiement.
 
-## 0.1.41 - À publier
+## 0.1.41 - 17 août 2026
+
+- révision de maintenance : `f1a559b` ;
+- intégration dans `main` : `c479298` ;
+- suivi de livraison : [pull request #23](https://github.com/Lakav/RoundLab/pull/23) ;
+- validation après intégration : [GitHub Actions](https://github.com/Lakav/RoundLab/actions/runs/32021552440) ;
+- publication : [GitHub Pages](https://github.com/Lakav/RoundLab/actions/runs/32021948177) ;
+- contrôle extérieur : [sonde de production](https://github.com/Lakav/RoundLab/actions/runs/32022029821).
 
 ### Ajouté
 
@@ -31,8 +38,9 @@ un commit identifié, une CI réussie et une preuve de déploiement.
 
 ### Validation de la livraison
 
-- commit final, CI et déploiement : consignés dans la pull request de livraison ;
-- premier contrôle planifié : vérifié après activation sur la branche par défaut.
+- les contrôles frontend et Rust ont réussi avant et après l'intégration ;
+- la publication GitHub Pages a réussi ;
+- le formulaire de signalement, le manifeste et le parseur WebAssembly ont été vérifiés depuis l'extérieur du site.
 
 ## 0.1.40 - Candidat du 21 juillet 2026
 

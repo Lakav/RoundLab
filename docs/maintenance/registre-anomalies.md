@@ -28,7 +28,7 @@ d'origine.
 | Paquets élevés | `undici`, `fast-uri`, `ip-address`, `brace-expansion`, `js-yaml`, `nanoid` |
 | Résultat attendu | aucun avis connu après mise à jour et non-régression complète |
 | Sévérité projet | P1, car l'audit `high` bloque la CI et donc tout déploiement |
-| Statut | corrigé dans la candidate `0.1.41` |
+| Statut | corrigé et publié le 17 août 2026 |
 
 ### Reproduction et analyse
 
@@ -48,9 +48,10 @@ solution retenue impose uniquement les versions transitives corrigées dans
 
 Après régénération de `web/pnpm-lock.yaml`, `pnpm audit` retourne **No known
 vulnerabilities found**. Les validations suivantes passent : lint, TypeScript,
-400 tests unitaires avec couverture, build Next statique, génération du
-manifeste `health.json` et audit de l'export. La CI distante reste à obtenir
-après publication de la branche.
+400 tests unitaires avec couverture, génération du site statique, génération du
+manifeste `health.json` et audit de l'export. La pull request #23, la validation
+sur `main`, la publication GitHub Pages et le contrôle public ont ensuite
+réussi.
 
 ## INC-001 - Croissance mémoire pendant le replay
 
@@ -184,7 +185,7 @@ conserver la sortie de l'audit dans la PR ou dans une annexe expurgée.
 | Type | avertissements d'unsoundness avec risque de comportement indéfini |
 | Exposition observée | aucun appel aux fonctions affectées trouvé dans le dépôt |
 | Sévérité projet estimée | P2, correction disponible sans migration majeure |
-| Statut | corrigé dans le lockfile de la version candidate 0.1.41 |
+| Statut | corrigé dans le lockfile publié le 17 août 2026 |
 
 ### Traitement
 
