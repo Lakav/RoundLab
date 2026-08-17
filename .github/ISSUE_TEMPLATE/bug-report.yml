@@ -1,0 +1,94 @@
+name: Signaler une anomalie
+description: Fournir les informations nécessaires pour reproduire et corriger un défaut RoundLab.
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Merci de ne joindre aucune démo contenant des données que tu ne veux pas partager publiquement.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Type d'anomalie
+      options:
+        - Import impossible
+        - Replay incorrect
+        - Statistique incorrecte
+        - Problème de performance
+        - Bug d'interface
+        - Accessibilité
+        - Autre
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Impact constaté
+      description: La priorité finale sera confirmée pendant le triage.
+      options:
+        - Fonction principale bloquée
+        - Fonction dégradée avec contournement
+        - Défaut mineur ou visuel
+        - Je ne sais pas
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version ou date d'utilisation
+      description: Indique la version affichée si elle est disponible, sinon la date et l'heure approximatives.
+      placeholder: "0.1.40 ou 2026-08-03 vers 14:30"
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Navigateur et système
+      placeholder: "Chrome 140, macOS 15"
+    validations:
+      required: true
+
+  - type: textarea
+    id: observed
+    attributes:
+      label: Résultat observé
+      description: Décris précisément le défaut et recopie le message d'erreur éventuel.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Étapes de reproduction
+      placeholder: |
+        1. Ouvrir...
+        2. Importer...
+        3. Observer...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Résultat attendu
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics facultatifs
+      description: Colle les logs obtenus avec Ctrl/Cmd + Shift + D. Vérifie qu'ils ne contiennent aucune donnée sensible.
+      render: shell
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Confidentialité
+      options:
+        - label: J'ai vérifié que ce rapport ne contient aucune démo ou donnée que je ne veux pas rendre publique.
+          required: true

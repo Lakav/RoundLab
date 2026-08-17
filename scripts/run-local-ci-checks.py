@@ -24,8 +24,11 @@ PY_COMPILE_TARGETS = [
     "scripts/audit-web-portability.py",
     "scripts/benchmark-native-parser.py",
     "scripts/check-performance-budgets.py",
+    "scripts/monitor-production.py",
     "scripts/run-local-ci-checks.py",
     "scripts/summarize-browser-benchmark.py",
+    "scripts/write-deployment-manifest.py",
+    "scripts/tests/test_monitor_production.py",
 ]
 
 CI_SAFE_AUDITS = [
@@ -71,6 +74,8 @@ def main() -> int:
     run(["python3", "-m", "py_compile", *PY_COMPILE_TARGETS])
     run_quiet(["python3", "-m", "json.tool", "docs/replay-fixture-coverage.json"])
     run_quiet(["python3", "-m", "json.tool", "parser/reference-demos.json"])
+    run(["python3", "-m", "unittest", "discover", "-s", "scripts/tests", "-p", "test_*.py", "-v"])
+    run(["python3", "scripts/write-deployment-manifest.py"])
     for cmd in CI_SAFE_AUDITS:
         run(cmd)
 

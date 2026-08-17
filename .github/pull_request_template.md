@@ -39,3 +39,14 @@ Commandes et résultats :
 - [ ] export GitHub Pages et base path `/RoundLab` préservés
 - [ ] sélection globale du joueur et comparaison de coéquipiers préservées
 - [ ] une donnée absente ne devient jamais un faux zéro
+
+## Maintenance et livraison
+
+- [ ] identifiant d'anomalie ou issue liée indiqué
+- [ ] entrée ajoutée à `CHANGELOG.md` si le changement est livrable
+- [ ] procédure de retour arrière décrite pour un changement risqué
+- [ ] contrôle post-déploiement prévu
+
+## Preuves
+
+Ajouter les commandes, résultats, captures ou liens GitHub Actions utiles.

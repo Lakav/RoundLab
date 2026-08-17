@@ -58,6 +58,9 @@ jobs:
         working-directory: web
         run: pnpm test:e2e
 
+      - name: Write deployment health manifest
+        run: python3 scripts/write-deployment-manifest.py
+
       - name: Validate static export output
         run: python3 scripts/audit-static-export-artifact.py
 
@@ -106,11 +109,17 @@ jobs:
             scripts/audit-web-portability.py \
             scripts/benchmark-native-parser.py \
             scripts/check-performance-budgets.py \
+            scripts/monitor-production.py \
             scripts/run-local-ci-checks.py \
             scripts/summarize-browser-benchmark.py \
-            scripts/verify-wasm-reproducibility.py
+            scripts/verify-wasm-reproducibility.py \
+            scripts/write-deployment-manifest.py \
+            scripts/tests/test_monitor_production.py
           python3 -m json.tool docs/replay-fixture-coverage.json >/dev/null
           python3 -m json.tool parser/reference-demos.json >/dev/null
+
+      - name: Test production monitoring tooling
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
 
       - name: Validate web portability
         run: python3 scripts/audit-web-portability.py
