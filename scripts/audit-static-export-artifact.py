@@ -7,6 +7,8 @@ intent, but this checks the actual `web/out` artifact that would be hosted.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
 from pathlib import Path
@@ -17,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "web" / "out"
 MAPS_TS = ROOT / "web" / "src" / "lib" / "maps.ts"
 PUBLIC_MAPS = ROOT / "web" / "public" / "cs2lens-maps"
+PACKAGE_JSON = ROOT / "web" / "package.json"
 
 REF_RE = re.compile(r"""(?:href|src)=["']([^"']+)["']""")
 CALIB_RE = re.compile(r"(de_[a-z0-9_]+):\s*\{\s*posX:")
@@ -61,8 +64,10 @@ def assert_required_output(errors: list[str]) -> None:
         raise AssertionError("web/out is missing; run `cd web && pnpm build` before this audit")
     for path in [
         OUT / "index.html",
+        OUT / "feedback" / "index.html",
         OUT / "match" / "index.html",
         OUT / "404.html",
+        OUT / "health.json",
         OUT / "logo.png",
         OUT / "favicon.ico",
         OUT / "icons" / "p90.svg",
@@ -111,6 +116,51 @@ def assert_parser_worker_bundle(errors: list[str]) -> None:
     ]:
         if not any_chunk_contains(chunks, snippet):
             errors.append(f"parser worker bundle is missing runtime signature {snippet!r}")
+
+
+def assert_health_manifest(errors: list[str]) -> None:
+    path = OUT / "health.json"
+    if not path.exists():
+        return
+    try:
+        manifest = json.loads(read(path))
+    except (json.JSONDecodeError, OSError) as exc:
+        errors.append(f"deployment health manifest is invalid JSON: {exc}")
+        return
+
+    package = json.loads(read(PACKAGE_JSON))
+    for key, expected in [
+        ("schemaVersion", 1),
+        ("application", "RoundLab"),
+        ("version", package["version"]),
+    ]:
+        if manifest.get(key) != expected:
+            errors.append(f"deployment health manifest field {key!r} must equal {expected!r}")
+    for key in ["commit", "generatedAt", "routes", "wasm"]:
+        if not manifest.get(key):
+            errors.append(f"deployment health manifest is missing {key!r}")
+
+    wasm = manifest.get("wasm")
+    if not isinstance(wasm, dict):
+        return
+    relative = str(wasm.get("path", ""))
+    relative_path = Path(relative)
+    if not relative or relative_path.is_absolute() or ".." in relative_path.parts:
+        errors.append(f"deployment health manifest has unsafe WASM path {relative!r}")
+        return
+    artifact = OUT / relative_path
+    if not artifact.is_file():
+        errors.append(f"deployment health manifest references missing WASM {relative!r}")
+        return
+    expected_bytes = wasm.get("bytes")
+    if expected_bytes != artifact.stat().st_size:
+        errors.append(
+            f"deployment health manifest WASM size is {expected_bytes!r}, "
+            f"expected {artifact.stat().st_size}"
+        )
+    actual_hash = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    if wasm.get("sha256") != actual_hash:
+        errors.append("deployment health manifest WASM SHA-256 is stale")
 
 
 def assert_html_content(errors: list[str]) -> None:
@@ -191,6 +241,7 @@ def main() -> None:
     errors: list[str] = []
     assert_required_output(errors)
     assert_parser_worker_bundle(errors)
+    assert_health_manifest(errors)
     assert_html_content(errors)
     assert_internal_refs_resolve(errors)
     assert_no_server_routes(errors)

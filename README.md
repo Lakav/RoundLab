@@ -205,6 +205,9 @@ besoin utilisent `ROUNDLAB_TEST_DEMOS` et `ROUNDLAB_BENCHMARK_DEMOS`.
 | Couverture et matrice navigateur | [`docs/testing-coverage.md`](docs/testing-coverage.md) |
 | Sécurité | [`SECURITY.md`](SECURITY.md) |
 | Contribution | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
+| Processus de maintenance | [`docs/maintenance/processus-maintenance.md`](docs/maintenance/processus-maintenance.md) |
+| Registre des anomalies | [`docs/maintenance/registre-anomalies.md`](docs/maintenance/registre-anomalies.md) |
+| Journal des changements | [`CHANGELOG.md`](CHANGELOG.md) |
 
 ## Navigateurs
 
