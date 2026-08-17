@@ -1,6 +1,6 @@
 # Bloc 4 - Maintenir l'application en condition opérationnelle
 
-> Dossier de travail - version 0.1 du 3 août 2026
+> Dossier de travail - mise à jour du 17 août 2026
 
 ## Identification
 
@@ -10,7 +10,7 @@
 | Candidat | À compléter |
 | Certification | Expert en Développement Logiciel - RNCP 39583 |
 | Bloc | Bloc 4 - Maintenir l'application logicielle en condition opérationnelle |
-| Branche de préparation | `codex/bloc-4-maintenance-operationnelle` |
+| Branche de préparation | `codex/bloc-4-criteres-2026-08-17` |
 | Version candidate | `0.1.41` dans `web/package.json` |
 | Application publique | <https://lakav.github.io/RoundLab/> |
 
@@ -51,14 +51,14 @@ fonctionnement du parseur dans le navigateur restent des points critiques.
 
 ## 2. Synthèse par compétence
 
-| Compétence | État au 3 août 2026 | Preuves principales | Manque principal |
+| Compétence | État au 17 août 2026 | Preuves principales | Manque principal |
 | --- | --- | --- | --- |
-| C4.1.1 - Mises à jour des dépendances | Mis en place sur la branche | lockfiles, audits `pnpm` et `cargo`, Dependabot hebdomadaire | premières PR Dependabot après fusion |
-| C4.1.2 - Supervision et alertes | Mis en place sur la branche | sonde planifiée, manifeste, contrôle WASM, issue automatique | premiers runs après déploiement |
-| C4.2.1 - Consignation des anomalies | Outillage complet, preuve d'usage à joindre | page `/feedback`, formulaire GitHub, registre local | première issue utilisateur réelle |
+| C4.1.1 - Mises à jour des dépendances | Démontré | lockfiles, audits `pnpm` et `cargo`, PR Dependabot, correction B4-005 de 16 à 0 avis npm | CI distante de la branche |
+| C4.1.2 - Supervision et alertes | Implémenté et validé localement | sonde planifiée, manifeste, contrôle WASM, issue automatique | premier run distant après déploiement |
+| C4.2.1 - Consignation des anomalies | Démontré par le registre et l'incident B4-005 | page `/feedback`, formulaire GitHub, registre local | première issue utilisateur réelle pour C4.3.3 |
 | C4.2.2 - Correctif et déploiement continu | Démontré | commits correctifs, tests, CI, déploiement et rollback distants | CI et déploiement de la version 0.1.41 |
 | C4.3.1 - Axes d'amélioration | Démontré et premières priorités réalisées | recommandations chiffrées, supervision et Dependabot | mesures de production à collecter |
-| C4.3.2 - Journal des versions | Mis en place sur la branche | `CHANGELOG.md`, version 0.1.41, historique distant | tag de livraison après validation |
+| C4.3.2 - Journal des versions | Démontré par les révisions déployées et renforcé | `CHANGELOG.md`, version 0.1.41, historique distant | livraison de 0.1.41 après validation |
 | C4.3.3 - Collaboration support/client | Processus prêt, cas réel absent | formulaire, fiche de collaboration, diagnostics | échange réel et validation par un tiers |
 
 ## 3. C4.1.1 - Gérer les mises à jour des dépendances
@@ -95,6 +95,13 @@ n'a été trouvé dans le dépôt, mais des versions corrigées existaient. Le
 lockfile a donc été mis à jour vers `anyhow` 1.0.103 et `memmap2` 0.9.11.
 `cargo audit` ne remonte plus aucun avis après la mise à jour.
 
+Le 17 août 2026, `pnpm audit` signalait 16 avis, dont 6 élevés. L'incident
+`B4-005` consigne les paquets et les seuils corrigés. Des surcharges transitives
+ciblées ont été ajoutées dans `web/pnpm-workspace.yaml`, puis le lockfile a été
+régénéré. Le contrôle final retourne **0 vulnérabilité connue** ; lint, typage,
+400 tests unitaires avec couverture, build statique et audit de l'artefact
+passent après la modification.
+
 ### 3.2 Processus proposé
 
 Le processus détaillé se trouve dans
@@ -114,11 +121,10 @@ est la suivante :
 Cette cadence devient une règle de projet avec ce document, mais son exécution
 régulière devra être prouvée par des tickets ou des PR datés.
 
-La branche ajoute `.github/dependabot.yml`. Après fusion dans la branche par
-défaut, Dependabot contrôlera chaque lundi les dépendances npm dans `web/`,
-Cargo dans `parser/` et les actions GitHub dans `.github/workflows/`. Les
-propositions restent des pull requests : aucune mise à jour n'est fusionnée
-automatiquement sans les contrôles du projet.
+Dependabot est déjà actif et a ouvert plusieurs pull requests. Il contrôle
+chaque lundi les dépendances npm dans `web/` et Cargo dans `parser/`, puis les
+actions GitHub chaque mois. Les propositions restent des pull requests : aucune
+mise à jour n'est fusionnée automatiquement sans les contrôles du projet.
 
 ### 3.3 Preuves à présenter au jury
 
@@ -127,7 +133,7 @@ automatiquement sans les contrôles du projet.
   `parser/Cargo.lock` ;
 - diff et contrôle CI du commit `815fd82` ;
 - diff de `parser/Cargo.lock` et audit Rust sans avis pour B4-004 ;
-- première PR de revue périodique créée selon le nouveau processus.
+- PR Dependabot existantes et incident `B4-005` avec audit avant/après.
 
 ## 4. C4.1.2 - Concevoir un système de supervision et d'alerte
 
@@ -171,7 +177,7 @@ La sonde applique un avertissement au-delà de 2 secondes et un échec au-delà 
 5 secondes. Ces seuils sont des valeurs initiales à réévaluer après une semaine
 de mesures.
 
-Le 3 août 2026 avant déploiement de cette branche, l'accueil et `/feedback/`
+Le 17 août 2026 avant déploiement de cette branche, l'accueil et `/feedback/`
 répondaient en HTTP 200, tandis que `/health.json` répondait en HTTP 404. C'est
 normal : le manifeste n'existe en production qu'après fusion et nouveau
 déploiement. La supervision n'est donc pas encore présentable comme active tant
@@ -196,7 +202,8 @@ flowchart LR
     I --> A
 ```
 
-La sonde est implémentée et testée localement. Son activation réelle dépend de
+La sonde est implémentée et testée sur l'export réel : accueil, feedback,
+manifeste et intégrité WASM passent localement. Son activation réelle dépend de
 la fusion dans `main` et du déploiement du manifeste.
 
 ## 5. C4.2.1 - Consigner les anomalies
@@ -322,14 +329,14 @@ Si aucun client ni support n'a participé, il faut le dire au jury. Une issue
 créée uniquement par le développeur ne prouve pas cette collaboration.
 
 La fiche [`fiche-collaboration-support.md`](fiche-collaboration-support.md)
-prépare la collecte de cette preuve. Au 3 août 2026, l'API GitHub ne retourne
+prépare la collecte de cette preuve. Au 17 août 2026, l'API GitHub ne retourne
 aucune issue dans le dépôt et les pull requests existantes ne contiennent aucune
 revue externe. Le critère reste donc humainement non couvert malgré l'outillage.
 
 ## 10. Annexes à produire
 
 - [ ] identité du candidat et contexte de réalisation ;
-- [ ] capture d'un audit de dépendances avant et après correction ;
+- [x] résultat d'audit avant/après consigné dans B4-005 ;
 - [x] liens de matrices CI réussies historiques ;
 - [x] liens de déploiement et rollback historiques ;
 - [ ] résultats de plusieurs exécutions d'une future sonde de production ;

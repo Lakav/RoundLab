@@ -24,6 +24,7 @@ associés.
 - tests locaux de la sonde et validation du manifeste dans la CI.
 - correction de `RUSTSEC-2026-0190` et `RUSTSEC-2026-0186` dans le lockfile
   Rust.
+- correction de 16 avis npm, dont 6 élevés, avec audit final à zéro avis connu.
 
 La date, le commit, le run CI, le déploiement et le premier contrôle distant
 restent à compléter après publication. Ils ne doivent pas être anticipés.
@@ -53,7 +54,7 @@ restent à compléter après publication. Ils ne doivent pas être anticipés.
 
 ### Limites connues
 
-- absence de supervision périodique du site déployé ;
+- supervision périodique prête mais pas encore active sur la branche par défaut ;
 - validation Safari et Firefox incomplète ;
 - absence de corpus assez large pour publier des percentiles fiables ;
 - pas de correspondance fiable entre l'historique récent et une version

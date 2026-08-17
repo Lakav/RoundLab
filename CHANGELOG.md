@@ -21,6 +21,9 @@ un commit identifié, une CI réussie et une preuve de déploiement.
 - conservation pendant 90 jours des rapports produits par la sonde ;
 - vérification locale automatisée du comportement de la sonde ;
 - ajout d'une checklist de maintenance aux pull requests.
+- correction des 16 avis npm observés le 17 août 2026, dont 6 de niveau élevé,
+  par verrouillage des versions transitives corrigées ; l'audit final ne remonte
+  plus aucune vulnérabilité connue ;
 - correction de `RUSTSEC-2026-0190` par mise à jour de `anyhow` de 1.0.102 à
   1.0.103 ;
 - correction de `RUSTSEC-2026-0186` par mise à jour de `memmap2` de 0.9.10 à
@@ -32,7 +35,8 @@ un commit identifié, une CI réussie et une preuve de déploiement.
 - CI : à compléter après exécution sur GitHub ;
 - déploiement : à compléter après fusion dans `main` ;
 - premier contrôle planifié : à compléter après activation sur la branche par
-  défaut.
+  défaut. Le contrôle local complet du 17 août 2026 est consigné dans
+  `docs/bloc-4/rapport-preuves-2026-08-17.md`.
 
 ## 0.1.40 - Candidat du 21 juillet 2026
 

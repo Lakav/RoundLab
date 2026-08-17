@@ -12,11 +12,45 @@ au lieu d'être inventée.
 | B4-002 | 22/07/2026 | échec d'import d'une très grande démo | P1 | corrigée | `c995760` |
 | B4-003 | 30/07/2026 | dépendances web vulnérables | indéterminée | corrigée selon le commit | `815fd82` |
 | B4-004 | 03/08/2026 | deux dépendances Rust affectées par des avis d'unsoundness | P2 | corrigée sur la branche | `Cargo.lock` |
+| B4-005 | 17/08/2026 | 16 avis npm, dont 6 élevés | P1 | corrigée sur la branche | `pnpm-workspace.yaml`, `pnpm-lock.yaml` |
 
 La sévérité de B4-001 et B4-002 est une estimation faite pour ce dossier à
 partir de l'impact visible. Elle n'était pas enregistrée lors du traitement.
 La sévérité de B4-003 est impossible à déterminer sans l'avis de sécurité
 d'origine.
+
+## B4-005 - Avis npm détectés le 17 août 2026
+
+| Champ | Contenu |
+| --- | --- |
+| Source | `pnpm audit` exécuté localement le 17 août 2026 |
+| Résultat initial | 16 avis : 1 faible, 9 modérés et 6 élevés |
+| Paquets élevés | `undici`, `fast-uri`, `ip-address`, `brace-expansion`, `js-yaml`, `nanoid` |
+| Résultat attendu | aucun avis connu après mise à jour et non-régression complète |
+| Sévérité projet | P1, car l'audit `high` bloque la CI et donc tout déploiement |
+| Statut | corrigé sur `codex/bloc-4-criteres-2026-08-17` |
+
+### Reproduction et analyse
+
+1. Depuis `web/`, exécuter `pnpm audit --audit-level high` sur le lockfile de
+   `main` au commit `53a918e`.
+2. Constater les six avis élevés dans des dépendances transitives de Next,
+   shadcn, ESLint, Vitest et PostCSS.
+3. Vérifier les versions corrigées indiquées par l'audit.
+
+Les paquets concernés ne sont pas déclarés directement par RoundLab. Une mise à
+jour des dépendances parentes dans leurs plages existantes ne suffisait pas. La
+solution retenue impose uniquement les versions transitives corrigées dans
+`web/pnpm-workspace.yaml`, avec une exception explicite au délai de maturité de
+14 jours pour ces correctifs de sécurité.
+
+### Correctif et non-régression
+
+Après régénération de `web/pnpm-lock.yaml`, `pnpm audit` retourne **No known
+vulnerabilities found**. Les validations suivantes passent : lint, TypeScript,
+400 tests unitaires avec couverture, build Next statique, génération du
+manifeste `health.json` et audit de l'export. La CI distante reste à obtenir
+après publication de la branche.
 
 ## B4-001 - Croissance mémoire pendant le replay
 
@@ -156,7 +190,7 @@ conserver la sortie de l'audit dans la PR ou dans une annexe expurgée.
 
 Les avis indiquent des corrections disponibles à partir de `anyhow` 1.0.103 et
 `memmap2` 0.9.11. Les deux dépendances ont été mises à jour précisément vers
-ces versions. Les 100 tests Rust, `cargo fmt`, Clippy, la cible WASM et
+ces versions. Les 50 tests Rust actuels, `cargo fmt`, Clippy, la cible WASM et
 `cargo audit` passent après la modification.
 
 ### Analyse de risque

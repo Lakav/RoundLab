@@ -23,7 +23,6 @@ PY_COMPILE_TARGETS = [
     "scripts/audit-static-export-artifact.py",
     "scripts/audit-web-portability.py",
     "scripts/benchmark-native-parser.py",
-    "scripts/build-bloc4-pdf.py",
     "scripts/check-performance-budgets.py",
     "scripts/monitor-production.py",
     "scripts/run-local-ci-checks.py",
