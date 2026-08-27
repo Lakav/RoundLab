@@ -688,6 +688,7 @@ describe("MapRenderer cache and cleanup", () => {
       layers.utilities,
       layers.bomb,
       layers.players,
+      layers.labels,
       layers.deaths,
     ]);
 
