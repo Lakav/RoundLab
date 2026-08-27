@@ -8,6 +8,7 @@ import {
   fireRadiusWorld,
 } from "@/lib/utility-geometry";
 import { teamColor, teamDarkColor } from "./map-renderer-player";
+import { REPLAY_COLORS } from "./map-renderer-colors";
 import {
   projectileTypeToEffect,
   sampleProjectiles,
@@ -404,7 +405,15 @@ export function drawEffectVisual(
     const clearAlpha = smokeBlastClearAlpha(effect, contextualEffects, time);
     graphics
       .circle(position.x, position.y, radius)
-      .fill({ color: 0x737983, alpha: 0.31 * alpha * clearAlpha });
+      .fill({ color: 0x737983, alpha: 0.31 * alpha * clearAlpha })
+      // A crisp edge answers the question the blur cannot: where the smoke
+      // actually stops.
+      .circle(position.x, position.y, radius)
+      .stroke({
+        color: REPLAY_COLORS.smoke,
+        width: 1.6,
+        alpha: 0.75 * alpha * clearAlpha,
+      });
     for (let index = 0; index < 9; index++) {
       const angle = effectRandom(effect, index) * Math.PI * 2;
       const distance =
@@ -503,7 +512,10 @@ export function drawEffectVisual(
     const color = teamColor(effect.team);
     graphics
       .circle(position.x, position.y, radius)
-      .fill({ color: teamDarkColor(effect.team), alpha: 0.32 * alpha });
+      .fill({ color: teamDarkColor(effect.team), alpha: 0.32 * alpha })
+      // Dashes separate fire from the solid HE ring even in greyscale.
+      .circle(position.x, position.y, radius)
+      .stroke({ color: REPLAY_COLORS.danger, width: 1.6, alpha: 0.8 * alpha });
     if (age < 0.7) {
       const ignition = easeOutCubic(age / 0.7);
       graphics

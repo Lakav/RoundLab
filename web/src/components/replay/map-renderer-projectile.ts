@@ -13,6 +13,7 @@ import type {
 } from "@/lib/replay-store";
 import { writeDebugLog } from "@/lib/api";
 import { teamColor } from "./map-renderer-player";
+import { REPLAY_COLORS } from "./map-renderer-colors";
 
 export const PROJECTILE_EFFECT_HANDOFF_LOOKBACK = 1.75;
 
@@ -808,12 +809,12 @@ export function drawProjectileVisual(
 
 export function habitTrailColor(type: string): number {
   const effect = projectileTypeToEffect(type);
-  if (effect === "smoke") return 0x9ca3af;
-  if (effect === "flash") return 0xfef3c7;
-  if (effect === "he") return 0xf97316;
-  if (effect === "fire") return 0xef4444;
-  if (effect === "decoy") return 0xa78bfa;
-  return 0x6fea76;
+  if (effect === "smoke") return REPLAY_COLORS.smoke;
+  if (effect === "flash") return REPLAY_COLORS.flash;
+  if (effect === "he") return REPLAY_COLORS.he;
+  if (effect === "fire") return REPLAY_COLORS.danger;
+  if (effect === "decoy") return REPLAY_COLORS.decoy;
+  return REPLAY_COLORS.utility;
 }
 
 export function sampleHabitProjectile(

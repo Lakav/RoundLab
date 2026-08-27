@@ -1,5 +1,11 @@
 import { Container, Graphics, Sprite, Text, type Texture } from "pixi.js";
 import { iconPathFor } from "@/lib/icons";
+import {
+  REPLAY_ALPHA,
+  REPLAY_COLORS,
+  teamColor,
+  teamDarkColor,
+} from "./map-renderer-colors";
 import type {
   Frame,
   PlayerId,
@@ -11,7 +17,8 @@ import type {
   HabitReplayRound,
 } from "@/lib/replay-store";
 
-const BOMB_CARRIER_COLOR = 0xef4444;
+const BOMB_MARKER_COLOR = REPLAY_COLORS.danger;
+const HP_RING_RADIUS = 12.5;
 const SHOOT_ROTATION_OFFSET = 0;
 const PLAYER_ARROW_TIP_OFFSET = 9;
 
@@ -21,6 +28,7 @@ export type PlayerSprite = {
   container: Container;
   dot: Graphics;
   hpRing: Graphics;
+  deadMark: Graphics;
   arrow: Graphics;
   arrowRotator: Container;
   muzzleFlash: Graphics;
@@ -106,17 +114,7 @@ export function isPistolWeapon(name?: string): boolean {
   );
 }
 
-export function teamColor(team?: number): number {
-  if (team === 3) return 0x5ab0ff;
-  if (team === 2) return 0xf5b042;
-  return 0xe5e7eb;
-}
-
-export function teamDarkColor(team?: number): number {
-  if (team === 3) return 0x195066;
-  if (team === 2) return 0x795322;
-  return 0x303030;
-}
+export { teamColor, teamDarkColor };
 
 export function playerArrowRotation(yaw: number): number {
   return (-yaw * Math.PI) / 180;
@@ -143,7 +141,7 @@ export function displayName(name?: string): string {
   return name === "L999" ? "grosNoob" : name ?? "";
 }
 
-function playerLabel(text: string, fill: number): Text {
+function playerLabel(text: string, fill: number, halo = false): Text {
   const label = new Text({
     text,
     style: {
@@ -151,11 +149,15 @@ function playerLabel(text: string, fill: number): Text {
       fontSize: 44,
       fontWeight: "600",
       fill,
+      ...(halo
+        ? { stroke: { color: REPLAY_COLORS.ink, width: 11, join: "round" as const } }
+        : {}),
     },
     resolution: Math.max(2, window.devicePixelRatio || 1),
   });
   label.anchor.set(0.5, 0.5);
-  label.scale.set(0.24);
+  // 44 * 0.273 ≈ 12px on screen — the readability floor for the radar.
+  label.scale.set(0.273);
   return label;
 }
 
@@ -168,20 +170,22 @@ export function createPlayerSprite(layer: Container, name?: string): PlayerSprit
 
   const labelBadge = new Container();
   labelBadge.addChild(new Graphics());
-  const labelFill = playerLabel(displayName(name), 0x121212);
-  const labelEmpty = playerLabel(labelFill.text, 0xffffff);
+  // `labelFill` is the dark outline drawn behind `labelEmpty`, which carries the
+  // readable text. The halo keeps names legible over any radar artwork without
+  // a badge rectangle competing with the marker.
+  const labelFill = playerLabel(displayName(name), REPLAY_COLORS.ink, true);
+  const labelEmpty = playerLabel(labelFill.text, REPLAY_COLORS.label);
   const labelFillMask = new Graphics();
   const labelEmptyMask = new Graphics();
-  labelFill.mask = labelFillMask;
-  labelEmpty.mask = labelEmptyMask;
   labelBadge.addChild(labelFillMask);
   labelBadge.addChild(labelEmptyMask);
-  labelBadge.addChild(labelEmpty);
   labelBadge.addChild(labelFill);
-  labelBadge.position.set(0, -13);
+  labelBadge.addChild(labelEmpty);
+  labelBadge.position.set(0, -19);
 
   const dot = new Graphics();
   const hpRing = new Graphics();
+  const deadMark = new Graphics();
   const arrowRotator = new Container();
   const arrow = new Graphics();
   const muzzleFlash = new Graphics();
@@ -208,8 +212,9 @@ export function createPlayerSprite(layer: Container, name?: string): PlayerSprit
   container.addChild(held);
   container.addChild(labelBadge);
   container.addChild(dot);
-  container.addChild(arrowRotator);
   container.addChild(hpRing);
+  container.addChild(arrowRotator);
+  container.addChild(deadMark);
   container.addChild(flashArc);
   layer.addChild(container);
 
@@ -217,6 +222,7 @@ export function createPlayerSprite(layer: Container, name?: string): PlayerSprit
     container,
     dot,
     hpRing,
+    deadMark,
     arrow,
     arrowRotator,
     muzzleFlash,
@@ -286,13 +292,15 @@ export function updatePlayerSprite({
   recentFire,
   loadTexture,
 }: UpdatePlayerSpriteOptions): void {
-  const baseColor = carriesBomb ? BOMB_CARRIER_COLOR : teamColor(player.team);
+  const baseColor = teamColor(player.team);
   const alive = player.hp > 0;
   const hpPct = clamp01(player.hp / 100);
   const markerRadius = 8;
 
   sprite.dot.clear();
   drawDirectionalPlayerArrow(sprite.arrow, baseColor);
+  // The cross replaces the arrow on death, rather than stacking on top of it.
+  sprite.arrowRotator.visible = alive;
 
   sprite.muzzleFlash.clear();
   if (alive && recentFire && !isUtilityWeapon(recentFire.weapon)) {
@@ -306,42 +314,57 @@ export function updatePlayerSprite({
     sprite.arrowRotator.scale.set(1);
   }
 
+  // Health rides its own ring so the name stays a name at every HP value, and
+  // the bomb gets a dashed ring instead of overwriting the player's team colour.
   sprite.hpRing.clear();
+  if (alive) {
+    sprite.hpRing
+      .circle(0, 0, HP_RING_RADIUS)
+      .stroke({ color: REPLAY_COLORS.ink, width: 3.5, alpha: REPLAY_ALPHA.outline })
+      .circle(0, 0, HP_RING_RADIUS)
+      .stroke({ color: baseColor, width: 2.2, alpha: REPLAY_ALPHA.ringTrack });
+    if (hpPct > 0) {
+      sprite.hpRing
+        .arc(0, 0, HP_RING_RADIUS, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * hpPct)
+        .stroke({ color: baseColor, width: 2.2, alpha: REPLAY_ALPHA.ring, cap: "round" });
+    }
+  }
+  if (carriesBomb) {
+    sprite.hpRing
+      .circle(0, 0, HP_RING_RADIUS + 4)
+      .stroke({
+        color: BOMB_MARKER_COLOR,
+        width: 1.4,
+        alpha: alive ? 0.55 : REPLAY_ALPHA.faint,
+      });
+  }
+
+  // A dead player reads as a different shape, not merely a fainter one.
+  sprite.deadMark.clear();
+  if (!alive) {
+    sprite.deadMark
+      .moveTo(-7, -7).lineTo(7, 7)
+      .moveTo(7, -7).lineTo(-7, 7)
+      .stroke({
+        color: baseColor,
+        width: 2.4,
+        alpha: REPLAY_ALPHA.dead,
+        cap: "round",
+      });
+  }
 
   const badgeBg = sprite.labelBadge.getChildAt(0) as Graphics;
-  const labelWidth = sprite.labelFill.width;
-  const padX = 4;
-  const padY = 1.5;
-  const badgeWidth = labelWidth + padX * 2;
-  const badgeBodyHeight = 8;
-  const badgeX = -badgeWidth / 2;
-  const badgeY = -badgeBodyHeight / 2 - padY + 1;
-  const badgeHeight = badgeBodyHeight + padY;
-  const filledWidth = badgeWidth * hpPct;
-  const emptyWidth = badgeWidth - filledWidth;
   badgeBg.clear();
-  badgeBg.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 3)
-    .fill({ color: 0x1d1f1f, alpha: alive ? 0.88 : 0.45 });
-  badgeBg.roundRect(badgeX, badgeY, filledWidth, badgeHeight, 3)
-    .fill({ color: baseColor, alpha: alive ? 0.95 : 0.35 });
-  badgeBg.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 3)
-    .stroke({ color: 0x000000, width: 1, alpha: alive ? 0.55 : 0.3 });
   sprite.labelFill.position.set(0, 0);
   sprite.labelEmpty.position.set(0, 0);
-  sprite.labelFill.alpha = alive ? 1 : 0.45;
-  sprite.labelEmpty.alpha = alive ? 1 : 0.45;
-  sprite.labelEmpty.style.fill = baseColor;
+  sprite.labelFill.alpha = alive ? REPLAY_ALPHA.full : REPLAY_ALPHA.dead;
+  sprite.labelEmpty.alpha = alive ? REPLAY_ALPHA.full : REPLAY_ALPHA.dead;
+  sprite.labelEmpty.style.fill = alive
+    ? REPLAY_COLORS.label
+    : REPLAY_COLORS.labelDim;
 
   sprite.labelFillMask.clear();
   sprite.labelEmptyMask.clear();
-  if (filledWidth > 0) {
-    sprite.labelFillMask.rect(badgeX, badgeY, filledWidth, badgeHeight)
-      .fill({ color: 0xffffff });
-  }
-  if (emptyWidth > 0) {
-    sprite.labelEmptyMask.rect(badgeX + filledWidth, badgeY, emptyWidth, badgeHeight)
-      .fill({ color: 0xffffff });
-  }
 
   sprite.flashArc.clear();
   if (

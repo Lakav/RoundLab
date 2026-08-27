@@ -536,8 +536,10 @@ describe("MapRenderer bomb and player state", () => {
     expect(logic.playerCarriesBomb(player())).toBe(false);
     expect(logic.isKnifeWeapon("bayonet")).toBe(true);
     expect(logic.isPistolWeapon("usp_silencer")).toBe(true);
-    expect(logic.teamColor(3)).toBe(0x5ab0ff);
-    expect(logic.teamColor(2)).toBe(0xf5b042);
+    // Canvas team colours are derived from THEME so the radar and the HUD
+    // cannot drift apart again.
+    expect(logic.teamColor(3)).toBe(0x47cbff);
+    expect(logic.teamColor(2)).toBe(0xffaf47);
     expect(logic.teamColor()).toBe(0xe5e7eb);
     expect(logic.teamDarkColor(3)).toBe(0x195066);
     expect(logic.teamDarkColor(2)).toBe(0x795322);
