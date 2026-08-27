@@ -19,7 +19,7 @@ export function ReportHero({
   const highestScore = Math.max(...displayedTeams.map((team) => team.score ?? -1));
 
   return (
-    <header className="report-hero relative min-h-[11rem] overflow-hidden rounded-xl border border-white/8 bg-[#121515] px-5 py-6 shadow-[0_24px_80px_rgba(0,0,0,0.3)] sm:px-8 sm:py-7">
+    <header className="report-hero relative min-h-[11rem] overflow-hidden rounded-xl border border-[var(--rl-border)] bg-[#121515] px-5 py-6 shadow-[0_24px_80px_rgba(0,0,0,0.3)] sm:px-8 sm:py-7">
       {reportMapAsset && (
         <div
           aria-hidden="true"
@@ -32,17 +32,17 @@ export function ReportHero({
       <div className="relative grid min-h-[7.5rem] gap-7 md:grid-cols-[1fr_auto_1fr] md:items-center">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-emerald-200/15 bg-emerald-200/[0.07] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.15em] text-emerald-200">
+            <span className="rounded-full border border-emerald-200/15 bg-emerald-200/[0.07] px-2.5 py-1 text-xs font-bold uppercase tracking-[0.15em] text-[var(--rl-positive)]">
               Analyse terminée
             </span>
-            <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--rl-fg-dim)]">
               {spatial?.map ? spatial.map.replace(/^de_/, "").toUpperCase() : "Rapport de match"}
             </span>
           </div>
           <h1 className="mt-3 text-[1.75rem] font-semibold tracking-[-0.035em] text-white sm:text-3xl">
             Rapport du match
           </h1>
-          <p className="mt-2 text-xs text-neutral-500">
+          <p className="mt-2 text-xs text-[var(--rl-fg-dim)]">
             {analysis.rounds.length} round{analysis.rounds.length > 1 ? "s" : ""} ·{" "}
             {analysis.players.length} joueurs analysés
           </p>
@@ -50,19 +50,19 @@ export function ReportHero({
         <div className="flex items-center justify-start gap-5 rounded-xl border border-white/[0.07] bg-black/20 px-6 py-4 backdrop-blur-sm md:justify-center">
           {displayedTeams.map((team, index) => (
             <div key={team.logicalTeam} className="contents">
-              {index > 0 && <span className="text-xl font-light text-neutral-700">:</span>}
+              {index > 0 && <span className="text-xl font-light text-[var(--rl-fg-dim)]">:</span>}
               <div className={index === 1 ? "text-right" : undefined}>
                 <div className={[
                   "text-5xl font-semibold leading-none tracking-[-0.06em] tabular-nums",
-                  (team.score ?? -1) === highestScore ? "text-emerald-300" : "text-neutral-200",
+                  (team.score ?? -1) === highestScore ? "text-[var(--rl-positive)]" : "text-[var(--rl-fg)]",
                 ].join(" ")}>
                   {team.score ?? "—"}
                 </div>
-                <div className="mt-2 max-w-36 truncate text-[11px] font-semibold text-neutral-400">
+                <div className="mt-2 max-w-36 truncate text-[13px] font-semibold text-[var(--rl-fg-muted)]">
                   <span
                     className={[
                       "mr-1.5 inline-block size-1.5 rounded-full align-middle",
-                      index === 0 ? "bg-sky-300" : "bg-amber-300",
+                      index === 0 ? "bg-[var(--rl-ct)]" : "bg-[var(--rl-t)]",
                     ].join(" ")}
                   />
                   {teamLabel(team.name)}
@@ -72,17 +72,17 @@ export function ReportHero({
           ))}
         </div>
         <div className="hidden justify-self-end text-right md:block">
-          <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-neutral-600">
+          <div className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--rl-fg-dim)]">
             État des données
           </div>
-          <div className="mt-2 text-sm font-semibold text-neutral-200">
+          <div className="mt-2 text-sm font-semibold text-[var(--rl-fg)]">
             {completeScore
               ? "Score complet"
               : displayedTeams.every((team) => team.score !== null)
                 ? "Score observé"
                 : "Score incomplet"}
           </div>
-          <div className="mt-1 text-[11px] text-neutral-500">Calculé localement</div>
+          <div className="mt-1 text-[13px] text-[var(--rl-fg-dim)]">Calculé localement</div>
         </div>
       </div>
     </header>

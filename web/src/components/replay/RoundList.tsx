@@ -25,7 +25,7 @@ export function RoundList() {
             className={cn(
               "relative flex h-6 min-w-9 items-center justify-center rounded-[3px] border px-2 font-semibold transition-colors",
               active
-                ? "border-white/15 bg-white/[0.08] opacity-100"
+                ? "border-[var(--rl-border-strong)] bg-white/[0.08] opacity-100"
                 : "border-transparent opacity-55 hover:border-white/[0.08] hover:bg-white/[0.04] hover:opacity-100"
             )}
             style={{ color }}

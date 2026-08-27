@@ -134,14 +134,14 @@ export function StoragePanel({
     <section className="rounded-xl border border-white/[0.08] bg-[#121514]/85 px-5 py-5 shadow-[0_18px_50px_rgba(0,0,0,0.16)]">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.035]">
-            <Database className="size-4 text-emerald-200/85" />
+          <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg border border-[var(--rl-border)] bg-white/[0.035]">
+            <Database className="size-4 text-[var(--rl-positive)]" />
           </div>
           <div>
-            <h2 className="text-sm font-semibold text-neutral-100">Stockage local</h2>
-            <p className="mt-1 text-xs text-neutral-400">{persistenceLabel}</p>
+            <h2 className="text-sm font-semibold text-[var(--rl-fg)]">Stockage local</h2>
+            <p className="mt-1 text-xs text-[var(--rl-fg-muted)]">{persistenceLabel}</p>
             {status && (
-              <p className="mt-1 text-[11px] text-neutral-400">
+              <p className="mt-1 text-[13px] text-[var(--rl-fg-muted)]">
                 {formatBytes(status.usageBytes)} utilisés sur {formatBytes(status.quotaBytes)} disponibles
               </p>
             )}
@@ -178,19 +178,19 @@ export function StoragePanel({
           />
         </div>
       </div>
-      <p className="mt-3 text-[11px] leading-5 text-neutral-400">
+      <p className="mt-3 text-[13px] leading-5 text-[var(--rl-fg-muted)]">
         Les données restent sur cet appareil. Une sauvegarde est créée en mémoire avant le téléchargement ; pour une grosse bibliothèque, exporte plutôt les matchs un par un.
       </p>
-      {message && <p role="status" className="mt-3 text-xs text-emerald-200">{message}</p>}
-      {error && <p role="alert" className="mt-3 text-xs text-red-200">{error}</p>}
+      {message && <p role="status" className="mt-3 text-xs text-[var(--rl-positive)]">{message}</p>}
+      {error && <p role="alert" className="mt-3 text-xs text-[var(--rl-critical)]">{error}</p>}
       {pendingBackup && (
         <div role="dialog" aria-label="Conflits de restauration" className="mt-4 rounded-lg border border-amber-200/20 bg-amber-100/[0.04] p-4">
-          <p className="text-xs font-semibold text-amber-100">{conflicts.length} match(s) existent déjà.</p>
-          <p className="mt-1 text-[11px] leading-5 text-neutral-400">Choisis explicitement quoi faire. Aucun match n’a encore été écrit.</p>
+          <p className="text-xs font-semibold text-[var(--rl-warning)]">{conflicts.length} match(s) existent déjà.</p>
+          <p className="mt-1 text-[13px] leading-5 text-[var(--rl-fg-muted)]">Choisis explicitement quoi faire. Aucun match n’a encore été écrit.</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button size="sm" variant="outline" disabled={busy} onClick={() => void restore(pendingBackup, "duplicate")}>Dupliquer</Button>
             <Button size="sm" variant="outline" disabled={busy} onClick={() => void restore(pendingBackup, "skip")}>Ignorer les conflits</Button>
-            <Button size="sm" className="bg-red-500/20 text-red-100 hover:bg-red-500/30" disabled={busy} onClick={() => void restore(pendingBackup, "replace")}>Remplacer</Button>
+            <Button size="sm" className="bg-[var(--rl-critical)]/20 text-[var(--rl-critical)] hover:bg-[var(--rl-critical)]/30" disabled={busy} onClick={() => void restore(pendingBackup, "replace")}>Remplacer</Button>
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setPendingBackup(null); setConflicts([]); }}>Annuler</Button>
           </div>
         </div>

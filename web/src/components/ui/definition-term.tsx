@@ -107,7 +107,7 @@ export function DefinitionTerm({
           <span
             tabIndex={0}
             className={[
-              "cursor-help decoration-neutral-500/70 underline decoration-dotted underline-offset-[3px] outline-none transition-colors hover:text-neutral-100 focus-visible:text-neutral-100",
+              "cursor-help decoration-neutral-500/70 underline decoration-dotted underline-offset-[3px] outline-none transition-colors hover:text-[var(--rl-fg)] focus-visible:text-[var(--rl-fg)]",
               className,
             ].join(" ")}
           />
@@ -118,7 +118,7 @@ export function DefinitionTerm({
       <TooltipContent
         side="top"
         sideOffset={8}
-        className="max-w-[19rem] border border-white/10 bg-[#eef2ef] px-3 py-2 text-[12px] leading-relaxed text-[#17201d] shadow-2xl"
+        className="max-w-[19rem] border border-[var(--rl-border)] bg-[#eef2ef] px-3 py-2 text-[12px] leading-relaxed text-[#17201d] shadow-2xl"
       >
         {explanation}
       </TooltipContent>

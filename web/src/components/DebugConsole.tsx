@@ -133,11 +133,11 @@ export function DebugConsole({ isOpen, onClose }: { isOpen: boolean; onClose: ()
   if (!isOpen) return null;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-[100] border-t border-white/10 bg-[#0f1010]">
-      <div className="flex items-center justify-between border-b border-white/10 px-4 py-2">
+    <div className="fixed bottom-0 left-0 right-0 z-[100] border-t border-[var(--rl-border)] bg-[#0f1010]">
+      <div className="flex items-center justify-between border-b border-[var(--rl-border)] px-4 py-2">
         <button
           onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-400 hover:text-neutral-200"
+          className="flex items-center gap-2 text-[13px] font-semibold uppercase tracking-wider text-[var(--rl-fg-muted)] hover:text-[var(--rl-fg)]"
         >
           {expanded ? (
             <ChevronDown className="size-3" />
@@ -150,62 +150,62 @@ export function DebugConsole({ isOpen, onClose }: { isOpen: boolean; onClose: ()
           size="icon-sm"
           variant="ghost"
           onClick={onClose}
-          className="text-neutral-500 hover:text-neutral-300"
+          className="text-[var(--rl-fg-dim)] hover:text-[var(--rl-fg-muted)]"
         >
           <X className="size-4" />
         </Button>
       </div>
 
       {expanded && (
-        <div className="max-h-96 overflow-y-auto bg-black/30 font-mono text-[10px] text-neutral-400">
-          <div className="border-b border-white/10 bg-black/40 px-3 py-2">
-            <div className="text-[11px] font-semibold text-neutral-300">Parser State</div>
-            <div className="mt-1 space-y-1 text-[9px]">
+        <div className="max-h-96 overflow-y-auto bg-black/30 font-mono text-xs text-[var(--rl-fg-muted)]">
+          <div className="border-b border-[var(--rl-border)] bg-black/40 px-3 py-2">
+            <div className="text-[13px] font-semibold text-[var(--rl-fg-muted)]">Parser State</div>
+            <div className="mt-1 space-y-1 text-xs">
               <div>
                 Running:{" "}
-                <span className={debugInfo.running ? "text-emerald-300" : "text-neutral-500"}>
+                <span className={debugInfo.running ? "text-[var(--rl-positive)]" : "text-[var(--rl-fg-dim)]"}>
                   {String(debugInfo.running ?? false)}
                 </span>
               </div>
               <div>
                 Timeout Triggered:{" "}
-                <span className={debugInfo.timeoutTriggered ? "text-red-300" : "text-neutral-500"}>
+                <span className={debugInfo.timeoutTriggered ? "text-[var(--rl-critical)]" : "text-[var(--rl-fg-dim)]"}>
                   {String(debugInfo.timeoutTriggered ?? false)}
                 </span>
               </div>
               <div>
                 Cancel Requested:{" "}
-                <span className={debugInfo.cancelRequested ? "text-yellow-300" : "text-neutral-500"}>
+                <span className={debugInfo.cancelRequested ? "text-[var(--rl-warning)]" : "text-[var(--rl-fg-dim)]"}>
                   {String(debugInfo.cancelRequested ?? false)}
                 </span>
               </div>
             </div>
           </div>
 
-          <div className="border-b border-white/10 bg-black/40 px-3 py-2">
-            <div className="text-[11px] font-semibold text-neutral-300">Browser diagnostics</div>
-            <div className="mt-2 grid gap-1 text-[9px] text-neutral-400">
+          <div className="border-b border-[var(--rl-border)] bg-black/40 px-3 py-2">
+            <div className="text-[13px] font-semibold text-[var(--rl-fg-muted)]">Browser diagnostics</div>
+            <div className="mt-2 grid gap-1 text-xs text-[var(--rl-fg-muted)]">
               <div>
                 Runtime:{" "}
-                <span className="text-emerald-300">
+                <span className="text-[var(--rl-positive)]">
                   {String(debugInfo.runtime ?? "browser")}
                 </span>
               </div>
               <div>
                 Storage:{" "}
-                <span className="text-neutral-300">
+                <span className="text-[var(--rl-fg-muted)]">
                   {String(debugInfo.storage ?? "indexeddb")}
                 </span>
               </div>
               <div>
                 Projectile debug:{" "}
-                <span className={projectileDebug ? "text-emerald-300" : "text-neutral-500"}>
+                <span className={projectileDebug ? "text-[var(--rl-positive)]" : "text-[var(--rl-fg-dim)]"}>
                   {projectileDebug ? "enabled" : "disabled"}
                 </span>
               </div>
               <div>
                 Captured console lines:{" "}
-                <span className={logs.length ? "text-emerald-300" : "text-neutral-500"}>
+                <span className={logs.length ? "text-[var(--rl-positive)]" : "text-[var(--rl-fg-dim)]"}>
                   {logs.length}
                 </span>
               </div>
@@ -215,7 +215,7 @@ export function DebugConsole({ isOpen, onClose }: { isOpen: boolean; onClose: ()
                 size="sm"
                 variant="outline"
                 onClick={handleToggleProjectileDebug}
-                className="h-6 px-2 text-[10px]"
+                className="h-6 px-2 text-xs"
               >
                 {projectileDebug ? "Disable projectile debug" : "Enable projectile debug"}
               </Button>
@@ -223,7 +223,7 @@ export function DebugConsole({ isOpen, onClose }: { isOpen: boolean; onClose: ()
                 size="sm"
                 variant="outline"
                 onClick={handleWriteProjectileTest}
-                className="h-6 px-2 text-[10px]"
+                className="h-6 px-2 text-xs"
               >
                 Write test projectile log
               </Button>
@@ -231,22 +231,22 @@ export function DebugConsole({ isOpen, onClose }: { isOpen: boolean; onClose: ()
                 size="sm"
                 variant="outline"
                 onClick={handleCopyCapturedLogs}
-                className="h-6 px-2 text-[10px]"
+                className="h-6 px-2 text-xs"
               >
                 Copy captured logs
               </Button>
             </div>
             {actionStatus && (
-              <div className="mt-1 text-[9px] text-emerald-300">{actionStatus}</div>
+              <div className="mt-1 text-xs text-[var(--rl-positive)]">{actionStatus}</div>
             )}
           </div>
 
           {logViewer && (
-            <div className="border-b border-white/10 bg-black/50 px-3 py-2">
+            <div className="border-b border-[var(--rl-border)] bg-black/50 px-3 py-2">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-[11px] font-semibold text-neutral-300">{logViewer.title}</div>
-                  <div className="mt-1 text-[9px] text-neutral-500">
+                  <div className="text-[13px] font-semibold text-[var(--rl-fg-muted)]">{logViewer.title}</div>
+                  <div className="mt-1 text-xs text-[var(--rl-fg-dim)]">
                     {textStats(logViewer.text).lines} lines · {textStats(logViewer.text).chars} chars · clipboard{" "}
                     {logViewer.clipboardStatus}
                     {logViewer.error ? ` (${logViewer.error})` : ""}
@@ -256,7 +256,7 @@ export function DebugConsole({ isOpen, onClose }: { isOpen: boolean; onClose: ()
                   size="sm"
                   variant="ghost"
                   onClick={() => setLogViewer(null)}
-                  className="h-6 px-2 text-[10px]"
+                  className="h-6 px-2 text-xs"
                 >
                   Hide
                 </Button>
@@ -265,20 +265,20 @@ export function DebugConsole({ isOpen, onClose }: { isOpen: boolean; onClose: ()
                 readOnly
                 value={logViewer.text}
                 onFocus={(event) => event.currentTarget.select()}
-                className="mt-2 h-48 w-full resize-y rounded border border-white/10 bg-black/60 p-2 font-mono text-[9px] text-neutral-200 outline-none"
+                className="mt-2 h-48 w-full resize-y rounded border border-[var(--rl-border)] bg-black/60 p-2 font-mono text-xs text-[var(--rl-fg)] outline-none"
               />
             </div>
           )}
 
-          <div className="border-b border-white/10 px-3 py-2">
-            <div className="text-[11px] font-semibold text-neutral-300">Logs</div>
+          <div className="border-b border-[var(--rl-border)] px-3 py-2">
+            <div className="text-[13px] font-semibold text-[var(--rl-fg-muted)]">Logs</div>
           </div>
 
           {logs.length === 0 ? (
-            <div className="p-2 text-neutral-600">No logs yet…</div>
+            <div className="p-2 text-[var(--rl-fg-dim)]">No logs yet…</div>
           ) : (
             logs.map((log, i) => (
-              <div key={i} className="border-b border-white/5 px-3 py-1 hover:bg-white/[0.02]">
+              <div key={i} className="border-b border-[var(--rl-border)] px-3 py-1 hover:bg-white/[0.02]">
                 {log}
               </div>
             ))

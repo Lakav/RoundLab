@@ -18,7 +18,7 @@ import type {
 } from "@/lib/replay-store";
 
 const BOMB_MARKER_COLOR = REPLAY_COLORS.danger;
-const HP_RING_RADIUS = 12.5;
+const HP_RING_RADIUS = 11;
 const SHOOT_ROTATION_OFFSET = 0;
 const PLAYER_ARROW_TIP_OFFSET = 9;
 
@@ -150,7 +150,7 @@ function playerLabel(text: string, fill: number, halo = false): Text {
       fontWeight: "600",
       fill,
       ...(halo
-        ? { stroke: { color: REPLAY_COLORS.ink, width: 11, join: "round" as const } }
+        ? { stroke: { color: REPLAY_COLORS.ink, width: 5, join: "round" as const } }
         : {}),
     },
     resolution: Math.max(2, window.devicePixelRatio || 1),
@@ -181,7 +181,7 @@ export function createPlayerSprite(layer: Container, name?: string): PlayerSprit
   labelBadge.addChild(labelEmptyMask);
   labelBadge.addChild(labelFill);
   labelBadge.addChild(labelEmpty);
-  labelBadge.position.set(0, -19);
+  labelBadge.position.set(0, -22);
 
   const dot = new Graphics();
   const hpRing = new Graphics();
@@ -320,13 +320,13 @@ export function updatePlayerSprite({
   if (alive) {
     sprite.hpRing
       .circle(0, 0, HP_RING_RADIUS)
-      .stroke({ color: REPLAY_COLORS.ink, width: 3.5, alpha: REPLAY_ALPHA.outline })
+      .stroke({ color: REPLAY_COLORS.ink, width: 2.6, alpha: REPLAY_ALPHA.outline })
       .circle(0, 0, HP_RING_RADIUS)
-      .stroke({ color: baseColor, width: 2.2, alpha: REPLAY_ALPHA.ringTrack });
+      .stroke({ color: baseColor, width: 1.6, alpha: REPLAY_ALPHA.ringTrack });
     if (hpPct > 0) {
       sprite.hpRing
         .arc(0, 0, HP_RING_RADIUS, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * hpPct)
-        .stroke({ color: baseColor, width: 2.2, alpha: REPLAY_ALPHA.ring, cap: "round" });
+        .stroke({ color: baseColor, width: 1.6, alpha: REPLAY_ALPHA.ring, cap: "round" });
     }
   }
   if (carriesBomb) {

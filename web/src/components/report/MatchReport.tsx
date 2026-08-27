@@ -68,7 +68,7 @@ export function MatchReport({
   ) ?? analysis?.players[0] ?? null;
   if (loading) {
     return (
-      <div role="status" className="flex min-h-full items-center justify-center text-sm text-neutral-400">
+      <div role="status" className="flex min-h-full items-center justify-center text-sm text-[var(--rl-fg-muted)]">
         Calcul des statistiques en cours…
       </div>
     );
@@ -76,11 +76,11 @@ export function MatchReport({
   if (error) {
     return (
       <div className="flex min-h-full flex-col items-center justify-center gap-3 text-sm">
-        <p className="max-w-lg text-center text-red-300">{error}</p>
+        <p className="max-w-lg text-center text-[var(--rl-critical)]">{error}</p>
         <button
           type="button"
           onClick={onRetry}
-          className="rounded-md border border-white/10 bg-white/[0.04] px-4 py-2 font-semibold text-neutral-100"
+          className="rounded-md border border-[var(--rl-border)] bg-white/[0.04] px-4 py-2 font-semibold text-[var(--rl-fg)]"
         >
           Réessayer
         </button>
@@ -166,9 +166,9 @@ export function MatchReport({
       <span className={[
         "size-1.5 shrink-0 rounded-full",
         firstTeamPlayerIds.includes(playerId)
-          ? "bg-sky-300"
+          ? "bg-[var(--rl-ct)]"
           : secondTeamPlayerIds.includes(playerId)
-            ? "bg-amber-300"
+            ? "bg-[var(--rl-t)]"
             : "bg-neutral-600",
       ].join(" ")} />
       <span className="truncate">{name}</span>
@@ -606,14 +606,14 @@ export function MatchReport({
       {tab === "overview" && (
         <div className="mt-6 grid gap-6">
           <div className="grid gap-6">
-            <article className="overflow-hidden rounded-md border border-white/10 bg-[#121515]">
-              <div className="flex flex-col gap-4 border-b border-white/8 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
+              <div className="flex flex-col gap-4 border-b border-[var(--rl-border)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-emerald-300/60">
+                  <span className="text-xs font-bold uppercase tracking-[0.15em] text-[var(--rl-positive)]">
                     Vue d’ensemble
                   </span>
-                  <h2 className="mt-1 text-base font-semibold tracking-[-0.02em] text-neutral-100">Joueurs</h2>
-                  <p className="mt-1 text-xs text-neutral-500">Compare les deux équipes sans changer de page.</p>
+                  <h2 className="mt-1 text-base font-semibold tracking-[-0.02em] text-[var(--rl-fg)]">Joueurs</h2>
+                  <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">Compare les deux équipes sans changer de page.</p>
                 </div>
                 <div className="flex overflow-x-auto rounded-md border border-white/[0.055] bg-black/25 p-1">
                   {([
@@ -628,10 +628,10 @@ export function MatchReport({
                       aria-pressed={overviewMetricSet === value}
                       onClick={() => setOverviewMetricSet(value)}
                       className={[
-                        "shrink-0 rounded-[4px] px-3 py-1.5 text-[11px] font-semibold transition-colors",
+                        "shrink-0 rounded-[4px] px-3 py-1.5 text-[13px] font-semibold transition-colors",
                         overviewMetricSet === value
-                          ? "bg-emerald-300/[0.12] text-emerald-100 shadow-[inset_0_0_0_1px_rgba(110,231,183,0.08)]"
-                          : "text-neutral-500 hover:bg-white/[0.035] hover:text-neutral-200",
+                          ? "bg-emerald-300/[0.12] text-[var(--rl-positive)] shadow-[inset_0_0_0_1px_rgba(110,231,183,0.08)]"
+                          : "text-[var(--rl-fg-dim)] hover:bg-white/[0.035] hover:text-[var(--rl-fg)]",
                       ].join(" ")}
                     >
                       {label}
@@ -641,7 +641,7 @@ export function MatchReport({
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[50rem] text-left text-sm">
-                  <thead className="bg-white/[0.018] text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-600">
+                  <thead className="bg-white/[0.018] text-xs font-semibold uppercase tracking-[0.08em] text-[var(--rl-fg-dim)]">
                     <tr>
                       <th className="px-4 py-2.5">Joueur</th>
                       {overviewMetricSet === "general" && (
@@ -688,27 +688,27 @@ export function MatchReport({
                   {overviewPlayerGroups.map((team) => (
                     <tbody key={team.key}>
                       <tr className={[
-                        "border-t border-white/8",
+                        "border-t border-[var(--rl-border)]",
                         team.accent === "sky"
                           ? "bg-sky-400/[0.045]"
                           : team.accent === "amber"
-                            ? "bg-amber-300/[0.04]"
+                            ? "bg-[color-mix(in_oklab,var(--rl-t)_7%,transparent)]"
                             : "bg-white/[0.025]",
                       ].join(" ")}>
                         <th
                           colSpan={7}
                           className={[
-                            "border-l-2 px-4 py-2 text-[11px] font-semibold",
+                            "border-l-2 px-4 py-2 text-[13px] font-semibold",
                             team.accent === "sky"
-                              ? "border-sky-300 text-sky-200"
+                              ? "border-[var(--rl-ct)] text-[var(--rl-ct)]"
                               : team.accent === "amber"
-                                ? "border-amber-300 text-amber-200"
-                                : "border-neutral-500 text-neutral-300",
+                                ? "border-[var(--rl-t)] text-[var(--rl-t)]"
+                                : "border-neutral-500 text-[var(--rl-fg-muted)]",
                           ].join(" ")}
                         >
                           {teamLabel(team.name)}
                           {team.score !== null && (
-                            <span className="ml-1 text-neutral-500">{team.score}</span>
+                            <span className="ml-1 text-[var(--rl-fg-dim)]">{team.score}</span>
                           )}
                         </th>
                       </tr>
@@ -729,7 +729,7 @@ export function MatchReport({
                                     setSelectedPlayerId(player.playerId);
                                     setTab("rating");
                                   }}
-                                  className="font-semibold text-neutral-200 hover:text-emerald-300"
+                                  className="font-semibold text-[var(--rl-fg)] hover:text-[var(--rl-positive)]"
                                 >
                                   {player.name}
                                 </button>
@@ -832,23 +832,23 @@ export function MatchReport({
           {analysis.players.every(
             (player) => player.metrics.adr === null && player.metrics.flashes == null,
           ) && (
-            <div className="rounded-md border border-amber-300/15 bg-amber-300/[0.045] px-4 py-3">
-              <div className="text-sm font-semibold text-amber-200">
+            <div className="rounded-md border border-[color-mix(in_oklab,var(--rl-warning)_22%,transparent)] bg-[color-mix(in_oklab,var(--rl-warning)_7%,transparent)] px-4 py-3">
+              <div className="text-sm font-semibold text-[var(--rl-warning)]">
                 Événements avancés absents de cette importation
               </div>
-              <p className="mt-1 text-xs leading-relaxed text-neutral-400">
+              <p className="mt-1 text-xs leading-relaxed text-[var(--rl-fg-muted)]">
                 Les kills ont été conservés, mais pas les dégâts, les flashes et certains états de fin de round nécessaires à l’ADR et au KAST. La démo originale doit être réimportée avec le parseur actuel pour récupérer ces valeurs ; elles ne peuvent pas être reconstruites fidèlement depuis les seuls kills.
               </p>
               <Link
                 href="/"
-                className="mt-2 inline-flex text-xs font-semibold text-amber-200 hover:text-amber-100 hover:underline"
+                className="mt-2 inline-flex text-xs font-semibold text-[var(--rl-warning)] hover:text-[var(--rl-warning)] hover:underline"
               >
                 Réimporter la démo
               </Link>
             </div>
           )}
           <div className="flex flex-wrap items-center gap-2">
-            <span className="mr-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-neutral-600">
+            <span className="mr-1 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--rl-fg-dim)]">
               Couverture des données
             </span>
             <CoverageBadge
@@ -872,16 +872,16 @@ export function MatchReport({
               total={analysis.players.length}
             />
           </div>
-          <article className="overflow-hidden rounded-md border border-white/10 bg-[#121515]">
-            <div className="border-b border-white/8 px-4 py-3">
-              <h3 className="text-sm font-semibold text-neutral-100">Conversion des avantages</h3>
-              <p className="mt-1 text-xs text-neutral-500">
+          <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
+            <div className="border-b border-[var(--rl-border)] px-4 py-3">
+              <h3 className="text-sm font-semibold text-[var(--rl-fg)]">Conversion des avantages</h3>
+              <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">
                 Avantage numérique acquis après une mort ou une déconnexion pendant le round.
               </p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[36rem] text-left text-sm">
-                <thead className="bg-white/[0.02] text-[11px] text-neutral-500">
+                <thead className="bg-white/[0.02] text-[13px] text-[var(--rl-fg-dim)]">
                   <tr>
                     <th className="px-4 py-3 font-medium">Équipe</th>
                     <th className="px-3 py-3 text-right font-medium">
@@ -895,8 +895,8 @@ export function MatchReport({
                 </thead>
                 <tbody>
                   {analysis.teams.map((team) => (
-                    <tr key={team.logicalTeam} className="border-t border-white/8">
-                      <td className="px-4 py-3 font-semibold text-neutral-200">
+                    <tr key={team.logicalTeam} className="border-t border-[var(--rl-border)]">
+                      <td className="px-4 py-3 font-semibold text-[var(--rl-fg)]">
                         {teamLabel(team.name)}
                       </td>
                       <td className="px-3 py-3 text-right tabular-nums">
@@ -924,21 +924,21 @@ export function MatchReport({
                 </tbody>
               </table>
             </div>
-            <p className="border-t border-white/8 px-4 py-3 text-xs text-neutral-500">
+            <p className="border-t border-[var(--rl-border)] px-4 py-3 text-xs text-[var(--rl-fg-dim)]">
               Chaque équipe compte au plus une opportunité par round, même si l’avantage change
               plusieurs fois de camp. Un contexte de roster ou de fin de round incomplet invalide l’agrégat.
             </p>
           </article>
-          <article className="overflow-hidden rounded-md border border-white/10 bg-[#121515]">
-            <div className="border-b border-white/8 px-4 py-3">
-              <h3 className="text-sm font-semibold text-neutral-100">Performance anti-eco</h3>
-              <p className="mt-1 text-xs text-neutral-500">
+          <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
+            <div className="border-b border-[var(--rl-border)] px-4 py-3">
+              <h3 className="text-sm font-semibold text-[var(--rl-fg)]">Performance anti-eco</h3>
+              <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">
                 La catégorie adverse vient du snapshot d’équipement à la fin du freeze time.
               </p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[42rem] text-left text-sm">
-                <thead className="bg-white/[0.02] text-[11px] text-neutral-500">
+                <thead className="bg-white/[0.02] text-[13px] text-[var(--rl-fg-dim)]">
                   <tr>
                     <th className="px-4 py-3 font-medium">Équipe</th>
                     <th className="px-3 py-3 text-right font-medium">
@@ -955,8 +955,8 @@ export function MatchReport({
                 </thead>
                 <tbody>
                   {analysis.teams.map((team) => (
-                    <tr key={team.logicalTeam} className="border-t border-white/8">
-                      <td className="px-4 py-3 font-semibold text-neutral-200">
+                    <tr key={team.logicalTeam} className="border-t border-[var(--rl-border)]">
+                      <td className="px-4 py-3 font-semibold text-[var(--rl-fg)]">
                         {teamLabel(team.name)}
                       </td>
                       <td className="px-3 py-3 text-right tabular-nums">
@@ -984,21 +984,21 @@ export function MatchReport({
                 </tbody>
               </table>
             </div>
-            <p className="border-t border-white/8 px-4 py-3 text-xs text-neutral-500">
+            <p className="border-t border-[var(--rl-border)] px-4 py-3 text-xs text-[var(--rl-fg-dim)]">
               Si une économie adverse ou l’issue d’un round manque, RoundLab laisse les agrégats
               concernés indisponibles au lieu de publier un total partiel.
             </p>
           </article>
-          <article className="overflow-hidden rounded-md border border-white/10 bg-[#121515]">
-            <div className="border-b border-white/8 px-4 py-3">
-              <h3 className="text-sm font-semibold text-neutral-100">Économie du joueur</h3>
-              <p className="mt-1 text-xs text-neutral-500">
+          <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
+            <div className="border-b border-[var(--rl-border)] px-4 py-3">
+              <h3 className="text-sm font-semibold text-[var(--rl-fg)]">Économie du joueur</h3>
+              <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">
                 Équipement observé avant la mort et inventaire conservé à la fin des rounds perdus.
               </p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[56rem] text-left text-sm">
-                <thead className="bg-white/[0.02] text-[11px] text-neutral-500">
+                <thead className="bg-white/[0.02] text-[13px] text-[var(--rl-fg-dim)]">
                   <tr>
                     <th className="px-4 py-3 font-medium">Joueur</th>
                     <th className="px-3 py-3 text-right font-medium">
@@ -1023,8 +1023,8 @@ export function MatchReport({
                       economy?.valueLostEvidence[0] ??
                       economy?.savedWeaponEvidence[0];
                     return (
-                      <tr key={player.playerId} className="border-t border-white/8">
-                        <td className="px-4 py-3 font-semibold text-neutral-200">
+                      <tr key={player.playerId} className="border-t border-[var(--rl-border)]">
+                        <td className="px-4 py-3 font-semibold text-[var(--rl-fg)]">
                           {player.name}
                         </td>
                         <td className="px-3 py-3 text-right tabular-nums">
@@ -1079,12 +1079,12 @@ export function MatchReport({
                               <button
                                 type="button"
                                 onClick={() => onOpenEvidence(evidenceId)}
-                                className="text-xs font-semibold text-emerald-300 hover:text-emerald-200 hover:underline"
+                                className="text-xs font-semibold text-[var(--rl-positive)] hover:text-[var(--rl-positive)] hover:underline"
                               >
                                 Ouvrir
                               </button>
                             )
-                            : <span className="text-neutral-600">—</span>}
+                            : <span className="text-[var(--rl-fg-dim)]">—</span>}
                         </td>
                       </tr>
                     );
@@ -1092,15 +1092,15 @@ export function MatchReport({
                 </tbody>
               </table>
             </div>
-            <p className="border-t border-white/8 px-4 py-3 text-xs text-neutral-500">
+            <p className="border-t border-[var(--rl-border)] px-4 py-3 text-xs text-[var(--rl-fg-dim)]">
               La valeur correspond à <code>current_equip_value</code>, pas au prix d’achat historique.
               Une arme sauvegardée signifie ici une arme principale conservée en vie lors d’un round perdu.
             </p>
           </article>
-          <article className="overflow-hidden rounded-md border border-white/10 bg-[#121515]">
+          <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[58rem] text-left text-sm">
-                <thead className="bg-white/[0.02] text-[11px] text-neutral-500">
+                <thead className="bg-white/[0.02] text-[13px] text-[var(--rl-fg-dim)]">
                   <tr>
                     <th className="px-4 py-3 font-medium">Joueur</th>
                     <th className="px-3 py-3 text-right font-medium">Kills</th>
@@ -1120,18 +1120,18 @@ export function MatchReport({
                   .map((team) => (
                   <tbody key={team.logicalTeam}>
                     <tr className={[
-                      "border-t border-white/10",
+                      "border-t border-[var(--rl-border)]",
                       team.playerIds.some((playerId) => firstTeamPlayerIds.includes(playerId))
                         ? "bg-sky-400/[0.045]"
-                        : "bg-amber-300/[0.04]",
+                        : "bg-[color-mix(in_oklab,var(--rl-t)_7%,transparent)]",
                     ].join(" ")}>
                       <th
                         colSpan={11}
                         className={[
                           "border-l-2 px-4 py-2 text-xs font-semibold",
                           team.playerIds.some((playerId) => firstTeamPlayerIds.includes(playerId))
-                            ? "border-sky-300 text-sky-200"
-                            : "border-amber-300 text-amber-200",
+                            ? "border-[var(--rl-ct)] text-[var(--rl-ct)]"
+                            : "border-[var(--rl-t)] text-[var(--rl-t)]",
                         ].join(" ")}
                       >
                         {teamLabel(team.name)} · {team.score ?? "—"}
@@ -1147,7 +1147,7 @@ export function MatchReport({
                       .map((player) => {
                         const multi = player.metrics.multiKillRounds;
                         return (
-                          <tr key={player.playerId} className="border-t border-white/8 hover:bg-white/[0.025]">
+                          <tr key={player.playerId} className="border-t border-[var(--rl-border)] hover:bg-white/[0.025]">
                             <td className="px-4 py-3">
                               <button
                                 type="button"
@@ -1155,7 +1155,7 @@ export function MatchReport({
                                   setSelectedPlayerId(player.playerId);
                                   setTab("rating");
                                 }}
-                                className="font-semibold text-neutral-200 hover:text-emerald-300"
+                                className="font-semibold text-[var(--rl-fg)] hover:text-[var(--rl-positive)]"
                               >
                                 {player.name}
                               </button>
@@ -1186,7 +1186,7 @@ export function MatchReport({
 
       {tab === "details" && detailSection === "timeline" && selectedRound && (
         <div className="mt-6 grid gap-6 lg:grid-cols-[18rem_1fr]">
-          <aside className="max-h-[calc(100vh-13rem)] overflow-y-auto rounded-md border border-white/10 bg-[#121515] p-2">
+          <aside className="max-h-[calc(100vh-13rem)] overflow-y-auto rounded-md border border-[var(--rl-border)] bg-[#121515] p-2">
             {analysis.rounds.map((round) => {
               const selected = selectedRound.roundNumber === round.roundNumber;
               const winnerName = round.logicalWinner === null
@@ -1208,14 +1208,14 @@ export function MatchReport({
                     "grid w-full grid-cols-[2.5rem_1fr_auto] items-center gap-2 rounded-md px-3 py-2 text-left text-sm",
                     selected
                       ? "bg-white text-neutral-950"
-                      : "text-neutral-300 hover:bg-white/[0.05]",
+                      : "text-[var(--rl-fg-muted)] hover:bg-white/[0.05]",
                   ].join(" ")}
                 >
                   <span className="font-semibold tabular-nums">
                     {String(displayRound(round.roundNumber)).padStart(2, "0")}
                   </span>
                   <span className="truncate">{winnerName}</span>
-                  <span className={selected ? "text-neutral-600" : "text-neutral-500"}>
+                  <span className={selected ? "text-[var(--rl-fg-dim)]" : "text-[var(--rl-fg-dim)]"}>
                     {round.scoreA ?? "—"}–{round.scoreB ?? "—"}
                   </span>
                 </button>
@@ -1227,7 +1227,7 @@ export function MatchReport({
             <article>
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <div>
-                  <span className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">
+                  <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--rl-fg-dim)]">
                     Analyse du round
                   </span>
                   <h2 className="mt-1 text-2xl font-semibold text-white">
@@ -1235,7 +1235,7 @@ export function MatchReport({
                   </h2>
                 </div>
                 <div className="text-right">
-                  <div className="text-xs text-neutral-500">Score après le round</div>
+                  <div className="text-xs text-[var(--rl-fg-dim)]">Score après le round</div>
                   <div className="text-2xl font-semibold tabular-nums text-white">
                     {selectedRound.scoreA ?? "—"} – {selectedRound.scoreB ?? "—"}
                   </div>
@@ -1266,17 +1266,17 @@ export function MatchReport({
               </div>
             </article>
 
-            <article className="rounded-md border border-white/10 bg-[#121515] p-5">
+            <article className="rounded-md border border-[var(--rl-border)] bg-[#121515] p-5">
               <h3 className="text-sm font-semibold text-white">Économie au départ</h3>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {selectedRound.economy.map((economy) => (
                   <div
                     key={economy.side}
-                    className="flex items-center justify-between rounded-md border border-white/8 bg-white/[0.02] px-4 py-3"
+                    className="flex items-center justify-between rounded-md border border-[var(--rl-border)] bg-white/[0.02] px-4 py-3"
                   >
                     <div>
-                      <div className="text-xs font-semibold text-neutral-500">{economy.side}</div>
-                      <div className="mt-1 text-sm font-semibold text-neutral-200">
+                      <div className="text-xs font-semibold text-[var(--rl-fg-dim)]">{economy.side}</div>
+                      <div className="mt-1 text-sm font-semibold text-[var(--rl-fg)]">
                         <span
                           title={metricQualityTitle(economy.quality.category)}
                           tabIndex={0}
@@ -1285,7 +1285,7 @@ export function MatchReport({
                         </span>
                       </div>
                     </div>
-                    <div className="text-right text-sm tabular-nums text-neutral-300">
+                    <div className="text-right text-sm tabular-nums text-[var(--rl-fg-muted)]">
                       <QualityMetricCell
                         metric={economy.quality.averageEquipmentValue}
                         format={(value) => value === null
@@ -1298,11 +1298,11 @@ export function MatchReport({
               </div>
             </article>
 
-            <article className="rounded-md border border-white/10 bg-[#121515] p-5">
+            <article className="rounded-md border border-[var(--rl-border)] bg-[#121515] p-5">
               <h3 className="text-sm font-semibold text-white">Joueurs du round</h3>
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full min-w-[42rem] text-left text-sm">
-                  <thead className="text-xs text-neutral-500">
+                  <thead className="text-xs text-[var(--rl-fg-dim)]">
                     <tr>
                       <th className="pb-2 font-medium">Joueur</th>
                       <th className="pb-2 font-medium">Équipe</th>
@@ -1321,8 +1321,8 @@ export function MatchReport({
                           left.name.localeCompare(right.name),
                       )
                       .map((player) => (
-                        <tr key={player.playerId} className="border-t border-white/8">
-                          <td className="py-3 font-semibold text-neutral-200">
+                        <tr key={player.playerId} className="border-t border-[var(--rl-border)]">
+                          <td className="py-3 font-semibold text-[var(--rl-fg)]">
                             {playerIdentity(player.playerId, player.name)}
                           </td>
                           <td className="py-3">
@@ -1349,13 +1349,13 @@ export function MatchReport({
 
       {tab === "details" && detailSection === "activity" && (
         <div className="mt-6 grid gap-3">
-          <p className="text-xs text-neutral-500">
+          <p className="text-xs text-[var(--rl-fg-dim)]">
             Les tirs proviennent des événements de tir de la démo. Les dégâts utilitaires restent vides quand la démo ne permet pas de les attribuer sans ambiguïté.
           </p>
-          <article className="overflow-hidden rounded-md border border-white/10 bg-[#121515]">
+          <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[58rem] text-left text-sm">
-                <thead className="bg-white/[0.02] text-[11px] text-neutral-500">
+                <thead className="bg-white/[0.02] text-[13px] text-[var(--rl-fg-dim)]">
                   <tr>
                     <th className="px-4 py-3 font-medium">Joueur</th>
                     <th className="px-3 py-3 text-right font-medium">Dégâts</th>
@@ -1370,8 +1370,8 @@ export function MatchReport({
                   {scopedPlayers.map((player) => {
                     const playerMechanics = mechanicsByPlayer.get(player.playerId);
                     return (
-                      <tr key={player.playerId} className="border-t border-white/8">
-                        <td className="px-4 py-3 font-semibold text-neutral-200">
+                      <tr key={player.playerId} className="border-t border-[var(--rl-border)]">
+                        <td className="px-4 py-3 font-semibold text-[var(--rl-fg)]">
                           {playerIdentity(player.playerId, player.name)}
                         </td>
                         <td className="px-3 py-3 text-right tabular-nums">{number(player.metrics.damageHealth)}</td>
@@ -1382,7 +1382,7 @@ export function MatchReport({
                         <td className="px-4 py-3 text-right tabular-nums">
                           {number(player.metrics.survivedRounds)}
                           {player.metrics.survivalRate !== null && (
-                            <span className="ml-1 text-[10px] text-neutral-600">
+                            <span className="ml-1 text-xs text-[var(--rl-fg-dim)]">
                               ({percent(player.metrics.survivalRate)})
                             </span>
                           )}
@@ -1400,11 +1400,11 @@ export function MatchReport({
       {tab === "details" && detailSection === "trades" && (
         <div className="mt-6 grid gap-6">
           <article>
-            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">
+            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--rl-fg-dim)]">
               Réponse collective
             </span>
             <h2 className="mt-1 text-2xl font-semibold text-white">Trades</h2>
-            <p className="mt-1 max-w-2xl text-sm text-neutral-500">
+            <p className="mt-1 max-w-2xl text-sm text-[var(--rl-fg-dim)]">
               Trades tentés, réussis et morts tradées.
             </p>
           </article>
@@ -1444,11 +1444,11 @@ export function MatchReport({
           </div>
 
           <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <article className="rounded-md border border-white/10 bg-[#121515] p-5">
+            <article className="rounded-md border border-[var(--rl-border)] bg-[#121515] p-5">
               <h3 className="text-sm font-semibold text-white">Bilan par joueur</h3>
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full min-w-[38rem] text-left text-sm">
-                  <thead className="text-xs text-neutral-500">
+                  <thead className="text-xs text-[var(--rl-fg-dim)]">
                     <tr>
                       <th className="pb-2 font-medium">Joueur</th>
                       <th className="pb-2 font-medium"><DefinitionTerm label="Tentatives de trade" /></th>
@@ -1469,8 +1469,8 @@ export function MatchReport({
                           left.name.localeCompare(right.name),
                       )
                       .map((player) => (
-                        <tr key={player.playerId} className="border-t border-white/8">
-                          <td className="py-3 font-semibold text-neutral-200">
+                        <tr key={player.playerId} className="border-t border-[var(--rl-border)]">
+                          <td className="py-3 font-semibold text-[var(--rl-fg)]">
                             {playerIdentity(player.playerId, player.name)}
                           </td>
                           <td className="py-3">{number(player.metrics.tradeAttempts)}</td>
@@ -1493,9 +1493,9 @@ export function MatchReport({
               </div>
             </article>
 
-            <article className="rounded-md border border-white/10 bg-[#121515] p-5">
+            <article className="rounded-md border border-[var(--rl-border)] bg-[#121515] p-5">
               <h3 className="text-sm font-semibold text-white">Actions de trade</h3>
-              <p className="mt-1 text-xs text-neutral-500">
+              <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">
                 Les morts tradées ouvrent la mort initiale ; les trade kills ouvrent l’élimination de réponse.
               </p>
               <div className="mt-4 max-h-[28rem] overflow-y-auto">
@@ -1508,20 +1508,20 @@ export function MatchReport({
                         type="button"
                         aria-label={`${label}, ${action.playerName}, round ${displayRound(action.evidence.roundNumber)}, ouvrir dans le replay`}
                         onClick={() => onOpenEvidence(action.evidence.evidenceId)}
-                        className="flex items-center justify-between gap-3 rounded-md border border-white/8 px-3 py-2 text-left hover:bg-white/[0.05]"
+                        className="flex items-center justify-between gap-3 rounded-md border border-[var(--rl-border)] px-3 py-2 text-left hover:bg-white/[0.05]"
                       >
                         <span>
-                          <span className="block text-sm font-semibold text-neutral-200">{label}</span>
-                          <span className="text-xs text-neutral-500">{action.playerName}</span>
+                          <span className="block text-sm font-semibold text-[var(--rl-fg)]">{label}</span>
+                          <span className="text-xs text-[var(--rl-fg-dim)]">{action.playerName}</span>
                         </span>
-                        <span className="text-xs tabular-nums text-neutral-500">
+                        <span className="text-xs tabular-nums text-[var(--rl-fg-dim)]">
                           R{displayRound(action.evidence.roundNumber)} · {action.evidence.time.toFixed(1)} s
                         </span>
                       </button>
                     );
                   })}
                   {replayableTradeActions.length === 0 && (
-                    <p className="text-sm text-neutral-500">Aucune action de trade détectée.</p>
+                    <p className="text-sm text-[var(--rl-fg-dim)]">Aucune action de trade détectée.</p>
                   )}
                 </div>
               </div>
@@ -1533,11 +1533,11 @@ export function MatchReport({
       {tab === "details" && detailSection === "utility" && (
         <div className="mt-6 grid gap-6">
           <article>
-            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">
+            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--rl-fg-dim)]">
               Usage vérifiable
             </span>
             <h2 className="mt-1 text-2xl font-semibold text-white">Utilitaires</h2>
-            <p className="mt-1 max-w-2xl text-sm text-neutral-500">
+            <p className="mt-1 max-w-2xl text-sm text-[var(--rl-fg-dim)]">
               Lancers, efficacité des flashes et utilitaires conservés à la mort.
             </p>
           </article>
@@ -1597,11 +1597,11 @@ export function MatchReport({
           </div>
 
           <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-            <article className="rounded-md border border-white/10 bg-[#121515] p-5">
+            <article className="rounded-md border border-[var(--rl-border)] bg-[#121515] p-5">
               <h3 className="text-sm font-semibold text-white">Usage par joueur</h3>
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full min-w-[88rem] text-left text-sm">
-                  <thead className="text-xs text-neutral-500">
+                  <thead className="text-xs text-[var(--rl-fg-dim)]">
                     <tr>
                       <th className="pb-2 font-medium">Joueur</th>
                       <th className="pb-2 font-medium">Quantité</th>
@@ -1630,8 +1630,8 @@ export function MatchReport({
                       .map((player) => {
                         const utility = player.utility;
                         return (
-                          <tr key={player.playerId} className="border-t border-white/8">
-                            <td className="py-3 font-semibold text-neutral-200">
+                          <tr key={player.playerId} className="border-t border-[var(--rl-border)]">
+                            <td className="py-3 font-semibold text-[var(--rl-fg)]">
                               {playerIdentity(player.playerId, player.name)}
                             </td>
                             <td className="py-3">
@@ -1754,12 +1754,12 @@ export function MatchReport({
               </div>
             </article>
 
-            <article className="overflow-hidden rounded-md border border-white/10 bg-[#121515]">
-              <div className="border-b border-white/8 px-4 py-3">
+            <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
+              <div className="border-b border-[var(--rl-border)] px-4 py-3">
                 <h3 className="text-sm font-semibold text-white">
                   Répartition de {selectedPlayer?.name ?? "ce joueur"}
                 </h3>
-                <p className="mt-1 text-xs text-neutral-500">
+                <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">
                   Volume total et composition des lancers, sans score propriétaire.
                 </p>
               </div>
@@ -1788,9 +1788,9 @@ export function MatchReport({
                   const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
                   const segments = [
                     ["Flash", counts.flash, "bg-violet-300"],
-                    ["Smoke", counts.smoke, "bg-sky-300"],
-                    ["HE", counts.he, "bg-amber-300"],
-                    ["Feu", counts.fire, "bg-rose-300"],
+                    ["Smoke", counts.smoke, "bg-[var(--rl-info)]"],
+                    ["HE", counts.he, "bg-[var(--rl-warning)]"],
+                    ["Feu", counts.fire, "bg-[var(--rl-critical)]"],
                   ] as const;
                   return (
                     <section key={team.key} className="bg-[#121515] p-4">
@@ -1799,12 +1799,12 @@ export function MatchReport({
                           <span className={[
                             "size-1.5 rounded-full",
                             team.accent === "sky"
-                              ? "bg-sky-300"
+                              ? "bg-[var(--rl-ct)]"
                               : team.accent === "amber"
-                                ? "bg-amber-300"
+                                ? "bg-[var(--rl-t)]"
                                 : "bg-neutral-500",
                           ].join(" ")} />
-                          <span className="text-sm font-semibold text-neutral-200">
+                          <span className="text-sm font-semibold text-[var(--rl-fg)]">
                             {teamLabel(team.name)}
                           </span>
                         </div>
@@ -1824,11 +1824,11 @@ export function MatchReport({
                       <div className="mt-3 grid grid-cols-4 gap-2">
                         {segments.map(([label, count, color]) => (
                           <div key={label}>
-                            <div className="flex items-center gap-1.5 text-[10px] text-neutral-500">
+                            <div className="flex items-center gap-1.5 text-xs text-[var(--rl-fg-dim)]">
                               <span className={["size-1 rounded-full", color].join(" ")} />
                               {label}
                             </div>
-                            <div className="mt-0.5 text-sm font-semibold tabular-nums text-neutral-200">
+                            <div className="mt-0.5 text-sm font-semibold tabular-nums text-[var(--rl-fg)]">
                               {complete ? count : "—"}
                             </div>
                           </div>
@@ -1841,7 +1841,7 @@ export function MatchReport({
             </article>
           </div>
 
-          <article className="rounded-md border border-white/10 bg-[#121515] p-5">
+          <article className="rounded-md border border-[var(--rl-border)] bg-[#121515] p-5">
             <h3 className="text-sm font-semibold text-white">Actions utilitaires</h3>
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
               {replayableUtilityActions.slice(0, 60).map((action) => {
@@ -1856,20 +1856,20 @@ export function MatchReport({
                     type="button"
                     aria-label={`${label}, ${action.playerName}, round ${displayRound(action.evidence.roundNumber)}, ouvrir dans le replay`}
                     onClick={() => onOpenEvidence(action.evidence.evidenceId)}
-                    className="flex items-center justify-between gap-3 rounded-md border border-white/8 px-3 py-2 text-left hover:bg-white/[0.05]"
+                    className="flex items-center justify-between gap-3 rounded-md border border-[var(--rl-border)] px-3 py-2 text-left hover:bg-white/[0.05]"
                   >
                     <span>
-                      <span className="block text-sm font-semibold text-neutral-200">{label}</span>
-                      <span className="text-xs text-neutral-500">{action.playerName}</span>
+                      <span className="block text-sm font-semibold text-[var(--rl-fg)]">{label}</span>
+                      <span className="text-xs text-[var(--rl-fg-dim)]">{action.playerName}</span>
                     </span>
-                    <span className="text-xs tabular-nums text-neutral-500">
+                    <span className="text-xs tabular-nums text-[var(--rl-fg-dim)]">
                       R{displayRound(action.evidence.roundNumber)} · {action.evidence.time.toFixed(1)} s
                     </span>
                   </button>
                 );
               })}
               {replayableUtilityActions.length === 0 && (
-                <p className="text-sm text-neutral-500">Aucune action utilitaire disponible.</p>
+                <p className="text-sm text-[var(--rl-fg-dim)]">Aucune action utilitaire disponible.</p>
               )}
             </div>
           </article>
@@ -1879,11 +1879,11 @@ export function MatchReport({
       {tab === "details" && detailSection === "aim" && (
         <div className="mt-6 grid gap-6">
           <article>
-            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">
+            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--rl-fg-dim)]">
               Mécaniques de tir
             </span>
             <h2 className="mt-1 text-2xl font-semibold text-white">Aim</h2>
-            <p className="mt-1 max-w-3xl text-sm text-neutral-500">
+            <p className="mt-1 max-w-3xl text-sm text-[var(--rl-fg-dim)]">
               Mesures observées, reconstruites ou estimées depuis la démo, avec couverture et limites explicites.
             </p>
           </article>
@@ -1923,20 +1923,20 @@ export function MatchReport({
             />
           </div>
 
-          <details className="group overflow-hidden rounded-md border border-white/10 bg-[#121515]">
+          <details className="group overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 hover:bg-white/[0.025]">
               <span>
-                <span className="block text-sm font-semibold text-neutral-100">Données brutes de tir</span>
-                <span className="mt-1 block text-xs text-neutral-500">
+                <span className="block text-sm font-semibold text-[var(--rl-fg)]">Données brutes de tir</span>
+                <span className="mt-1 block text-xs text-[var(--rl-fg-dim)]">
                   Volumes, zones d’impact et séquences utilisés pour calculer les métriques.
                 </span>
               </span>
-              <span className="shrink-0 text-xs font-semibold text-neutral-500 group-open:hidden">Afficher</span>
-              <span className="hidden shrink-0 text-xs font-semibold text-neutral-500 group-open:inline">Masquer</span>
+              <span className="shrink-0 text-xs font-semibold text-[var(--rl-fg-dim)] group-open:hidden">Afficher</span>
+              <span className="hidden shrink-0 text-xs font-semibold text-[var(--rl-fg-dim)] group-open:inline">Masquer</span>
             </summary>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[80rem] text-left text-sm">
-                <thead className="bg-white/[0.02] text-[11px] text-neutral-500">
+                <thead className="bg-white/[0.02] text-[13px] text-[var(--rl-fg-dim)]">
                   <tr>
                     <th className="px-4 py-3 font-medium">Joueur</th>
                     <th className="px-3 py-3 text-right font-medium">Tirs</th>
@@ -1957,14 +1957,14 @@ export function MatchReport({
                   {scopedPlayers.map((player) => {
                     const playerMechanics = mechanicsByPlayer.get(player.playerId);
                     return (
-                      <tr key={player.playerId} className="border-t border-white/8">
-                        <td className="px-4 py-3 font-semibold text-neutral-200">
+                      <tr key={player.playerId} className="border-t border-[var(--rl-border)]">
+                        <td className="px-4 py-3 font-semibold text-[var(--rl-fg)]">
                           <span className={[
                             "mr-2 inline-block size-1.5 rounded-full align-middle",
                             firstTeamPlayerIds.includes(player.playerId)
-                              ? "bg-sky-300"
+                              ? "bg-[var(--rl-ct)]"
                               : secondTeamPlayerIds.includes(player.playerId)
-                                ? "bg-amber-300"
+                                ? "bg-[var(--rl-t)]"
                                 : "bg-neutral-500",
                           ].join(" ")} />
                           {player.name}
@@ -2010,22 +2010,22 @@ export function MatchReport({
                 </tbody>
               </table>
             </div>
-            <p className="border-t border-white/8 px-4 py-3 text-xs text-neutral-500">
+            <p className="border-t border-[var(--rl-border)] px-4 py-3 text-xs text-[var(--rl-fg-dim)]">
               Toutes les valeurs utilisent le contrat Aim V3. Les impacts et dégâts restent vides si
               leur association aux tirs n’est pas assez fiable.
             </p>
           </details>
 
-          <article className="overflow-hidden rounded-md border border-white/10 bg-[#121515]">
-            <div className="border-b border-white/8 px-4 py-3">
-              <h3 className="text-sm font-semibold text-neutral-100">Métriques avancées</h3>
-              <p className="mt-1 text-xs text-neutral-500">
+          <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
+            <div className="border-b border-[var(--rl-border)] px-4 py-3">
+              <h3 className="text-sm font-semibold text-[var(--rl-fg)]">Métriques avancées</h3>
+              <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">
                 Chaque valeur affiche son nombre d’échantillons lorsqu’il est disponible.
               </p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[96rem] text-left text-sm">
-                <thead className="bg-white/[0.02] text-[11px] text-neutral-500">
+                <thead className="bg-white/[0.02] text-[13px] text-[var(--rl-fg-dim)]">
                   <tr>
                     <th className="px-4 py-3 font-medium">Joueur</th>
                     <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Tirs ennemi repéré" /></th>
@@ -2048,14 +2048,14 @@ export function MatchReport({
                   {scopedPlayers.map((player) => {
                     const playerMechanics = mechanicsByPlayer.get(player.playerId);
                     return (
-                      <tr key={player.playerId} className="border-t border-white/8">
-                        <td className="px-4 py-3 font-semibold text-neutral-200">
+                      <tr key={player.playerId} className="border-t border-[var(--rl-border)]">
+                        <td className="px-4 py-3 font-semibold text-[var(--rl-fg)]">
                           <span className={[
                             "mr-2 inline-block size-1.5 rounded-full align-middle",
                             firstTeamPlayerIds.includes(player.playerId)
-                              ? "bg-sky-300"
+                              ? "bg-[var(--rl-ct)]"
                               : secondTeamPlayerIds.includes(player.playerId)
-                                ? "bg-amber-300"
+                                ? "bg-[var(--rl-t)]"
                                 : "bg-neutral-500",
                           ].join(" ")} />
                           {player.name}
@@ -2148,7 +2148,7 @@ export function MatchReport({
                 </tbody>
               </table>
             </div>
-            <p className="border-t border-white/8 px-4 py-3 text-xs text-neutral-500">
+            <p className="border-t border-[var(--rl-border)] px-4 py-3 text-xs text-[var(--rl-fg-dim)]">
               La précision sur ennemi repéré utilise le masque réseau comme signal secondaire. Les délais,
               distances, postures et erreurs angulaires sont des estimations dépendantes de l’échantillonnage GOTV.
               « Erreur initiale du viseur » mesure l’angle à notre première visibilité combinée ; « Arrêt avant tir »
@@ -2162,24 +2162,24 @@ export function MatchReport({
 
       {tab === "details" && detailSection === "weapons" && (
         <div className="mt-6 grid gap-4">
-          <article className="rounded-md border border-white/10 bg-[#121515] p-4">
-            <h3 className="text-sm font-semibold text-neutral-100">Périmètre</h3>
-            <p className="mt-1 text-xs text-neutral-500">
+          <article className="rounded-md border border-[var(--rl-border)] bg-[#121515] p-4">
+            <h3 className="text-sm font-semibold text-[var(--rl-fg)]">Périmètre</h3>
+            <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">
               Les filtres s’appliquent aux tirs, dégâts et kills du tableau.
             </p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <label className="grid gap-1 text-[11px] font-medium text-neutral-500">
+              <label className="grid gap-1 text-[13px] font-medium text-[var(--rl-fg-dim)]">
                 Joueur
-                <span className="flex h-9 items-center rounded-md border border-white/10 bg-[#0d0f0f] px-3 text-sm font-semibold text-neutral-200">
+                <span className="flex h-9 items-center rounded-md border border-[var(--rl-border)] bg-[#0d0f0f] px-3 text-sm font-semibold text-[var(--rl-fg)]">
                   {selectedPlayer?.name ?? "—"}
                 </span>
               </label>
-              <label className="grid gap-1 text-[11px] font-medium text-neutral-500">
+              <label className="grid gap-1 text-[13px] font-medium text-[var(--rl-fg-dim)]">
                 Équipe
                 <select
                   value={weaponTeamId}
                   onChange={(event) => setWeaponTeamId(event.target.value)}
-                  className="h-9 rounded-md border border-white/10 bg-[#0d0f0f] px-3 text-sm text-neutral-200"
+                  className="h-9 rounded-md border border-[var(--rl-border)] bg-[#0d0f0f] px-3 text-sm text-[var(--rl-fg)]"
                 >
                   <option value="all">Toutes les équipes</option>
                   {analysis.teams.map((team) => (
@@ -2189,24 +2189,24 @@ export function MatchReport({
                   ))}
                 </select>
               </label>
-              <label className="grid gap-1 text-[11px] font-medium text-neutral-500">
+              <label className="grid gap-1 text-[13px] font-medium text-[var(--rl-fg-dim)]">
                 Côté
                 <select
                   value={weaponSide}
                   onChange={(event) => setWeaponSide(event.target.value as "all" | "T" | "CT")}
-                  className="h-9 rounded-md border border-white/10 bg-[#0d0f0f] px-3 text-sm text-neutral-200"
+                  className="h-9 rounded-md border border-[var(--rl-border)] bg-[#0d0f0f] px-3 text-sm text-[var(--rl-fg)]"
                 >
                   <option value="all">T + CT</option>
                   <option value="T">Terroristes</option>
                   <option value="CT">Contre-terroristes</option>
                 </select>
               </label>
-              <label className="grid gap-1 text-[11px] font-medium text-neutral-500">
+              <label className="grid gap-1 text-[13px] font-medium text-[var(--rl-fg-dim)]">
                 Round
                 <select
                   value={weaponRoundNumber}
                   onChange={(event) => setWeaponRoundNumber(event.target.value)}
-                  className="h-9 rounded-md border border-white/10 bg-[#0d0f0f] px-3 text-sm text-neutral-200"
+                  className="h-9 rounded-md border border-[var(--rl-border)] bg-[#0d0f0f] px-3 text-sm text-[var(--rl-fg)]"
                 >
                   <option value="all">Tous les rounds</option>
                   {analysis.rounds.map((round) => (
@@ -2219,27 +2219,27 @@ export function MatchReport({
             </div>
           </article>
 
-          <article className="overflow-hidden rounded-md border border-white/10 bg-[#121515]">
-            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-white/8 px-4 py-3">
+          <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--rl-border)] px-4 py-3">
               <div>
-                <h3 className="text-sm font-semibold text-neutral-100">Statistiques par arme</h3>
-                <p className="mt-1 text-xs text-neutral-500">
+                <h3 className="text-sm font-semibold text-[var(--rl-fg)]">Statistiques par arme</h3>
+                <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">
                   Un tir touché est un tir associé à au moins un événement de dégâts.
                 </p>
               </div>
               <span className={[
-                "rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wide",
+                "rounded px-2 py-1 text-xs font-semibold uppercase tracking-wide",
                 weaponAssociationSamples > 0 &&
                   weaponAssociationUsable === weaponAssociationSamples
-                  ? "bg-emerald-300/[0.08] text-emerald-200"
-                  : "bg-amber-300/[0.08] text-amber-200",
+                  ? "bg-emerald-300/[0.08] text-[var(--rl-positive)]"
+                  : "bg-amber-300/[0.08] text-[var(--rl-warning)]",
               ].join(" ")}>
                 Association {weaponAssociationUsable}/{weaponAssociationSamples}
               </span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[48rem] text-left text-sm">
-                <thead className="bg-white/[0.02] text-[11px] text-neutral-500">
+                <thead className="bg-white/[0.02] text-[13px] text-[var(--rl-fg-dim)]">
                   <tr>
                     <th className="px-4 py-3 font-medium">Arme</th>
                     <th className="px-3 py-3 text-right font-medium">Tirs</th>
@@ -2275,15 +2275,15 @@ export function MatchReport({
                       formulaVersion: "roundlab.aim.v3.accuracyByWeapon.filtered",
                     });
                     return (
-                      <tr key={row.weapon} className="border-t border-white/8">
-                        <td className="px-4 py-3 font-semibold text-neutral-200">
+                      <tr key={row.weapon} className="border-t border-[var(--rl-border)]">
+                        <td className="px-4 py-3 font-semibold text-[var(--rl-fg)]">
                           {weaponLabel(row.weapon)}
                         </td>
                         <td className="px-3 py-3 text-right tabular-nums">{mechanics ? row.shots : "—"}</td>
                         <td className="px-3 py-3 text-right tabular-nums">
                           {row.reliableShots > 0 ? row.hitShots : "—"}
                         </td>
-                        <td className="px-3 py-3 text-right font-semibold tabular-nums text-emerald-200">
+                        <td className="px-3 py-3 text-right font-semibold tabular-nums text-[var(--rl-positive)]">
                           <QualityMetricCell metric={accuracyMetric} format={percent} />
                         </td>
                         <td className="px-3 py-3 text-right tabular-nums">
@@ -2298,13 +2298,13 @@ export function MatchReport({
               </table>
             </div>
             {weaponRows.length === 0 && (
-              <p className="border-t border-white/8 px-4 py-5 text-sm text-neutral-500">
+              <p className="border-t border-[var(--rl-border)] px-4 py-5 text-sm text-[var(--rl-fg-dim)]">
                 Aucune donnée d’arme ne correspond à ces filtres.
               </p>
             )}
             {mechanics && weaponRows.length > 0 &&
               weaponAssociationUsable < weaponAssociationSamples && (
-              <p className="border-t border-amber-300/10 bg-amber-300/[0.025] px-4 py-3 text-xs leading-relaxed text-amber-100/70">
+              <p className="border-t border-[color-mix(in_oklab,var(--rl-warning)_16%,transparent)] bg-[color-mix(in_oklab,var(--rl-warning)_4%,transparent)] px-4 py-3 text-xs leading-relaxed text-[var(--rl-warning)]">
                 Les lignes calculent la précision uniquement sur les tirs fiables et affichent leur
                 couverture. Une ligne sans tir fiable reste volontairement vide.
               </p>
@@ -2315,11 +2315,11 @@ export function MatchReport({
 
       {tab === "details" && detailSection === "openings" && (
         <div className="mt-6 grid gap-6">
-          <article className="overflow-hidden rounded-md border border-white/10 bg-[#121515]">
-            <div className="flex flex-col gap-3 border-b border-white/8 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
+            <div className="flex flex-col gap-3 border-b border-[var(--rl-border)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-sm font-semibold text-neutral-100">Opening duels</h2>
-                <p className="mt-1 text-xs text-neutral-500">
+                <h2 className="text-sm font-semibold text-[var(--rl-fg)]">Opening duels</h2>
+                <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">
                   Fréquence d’engagement, réussite et réponse de l’équipe après une mort d’ouverture.
                 </p>
               </div>
@@ -2336,10 +2336,10 @@ export function MatchReport({
                     aria-pressed={openingSide === value}
                     onClick={() => setOpeningSide(value)}
                     className={[
-                      "min-w-12 rounded-[3px] px-3 py-1.5 text-[11px] font-semibold transition-colors",
+                      "min-w-12 rounded-[3px] px-3 py-1.5 text-[13px] font-semibold transition-colors",
                       openingSide === value
-                        ? "bg-white/[0.1] text-neutral-100"
-                        : "text-neutral-500 hover:text-neutral-200",
+                        ? "bg-white/[0.1] text-[var(--rl-fg)]"
+                        : "text-[var(--rl-fg-dim)] hover:text-[var(--rl-fg)]",
                     ].join(" ")}
                   >
                     {label}
@@ -2349,7 +2349,7 @@ export function MatchReport({
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[56rem] text-left text-sm">
-                <thead className="bg-white/[0.02] text-[11px] text-neutral-500">
+                <thead className="bg-white/[0.02] text-[13px] text-[var(--rl-fg-dim)]">
                   <tr>
                     <th className="px-4 py-3 font-medium">Joueur</th>
                     <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Tentatives d'opening" /></th>
@@ -2393,14 +2393,14 @@ export function MatchReport({
                     const roundsPlayed = scopedMetrics?.roundsPlayed ?? 0;
                     const openingWinsCount = scopedMetrics?.openingWins ?? null;
                     return (
-                      <tr key={player.playerId} className="border-t border-white/8">
-                        <td className="px-4 py-3 font-semibold text-neutral-200">
+                      <tr key={player.playerId} className="border-t border-[var(--rl-border)]">
+                        <td className="px-4 py-3 font-semibold text-[var(--rl-fg)]">
                           {playerIdentity(player.playerId, player.name)}
                         </td>
                         <td className="px-3 py-3 text-right tabular-nums">
                           {number(attempts)}
                           {attempts !== null && roundsPlayed > 0 && (
-                            <span className="ml-1 text-[10px] text-neutral-600">
+                            <span className="ml-1 text-xs text-[var(--rl-fg-dim)]">
                               ({percent(attempts / roundsPlayed)})
                             </span>
                           )}
@@ -2408,7 +2408,7 @@ export function MatchReport({
                         <td className="px-3 py-3 text-right tabular-nums">
                           {number(openingWinsCount)}
                           {attempts !== null && attempts > 0 && openingWinsCount !== null && (
-                            <span className="ml-1 text-[10px] text-emerald-300/70">
+                            <span className="ml-1 text-xs text-[var(--rl-positive)]">
                               ({percent(openingWinsCount / attempts)})
                             </span>
                           )}
@@ -2416,16 +2416,16 @@ export function MatchReport({
                         <td className="px-3 py-3 text-right tabular-nums">
                           {tradedOpeningDeaths}
                           {openingLosses.length > 0 && (
-                            <span className="ml-1 text-[10px] text-neutral-600">
+                            <span className="ml-1 text-xs text-[var(--rl-fg-dim)]">
                               ({percent(tradedOpeningDeaths / openingLosses.length)})
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-3 text-right text-neutral-400">
+                        <td className="px-3 py-3 text-right text-[var(--rl-fg-muted)]">
                           {analysis.players.find((candidate) => candidate.playerId === mainVictimId)?.name ?? "—"}
                         </td>
-                        <td className="px-3 py-3 text-right text-neutral-400">{weaponLabel(bestWeapon)}</td>
-                        <td className="px-4 py-3 text-right text-neutral-400">
+                        <td className="px-3 py-3 text-right text-[var(--rl-fg-muted)]">{weaponLabel(bestWeapon)}</td>
+                        <td className="px-4 py-3 text-right text-[var(--rl-fg-muted)]">
                           {analysis.players.find((candidate) => candidate.playerId === mainKillerId)?.name ?? "—"}
                         </td>
                       </tr>
@@ -2436,13 +2436,13 @@ export function MatchReport({
             </div>
           </article>
 
-          <article className="overflow-hidden rounded-md border border-white/10 bg-[#121515]">
-            <div className="border-b border-white/8 px-4 py-3">
-              <h3 className="text-sm font-semibold text-neutral-200">Détail par round</h3>
+          <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
+            <div className="border-b border-[var(--rl-border)] px-4 py-3">
+              <h3 className="text-sm font-semibold text-[var(--rl-fg)]">Détail par round</h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[46rem] text-left text-sm">
-                <thead className="text-[11px] text-neutral-500">
+                <thead className="text-[13px] text-[var(--rl-fg-dim)]">
                   <tr>
                     <th className="px-4 py-2 font-medium">Round</th>
                     <th className="px-3 py-2 font-medium">Attaquant</th>
@@ -2455,7 +2455,7 @@ export function MatchReport({
                 </thead>
                 <tbody>
                   {filteredOpeningEvents.map((proof) => (
-                    <tr key={proof.evidenceId} className="border-t border-white/8">
+                    <tr key={proof.evidenceId} className="border-t border-[var(--rl-border)]">
                       <td className="px-4 py-3 tabular-nums">{displayRound(proof.roundNumber)}</td>
                       <td className="px-3 py-3">
                         {analysis.players.find((player) => player.playerId === proof.actors[0])?.name ?? "—"}
@@ -2463,16 +2463,16 @@ export function MatchReport({
                       <td className="px-3 py-3">
                         {analysis.players.find((player) => player.playerId === proof.actors[1])?.name ?? "—"}
                       </td>
-                      <td className="px-3 py-3 text-neutral-400">
+                      <td className="px-3 py-3 text-[var(--rl-fg-muted)]">
                         {roundPlayerSide.get(`${proof.roundNumber}:${proof.actors[0]}`) ?? "—"}
                       </td>
-                      <td className="px-3 py-3 text-neutral-400">{weaponLabel(proof.weapon ?? null)}</td>
+                      <td className="px-3 py-3 text-[var(--rl-fg-muted)]">{weaponLabel(proof.weapon ?? null)}</td>
                       <td className="px-3 py-3 tabular-nums">{proof.time.toFixed(1)} s</td>
                       <td className="px-4 py-3 text-right">
                         <button
                           type="button"
                           onClick={() => onOpenEvidence(proof.evidenceId)}
-                          className="font-semibold text-emerald-300 hover:underline"
+                          className="font-semibold text-[var(--rl-positive)] hover:underline"
                         >
                           Voir
                         </button>
@@ -2488,10 +2488,10 @@ export function MatchReport({
 
       {tab === "details" && detailSection === "clutches" && (
         <div className="mt-6 grid gap-6">
-          <article className="overflow-hidden rounded-md border border-white/10 bg-[#121515]">
+          <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[54rem] text-left text-sm">
-                <thead className="bg-white/[0.02] text-[11px] text-neutral-500">
+                <thead className="bg-white/[0.02] text-[13px] text-[var(--rl-fg-dim)]">
                   <tr>
                     <th className="px-4 py-3 font-medium">Joueur</th>
                     <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="1v1" /></th>
@@ -2528,8 +2528,8 @@ export function MatchReport({
                       ? "—"
                       : `${winCount ?? 0}/${opportunityCount ?? 0}`;
                     return (
-                      <tr key={player.playerId} className="border-t border-white/8">
-                        <td className="px-4 py-3 font-semibold text-neutral-200">
+                      <tr key={player.playerId} className="border-t border-[var(--rl-border)]">
+                        <td className="px-4 py-3 font-semibold text-[var(--rl-fg)]">
                           {playerIdentity(player.playerId, player.name)}
                         </td>
                         <td className="px-3 py-3 text-right tabular-nums">{clutchCell(opportunities?.oneVsOne, wins?.oneVsOne)}</td>
@@ -2538,8 +2538,8 @@ export function MatchReport({
                         <td className="px-3 py-3 text-right tabular-nums">{clutchCell(opportunities?.oneVsFour, wins?.oneVsFour)}</td>
                         <td className="px-3 py-3 text-right tabular-nums">{clutchCell(opportunities?.oneVsFivePlus, wins?.oneVsFivePlus)}</td>
                         <td className="px-3 py-3 text-right tabular-nums">{number(totalOpportunities)}</td>
-                        <td className="px-3 py-3 text-right tabular-nums text-emerald-200">{number(totalWins)}</td>
-                        <td className="px-3 py-3 text-right tabular-nums text-rose-200">{number(totalLosses)}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-[var(--rl-positive)]">{number(totalWins)}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-[var(--rl-critical)]">{number(totalLosses)}</td>
                         <td className="px-4 py-3 text-right font-semibold tabular-nums">{percent(successRate)}</td>
                       </tr>
                     );
@@ -2554,13 +2554,13 @@ export function MatchReport({
       {tab === "headToHead" && headToHeadPlayerA && headToHeadPlayerB && (
         <div className="mt-6 grid gap-6">
           <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
-            <label className="grid gap-1 text-xs text-neutral-500">
+            <label className="grid gap-1 text-xs text-[var(--rl-fg-dim)]">
               Joueur A
               <select
                 aria-label="Joueur A à comparer"
                 value={effectiveHeadToHeadPlayerAId}
                 onChange={(event) => setHeadToHeadPlayerAId(event.target.value)}
-                className="h-10 rounded-md border border-white/10 bg-[#121515] px-3 text-sm text-neutral-200"
+                className="h-10 rounded-md border border-[var(--rl-border)] bg-[#121515] px-3 text-sm text-[var(--rl-fg)]"
               >
                 {analysis.players
                   .filter((player) => player.playerId !== effectiveHeadToHeadPlayerBId)
@@ -2571,14 +2571,14 @@ export function MatchReport({
                   ))}
               </select>
             </label>
-            <span className="hidden pb-2 text-xs text-neutral-600 sm:block">contre</span>
-            <label className="grid gap-1 text-xs text-neutral-500">
+            <span className="hidden pb-2 text-xs text-[var(--rl-fg-dim)] sm:block">contre</span>
+            <label className="grid gap-1 text-xs text-[var(--rl-fg-dim)]">
               Joueur B
               <select
                 aria-label="Joueur B à comparer"
                 value={effectiveHeadToHeadPlayerBId}
                 onChange={(event) => setHeadToHeadPlayerBId(event.target.value)}
-                className="h-10 rounded-md border border-white/10 bg-[#121515] px-3 text-sm text-neutral-200"
+                className="h-10 rounded-md border border-[var(--rl-border)] bg-[#121515] px-3 text-sm text-[var(--rl-fg)]"
               >
                 {analysis.players
                   .filter((player) => player.playerId !== effectiveHeadToHeadPlayerAId)
@@ -2591,10 +2591,10 @@ export function MatchReport({
             </label>
           </div>
 
-          <article className="grid gap-px overflow-hidden rounded-md border border-white/10 bg-white/10 md:grid-cols-[1fr_12rem_1fr]">
+          <article className="grid gap-px overflow-hidden rounded-md border border-[var(--rl-border)] bg-white/10 md:grid-cols-[1fr_12rem_1fr]">
             <div className="bg-[#121515] p-5">
               <h2 className="text-lg font-semibold text-white">{headToHeadPlayerA.name}</h2>
-              <p className="mt-1 text-sm text-neutral-500">
+              <p className="mt-1 text-sm text-[var(--rl-fg-dim)]">
                 {number(headToHeadPlayerA.metrics.kills)} / {number(headToHeadPlayerA.metrics.assists)} / {headToHeadPlayerA.metrics.deaths}
               </p>
             </div>
@@ -2603,59 +2603,59 @@ export function MatchReport({
                 <div className="text-2xl font-semibold text-white">
                   {headToHeadKills(headToHeadPlayerA.playerId, headToHeadPlayerB.playerId).length}
                 </div>
-                <div className="text-[10px] uppercase text-neutral-600">Kills</div>
+                <div className="text-xs uppercase text-[var(--rl-fg-dim)]">Kills</div>
               </div>
               <div>
                 <div className="text-2xl font-semibold text-white">
                   {headToHeadKills(headToHeadPlayerB.playerId, headToHeadPlayerA.playerId).length}
                 </div>
-                <div className="text-[10px] uppercase text-neutral-600">Kills</div>
+                <div className="text-xs uppercase text-[var(--rl-fg-dim)]">Kills</div>
               </div>
             </div>
             <div className="bg-[#121515] p-5 text-right">
               <h2 className="text-lg font-semibold text-white">{headToHeadPlayerB.name}</h2>
-              <p className="mt-1 text-sm text-neutral-500">
+              <p className="mt-1 text-sm text-[var(--rl-fg-dim)]">
                 {number(headToHeadPlayerB.metrics.kills)} / {number(headToHeadPlayerB.metrics.assists)} / {headToHeadPlayerB.metrics.deaths}
               </p>
             </div>
           </article>
 
           <div className="grid gap-6 lg:grid-cols-3">
-            <article className="rounded-md border border-white/10 bg-[#121515] p-5">
+            <article className="rounded-md border border-[var(--rl-border)] bg-[#121515] p-5">
               <h3 className="text-sm font-semibold text-white">Aim</h3>
               <div className="mt-4 grid gap-3 text-sm">
-                <div className="flex justify-between"><span className="text-neutral-500">Dégâts directs</span><span>{number(headToHeadDamage(headToHeadPlayerA.playerId, headToHeadPlayerB.playerId))} / {number(headToHeadDamage(headToHeadPlayerB.playerId, headToHeadPlayerA.playerId))}</span></div>
-                <div className="flex justify-between"><span className="text-neutral-500">HS kill %</span><span>{percent(headToHeadPlayerA.metrics.headshotRate)} / {percent(headToHeadPlayerB.metrics.headshotRate)}</span></div>
-                <div className="flex justify-between"><span className="text-neutral-500">Accuracy all</span><span>{percent(mechanicsByPlayer.get(headToHeadPlayerA.playerId)?.accuracy ?? null)} / {percent(mechanicsByPlayer.get(headToHeadPlayerB.playerId)?.accuracy ?? null)}</span></div>
-                <div className="flex justify-between"><span className="text-neutral-500">Arrêt avant tir</span><span>{percent(mechanicsByPlayer.get(headToHeadPlayerA.playerId)?.counterStrafeRate ?? null)} / {percent(mechanicsByPlayer.get(headToHeadPlayerB.playerId)?.counterStrafeRate ?? null)}</span></div>
+                <div className="flex justify-between"><span className="text-[var(--rl-fg-dim)]">Dégâts directs</span><span>{number(headToHeadDamage(headToHeadPlayerA.playerId, headToHeadPlayerB.playerId))} / {number(headToHeadDamage(headToHeadPlayerB.playerId, headToHeadPlayerA.playerId))}</span></div>
+                <div className="flex justify-between"><span className="text-[var(--rl-fg-dim)]">HS kill %</span><span>{percent(headToHeadPlayerA.metrics.headshotRate)} / {percent(headToHeadPlayerB.metrics.headshotRate)}</span></div>
+                <div className="flex justify-between"><span className="text-[var(--rl-fg-dim)]">Accuracy all</span><span>{percent(mechanicsByPlayer.get(headToHeadPlayerA.playerId)?.accuracy ?? null)} / {percent(mechanicsByPlayer.get(headToHeadPlayerB.playerId)?.accuracy ?? null)}</span></div>
+                <div className="flex justify-between"><span className="text-[var(--rl-fg-dim)]">Arrêt avant tir</span><span>{percent(mechanicsByPlayer.get(headToHeadPlayerA.playerId)?.counterStrafeRate ?? null)} / {percent(mechanicsByPlayer.get(headToHeadPlayerB.playerId)?.counterStrafeRate ?? null)}</span></div>
                 <div className="flex justify-between">
-                  <span className="text-neutral-500">Erreur initiale du viseur</span>
+                  <span className="text-[var(--rl-fg-dim)]">Erreur initiale du viseur</span>
                   <span>
                     {number(mechanicsByPlayer.get(headToHeadPlayerA.playerId)?.crosshairErrorDegrees ?? null, 1)}° / {number(mechanicsByPlayer.get(headToHeadPlayerB.playerId)?.crosshairErrorDegrees ?? null, 1)}°
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-neutral-500">Time to damage</span>
+                  <span className="text-[var(--rl-fg-dim)]">Time to damage</span>
                   <span>
                     {number(mechanicsByPlayer.get(headToHeadPlayerA.playerId)?.timeToDamageMs ?? null)} ms / {number(mechanicsByPlayer.get(headToHeadPlayerB.playerId)?.timeToDamageMs ?? null)} ms
                   </span>
                 </div>
               </div>
             </article>
-            <article className="rounded-md border border-white/10 bg-[#121515] p-5">
+            <article className="rounded-md border border-[var(--rl-border)] bg-[#121515] p-5">
               <h3 className="text-sm font-semibold text-white">Armes du duel</h3>
               <div className="mt-4 grid gap-3 text-sm">
                 <div>
-                  <div className="text-xs font-semibold text-sky-200">{headToHeadPlayerA.name}</div>
-                  <div className="mt-1 text-neutral-400">
+                  <div className="text-xs font-semibold text-[var(--rl-info)]">{headToHeadPlayerA.name}</div>
+                  <div className="mt-1 text-[var(--rl-fg-muted)]">
                     {headToHeadWeaponSummary(headToHeadPlayerA.playerId, headToHeadPlayerB.playerId)
                       .map(([weapon, count]) => `${weaponLabel(weapon)} ×${count}`)
                       .join(" · ") || "—"}
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs font-semibold text-amber-200">{headToHeadPlayerB.name}</div>
-                  <div className="mt-1 text-neutral-400">
+                  <div className="text-xs font-semibold text-[var(--rl-warning)]">{headToHeadPlayerB.name}</div>
+                  <div className="mt-1 text-[var(--rl-fg-muted)]">
                     {headToHeadWeaponSummary(headToHeadPlayerB.playerId, headToHeadPlayerA.playerId)
                       .map(([weapon, count]) => `${weaponLabel(weapon)} ×${count}`)
                       .join(" · ") || "—"}
@@ -2663,18 +2663,18 @@ export function MatchReport({
                 </div>
               </div>
             </article>
-            <article className="rounded-md border border-white/10 bg-[#121515] p-5">
+            <article className="rounded-md border border-[var(--rl-border)] bg-[#121515] p-5">
               <h3 className="text-sm font-semibold text-white">Flashes</h3>
               <div className="mt-4 flex items-center justify-between text-sm">
-                <span className="font-semibold text-sky-200">{headToHeadPlayerA.name}</span>
-                <span className="tabular-nums text-neutral-300">
+                <span className="font-semibold text-[var(--rl-info)]">{headToHeadPlayerA.name}</span>
+                <span className="tabular-nums text-[var(--rl-fg-muted)]">
                   {headToHeadFlashes(headToHeadPlayerA.playerId, headToHeadPlayerB.playerId)}
-                  <span className="mx-2 text-neutral-700">/</span>
+                  <span className="mx-2 text-[var(--rl-fg-dim)]">/</span>
                   {headToHeadFlashes(headToHeadPlayerB.playerId, headToHeadPlayerA.playerId)}
                 </span>
-                <span className="font-semibold text-amber-200">{headToHeadPlayerB.name}</span>
+                <span className="font-semibold text-[var(--rl-warning)]">{headToHeadPlayerB.name}</span>
               </div>
-              <p className="mt-3 text-xs text-neutral-500">Aveuglements directs entre les deux joueurs.</p>
+              <p className="mt-3 text-xs text-[var(--rl-fg-dim)]">Aveuglements directs entre les deux joueurs.</p>
             </article>
           </div>
         </div>
@@ -2684,19 +2684,19 @@ export function MatchReport({
         <div className="mt-6 grid gap-6">
           <div>
             <div>
-              <span className="text-[10px] font-semibold uppercase tracking-[0.13em] text-neutral-600">
+              <span className="text-xs font-semibold uppercase tracking-[0.13em] text-[var(--rl-fg-dim)]">
                 Profil joueur
               </span>
               <h2 className="mt-1 text-xl font-semibold text-white">{selectedPlayer.name}</h2>
-              <p className="mt-1 text-sm text-neutral-500">
+              <p className="mt-1 text-sm text-[var(--rl-fg-dim)]">
                 Synthèse de ses contributions mesurées et détail round par round.
               </p>
             </div>
           </div>
 
-          <article className="grid overflow-hidden border-y border-white/10 bg-[#121515] md:grid-cols-2 xl:grid-cols-4">
+          <article className="grid overflow-hidden border-y border-[var(--rl-border)] bg-[#121515] md:grid-cols-2 xl:grid-cols-4">
             <section className="p-5">
-              <h3 className="text-[10px] font-semibold uppercase tracking-[0.13em] text-neutral-600">
+              <h3 className="text-xs font-semibold uppercase tracking-[0.13em] text-[var(--rl-fg-dim)]">
                 Combat
               </h3>
               <div className="mt-4 grid grid-cols-2 gap-4">
@@ -2706,8 +2706,8 @@ export function MatchReport({
                 <Metric label="Dégâts" value={number(selectedPlayer.metrics.damageHealth)} />
               </div>
             </section>
-            <section className="border-t border-white/8 p-5 md:border-l md:border-t-0">
-              <h3 className="text-[10px] font-semibold uppercase tracking-[0.13em] text-neutral-600">
+            <section className="border-t border-[var(--rl-border)] p-5 md:border-l md:border-t-0">
+              <h3 className="text-xs font-semibold uppercase tracking-[0.13em] text-[var(--rl-fg-dim)]">
                 Aim
               </h3>
               <div className="mt-4 grid grid-cols-2 gap-4">
@@ -2717,8 +2717,8 @@ export function MatchReport({
                 <Metric label="Arrêt avant tir" value={percent(mechanicsByPlayer.get(selectedPlayer.playerId)?.counterStrafeRate ?? null)} />
               </div>
             </section>
-            <section className="border-t border-white/8 p-5 xl:border-l xl:border-t-0">
-              <h3 className="text-[10px] font-semibold uppercase tracking-[0.13em] text-neutral-600">
+            <section className="border-t border-[var(--rl-border)] p-5 xl:border-l xl:border-t-0">
+              <h3 className="text-xs font-semibold uppercase tracking-[0.13em] text-[var(--rl-fg-dim)]">
                 Utilitaires
               </h3>
               <div className="mt-4 grid grid-cols-2 gap-4">
@@ -2744,8 +2744,8 @@ export function MatchReport({
                 />
               </div>
             </section>
-            <section className="border-t border-white/8 p-5 md:border-l xl:border-t-0">
-              <h3 className="text-[10px] font-semibold uppercase tracking-[0.13em] text-neutral-600">
+            <section className="border-t border-[var(--rl-border)] p-5 md:border-l xl:border-t-0">
+              <h3 className="text-xs font-semibold uppercase tracking-[0.13em] text-[var(--rl-fg-dim)]">
                 Jeu collectif
               </h3>
               <div className="mt-4 grid grid-cols-2 gap-4">
@@ -2764,13 +2764,13 @@ export function MatchReport({
             </section>
           </article>
 
-          <article className="overflow-hidden rounded-md border border-white/10 bg-[#121515]">
-            <div className="border-b border-white/8 px-4 py-3">
-              <h3 className="text-sm font-semibold text-neutral-200">Performance par round</h3>
+          <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
+            <div className="border-b border-[var(--rl-border)] px-4 py-3">
+              <h3 className="text-sm font-semibold text-[var(--rl-fg)]">Performance par round</h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[40rem] text-left text-sm">
-                <thead className="text-[11px] text-neutral-500">
+                <thead className="text-[13px] text-[var(--rl-fg-dim)]">
                   <tr>
                     <th className="px-4 py-2 font-medium">Round</th>
                     <th className="px-3 py-2 text-right font-medium">K</th>
@@ -2784,7 +2784,7 @@ export function MatchReport({
                   {analysis.rounds.map((round) => {
                     const playerRound = round.players.find((player) => player.playerId === selectedPlayer.playerId);
                     return (
-                      <tr key={round.roundNumber} className="border-t border-white/8">
+                      <tr key={round.roundNumber} className="border-t border-[var(--rl-border)]">
                         <td className="px-4 py-3 tabular-nums">{displayRound(round.roundNumber)}</td>
                         <td className="px-3 py-3 text-right tabular-nums">{number(playerRound?.metrics.kills ?? null)}</td>
                         <td className="px-3 py-3 text-right tabular-nums">{number(playerRound?.metrics.assists ?? null)}</td>
@@ -2804,17 +2804,17 @@ export function MatchReport({
       {tab === "mapZones" && selectedPlayer && (
         <div className="mt-6 grid gap-6">
           <article>
-            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">
+            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--rl-fg-dim)]">
               Lecture visuelle
             </span>
             <h2 className="mt-1 text-2xl font-semibold text-white">Positionnement</h2>
-            <p className="mt-1 max-w-3xl text-sm text-neutral-500">
+            <p className="mt-1 max-w-3xl text-sm text-[var(--rl-fg-dim)]">
               Trajectoires et positions enregistrées dans la démo.
             </p>
           </article>
 
           <div className="grid gap-6 lg:grid-cols-[16rem_1fr]">
-            <aside className="rounded-md border border-white/10 bg-[#121515] p-2">
+            <aside className="rounded-md border border-[var(--rl-border)] bg-[#121515] p-2">
               {rankedPlayers.map((player) => (
                 <button
                   key={player.playerId}
@@ -2825,7 +2825,7 @@ export function MatchReport({
                     "flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm",
                     selectedPlayer.playerId === player.playerId
                       ? "bg-white text-neutral-950"
-                      : "text-neutral-300 hover:bg-white/[0.05]",
+                      : "text-[var(--rl-fg-muted)] hover:bg-white/[0.05]",
                   ].join(" ")}
                 >
                   <span className="truncate font-medium">{player.name}</span>
@@ -2837,18 +2837,18 @@ export function MatchReport({
             </aside>
 
             <div className="grid min-w-0 gap-6">
-              <article className="rounded-md border border-white/10 bg-[#121515] p-5">
+              <article className="rounded-md border border-[var(--rl-border)] bg-[#121515] p-5">
                 <div className="flex flex-wrap items-start justify-between gap-5">
                   <div>
                     <h3 className="text-lg font-semibold text-white">{selectedPlayer.name}</h3>
-                    <p className="mt-1 max-w-xl text-sm text-neutral-500">
+                    <p className="mt-1 max-w-xl text-sm text-[var(--rl-fg-dim)]">
                       La vue condensée superpose les déplacements, le point de mort et les trajectoires d’utilitaires de tous ses rounds.
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => onOpenPositioning(selectedPlayer.playerId)}
-                    className="rounded-md bg-emerald-300 px-4 py-2 text-sm font-semibold text-neutral-950 hover:bg-emerald-200"
+                    className="rounded-md bg-[var(--rl-accent)] px-4 py-2 text-sm font-semibold text-neutral-950 hover:bg-[color-mix(in_oklab,var(--rl-accent)_82%,white)]"
                   >
                     Voir les trajectoires de {selectedPlayer.name}
                   </button>
@@ -2893,16 +2893,16 @@ export function MatchReport({
                 </div>
               </article>
 
-              <article className="overflow-hidden rounded-md border border-white/10 bg-[#121515]">
-                <div className="border-b border-white/8 px-4 py-3">
-                  <h3 className="text-sm font-semibold text-neutral-200">Occupation par zone</h3>
-                  <p className="mt-1 text-xs text-neutral-500">
+              <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
+                <div className="border-b border-[var(--rl-border)] px-4 py-3">
+                  <h3 className="text-sm font-semibold text-[var(--rl-fg)]">Occupation par zone</h3>
+                  <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">
                     Temps passé calculé à partir des positions enregistrées dans chaque round.
                   </p>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[38rem] text-left text-sm">
-                    <thead className="text-[11px] text-neutral-500">
+                    <thead className="text-[13px] text-[var(--rl-fg-dim)]">
                       <tr>
                         <th className="px-4 py-2 font-medium">Zone</th>
                         <th className="px-3 py-2 text-right font-medium">Rounds</th>
@@ -2912,8 +2912,8 @@ export function MatchReport({
                     </thead>
                     <tbody>
                       {selectedZoneRows.slice(0, 16).map((zone) => (
-                        <tr key={zone.zoneId} className="border-t border-white/8">
-                          <td className="px-4 py-3 font-semibold text-neutral-200">
+                        <tr key={zone.zoneId} className="border-t border-[var(--rl-border)]">
+                          <td className="px-4 py-3 font-semibold text-[var(--rl-fg)]">
                             {zoneLabel(zone.zoneId, spatial?.zoneLabels)}
                           </td>
                           <td className="px-3 py-3 text-right tabular-nums">{zone.rounds.size}</td>
@@ -2925,37 +2925,37 @@ export function MatchReport({
                   </table>
                 </div>
                 {selectedZoneRows.length === 0 && (
-                  <p className="border-t border-white/8 px-4 py-4 text-sm text-neutral-500">
+                  <p className="border-t border-[var(--rl-border)] px-4 py-4 text-sm text-[var(--rl-fg-dim)]">
                     Aucune zone tactique n’a pu être attribuée pour cette carte.
                   </p>
                 )}
               </article>
 
               <div className="grid gap-6 md:grid-cols-3">
-                <article className="rounded-md border border-white/10 bg-[#121515] p-5">
+                <article className="rounded-md border border-[var(--rl-border)] bg-[#121515] p-5">
                   <h3 className="text-sm font-semibold text-white">Rotations</h3>
                   <div className="mt-3 text-3xl font-semibold tabular-nums text-white">
                     {spatial ? selectedRotations.length : "—"}
                   </div>
-                  <p className="mt-2 text-xs text-neutral-500">
+                  <p className="mt-2 text-xs text-[var(--rl-fg-dim)]">
                     Déplacements collectifs auxquels le joueur participe.
                   </p>
                 </article>
-                <article className="rounded-md border border-white/10 bg-[#121515] p-5">
+                <article className="rounded-md border border-[var(--rl-border)] bg-[#121515] p-5">
                   <h3 className="text-sm font-semibold text-white"><DefinitionTerm label="Tradeability" /></h3>
                   <div className="mt-3 text-3xl font-semibold tabular-nums text-white">
                     {spatial ? selectedTradeability.length : "—"}
                   </div>
-                  <p className="mt-2 text-xs text-neutral-500">
+                  <p className="mt-2 text-xs text-[var(--rl-fg-dim)]">
                     Morts ou couvertures où sa capacité de trade est analysable.
                   </p>
                 </article>
-                <article className="rounded-md border border-white/10 bg-[#121515] p-5">
+                <article className="rounded-md border border-[var(--rl-border)] bg-[#121515] p-5">
                   <h3 className="text-sm font-semibold text-white">Espacement</h3>
                   <div className="mt-3 text-3xl font-semibold tabular-nums text-white">
                     {closestTeammateDistance === null ? "—" : `${closestTeammateDistance.toFixed(0)} u`}
                   </div>
-                  <p className="mt-2 text-xs text-neutral-500">
+                  <p className="mt-2 text-xs text-[var(--rl-fg-dim)]">
                     Distance 3D minimale observée avec un équipier.
                     {farthestTeammateDistance !== null && ` Maximum : ${farthestTeammateDistance.toFixed(0)} u.`}
                   </p>

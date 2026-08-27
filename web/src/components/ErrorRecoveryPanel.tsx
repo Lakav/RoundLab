@@ -39,19 +39,19 @@ export function ErrorRecoveryPanel({
       role="alert"
       aria-labelledby="roundlab-error-title"
       className={[
-        "rounded-xl border border-rose-300/20 bg-[#151313] text-neutral-100 shadow-2xl",
+        "rounded-xl border border-rose-300/20 bg-[#151313] text-[var(--rl-fg)] shadow-2xl",
         compact ? "p-4" : "mx-auto w-full max-w-2xl p-6 sm:p-8",
       ].join(" ")}
     >
       <h1 id="roundlab-error-title" className={compact ? "text-base font-semibold" : "text-2xl font-semibold"}>
         Une erreur a interrompu RoundLab
       </h1>
-      <p className="mt-2 text-sm leading-relaxed text-neutral-400">
+      <p className="mt-2 text-sm leading-relaxed text-[var(--rl-fg-muted)]">
         Tes démos restent locales. Le diagnostic proposé exclut les données de match, les Steam IDs,
         les noms de joueurs, les chemins locaux, le message brut et la stack.
       </p>
-      <p className="mt-3 text-xs text-neutral-500">
-        Catégorie détectée : <span className="font-semibold text-neutral-300">{diagnostic.category}</span>
+      <p className="mt-3 text-xs text-[var(--rl-fg-dim)]">
+        Catégorie détectée : <span className="font-semibold text-[var(--rl-fg-muted)]">{diagnostic.category}</span>
       </p>
       <div className="mt-5 flex flex-wrap gap-2">
         {onRetry && (
@@ -59,22 +59,22 @@ export function ErrorRecoveryPanel({
             Réessayer
           </button>
         )}
-        <Link href="/" className="rounded-md border border-white/10 px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-white/[0.05]">
+        <Link href="/" className="rounded-md border border-[var(--rl-border)] px-3 py-2 text-sm font-semibold text-[var(--rl-fg)] hover:bg-white/[0.05]">
           Revenir à l’accueil
         </Link>
-        <button type="button" onClick={() => void copyDiagnostic()} className="rounded-md border border-white/10 px-3 py-2 text-sm text-neutral-300 hover:bg-white/[0.05]">
+        <button type="button" onClick={() => void copyDiagnostic()} className="rounded-md border border-[var(--rl-border)] px-3 py-2 text-sm text-[var(--rl-fg-muted)] hover:bg-white/[0.05]">
           Copier le diagnostic
         </button>
-        <button type="button" onClick={() => downloadLocalDiagnostic(diagnostic)} className="rounded-md border border-white/10 px-3 py-2 text-sm text-neutral-300 hover:bg-white/[0.05]">
+        <button type="button" onClick={() => downloadLocalDiagnostic(diagnostic)} className="rounded-md border border-[var(--rl-border)] px-3 py-2 text-sm text-[var(--rl-fg-muted)] hover:bg-white/[0.05]">
           Télécharger le diagnostic
         </button>
         {onDismiss && (
-          <button type="button" onClick={onDismiss} className="rounded-md px-3 py-2 text-sm text-neutral-500 hover:text-neutral-200">
+          <button type="button" onClick={onDismiss} className="rounded-md px-3 py-2 text-sm text-[var(--rl-fg-dim)] hover:text-[var(--rl-fg)]">
             Fermer
           </button>
         )}
       </div>
-      <div aria-live="polite" className="mt-2 min-h-5 text-xs text-neutral-500">
+      <div aria-live="polite" className="mt-2 min-h-5 text-xs text-[var(--rl-fg-dim)]">
         {copyStatus === "copied" && "Diagnostic copié."}
         {copyStatus === "failed" && "Copie refusée par le navigateur : utilise le téléchargement."}
       </div>

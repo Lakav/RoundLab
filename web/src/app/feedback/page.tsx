@@ -57,46 +57,46 @@ export default function FeedbackPage() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#0d100f] text-neutral-100">
+    <div className="relative min-h-screen overflow-hidden bg-[#0d100f] text-[var(--rl-fg)]">
       <div className="product-grid pointer-events-none absolute inset-x-0 top-0 h-[38rem] opacity-60" />
       <header className="relative z-10 border-b border-white/[0.07] bg-[#0d100f]/88 backdrop-blur-xl">
         <div className="mx-auto flex h-16 w-full max-w-5xl items-center justify-between px-5 sm:px-8">
           <Link href="/" className="text-[15px] font-semibold tracking-[-0.01em] text-white">
             RoundLab
           </Link>
-          <span className="rounded border border-emerald-200/15 bg-emerald-200/[0.055] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-emerald-200/80">
+          <span className="rounded border border-emerald-200/15 bg-emerald-200/[0.055] px-2 py-0.5 text-xs font-bold uppercase tracking-[0.14em] text-[var(--rl-positive)]">
             Bêta
           </span>
         </div>
       </header>
 
       <main id="main-content" tabIndex={-1} className="relative z-10 mx-auto w-full max-w-5xl px-5 py-10 sm:px-8 sm:py-14">
-        <Link href="/" className="text-xs font-medium text-neutral-500 transition-colors hover:text-neutral-200">
+        <Link href="/" className="text-xs font-medium text-[var(--rl-fg-dim)] transition-colors hover:text-[var(--rl-fg)]">
           Retour à l’accueil
         </Link>
 
         <div className="mt-8 grid gap-10 lg:grid-cols-[0.72fr_1.28fr]">
           <section>
-            <span className="text-[10px] font-bold uppercase tracking-[0.17em] text-emerald-200/65">
+            <span className="text-xs font-bold uppercase tracking-[0.17em] text-[var(--rl-positive)]">
               Retour bêta
             </span>
             <h1 className="mt-4 text-4xl font-semibold leading-tight tracking-[-0.035em] text-white">
               Signaler un problème
             </h1>
-            <p className="mt-4 text-sm leading-6 text-neutral-400">
+            <p className="mt-4 text-sm leading-6 text-[var(--rl-fg-muted)]">
               Décris précisément ce qui ne fonctionne pas. Le rapport sera ouvert sous forme d’issue GitHub préremplie.
             </p>
 
-            <div className="mt-8 border-l border-white/10 pl-5">
-              <h2 className="text-xs font-semibold text-neutral-200">Avant d’envoyer</h2>
-              <ul className="mt-3 space-y-2 text-xs leading-5 text-neutral-500">
+            <div className="mt-8 border-l border-[var(--rl-border)] pl-5">
+              <h2 className="text-xs font-semibold text-[var(--rl-fg)]">Avant d’envoyer</h2>
+              <ul className="mt-3 space-y-2 text-xs leading-5 text-[var(--rl-fg-dim)]">
                 <li>Indique la page et l’action qui déclenchent le problème.</li>
                 <li>Ne joins pas de démo contenant des données que tu ne veux pas partager.</li>
                 <li>Une capture d’écran peut être ajoutée ensuite directement sur GitHub.</li>
               </ul>
             </div>
 
-            <div className="mt-8 rounded-lg border border-amber-100/10 bg-amber-100/[0.025] p-4 text-xs leading-5 text-neutral-500">
+            <div className="mt-8 rounded-lg border border-amber-100/10 bg-amber-100/[0.025] p-4 text-xs leading-5 text-[var(--rl-fg-dim)]">
               RoundLab est régulièrement modifié pendant la bêta. Cette bêta est gratuite ; la version finale stable sera payante.
             </div>
           </section>
@@ -109,12 +109,12 @@ export default function FeedbackPage() {
             className="rounded-xl border border-white/[0.09] bg-[#131716]/95 p-5 shadow-[0_30px_90px_rgba(0,0,0,0.3)] sm:p-6"
           >
             <div className="grid gap-5">
-              <label className="grid gap-2 text-xs font-semibold text-neutral-300">
+              <label className="grid gap-2 text-xs font-semibold text-[var(--rl-fg-muted)]">
                 Type de problème
                 <select
                   value={category}
                   onChange={(event) => setCategory(event.target.value)}
-                  className="h-11 rounded-md border border-white/10 bg-black/20 px-3 text-sm font-normal text-neutral-100 outline-none transition-colors focus:border-emerald-200/35"
+                  className="h-11 rounded-md border border-[var(--rl-border)] bg-black/20 px-3 text-sm font-normal text-[var(--rl-fg)] outline-none transition-colors focus:border-emerald-200/35"
                 >
                   <option>Bug d’interface</option>
                   <option>Statistique incorrecte</option>
@@ -125,18 +125,18 @@ export default function FeedbackPage() {
                 </select>
               </label>
 
-              <label className="grid gap-2 text-xs font-semibold text-neutral-300">
+              <label className="grid gap-2 text-xs font-semibold text-[var(--rl-fg-muted)]">
                 Titre
                 <input
                   required
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
                   placeholder="Résumé court du problème"
-                  className="h-11 rounded-md border border-white/10 bg-black/20 px-3 text-sm font-normal text-neutral-100 outline-none placeholder:text-neutral-600 focus:border-emerald-200/35"
+                  className="h-11 rounded-md border border-[var(--rl-border)] bg-black/20 px-3 text-sm font-normal text-[var(--rl-fg)] outline-none placeholder:text-[var(--rl-fg-dim)] focus:border-emerald-200/35"
                 />
               </label>
 
-              <label className="grid gap-2 text-xs font-semibold text-neutral-300">
+              <label className="grid gap-2 text-xs font-semibold text-[var(--rl-fg-muted)]">
                 Ce qui s’est passé
                 <textarea
                   required
@@ -144,29 +144,29 @@ export default function FeedbackPage() {
                   onChange={(event) => setDescription(event.target.value)}
                   placeholder="Décris le problème et les éventuels messages d’erreur."
                   rows={5}
-                  className="resize-y rounded-md border border-white/10 bg-black/20 px-3 py-3 text-sm font-normal leading-6 text-neutral-100 outline-none placeholder:text-neutral-600 focus:border-emerald-200/35"
+                  className="resize-y rounded-md border border-[var(--rl-border)] bg-black/20 px-3 py-3 text-sm font-normal leading-6 text-[var(--rl-fg)] outline-none placeholder:text-[var(--rl-fg-dim)] focus:border-emerald-200/35"
                 />
               </label>
 
-              <label className="grid gap-2 text-xs font-semibold text-neutral-300">
+              <label className="grid gap-2 text-xs font-semibold text-[var(--rl-fg-muted)]">
                 Étapes pour reproduire
                 <textarea
                   value={steps}
                   onChange={(event) => setSteps(event.target.value)}
                   placeholder={"1. Ouvrir…\n2. Cliquer sur…\n3. Observer…"}
                   rows={4}
-                  className="resize-y rounded-md border border-white/10 bg-black/20 px-3 py-3 text-sm font-normal leading-6 text-neutral-100 outline-none placeholder:text-neutral-600 focus:border-emerald-200/35"
+                  className="resize-y rounded-md border border-[var(--rl-border)] bg-black/20 px-3 py-3 text-sm font-normal leading-6 text-[var(--rl-fg)] outline-none placeholder:text-[var(--rl-fg-dim)] focus:border-emerald-200/35"
                 />
               </label>
 
-              <label className="grid gap-2 text-xs font-semibold text-neutral-300">
+              <label className="grid gap-2 text-xs font-semibold text-[var(--rl-fg-muted)]">
                 Résultat attendu
                 <textarea
                   value={expected}
                   onChange={(event) => setExpected(event.target.value)}
                   placeholder="Explique ce que l’application aurait dû afficher ou faire."
                   rows={3}
-                  className="resize-y rounded-md border border-white/10 bg-black/20 px-3 py-3 text-sm font-normal leading-6 text-neutral-100 outline-none placeholder:text-neutral-600 focus:border-emerald-200/35"
+                  className="resize-y rounded-md border border-[var(--rl-border)] bg-black/20 px-3 py-3 text-sm font-normal leading-6 text-[var(--rl-fg)] outline-none placeholder:text-[var(--rl-fg-dim)] focus:border-emerald-200/35"
                 />
               </label>
             </div>
@@ -175,7 +175,7 @@ export default function FeedbackPage() {
               <button
                 type="button"
                 onClick={() => void copyReport()}
-                className="h-10 rounded-md border border-white/10 px-4 text-xs font-semibold text-neutral-400 transition-colors hover:bg-white/[0.04] hover:text-neutral-100"
+                className="h-10 rounded-md border border-[var(--rl-border)] px-4 text-xs font-semibold text-[var(--rl-fg-muted)] transition-colors hover:bg-white/[0.04] hover:text-[var(--rl-fg)]"
               >
                 {copied ? "Rapport copié" : "Copier le rapport"}
               </button>
@@ -186,7 +186,7 @@ export default function FeedbackPage() {
                 Continuer sur GitHub
               </button>
             </div>
-            <p className="mt-3 text-right text-[10px] leading-4 text-neutral-600">
+            <p className="mt-3 text-right text-xs leading-4 text-[var(--rl-fg-dim)]">
               Un compte GitHub est nécessaire pour publier le signalement.
             </p>
           </form>
