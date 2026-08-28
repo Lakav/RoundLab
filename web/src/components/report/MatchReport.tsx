@@ -18,6 +18,7 @@ import {
 import { ReportHero } from "./ReportHero";
 import {
   CoverageBadge,
+  CoverageStrip,
   DataQualityPanel,
   Metric,
   QualityMetricCell,
@@ -35,6 +36,12 @@ import {
   weaponLabel,
   zoneLabel,
 } from "./report-formatters";
+import {
+  DEFAULT_REPORT_SCOPE,
+  ReportScopeFilters,
+  scopeMatcher,
+  type ReportScope,
+} from "./ReportScopeFilters";
 import type {
   DetailSection,
   MatchReportProps,
@@ -59,9 +66,8 @@ export function MatchReport({
   const [selectedRoundNumber, setSelectedRoundNumber] = useState<number | null>(null);
   const [headToHeadPlayerAId, setHeadToHeadPlayerAId] = useState("");
   const [headToHeadPlayerBId, setHeadToHeadPlayerBId] = useState("");
-  const [weaponTeamId, setWeaponTeamId] = useState("all");
-  const [weaponSide, setWeaponSide] = useState<"all" | "T" | "CT">("all");
-  const [weaponRoundNumber, setWeaponRoundNumber] = useState("all");
+  const [weaponScope, setWeaponScope] = useState<ReportScope>(DEFAULT_REPORT_SCOPE);
+  const [clutchScope, setClutchScope] = useState<ReportScope>(DEFAULT_REPORT_SCOPE);
   const [openingSide, setOpeningSide] = useState<"all" | "T" | "CT">("all");
   const selectedPlayer = analysis?.players.find(
     (player) => player.playerId === selectedPlayerId,
@@ -273,16 +279,23 @@ export function MatchReport({
         roundPlayerSide.get(`${proof.roundNumber}:${proof.actors[0]}`) === openingSide
       ),
   );
-  const weaponTeamPlayerIds = weaponTeamId === "all"
-    ? null
-    : new Set(
-      analysis.teams.find((team) => team.logicalTeam === weaponTeamId)?.playerIds ?? [],
-    );
-  const weaponScopeIncludes = (playerId: string, roundNumber: number) =>
-    scopedPlayerIds.has(playerId) &&
-    (weaponTeamPlayerIds === null || weaponTeamPlayerIds.has(playerId)) &&
-    (weaponSide === "all" || roundPlayerSide.get(`${roundNumber}:${playerId}`) === weaponSide) &&
-    (weaponRoundNumber === "all" || roundNumber === Number(weaponRoundNumber));
+  // Evidence ids resolve back to their round, so a filtered table can recount
+  // metrics whose per-size totals were computed for the whole match.
+  const evidenceRound = new Map<string, number>(
+    analysis.evidence.map((proof) => [proof.evidenceId, proof.roundNumber]),
+  );
+  const weaponScopeIncludes = scopeMatcher(
+    weaponScope,
+    analysis,
+    scopedPlayerIds,
+    roundPlayerSide,
+  );
+  const clutchScopeIncludes = scopeMatcher(
+    clutchScope,
+    analysis,
+    scopedPlayerIds,
+    roundPlayerSide,
+  );
   const headshotEvidenceIds = new Set(
     analysis.players.flatMap((player) => player.metricEvidence.headshotKills),
   );
@@ -1399,6 +1412,13 @@ export function MatchReport({
 
       {tab === "details" && detailSection === "trades" && (
         <div className="mt-6 grid gap-6">
+          <CoverageStrip
+            total={scopedPlayers.length}
+            entries={[
+                { label: "Trades", available: scopedPlayers.filter((player) => player.metrics.tradeKills !== null).length },
+                { label: "Opportunités", available: scopedPlayers.filter((player) => player.metrics.tradeAttempts !== null).length },
+              ]}
+          />
           <article>
             <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--rl-fg-dim)]">
               Réponse collective
@@ -1532,6 +1552,13 @@ export function MatchReport({
 
       {tab === "details" && detailSection === "utility" && (
         <div className="mt-6 grid gap-6">
+          <CoverageStrip
+            total={scopedPlayers.length}
+            entries={[
+                { label: "Utilitaires", available: scopedPlayers.filter((player) => player.metrics.grenadesThrown !== null).length },
+                { label: "Flashes", available: scopedPlayers.filter((player) => player.metrics.flashes != null).length },
+              ]}
+          />
           <article>
             <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--rl-fg-dim)]">
               Usage vérifiable
@@ -1878,6 +1905,13 @@ export function MatchReport({
 
       {tab === "details" && detailSection === "aim" && (
         <div className="mt-6 grid gap-6">
+          <CoverageStrip
+            total={scopedPlayers.length}
+            entries={[
+                { label: "Précision", available: [...mechanicsByPlayer.values()].filter((value) => value.accuracy !== null).length },
+                { label: "Temps avant dégâts", available: [...mechanicsByPlayer.values()].filter((value) => value.timeToDamageMs !== null).length },
+              ]}
+          />
           <article>
             <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--rl-fg-dim)]">
               Mécaniques de tir
@@ -2167,56 +2201,13 @@ export function MatchReport({
             <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">
               Les filtres s’appliquent aux tirs, dégâts et kills du tableau.
             </p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <label className="grid gap-1 text-[13px] font-medium text-[var(--rl-fg-dim)]">
-                Joueur
-                <span className="flex h-9 items-center rounded-md border border-[var(--rl-border)] bg-[#0d0f0f] px-3 text-sm font-semibold text-[var(--rl-fg)]">
-                  {selectedPlayer?.name ?? "—"}
-                </span>
-              </label>
-              <label className="grid gap-1 text-[13px] font-medium text-[var(--rl-fg-dim)]">
-                Équipe
-                <select
-                  value={weaponTeamId}
-                  onChange={(event) => setWeaponTeamId(event.target.value)}
-                  className="h-9 rounded-md border border-[var(--rl-border)] bg-[#0d0f0f] px-3 text-sm text-[var(--rl-fg)]"
-                >
-                  <option value="all">Toutes les équipes</option>
-                  {analysis.teams.map((team) => (
-                    <option key={team.logicalTeam} value={team.logicalTeam}>
-                      {teamLabel(team.name)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="grid gap-1 text-[13px] font-medium text-[var(--rl-fg-dim)]">
-                Côté
-                <select
-                  value={weaponSide}
-                  onChange={(event) => setWeaponSide(event.target.value as "all" | "T" | "CT")}
-                  className="h-9 rounded-md border border-[var(--rl-border)] bg-[#0d0f0f] px-3 text-sm text-[var(--rl-fg)]"
-                >
-                  <option value="all">T + CT</option>
-                  <option value="T">Terroristes</option>
-                  <option value="CT">Contre-terroristes</option>
-                </select>
-              </label>
-              <label className="grid gap-1 text-[13px] font-medium text-[var(--rl-fg-dim)]">
-                Round
-                <select
-                  value={weaponRoundNumber}
-                  onChange={(event) => setWeaponRoundNumber(event.target.value)}
-                  className="h-9 rounded-md border border-[var(--rl-border)] bg-[#0d0f0f] px-3 text-sm text-[var(--rl-fg)]"
-                >
-                  <option value="all">Tous les rounds</option>
-                  {analysis.rounds.map((round) => (
-                    <option key={round.roundNumber} value={round.roundNumber}>
-                      Round {displayRound(round.roundNumber)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
+            <ReportScopeFilters
+              analysis={analysis}
+              scope={weaponScope}
+              onChange={setWeaponScope}
+              playerName={selectedPlayer?.name ?? null}
+              displayRound={displayRound}
+            />
           </article>
 
           <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
@@ -2315,6 +2306,12 @@ export function MatchReport({
 
       {tab === "details" && detailSection === "openings" && (
         <div className="mt-6 grid gap-6">
+          <CoverageStrip
+            total={scopedPlayers.length}
+            entries={[
+                { label: "Openings", available: scopedPlayers.filter((player) => player.metrics.openingAttempts !== null).length },
+              ]}
+          />
           <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
             <div className="flex flex-col gap-3 border-b border-[var(--rl-border)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -2488,9 +2485,30 @@ export function MatchReport({
 
       {tab === "details" && detailSection === "clutches" && (
         <div className="mt-6 grid gap-6">
+          <CoverageStrip
+            total={scopedPlayers.length}
+            entries={[
+                { label: "Clutchs", available: scopedPlayers.filter((player) => player.metrics.clutchOpportunities !== null).length },
+                { label: "Issues", available: scopedPlayers.filter((player) => player.metrics.clutchOutcomes !== null).length },
+              ]}
+          />
+          <article className="rounded-md border border-[var(--rl-border)] bg-[#121515] px-4 py-4">
+            <h3 className="text-sm font-semibold text-[var(--rl-fg)]">Portée</h3>
+            <p className="mt-1 text-[13px] text-[var(--rl-fg-dim)]">
+              Restreint les clutchs comptés ci-dessous.
+            </p>
+            <ReportScopeFilters
+              analysis={analysis}
+              scope={clutchScope}
+              onChange={setClutchScope}
+              playerName={selectedPlayer?.name ?? null}
+              displayRound={displayRound}
+            />
+          </article>
+
           <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[54rem] text-left text-sm">
+              <table className="w-full min-w-[62rem] text-left text-sm">
                 <thead className="bg-white/[0.02] text-[13px] text-[var(--rl-fg-dim)]">
                   <tr>
                     <th className="px-4 py-3 font-medium">Joueur</th>
@@ -2502,6 +2520,8 @@ export function MatchReport({
                     <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Opportunités" /></th>
                     <th className="px-3 py-3 text-right font-medium">Gagnés</th>
                     <th className="px-3 py-3 text-right font-medium">Perdus</th>
+                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Sauvés" /></th>
+                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Après plant" /></th>
                     <th className="px-4 py-3 text-right font-medium">Réussite</th>
                   </tr>
                 </thead>
@@ -2509,12 +2529,35 @@ export function MatchReport({
                   {scopedPlayers.map((player) => {
                     const opportunities = player.metrics.clutchOpportunities;
                     const wins = player.metrics.clutchWins;
+                    const outcomes = player.metrics.clutchOutcomes;
+                    // Per-size counts are precomputed for the whole match, so
+                    // the totals are recounted from evidence whenever a filter
+                    // narrows the scope. Without evidence the row states its
+                    // unavailability rather than showing a filtered zero.
+                    const scopeNarrowed =
+                      clutchScope.teamId !== "all" ||
+                      clutchScope.side !== "all" ||
+                      clutchScope.roundNumber !== "all";
+                    const countScoped = (evidenceIds: string[]) => {
+                      const rounds = new Set<number>();
+                      for (const id of evidenceIds) {
+                        const round = evidenceRound.get(id);
+                        if (round !== undefined && clutchScopeIncludes(player.playerId, round)) {
+                          rounds.add(round);
+                        }
+                      }
+                      return rounds.size;
+                    };
                     const totalOpportunities = opportunities === null
                       ? null
-                      : Object.values(opportunities).reduce((total, value) => total + value, 0);
+                      : scopeNarrowed
+                        ? countScoped(player.metricEvidence.clutchOpportunities)
+                        : Object.values(opportunities).reduce((total, value) => total + value, 0);
                     const totalWins = wins === null
                       ? null
-                      : Object.values(wins).reduce((total, value) => total + value, 0);
+                      : scopeNarrowed
+                        ? countScoped(player.metricEvidence.clutchWins)
+                        : Object.values(wins).reduce((total, value) => total + value, 0);
                     const totalLosses = totalOpportunities === null || totalWins === null
                       ? null
                       : Math.max(0, totalOpportunities - totalWins);
@@ -2540,6 +2583,8 @@ export function MatchReport({
                         <td className="px-3 py-3 text-right tabular-nums">{number(totalOpportunities)}</td>
                         <td className="px-3 py-3 text-right tabular-nums text-[var(--rl-positive)]">{number(totalWins)}</td>
                         <td className="px-3 py-3 text-right tabular-nums text-[var(--rl-critical)]">{number(totalLosses)}</td>
+                        <td className="px-3 py-3 text-right tabular-nums">{number(outcomes?.saved ?? null)}</td>
+                        <td className="px-3 py-3 text-right tabular-nums">{number(outcomes?.afterPlant ?? null)}</td>
                         <td className="px-4 py-3 text-right font-semibold tabular-nums">{percent(successRate)}</td>
                       </tr>
                     );

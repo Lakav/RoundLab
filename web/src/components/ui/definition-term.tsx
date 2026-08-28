@@ -53,6 +53,8 @@ export const STAT_DEFINITIONS: Record<string, string> = {
   "1v3": "Clutch où le joueur reste seul face à trois adversaires.",
   "1v4": "Clutch où le joueur reste seul face à quatre adversaires.",
   "1v5+": "Clutch où le joueur reste seul face à au moins cinq adversaires.",
+  Sauvés: "Clutchs perdus où le joueur survit et conserve son équipement pour le round suivant. Déduit du vainqueur du round et de la survie, la démo ne fournissant pas de motif de fin de round.",
+  "Après plant": "Clutchs commencés alors que la bombe était déjà posée.",
   "Force-buy": "Achat partiel engagé malgré une économie insuffisante pour un équipement complet.",
   Eco: "Round joué avec un investissement faible pour préserver l’économie.",
   "Full-buy": "Round joué avec un équipement complet selon les seuils documentés par RoundLab.",

@@ -39,6 +39,31 @@ export type ClutchCounts = {
   oneVsFivePlus: number;
 };
 
+/**
+ * How a clutch situation ended, counted per player.
+ *
+ * A save is a lost round the clutcher survived: the equipment carries over to
+ * the next round even though the round itself was lost. It is derived from the
+ * round winner and the player's survival, never from a dedicated event, since
+ * `round_end` carries no win reason.
+ */
+export type ClutchOutcomes = {
+  /** Rounds won while in a clutch. */
+  won: number;
+  /** Rounds lost while in a clutch, whatever the player did. */
+  lost: number;
+  /** Lost rounds the clutcher survived, keeping their equipment. */
+  saved: number;
+  /** Lost clutches where the player died. */
+  died: number;
+  /** Clutches entered while the bomb was already planted. */
+  afterPlant: number;
+  /** Clutches won by defusing the bomb. */
+  wonByDefuse: number;
+  /** Clutches won by the bomb exploding. */
+  wonByExplosion: number;
+};
+
 export type GrenadeCounts = {
   total: number;
   flash: number;
@@ -82,6 +107,7 @@ export type PlayerMetricEvidence = {
   survivedRounds: string[];
   clutchOpportunities: string[];
   clutchWins: string[];
+  clutchOutcomes: string[];
   tradeAttempts: string[];
   tradeKills: string[];
   tradeDeaths: string[];
@@ -110,6 +136,7 @@ export type PlayerAnalysisMetrics = {
   survivalRate: number | null;
   clutchOpportunities: ClutchCounts | null;
   clutchWins: ClutchCounts | null;
+  clutchOutcomes: ClutchOutcomes | null;
   tradeAttempts: number | null;
   tradeKills: number | null;
   tradeDeaths: number | null;

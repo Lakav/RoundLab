@@ -1,5 +1,6 @@
 import type {
   ClutchCounts,
+  ClutchOutcomes,
   FlashMetrics,
   GrenadeCounts,
   LogicalTeamAnalysis,
@@ -24,7 +25,7 @@ function emptyEvidence(): PlayerMetricEvidence {
   return {
     kills: [], deaths: [], assists: [], headshotKills: [], damageHealth: [],
     openingWins: [], openingLosses: [], multiKills: [], survivedRounds: [],
-    clutchOpportunities: [], clutchWins: [], tradeAttempts: [], tradeKills: [],
+    clutchOpportunities: [], clutchWins: [], clutchOutcomes: [], tradeAttempts: [], tradeKills: [],
     tradeDeaths: [], kastRounds: [], grenadesThrown: [], flashes: [],
     flashAssists: [], utilitySavedOnDeath: [],
   };
@@ -52,6 +53,23 @@ function sumMultiKills(analyses: BasePlayerAnalysis[]): PlayerAnalysisMetrics["m
     total.three += value.three;
     total.four += value.four;
     total.fivePlus += value.fivePlus;
+  }
+  return total;
+}
+
+function sumClutchOutcomes(
+  analyses: BasePlayerAnalysis[],
+): ClutchOutcomes | null {
+  const total: ClutchOutcomes = {
+    won: 0, lost: 0, saved: 0, died: 0,
+    afterPlant: 0, wonByDefuse: 0, wonByExplosion: 0,
+  };
+  for (const analysis of analyses) {
+    const value = analysis.metrics.clutchOutcomes;
+    if (value === null) return null;
+    for (const key of Object.keys(total) as (keyof ClutchOutcomes)[]) {
+      total[key] += value[key];
+    }
   }
   return total;
 }
@@ -189,6 +207,7 @@ export function aggregateSide(analyses: BasePlayerAnalysis[]): PlayerSideAnalysi
         : survivedRounds / roundsPlayed,
       clutchOpportunities: sumClutches(analyses, "clutchOpportunities"),
       clutchWins: sumClutches(analyses, "clutchWins"),
+      clutchOutcomes: sumClutchOutcomes(analyses),
       tradeAttempts: sumNullableMetric(analyses, "tradeAttempts"),
       tradeKills: sumNullableMetric(analyses, "tradeKills"),
       tradeDeaths: sumNullableMetric(analyses, "tradeDeaths"),

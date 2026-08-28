@@ -342,6 +342,84 @@ describe("deterministic MatchAnalysis V1", () => {
     ]);
   });
 
+  it("records a save when the clutcher survives a lost round", () => {
+    // P1 is last alive for T, kills nobody and is still alive when CT wins.
+    // The round is lost but the equipment carries over, which is a save.
+    const source = round(1, {
+      winner: "CT",
+      frames: [{
+        t: 0,
+        players: [
+          { id: P1, x: 0, y: 0, z: 0, yaw: 0, hp: 100, armor: 0, team: 2 },
+          { id: P3, x: 1, y: 0, z: 0, yaw: 0, hp: 100, armor: 0, team: 2 },
+          { id: P2, x: 2, y: 0, z: 0, yaw: 0, hp: 100, armor: 0, team: 3 },
+        ],
+      }],
+      events: [
+        { t: 1, tick: 1_064, sequence: 1, type: "kill", killer: P2, victim: P3, weapon: "m4a1" },
+        { t: 4, tick: 1_256, sequence: 2, type: "round_end", winner: "CT" },
+      ],
+    });
+
+    const outcomes = player(analyzeMatch(match([source]), CONTEXT), P1).metrics.clutchOutcomes;
+    expect(outcomes?.lost).toBe(1);
+    expect(outcomes?.saved).toBe(1);
+    expect(outcomes?.died).toBe(0);
+    expect(outcomes?.won).toBe(0);
+  });
+
+  it("counts a lost clutch the player died in as a death, not a save", () => {
+    const source = round(1, {
+      winner: "CT",
+      frames: [{
+        t: 0,
+        players: [
+          { id: P1, x: 0, y: 0, z: 0, yaw: 0, hp: 100, armor: 0, team: 2 },
+          { id: P3, x: 1, y: 0, z: 0, yaw: 0, hp: 100, armor: 0, team: 2 },
+          { id: P2, x: 2, y: 0, z: 0, yaw: 0, hp: 100, armor: 0, team: 3 },
+        ],
+      }],
+      events: [
+        { t: 1, tick: 1_064, sequence: 1, type: "kill", killer: P2, victim: P3, weapon: "m4a1" },
+        { t: 2, tick: 1_128, sequence: 2, type: "kill", killer: P2, victim: P1, weapon: "m4a1" },
+        { t: 4, tick: 1_256, sequence: 3, type: "round_end", winner: "CT" },
+      ],
+    });
+
+    const outcomes = player(analyzeMatch(match([source]), CONTEXT), P1).metrics.clutchOutcomes;
+    expect(outcomes?.lost).toBe(1);
+    expect(outcomes?.died).toBe(1);
+    expect(outcomes?.saved).toBe(0);
+  });
+
+  it("marks a clutch entered after the plant and won by defuse", () => {
+    // P2 is the last CT alive after the bomb is down, then defuses it.
+    const source = round(1, {
+      winner: "CT",
+      frames: [{
+        t: 0,
+        players: [
+          { id: P1, x: 0, y: 0, z: 0, yaw: 0, hp: 100, armor: 0, team: 2 },
+          { id: P2, x: 2, y: 0, z: 0, yaw: 0, hp: 100, armor: 0, team: 3 },
+          { id: P4, x: 3, y: 0, z: 0, yaw: 0, hp: 100, armor: 0, team: 3 },
+        ],
+      }],
+      events: [
+        { t: 1, tick: 1_064, sequence: 1, type: "bomb_planted", player: P1 },
+        { t: 2, tick: 1_128, sequence: 2, type: "kill", killer: P1, victim: P4, weapon: "ak47" },
+        { t: 3, tick: 1_192, sequence: 3, type: "kill", killer: P2, victim: P1, weapon: "m4a1" },
+        { t: 4, tick: 1_220, sequence: 4, type: "bomb_defused", player: P2 },
+        { t: 5, tick: 1_256, sequence: 5, type: "round_end", winner: "CT" },
+      ],
+    });
+
+    const outcomes = player(analyzeMatch(match([source]), CONTEXT), P2).metrics.clutchOutcomes;
+    expect(outcomes?.won).toBe(1);
+    expect(outcomes?.afterPlant).toBe(1);
+    expect(outcomes?.wonByDefuse).toBe(1);
+    expect(outcomes?.wonByExplosion).toBe(0);
+  });
+
   it("detects and wins a 1v2 clutch from the exact death sequence", () => {
     const source = round(1, {
       winner: "T",

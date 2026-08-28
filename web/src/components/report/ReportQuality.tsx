@@ -182,6 +182,37 @@ export function CoverageBadge({
   );
 }
 
+/**
+ * A labelled row of coverage badges.
+ *
+ * Every detail sub-page states how many players it can actually compute its
+ * metrics for, so a sparse table is never mistaken for a complete one.
+ */
+export function CoverageStrip({
+  entries,
+  total,
+}: {
+  entries: ReadonlyArray<{ label: string; available: number }>;
+  total: number;
+}) {
+  if (entries.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="mr-1 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--rl-fg-dim)]">
+        Couverture des données
+      </span>
+      {entries.map((entry) => (
+        <CoverageBadge
+          key={entry.label}
+          label={entry.label}
+          available={entry.available}
+          total={total}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function QualityMetricCell({
   metric,
   format,
