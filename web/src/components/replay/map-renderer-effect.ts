@@ -464,42 +464,100 @@ export function drawEffectVisual(
   }
 
   if (effect.type === "flash") {
-    const burst = clamp01(age / 0.26);
+    // A flashbang is a very short, very bright event. The detonation reads as a
+    // hard white core with a rapidly expanding falloff, then a thin ring that
+    // keeps travelling after the core is gone, so the blast stays visible for
+    // a beat instead of simply vanishing.
+    const burst = clamp01(age / 0.42);
     const eased = easeOutCubic(burst);
-    const alpha = 1 - burst;
-    const outer = 5 + eased * 8;
-    const inner = 2.2 + eased * 1.2;
-    for (let index = 0; index < 8; index++) {
-      const angle = -Math.PI / 2 + (index * Math.PI) / 4;
-      const radius = index % 2 === 0 ? outer : inner;
-      const x = position.x + Math.cos(angle) * radius;
-      const y = position.y + Math.sin(angle) * radius;
-      if (index === 0) graphics.moveTo(x, y);
-      else graphics.lineTo(x, y);
-    }
+    const fade = 1 - burst;
+
+    const wave = 6 + eased * 46;
     graphics
-      .closePath()
-      .fill({ color: 0xffffff, alpha: alpha * 0.92 })
-      .stroke({ color: 0xfff7d6, width: 1, alpha: alpha * 0.8 });
+      .circle(position.x, position.y, wave)
+      .stroke({
+        color: REPLAY_COLORS.flash,
+        width: 2.6 - eased * 2,
+        alpha: fade * 0.85,
+      });
+
+    // Three concentric falloff steps stand in for a radial gradient, which
+    // Pixi's Graphics cannot fill directly.
+    const glow = 4 + eased * 17;
+    for (const [scale, strength] of [[1, 0.16], [0.66, 0.3], [0.34, 0.72]] as const) {
+      graphics
+        .circle(position.x, position.y, glow * scale)
+        .fill({ color: 0xffffff, alpha: fade * strength });
+    }
+
+    // Spokes give the burst a direction and disappear faster than the core.
+    const spokeFade = Math.max(0, 1 - burst * 1.8);
+    if (spokeFade > 0) {
+      for (let index = 0; index < 6; index++) {
+        const angle = (index * Math.PI) / 3 + effectRandom(effect, index) * 0.4;
+        // Start beyond the core so the spokes read as scattered light rather
+        // than as spokes attached to a hub.
+        const start = glow * 1.15;
+        const end = start + 6 + eased * 22;
+        graphics
+          .moveTo(position.x + Math.cos(angle) * start, position.y + Math.sin(angle) * start)
+          .lineTo(position.x + Math.cos(angle) * end, position.y + Math.sin(angle) * end)
+          .stroke({ color: 0xffffff, width: 1.2, alpha: spokeFade * 0.34, cap: "round" });
+      }
+    }
     layer.addChild(graphics);
     return;
   }
 
   if (effect.type === "he") {
+    // The damage radius is the useful fact, so the shockwave races out to it
+    // and a faint ring stays behind at full radius for the rest of the effect.
+    // A second, slower wave and a few fragments give the blast some weight.
     const maximumRadius = 165 * unitsToPx;
     const progress = clamp01(age / 0.38);
     const shock = easeOutCubic(progress);
     const alpha = 1 - progress;
+
+    graphics
+      .circle(position.x, position.y, maximumRadius)
+      .stroke({ color: REPLAY_COLORS.he, width: 1, alpha: alpha * 0.28 });
+
     graphics
       .circle(position.x, position.y, maximumRadius * shock)
       .stroke({
-        color: 0xf97316,
+        color: REPLAY_COLORS.he,
         width: 3 - shock * 1.4,
         alpha: alpha * 0.9,
       });
+
+    const trailing = easeOutCubic(clamp01((age - 0.06) / 0.38));
+    if (trailing > 0) {
+      graphics
+        .circle(position.x, position.y, maximumRadius * trailing)
+        .stroke({
+          color: 0xfbbf24,
+          width: 1.6,
+          alpha: (1 - trailing) * 0.45,
+        });
+    }
+
+    const core = Math.max(2.5, 9 - shock * 6);
     graphics
-      .circle(position.x, position.y, Math.max(2.5, 7 - shock * 4))
-      .fill({ color: 0xfbbf24, alpha: alpha * 0.9 });
+      .circle(position.x, position.y, core * 1.9)
+      .fill({ color: REPLAY_COLORS.he, alpha: alpha * 0.3 })
+      .circle(position.x, position.y, core)
+      .fill({ color: 0xfff3c4, alpha: alpha * 0.95 });
+
+    drawImpactFragments(
+      graphics,
+      effect,
+      position.x,
+      position.y,
+      shock,
+      maximumRadius * 0.7,
+      0xfbbf24,
+      8,
+    );
     layer.addChild(graphics);
     return;
   }
@@ -512,10 +570,35 @@ export function drawEffectVisual(
     const color = teamColor(effect.team);
     graphics
       .circle(position.x, position.y, radius)
-      .fill({ color: teamDarkColor(effect.team), alpha: 0.32 * alpha })
+      // Fire is danger, not team identity: a team-tinted fill turned CT fires
+      // blue and made the flames read brown.
+      .fill({ color: 0x4a1d1d, alpha: 0.4 * alpha })
       // Dashes separate fire from the solid HE ring even in greyscale.
       .circle(position.x, position.y, radius)
       .stroke({ color: REPLAY_COLORS.danger, width: 1.6, alpha: 0.8 * alpha });
+
+    // Flame tongues inside the zone. Each keeps a fixed seeded position and
+    // only breathes in size, so the fire looks alive without the whole patch
+    // crawling around between frames.
+    for (let index = 0; index < 7; index++) {
+      const angle = effectRandom(effect, index) * Math.PI * 2;
+      const distance = radius * (0.15 + effectRandom(effect, index + 30) * 0.6);
+      const phase = effectRandom(effect, index + 60) * Math.PI * 2;
+      const breathe = 0.72 + Math.sin(time * 6 + phase) * 0.28;
+      graphics
+        .circle(
+          position.x + Math.cos(angle) * distance,
+          position.y + Math.sin(angle) * distance,
+          radius * 0.2 * breathe,
+        )
+        .fill({
+          // Higher alpha so the flame reads as fire rather than muddying into
+          // the team-tinted zone fill underneath it.
+          color: index % 2 ? REPLAY_COLORS.danger : 0xf97316,
+          alpha: 0.42 * alpha,
+        });
+    }
+
     if (age < 0.7) {
       const ignition = easeOutCubic(age / 0.7);
       graphics
