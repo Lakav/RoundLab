@@ -72,7 +72,7 @@ export function PlayerHUD({ side }: { side: "CT" | "T" }) {
     <aside
       aria-label={`${teamName || side} player status`}
       className={cn(
-        "pointer-events-none absolute top-1/2 z-40 flex w-[258px] -translate-y-[48%] flex-col gap-1.5 rounded-md border border-white/10 bg-[#070909]/62 p-2 shadow-2xl shadow-black/35 backdrop-blur-md",
+        "pointer-events-none absolute top-1/2 z-40 flex w-[258px] -translate-y-[48%] flex-col gap-1.5 rounded-md border border-[var(--rl-border)] bg-[#070909]/62 p-2 shadow-2xl shadow-black/35 backdrop-blur-md",
         side === "CT" ? "left-5" : "right-5"
       )}
     >
@@ -80,7 +80,7 @@ export function PlayerHUD({ side }: { side: "CT" | "T" }) {
         className="mb-1 flex items-center gap-2 px-0.5"
       >
         <div
-          className="flex size-5 shrink-0 items-center justify-center rounded-full border text-[9px] font-bold"
+          className="flex size-5 shrink-0 items-center justify-center rounded-full border text-xs font-bold"
           style={{
             background: cols.bgDark,
             borderColor: cols.soft,
@@ -267,7 +267,7 @@ function PlayerRow({
           {displayName(name)}
         </span>
         <span
-          className="relative shrink-0 px-1 font-mono text-[11px] font-semibold tabular-nums"
+          className="relative shrink-0 px-1 font-mono text-[13px] font-semibold tabular-nums"
           style={{ color: alive ? "#fff" : THEME.textDead }}
         >
           ${money}

@@ -100,15 +100,16 @@
   --muted-foreground: oklch(0.708 0 0);
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
+  --destructive: oklch(0.62 0.21 25.5);
+  --border: oklch(1 0 0 / 9%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --ring: oklch(0.78 0.14 163);
+  /* Categorical, not five greys: distinguishable by hue and by lightness. */
+  --chart-1: oklch(0.78 0.14 163);
+  --chart-2: oklch(0.75 0.13 240);
+  --chart-3: oklch(0.81 0.12 82);
+  --chart-4: oklch(0.68 0.15 305);
+  --chart-5: oklch(0.66 0.13 20);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -127,24 +128,44 @@
  * and any future panels share the same language as the match viewer.
  */
 :root {
-  /* Surfaces */
-  --rl-bg: #1d1f1f;         /* match viewer background */
+  /* Surfaces — neutrals biased slightly green so they read as chosen */
+  --rl-bg: #0f1211;         /* app background */
+  --rl-surface: #151918;    /* cards, panels */
+  --rl-surface-raised: #1b201e;
+  --rl-surface-sunken: #0b0e0d;
   --rl-panel: #121414;      /* HUD / sidebar panels */
   --rl-panel-2: rgba(0, 0, 0, 0.28); /* card-on-panel tint */
 
-  /* Borders */
-  --rl-border: rgba(255, 255, 255, 0.06);
-  --rl-border-strong: rgba(255, 255, 255, 0.12);
+  /* Borders — one opacity for hairlines, one for emphasis */
+  --rl-border: rgba(255, 255, 255, 0.09);
+  --rl-border-strong: rgba(255, 255, 255, 0.16);
 
-  /* Text */
-  --rl-fg: #f5f5f5;
-  --rl-fg-muted: #a3a3a3;   /* body */
-  --rl-fg-dim: #737373;     /* captions */
-  --rl-fg-faint: #525252;   /* section labels */
+  /* Text — hierarchy comes from contrast and weight, never from size */
+  --rl-fg: #f2f5f4;
+  --rl-fg-muted: #a8b2ae;   /* body */
+  --rl-fg-dim: #8b9691;     /* captions, section labels */
 
-  /* Accent */
-  --rl-accent: #6ee7b7;     /* emerald-300 */
-  --rl-accent-soft: rgba(110, 231, 183, 0.15);
+  /* Brand — identity only. Never a verdict on a number. */
+  --rl-accent: #5fd4a0;
+  --rl-accent-soft: rgba(95, 212, 160, 0.13);
+
+  /* Semantic — independent of the brand hue */
+  --rl-positive: #4ade80;
+  --rl-critical: #f2686c;
+  --rl-warning: #e8b86d;
+  --rl-info: #8fb7ff;
+
+  /* Team identity, matching the replay canvas */
+  --rl-ct: #47cbff;
+  --rl-t: #ffaf47;
+
+  /* Elevation */
+  --rl-e1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --rl-e2: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --rl-e3: 0 16px 48px rgba(0, 0, 0, 0.45);
+
+  /* Kept for existing call sites */
+  --rl-fg-faint: #8b9691;
   --rl-blue: #8fb7ff;
   --rl-warm: #e8b86d;
 }

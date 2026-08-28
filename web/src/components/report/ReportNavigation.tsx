@@ -24,7 +24,7 @@ export function ReportPrimaryNavigation({ items }: { items: readonly ReportNavig
             "relative flex h-10 shrink-0 items-center rounded-md px-4 text-[13px] font-semibold transition-all",
             active
               ? "bg-white/[0.085] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04),0_4px_14px_rgba(0,0,0,0.15)] after:absolute after:inset-x-4 after:bottom-0 after:h-px after:bg-emerald-300"
-              : "text-neutral-500 enabled:hover:bg-white/[0.03] enabled:hover:text-neutral-200 disabled:cursor-not-allowed disabled:opacity-30",
+              : "text-[var(--rl-fg-dim)] enabled:hover:bg-white/[0.03] enabled:hover:text-[var(--rl-fg)] disabled:cursor-not-allowed disabled:opacity-30",
           ].join(" ")}
         >
           {label}
@@ -51,8 +51,8 @@ export function ReportSecondaryNavigation({ items }: { items: readonly ReportNav
           className={[
             "relative h-11 shrink-0 px-3.5 text-xs font-semibold transition-colors",
             active
-              ? "text-neutral-100 after:absolute after:inset-x-3.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-emerald-300"
-              : "text-neutral-500 hover:text-neutral-200",
+              ? "text-[var(--rl-fg)] after:absolute after:inset-x-3.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-emerald-300"
+              : "text-[var(--rl-fg-dim)] hover:text-[var(--rl-fg)]",
           ].join(" ")}
         >
           {label}

@@ -133,15 +133,15 @@ export function Metric({
       tabIndex={quality ? 0 : undefined}
     >
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-200/20 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
-      <div className="text-[10px] font-semibold uppercase tracking-[0.11em] text-neutral-500">
+      <div className="text-xs font-semibold uppercase tracking-[0.11em] text-[var(--rl-fg-dim)]">
         <DefinitionTerm label={label} />
       </div>
-      <div className="mt-2 text-[1.65rem] font-semibold leading-none tracking-[-0.035em] tabular-nums text-neutral-100">
+      <div className="mt-2 text-[1.65rem] font-semibold leading-none tracking-[-0.035em] tabular-nums text-[var(--rl-fg)]">
         {value}
       </div>
-      {detail && <div className="mt-2 text-[11px] leading-snug text-neutral-500">{detail}</div>}
+      {detail && <div className="mt-2 text-[13px] leading-snug text-[var(--rl-fg-dim)]">{detail}</div>}
       {quality && (
-        <div className="mt-2 text-[9px] leading-snug text-neutral-500">
+        <div className="mt-2 text-xs leading-snug text-[var(--rl-fg-dim)]">
           {quality.usableSampleCount}/{quality.sampleCount} ·{" "}
           {QUALITY_PROVENANCE_LABELS[quality.provenance]}
         </div>
@@ -164,17 +164,17 @@ export function CoverageBadge({
   return (
     <div
       className={[
-        "flex items-center gap-2 rounded-[4px] border px-2.5 py-1.5 text-[11px]",
+        "flex items-center gap-2 rounded-[4px] border px-2.5 py-1.5 text-[13px]",
         complete
-          ? "border-emerald-300/15 bg-emerald-300/[0.05] text-emerald-200"
+          ? "border-[color-mix(in_oklab,var(--rl-positive)_22%,transparent)] bg-[color-mix(in_oklab,var(--rl-positive)_7%,transparent)] text-[var(--rl-positive)]"
           : empty
-            ? "border-rose-300/12 bg-rose-300/[0.04] text-rose-200"
-            : "border-amber-300/15 bg-amber-300/[0.045] text-amber-200",
+            ? "border-rose-300/12 bg-[var(--rl-critical)]/[0.04] text-[var(--rl-critical)]"
+            : "border-[color-mix(in_oklab,var(--rl-warning)_22%,transparent)] bg-[color-mix(in_oklab,var(--rl-warning)_7%,transparent)] text-[var(--rl-warning)]",
       ].join(" ")}
     >
       <span className={[
         "size-1.5 rounded-full",
-        complete ? "bg-emerald-300" : empty ? "bg-rose-300" : "bg-amber-300",
+        complete ? "bg-[var(--rl-positive)]" : empty ? "bg-[var(--rl-critical)]" : "bg-[var(--rl-warning)]",
       ].join(" ")} />
       <span className="font-semibold">{label}</span>
       <span className="tabular-nums opacity-60">{available}/{total}</span>
@@ -198,7 +198,7 @@ export function QualityMetricCell({
       tabIndex={0}
     >
       <span>{format(metric.value)}</span>
-      <span className="text-[9px] font-normal text-neutral-400">
+      <span className="text-xs font-normal text-[var(--rl-fg-muted)]">
         {metric.usableSampleCount}/{metric.sampleCount} ·{" "}
         {QUALITY_PROVENANCE_LABELS[metric.provenance]}
       </span>
@@ -304,9 +304,9 @@ export function DataQualityPanel({
 
   if (!quality && Object.values(nonAimSignals).every((signal) => signal.sampleCount === 0)) {
     return (
-      <article className="rounded-md border border-amber-300/15 bg-amber-300/[0.035] p-4">
-        <h3 className="text-sm font-semibold text-amber-100">Qualité des données</h3>
-        <p className="mt-1 text-xs text-amber-100/65">
+      <article className="rounded-md border border-[color-mix(in_oklab,var(--rl-warning)_22%,transparent)] bg-[color-mix(in_oklab,var(--rl-warning)_6%,transparent)] p-4">
+        <h3 className="text-sm font-semibold text-[var(--rl-warning)]">Qualité des données</h3>
+        <p className="mt-1 text-xs text-[var(--rl-warning)]">
           Diagnostic absent : ce rapport provient d’un ancien calcul. Réimporte la démo pour obtenir
           les couvertures et raisons d’indisponibilité.
         </p>
@@ -315,25 +315,25 @@ export function DataQualityPanel({
   }
 
   return (
-    <article className="overflow-hidden rounded-md border border-white/10 bg-[#121515]">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-white/8 px-4 py-3">
+    <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--rl-border)] px-4 py-3">
         <div>
-          <h3 className="text-sm font-semibold text-neutral-100">Qualité des données</h3>
-          <p className="mt-1 text-xs text-neutral-500">
+          <h3 className="text-sm font-semibold text-[var(--rl-fg)]">Qualité des données</h3>
+          <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">
             Parseur {quality?.parserVersion ?? analysis.parserVersion} · schéma{" "}
             {quality?.replaySchemaVersion ?? analysis.inputSchemaVersion} · formules{" "}
             {quality?.mechanicsFormulaVersion ?? "non-Aim uniquement"} · géométrie{" "}
             {quality?.geometryVersion ?? "absente"}
           </p>
         </div>
-        <span className="rounded border border-white/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
+        <span className="rounded border border-[var(--rl-border)] px-2 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--rl-fg-muted)]">
           Import {quality?.importQuality ?? "non diagnostiqué"}
         </span>
       </div>
       {quality?.importQuality === "legacy" && (
-        <div className="border-b border-amber-300/12 bg-amber-300/[0.035] px-4 py-3 text-xs text-amber-100/70">
+        <div className="border-b border-amber-300/12 bg-[color-mix(in_oklab,var(--rl-warning)_6%,transparent)] px-4 py-3 text-xs text-[var(--rl-warning)]">
           Import ancien ou manifeste incomplet. Les données existantes sont conservées, mais une{" "}
-          <Link href="/" className="font-semibold text-amber-200 hover:underline">
+          <Link href="/" className="font-semibold text-[var(--rl-warning)] hover:underline">
             réimportation de la démo originale
           </Link>{" "}
           est nécessaire pour distinguer les flux absents des vrais zéros.
@@ -341,7 +341,7 @@ export function DataQualityPanel({
       )}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[52rem] text-left text-xs">
-          <thead className="bg-white/[0.02] text-[10px] uppercase tracking-wide text-neutral-600">
+          <thead className="bg-white/[0.02] text-xs uppercase tracking-wide text-[var(--rl-fg-dim)]">
             <tr>
               <th className="px-4 py-2 font-medium">Donnée</th>
               <th className="px-3 py-2 text-right font-medium">Valeur</th>
@@ -353,24 +353,24 @@ export function DataQualityPanel({
           </thead>
           <tbody>
             {Object.entries(signals).map(([signalId, signal]) => (
-              <tr key={signalId} className="border-t border-white/8">
-                <td className="px-4 py-2.5 font-semibold text-neutral-300">
+              <tr key={signalId} className="border-t border-[var(--rl-border)]">
+                <td className="px-4 py-2.5 font-semibold text-[var(--rl-fg-muted)]">
                   {DATA_QUALITY_LABELS[signalId] ?? signalId}
                 </td>
-                <td className="px-3 py-2.5 text-right tabular-nums text-neutral-300">
+                <td className="px-3 py-2.5 text-right tabular-nums text-[var(--rl-fg-muted)]">
                   {signal.value === null ? "—" : number(signal.value)}
                 </td>
-                <td className="px-3 py-2.5 text-right tabular-nums text-neutral-400">
+                <td className="px-3 py-2.5 text-right tabular-nums text-[var(--rl-fg-muted)]">
                   {signal.usableSampleCount}/{signal.sampleCount}
                 </td>
-                <td className="px-3 py-2.5 text-right tabular-nums text-neutral-400">
+                <td className="px-3 py-2.5 text-right tabular-nums text-[var(--rl-fg-muted)]">
                   {signal.coverage === null ? "—" : percent(signal.coverage)}
                 </td>
-                <td className="px-3 py-2.5 text-neutral-400">
+                <td className="px-3 py-2.5 text-[var(--rl-fg-muted)]">
                   {QUALITY_PROVENANCE_LABELS[signal.provenance]} · confiance{" "}
                   {QUALITY_CONFIDENCE_LABELS[signal.confidence]}
                 </td>
-                <td className="max-w-[24rem] px-4 py-2.5 text-neutral-500">
+                <td className="max-w-[24rem] px-4 py-2.5 text-[var(--rl-fg-dim)]">
                   {signal.unavailableReasons.length === 0
                     ? "Aucune limite détectée"
                     : signal.unavailableReasons.map(qualityReasonLabel).join("; ")}

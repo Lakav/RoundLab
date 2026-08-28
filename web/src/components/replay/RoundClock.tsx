@@ -49,7 +49,7 @@ export function RoundClock() {
 
   return (
     <div
-      className="pointer-events-none absolute left-1/2 top-4 z-40 h-[32px] min-w-[78px] -translate-x-1/2 rounded-[4px] border border-white/15 bg-[#070909]/72 px-3 text-center font-mono text-[16px] font-semibold leading-[31px] text-neutral-100 shadow-xl shadow-black/30 backdrop-blur-md tabular-nums"
+      className="pointer-events-none absolute left-1/2 top-4 z-40 h-[32px] min-w-[78px] -translate-x-1/2 rounded-[4px] border border-[var(--rl-border-strong)] bg-[#070909]/72 px-3 text-center font-mono text-[16px] font-semibold leading-[31px] text-[var(--rl-fg)] shadow-xl shadow-black/30 backdrop-blur-md tabular-nums"
     >
       {mm}:{ss}
     </div>

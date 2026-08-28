@@ -4,6 +4,37 @@ Ce journal suit les changements livrables de RoundLab. La version applicative
 est issue de `web/package.json`. Un numéro n'est considéré comme livré qu'avec
 un commit identifié, une CI réussie et une preuve de déploiement.
 
+## Non publié
+
+Section en attente : les preuves d'intégration, de CI et de déploiement seront
+ajoutées à la livraison, conformément à la règle ci-dessus.
+
+### Modifié
+
+- unification des couleurs du replay 2D : le canvas dérive désormais ses
+  couleurs de `THEME` au lieu de les redéfinir, ce qui supprime les deux
+  bleus CT et les deux ambres T divergents entre le HUD et le radar ;
+- le rouge est réservé au danger : le porteur de bombe conserve la couleur
+  de son camp et reçoit un anneau distinct, au lieu de prendre la couleur
+  du feu ;
+- la vie et le nom du joueur sont séparés : la santé passe sur un anneau
+  autour du marqueur et le nom reste lisible à toutes les valeurs de HP ;
+- un joueur mort est distingué par la forme et non par la seule opacité ;
+- les noms des joueurs superposés sont répartis sur des emplacements libres
+  et dessinés au-dessus des marqueurs ;
+- application du système de tokens au rapport : la marque n'exprime plus un
+  jugement de valeur, les couleurs sémantiques sont uniformisées et les
+  couleurs d'équipe du rapport rejoignent celles du radar ;
+- plancher typographique de 12 px dans l'interface, en remplacement des
+  107 occurrences situées sous ce seuil.
+
+### Accessibilité
+
+- correction de contraste : `--rl-fg-dim` et `--rl-critical` étaient
+  respectivement à 4,50 et 4,53 pour un seuil AA de 4,5, sans marge ; les
+  modificateurs d'opacité appliqués aux couleurs de texte passaient sous le
+  seuil et sont retirés.
+
 ## 0.1.41 - 17 août 2026
 
 - révision de maintenance : `f1a559b` ;

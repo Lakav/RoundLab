@@ -41,9 +41,9 @@ const MatchReport = dynamic(
         className="mx-auto mt-8 w-[min(100%-2rem,72rem)] animate-pulse space-y-4"
       >
         <span className="sr-only">Chargement du rapport du match…</span>
-        <div className="h-28 rounded-xl border border-white/10 bg-white/[0.04]" />
-        <div className="h-12 rounded-xl border border-white/10 bg-white/[0.03]" />
-        <div className="h-64 rounded-xl border border-white/10 bg-white/[0.025]" />
+        <div className="h-28 rounded-xl border border-[var(--rl-border)] bg-white/[0.04]" />
+        <div className="h-12 rounded-xl border border-[var(--rl-border)] bg-white/[0.03]" />
+        <div className="h-64 rounded-xl border border-[var(--rl-border)] bg-white/[0.025]" />
       </div>
     ),
   },
@@ -726,13 +726,13 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
           loading="eager"
           className="object-contain opacity-90"
         />
-        <Loader2 className="size-5 animate-spin text-neutral-400" />
+        <Loader2 className="size-5 animate-spin text-[var(--rl-fg-muted)]" />
       </div>
     );
   }
   if (err || !match) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-neutral-950 text-neutral-100">
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-neutral-950 text-[var(--rl-fg)]">
         <Image
           src={assetPath("/logo.png")}
           alt="RoundLab"
@@ -741,7 +741,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
           loading="eager"
           className="object-contain opacity-90"
         />
-        <p className="max-w-md text-center text-sm text-red-400">
+        <p className="max-w-md text-center text-sm text-[var(--rl-critical)]">
           {err ?? "Match not found."}
         </p>
         <Link href="/">
@@ -771,13 +771,13 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
   const hasRadarLayerControl = Boolean(MAP_VERTICAL_SECTIONS[match.meta.map]?.some((section) => section.layer === "lower"));
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-[#101212] text-neutral-100">
+    <div className="h-screen flex flex-col overflow-hidden bg-[#101212] text-[var(--rl-fg)]">
       <ReplayAccessibilitySummary />
       <header>
         {match.meta.partial && (
-          <div role="status" className="bg-yellow-950/50 border-b border-yellow-700/30 px-4 py-2 text-sm text-yellow-200">
+          <div role="status" className="bg-yellow-950/50 border-b border-yellow-700/30 px-4 py-2 text-sm text-[var(--rl-warning)]">
             Partial parse: This replay was truncated during parsing. Data may be incomplete.
-            {match.meta.parseError && <span className="text-yellow-300 ml-2">({match.meta.parseError})</span>}
+            {match.meta.parseError && <span className="text-[var(--rl-warning)] ml-2">({match.meta.parseError})</span>}
           </div>
         )}
         {visualTest && <VisualTestPanel match={match} currentRoundIdx={currentRoundIdx} />}
@@ -785,7 +785,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
           <Button
             variant="ghost"
             size="sm"
-            className="h-10 gap-2 rounded-lg border border-white/[0.09] bg-[#111514]/92 px-3 text-[11px] font-semibold text-neutral-300 shadow-[0_10px_28px_rgba(0,0,0,0.24)] backdrop-blur-xl hover:bg-[#171c1a] hover:text-neutral-100"
+            className="h-10 gap-2 rounded-lg border border-white/[0.09] bg-[#111514]/92 px-3 text-[13px] font-semibold text-[var(--rl-fg-muted)] shadow-[0_10px_28px_rgba(0,0,0,0.24)] backdrop-blur-xl hover:bg-[#171c1a] hover:text-[var(--rl-fg)]"
           >
             <Image
               src={assetPath("/logo.png")}
@@ -829,19 +829,19 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
               className={[
                 // Switching both foreground and background colors used to
                 // create a brief low-contrast state during the transition.
-                "h-7 rounded-[4px] px-3 text-[11px] font-semibold transition-colors",
+                "h-7 rounded-[4px] px-3 text-[13px] font-semibold transition-colors",
                 displayMode === mode
                   ? "bg-emerald-300 text-[#0b1410] shadow-[0_4px_12px_rgba(110,231,183,0.12)]"
-                  : "text-neutral-200 hover:bg-white/[0.05] hover:text-white",
+                  : "text-[var(--rl-fg)] hover:bg-white/[0.05] hover:text-white",
               ].join(" ")}
             >
               {label}
             </button>
           ))}
         </div>
-        {!reportMode && <div className="flex items-center gap-1 rounded-[3px] border border-white/10 bg-[#151717] px-1 py-0.5">
+        {!reportMode && <div className="flex items-center gap-1 rounded-[3px] border border-[var(--rl-border)] bg-[#151717] px-1 py-0.5">
           {hasRadarLayerControl && (
-            <div className="flex rounded-[3px] border border-white/10 bg-black/20 p-0.5">
+            <div className="flex rounded-[3px] border border-[var(--rl-border)] bg-black/20 p-0.5">
               {([
                 ["auto", "Auto"],
                 ["default", "Upper"],
@@ -853,10 +853,10 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
                   aria-pressed={radarLayerMode === layer}
                   onClick={() => setRadarLayerMode(layer)}
                   className={[
-                    "h-6 rounded-[2px] px-2 text-[10px] font-semibold transition-colors",
+                    "h-6 rounded-[2px] px-2 text-xs font-semibold transition-colors",
                     radarLayerMode === layer
                       ? "bg-emerald-300 text-[#06100b]"
-                      : "text-neutral-300 hover:bg-white/[0.05] hover:text-white",
+                      : "text-[var(--rl-fg-muted)] hover:bg-white/[0.05] hover:text-white",
                   ].join(" ")}
                   title={`Radar layer: ${label}`}
                 >
@@ -868,18 +868,18 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
           <button
             type="button"
             onClick={() => setClampedZoom(mapZoom - MAP_ZOOM_STEP)}
-            className="flex size-7 items-center justify-center rounded-[2px] text-neutral-400 transition-colors hover:bg-white/[0.05] hover:text-neutral-200"
+            className="flex size-7 items-center justify-center rounded-[2px] text-[var(--rl-fg-muted)] transition-colors hover:bg-white/[0.05] hover:text-[var(--rl-fg)]"
             title="Zoom out"
           >
             <ZoomOut className="size-3.5" />
           </button>
-          <span className="w-9 text-center text-[11px] font-semibold tabular-nums text-neutral-400">
+          <span className="w-9 text-center text-[13px] font-semibold tabular-nums text-[var(--rl-fg-muted)]">
             {Math.round(mapZoom * 100)}%
           </span>
           <button
             type="button"
             onClick={() => setClampedZoom(mapZoom + MAP_ZOOM_STEP)}
-            className="flex size-7 items-center justify-center rounded-[2px] text-neutral-400 transition-colors hover:bg-white/[0.05] hover:text-neutral-200"
+            className="flex size-7 items-center justify-center rounded-[2px] text-[var(--rl-fg-muted)] transition-colors hover:bg-white/[0.05] hover:text-[var(--rl-fg)]"
             title="Zoom in"
           >
             <ZoomIn className="size-3.5" />
@@ -888,7 +888,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
         {!reportMode && <button
           type="button"
           onClick={toggleFullscreen}
-          className="flex size-8 items-center justify-center rounded-[3px] border border-white/10 bg-[#151717] text-neutral-400 transition-colors hover:bg-white/[0.05] hover:text-neutral-100"
+          className="flex size-8 items-center justify-center rounded-[3px] border border-[var(--rl-border)] bg-[#151717] text-[var(--rl-fg-muted)] transition-colors hover:bg-white/[0.05] hover:text-[var(--rl-fg)]"
           title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
         >
           {isFullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
@@ -901,7 +901,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
               setCondensedPlayerValue(event.target.value);
               void runCondensedOverlay(event.target.value);
             }}
-            className="h-7 max-w-40 rounded-[3px] border border-white/10 bg-[#171a1a] px-2 text-[11px] font-medium text-neutral-200 outline-none"
+            className="h-7 max-w-40 rounded-[3px] border border-[var(--rl-border)] bg-[#171a1a] px-2 text-[13px] font-medium text-[var(--rl-fg)] outline-none"
           >
             {condensedPlayerOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -912,7 +912,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
         )}
         {condensedMode && (habitStatus || habitOverlay) && (
           <span
-            className="whitespace-nowrap text-[11px] text-neutral-400"
+            className="whitespace-nowrap text-[13px] text-[var(--rl-fg-muted)]"
             title={
               habitOverlay
                 ? habitOverlay.mode === "replay"
@@ -1026,7 +1026,7 @@ export default function MatchViewer({ id, visualTest = false }: { id: string; vi
         <div
           data-testid="match-controls-panel"
           className={[
-            "absolute inset-x-2 bottom-2 z-40 shrink-0 rounded-md border border-white/10 bg-[#0b0d0d]/78 px-2 pb-2 pt-1 shadow-2xl shadow-black/35 backdrop-blur-md sm:inset-x-4 sm:bottom-4 sm:px-4 sm:pb-3",
+            "absolute inset-x-2 bottom-2 z-40 shrink-0 rounded-md border border-[var(--rl-border)] bg-[#0b0d0d]/78 px-2 pb-2 pt-1 shadow-2xl shadow-black/35 backdrop-blur-md sm:inset-x-4 sm:bottom-4 sm:px-4 sm:pb-3",
           ].join(" ")}
         >
           {!condensedMode && <RoundList />}
@@ -1078,16 +1078,16 @@ function VisualTestPanel({
   ];
 
   return (
-    <div className="fixed right-4 top-4 z-50 w-52 rounded-md border border-sky-300/20 bg-black/70 p-3 text-[11px] text-neutral-200 shadow-xl backdrop-blur">
+    <div className="fixed right-4 top-4 z-50 w-52 rounded-md border border-sky-300/20 bg-black/70 p-3 text-[13px] text-[var(--rl-fg)] shadow-xl backdrop-blur">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="font-semibold text-sky-100">Visual test</span>
-        <span className="text-neutral-400">R{currentRoundIdx + 1}</span>
+        <span className="font-semibold text-[var(--rl-info)]">Visual test</span>
+        <span className="text-[var(--rl-fg-muted)]">R{currentRoundIdx + 1}</span>
       </div>
       <div className="grid grid-cols-2 gap-x-3 gap-y-1">
         {checks.map(([label, ok]) => (
           <div key={String(label)} className="flex items-center gap-1.5">
-            <span className={ok ? "text-emerald-300" : "text-red-300"}>{ok ? "OK" : "FAIL"}</span>
-            <span className="truncate text-neutral-400">{label}</span>
+            <span className={ok ? "text-[var(--rl-positive)]" : "text-[var(--rl-critical)]"}>{ok ? "OK" : "FAIL"}</span>
+            <span className="truncate text-[var(--rl-fg-muted)]">{label}</span>
           </div>
         ))}
       </div>

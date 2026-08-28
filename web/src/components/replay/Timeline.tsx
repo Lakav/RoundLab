@@ -28,7 +28,7 @@ export function Timeline() {
 
   return (
     <div className="flex w-full items-center gap-3.5 rounded-[4px] border border-white/[0.06] bg-white/[0.03] px-3 py-1.5">
-      <span className="w-11 text-right text-xs font-semibold tabular-nums text-neutral-400">
+      <span className="w-11 text-right text-xs font-semibold tabular-nums text-[var(--rl-fg-muted)]">
         {fmt(time)}
       </span>
       <div
@@ -49,7 +49,7 @@ export function Timeline() {
           className="flex-1 [&_[data-slot=slider-thumb]]:size-4 [&_[data-slot=slider-track]]:h-1.5"
         />
       </div>
-      <span className="w-11 text-xs font-semibold tabular-nums text-neutral-400">
+      <span className="w-11 text-xs font-semibold tabular-nums text-[var(--rl-fg-muted)]">
         {fmt(duration)}
       </span>
     </div>

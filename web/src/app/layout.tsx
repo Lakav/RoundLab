@@ -29,7 +29,7 @@ export default function RootLayout({
         />
         <meta name="referrer" content="no-referrer" />
       </head>
-      <body className="min-h-full flex flex-col bg-neutral-950 text-neutral-100">
+      <body className="min-h-full flex flex-col bg-neutral-950 text-[var(--rl-fg)]">
         <nav aria-label="Skip navigation">
           <a
             href="#main-content"

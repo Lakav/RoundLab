@@ -497,7 +497,7 @@ export default function Home() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#0d100f] text-neutral-100">
+    <div className="relative min-h-screen overflow-hidden bg-[#0d100f] text-[var(--rl-fg)]">
       <div className="product-grid pointer-events-none absolute inset-x-0 top-0 h-[42rem] opacity-70" />
       {opening && (
         <div
@@ -506,8 +506,8 @@ export default function Home() {
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm"
         >
           <div className="flex flex-col items-center gap-3">
-            <Loader2 className="size-7 animate-spin text-emerald-300" />
-            <div className="text-[12px] text-neutral-300">Loading match…</div>
+            <Loader2 className="size-7 animate-spin text-[var(--rl-positive)]" />
+            <div className="text-[12px] text-[var(--rl-fg-muted)]">Loading match…</div>
           </div>
         </div>
       )}
@@ -520,15 +520,15 @@ export default function Home() {
           aria-describedby="parse-dialog-description"
           className="fixed inset-0 z-[70] flex items-center justify-center bg-black/75 p-6 backdrop-blur-sm"
         >
-          <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#171a1a] p-5 shadow-2xl">
+          <div className="w-full max-w-md rounded-xl border border-[var(--rl-border)] bg-[#171a1a] p-5 shadow-2xl">
             <div className="mb-4 flex items-start justify-between gap-4">
               <div>
-                <div id="parse-dialog-title" className="text-[13px] font-semibold text-neutral-100">Parsing demo</div>
-                <div id="parse-dialog-description" className="mt-1 text-[11px] text-neutral-400">
+                <div id="parse-dialog-title" className="text-[13px] font-semibold text-[var(--rl-fg)]">Parsing demo</div>
+                <div id="parse-dialog-description" className="mt-1 text-[13px] text-[var(--rl-fg-muted)]">
                   Interactions are locked until parsing finishes or is cancelled.
                 </div>
               </div>
-              <Loader2 className="mt-0.5 size-4 animate-spin text-emerald-300" />
+              <Loader2 className="mt-0.5 size-4 animate-spin text-[var(--rl-positive)]" />
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-black/50">
               <div
@@ -536,11 +536,11 @@ export default function Home() {
                 style={{ width: `${Math.round(shownProgress * 100)}%` }}
               />
             </div>
-            <div className="mt-3 flex items-center justify-between text-[11px] text-neutral-400">
+            <div className="mt-3 flex items-center justify-between text-[13px] text-[var(--rl-fg-muted)]">
               <span>{parseProgress.message || "Parsing…"}</span>
               <span>{Math.round(shownProgress * 100)}%</span>
             </div>
-            <div className="mt-1 flex items-center justify-between text-[11px] text-neutral-400">
+            <div className="mt-1 flex items-center justify-between text-[13px] text-[var(--rl-fg-muted)]">
               <span>Elapsed {formatDuration(elapsedMs)}</span>
               <span>{estimateExceeded ? "Still parsing" : `About ${formatDuration(remainingMs)} left`}</span>
             </div>
@@ -549,7 +549,7 @@ export default function Home() {
                 variant="outline"
                 size="sm"
                 onClick={() => void onCancelParse()}
-                className="gap-1.5 border-red-400/30 bg-red-500/10 text-red-200 hover:bg-red-500/20"
+                className="gap-1.5 border-red-400/30 bg-[var(--rl-critical)]/10 text-[var(--rl-critical)] hover:bg-[var(--rl-critical)]/20"
               >
                 <X className="size-3.5" />
                 Cancel parsing
@@ -571,14 +571,14 @@ export default function Home() {
               className="object-contain"
             />
             <h1 className="text-[15px] font-semibold tracking-[-0.01em]">RoundLab</h1>
-            <span className="rounded border border-emerald-200/15 bg-emerald-200/[0.055] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-emerald-200/80">
+            <span className="rounded border border-emerald-200/15 bg-emerald-200/[0.055] px-2 py-0.5 text-xs font-bold uppercase tracking-[0.14em] text-[var(--rl-positive)]">
               Bêta
             </span>
           </div>
           <nav aria-label="Navigation principale" className="flex items-center gap-1">
             <Link
               href="/feedback"
-              className="rounded-md px-3 py-2 text-xs font-semibold text-neutral-400 transition-colors hover:bg-white/[0.04] hover:text-neutral-100"
+              className="rounded-md px-3 py-2 text-xs font-semibold text-[var(--rl-fg-muted)] transition-colors hover:bg-white/[0.04] hover:text-[var(--rl-fg)]"
             >
               Signaler un bug
             </Link>
@@ -599,28 +599,28 @@ export default function Home() {
         />
         <section className="grid items-stretch gap-8 lg:grid-cols-[0.92fr_1.08fr]">
           <div className="flex flex-col justify-center py-3 lg:py-8">
-            <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-200/70">
+            <span className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--rl-positive)]">
               Analyse locale de démos CS2
             </span>
             <h2 className="mt-4 max-w-xl text-4xl font-semibold leading-[1.08] tracking-[-0.035em] text-white sm:text-5xl">
               Lis ton match avec des faits, pas des approximations.
             </h2>
-            <p className="mt-5 max-w-lg text-[15px] leading-7 text-neutral-400">
+            <p className="mt-5 max-w-lg text-[15px] leading-7 text-[var(--rl-fg-muted)]">
               RoundLab transforme une démo CS2 en replay interactif et en rapport statistique détaillé.
               L’analyse reste dans ton navigateur.
             </p>
             <div className="mt-7 grid max-w-lg grid-cols-3 border-y border-white/[0.07] py-4">
               <div>
-                <div className="text-sm font-semibold text-neutral-100">Local</div>
-                <div className="mt-1 text-[11px] text-neutral-500">Aucun upload serveur</div>
+                <div className="text-sm font-semibold text-[var(--rl-fg)]">Local</div>
+                <div className="mt-1 text-[13px] text-[var(--rl-fg-dim)]">Aucun upload serveur</div>
               </div>
               <div className="border-l border-white/[0.07] pl-4">
-                <div className="text-sm font-semibold text-neutral-100">Détaillé</div>
-                <div className="mt-1 text-[11px] text-neutral-500">Rounds et joueurs</div>
+                <div className="text-sm font-semibold text-[var(--rl-fg)]">Détaillé</div>
+                <div className="mt-1 text-[13px] text-[var(--rl-fg-dim)]">Rounds et joueurs</div>
               </div>
               <div className="border-l border-white/[0.07] pl-4">
-                <div className="text-sm font-semibold text-neutral-100">Rejouable</div>
-                <div className="mt-1 text-[11px] text-neutral-500">Preuves sur la map</div>
+                <div className="text-sm font-semibold text-[var(--rl-fg)]">Rejouable</div>
+                <div className="mt-1 text-[13px] text-[var(--rl-fg-dim)]">Preuves sur la map</div>
               </div>
             </div>
           </div>
@@ -628,10 +628,10 @@ export default function Home() {
           <article className="overflow-hidden rounded-xl border border-white/[0.09] bg-[#131716]/95 shadow-[0_30px_90px_rgba(0,0,0,0.35)]">
             <div className="flex items-center justify-between border-b border-white/[0.07] px-5 py-4">
               <div>
-                <h3 className="text-sm font-semibold text-neutral-100">Importer une démo</h3>
-                <p className="mt-1 text-[11px] text-neutral-500">Formats .dem et .dem.zst · limite 1 Go</p>
+                <h3 className="text-sm font-semibold text-[var(--rl-fg)]">Importer une démo</h3>
+                <p className="mt-1 text-[13px] text-[var(--rl-fg-dim)]">Formats .dem et .dem.zst · limite 1 Go</p>
               </div>
-              <span className="text-[10px] font-medium text-neutral-600">Traitement local</span>
+              <span className="text-xs font-medium text-[var(--rl-fg-dim)]">Traitement local</span>
             </div>
             <div
               onClick={onPickAndParse}
@@ -659,39 +659,39 @@ export default function Home() {
                   ? "cursor-wait border-emerald-300/30 bg-emerald-300/[0.025]"
                   : dragging
                     ? "border-emerald-300/55 bg-emerald-300/[0.055]"
-                    : "border-white/12 bg-black/10 hover:border-emerald-300/32 hover:bg-emerald-300/[0.02]",
+                    : "border-[var(--rl-border)] bg-black/10 hover:border-emerald-300/32 hover:bg-emerald-300/[0.02]",
               ].join(" ")}
             >
               {uploading ? (
                 <>
-                  <Loader2 className="size-6 animate-spin text-emerald-300" />
+                  <Loader2 className="size-6 animate-spin text-[var(--rl-positive)]" />
                   <div className="mt-3 w-full max-w-xs">
-                    <div className="text-[13px] text-neutral-200">Analyse de la démo…</div>
+                    <div className="text-[13px] text-[var(--rl-fg)]">Analyse de la démo…</div>
                     <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/40">
                       <div
                         className="h-full rounded-full bg-emerald-300 transition-[width] duration-300"
                         style={{ width: `${Math.round(shownProgress * 100)}%` }}
                       />
                     </div>
-                    <div className="mt-2 text-[11px] text-neutral-400">
+                    <div className="mt-2 text-[13px] text-[var(--rl-fg-muted)]">
                       {formatDuration(elapsedMs)} écoulées · {estimateExceeded ? "analyse en cours" : `environ ${formatDuration(remainingMs)} restantes`}
                     </div>
                   </div>
                 </>
               ) : (
                 <>
-                  <div className="flex size-11 items-center justify-center rounded-lg border border-white/10 bg-white/[0.035] transition-colors group-hover:border-emerald-200/20 group-hover:bg-emerald-200/[0.05]">
-                    <Upload className="size-5 text-emerald-200/85" strokeWidth={1.8} />
+                  <div className="flex size-11 items-center justify-center rounded-lg border border-[var(--rl-border)] bg-white/[0.035] transition-colors group-hover:border-emerald-200/20 group-hover:bg-emerald-200/[0.05]">
+                    <Upload className="size-5 text-[var(--rl-positive)]" strokeWidth={1.8} />
                   </div>
                   <div className="mt-4">
-                    <div className="text-[14px] font-semibold text-neutral-100">
+                    <div className="text-[14px] font-semibold text-[var(--rl-fg)]">
                       {dragging ? "Dépose la démo ici" : "Open a CS2 demo"}
                     </div>
-                    <div className="mt-1.5 text-[12px] text-neutral-500">
+                    <div className="mt-1.5 text-[12px] text-[var(--rl-fg-dim)]">
                       Glisse un fichier ou clique pour le sélectionner
                     </div>
                   </div>
-                  <span className="mt-5 rounded border border-white/[0.08] px-2.5 py-1 text-[10px] font-medium text-neutral-500">
+                  <span className="mt-5 rounded border border-white/[0.08] px-2.5 py-1 text-xs font-medium text-[var(--rl-fg-dim)]">
                     Les données ne quittent pas cet appareil
                   </span>
                 </>
@@ -701,24 +701,24 @@ export default function Home() {
         </section>
 
         {error && (
-          <div role="alert" className="whitespace-pre-wrap rounded-md border border-red-500/30 bg-red-500/[0.06] px-3 py-2 text-[12px] text-red-200">
+          <div role="alert" className="whitespace-pre-wrap rounded-md border border-red-500/30 bg-[var(--rl-critical)]/[0.06] px-3 py-2 text-[12px] text-[var(--rl-critical)]">
             {error}
           </div>
         )}
 
-        <aside className="grid gap-5 rounded-xl border border-amber-100/10 bg-[#171714] px-5 py-5 sm:grid-cols-[1fr_auto] sm:items-center sm:px-6">
+        <aside className="grid gap-5 rounded-xl border border-[color-mix(in_oklab,var(--rl-warning)_20%,transparent)] bg-[#171714] px-5 py-5 sm:grid-cols-[1fr_auto] sm:items-center sm:px-6">
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-amber-100/55">Version bêta</div>
-            <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-neutral-200">
+            <div className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--rl-warning)]">Version bêta</div>
+            <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-[var(--rl-fg)]">
               RoundLab évolue régulièrement : certaines statistiques et interfaces peuvent encore changer.
             </p>
-            <p className="mt-1 text-xs leading-5 text-neutral-400">
+            <p className="mt-1 text-xs leading-5 text-[var(--rl-fg-muted)]">
               La bêta est entièrement gratuite. L’application finale sera payante lorsque sa version stable sera disponible.
             </p>
           </div>
           <Link
             href="/feedback"
-            className="inline-flex h-10 items-center justify-center rounded-md border border-white/10 bg-white/[0.035] px-4 text-xs font-semibold text-neutral-200 transition-colors hover:border-white/20 hover:bg-white/[0.07]"
+            className="inline-flex h-10 items-center justify-center rounded-md border border-[var(--rl-border)] bg-white/[0.035] px-4 text-xs font-semibold text-[var(--rl-fg)] transition-colors hover:border-[var(--rl-border-strong)] hover:bg-white/[0.07]"
           >
             Signaler un problème
           </Link>
@@ -730,12 +730,12 @@ export default function Home() {
           <section className="space-y-3">
             <div className="flex items-end justify-between px-1">
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-neutral-400">Bibliothèque locale</span>
-                <h2 className="mt-1 text-lg font-semibold tracking-[-0.02em] text-neutral-100">
+                <span className="text-xs font-bold uppercase tracking-[0.15em] text-[var(--rl-fg-muted)]">Bibliothèque locale</span>
+                <h2 className="mt-1 text-lg font-semibold tracking-[-0.02em] text-[var(--rl-fg)]">
                   Matchs récents
                 </h2>
               </div>
-              <span className="text-[11px] tabular-nums text-neutral-400">{matches.length} enregistré{matches.length > 1 ? "s" : ""}</span>
+              <span className="text-[13px] tabular-nums text-[var(--rl-fg-muted)]">{matches.length} enregistré{matches.length > 1 ? "s" : ""}</span>
             </div>
             <div className="overflow-hidden rounded-xl border border-white/[0.08] bg-[#121514]/85 shadow-[0_18px_50px_rgba(0,0,0,0.16)]">
               {matches.map((m, i) => (
@@ -754,9 +754,9 @@ export default function Home() {
         )}
       </main>
 
-      <footer className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between border-t border-white/[0.06] px-5 py-6 text-[11px] text-neutral-400 sm:px-8">
+      <footer className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between border-t border-white/[0.06] px-5 py-6 text-[13px] text-[var(--rl-fg-muted)] sm:px-8">
         <span>RoundLab · Analyse locale de démos CS2</span>
-        <Link href="/feedback" className="transition-colors hover:text-neutral-300">Signaler un bug</Link>
+        <Link href="/feedback" className="transition-colors hover:text-[var(--rl-fg-muted)]">Signaler un bug</Link>
       </footer>
 
       {renameTarget && (
@@ -777,7 +777,7 @@ export default function Home() {
                 setRenameTarget(null);
               }
             }}
-            className="w-full rounded-md border bg-black/40 px-3 py-2 text-[13px] text-neutral-100 outline-none focus:border-emerald-300/40"
+            className="w-full rounded-md border bg-black/40 px-3 py-2 text-[13px] text-[var(--rl-fg)] outline-none focus:border-emerald-300/40"
             style={{ borderColor: "var(--rl-border)" }}
             placeholder="Match name"
           />
@@ -794,7 +794,7 @@ export default function Home() {
 
       {deleteTarget && (
         <Modal onClose={() => setDeleteTarget(null)} title="Delete match?">
-          <p className="text-[12px] text-neutral-400">
+          <p className="text-[12px] text-[var(--rl-fg-muted)]">
             &ldquo;{deleteTarget.name}&rdquo; will be removed from your history.
             This cannot be undone.
           </p>
@@ -805,7 +805,7 @@ export default function Home() {
             <Button
               size="sm"
               onClick={() => void confirmDelete()}
-              className="bg-red-500/20 text-red-200 hover:bg-red-500/30"
+              className="bg-[var(--rl-critical)]/20 text-[var(--rl-critical)] hover:bg-[var(--rl-critical)]/30"
             >
               Delete
             </Button>
@@ -815,7 +815,7 @@ export default function Home() {
 
       {postParse && (
         <Modal onClose={() => setPostParse(null)} title="Match parsed">
-          <p className="mb-3 text-[11px] text-neutral-400">
+          <p className="mb-3 text-[13px] text-[var(--rl-fg-muted)]">
             Give it a name so it&rsquo;s easy to find later. Leave empty to
             skip.
           </p>
@@ -835,7 +835,7 @@ export default function Home() {
                 setPostParse(null);
               }
             }}
-            className="w-full rounded-md border bg-black/40 px-3 py-2 text-[13px] text-neutral-100 outline-none focus:border-emerald-300/40"
+            className="w-full rounded-md border bg-black/40 px-3 py-2 text-[13px] text-[var(--rl-fg)] outline-none focus:border-emerald-300/40"
             style={{ borderColor: "var(--rl-border)" }}
             placeholder={postParse.name}
           />
@@ -856,15 +856,15 @@ export default function Home() {
 
       {pendingSource && (
         <Modal onClose={() => setPendingSource(null)} title="Import settings">
-          <div className="mb-4 rounded-md border border-white/10 bg-black/20 px-3 py-2">
-            <div className="truncate text-[12px] text-neutral-200">{pendingSource.file.name}</div>
-            <div className="mt-0.5 text-[10px] text-neutral-500">{formatFileSize(pendingSource.file.size)}</div>
+          <div className="mb-4 rounded-md border border-[var(--rl-border)] bg-black/20 px-3 py-2">
+            <div className="truncate text-[12px] text-[var(--rl-fg)]">{pendingSource.file.name}</div>
+            <div className="mt-0.5 text-xs text-[var(--rl-fg-dim)]">{formatFileSize(pendingSource.file.size)}</div>
           </div>
           <fieldset className="space-y-2">
-            <legend className="mb-2 text-[11px] font-medium uppercase tracking-wider text-neutral-400">
+            <legend className="mb-2 text-[13px] font-medium uppercase tracking-wider text-[var(--rl-fg-muted)]">
               Parsing mode
             </legend>
-            <label className="flex cursor-pointer gap-3 rounded-md border border-white/10 px-3 py-3 hover:border-emerald-300/30">
+            <label className="flex cursor-pointer gap-3 rounded-md border border-[var(--rl-border)] px-3 py-3 hover:border-emerald-300/30">
               <input
                 type="radio"
                 name="parse-mode"
@@ -874,8 +874,8 @@ export default function Home() {
                 className="mt-0.5 accent-emerald-300"
               />
               <span>
-                <span className="block text-[12px] font-medium text-neutral-100">Fast / memory-safe</span>
-                <span className="mt-1 block text-[11px] leading-relaxed text-neutral-400">
+                <span className="block text-[12px] font-medium text-[var(--rl-fg)]">Fast / memory-safe</span>
+                <span className="mt-1 block text-[13px] leading-relaxed text-[var(--rl-fg-muted)]">
                   About 4 player positions per second, smoothly interpolated. Utilities and events are preserved.
                 </span>
               </span>
@@ -884,8 +884,8 @@ export default function Home() {
               className={[
                 "flex gap-3 rounded-md border px-3 py-3",
                 pendingSource.file.size >= LARGE_DEMO_HIGH_QUALITY_THRESHOLD
-                  ? "cursor-not-allowed border-white/5 opacity-45"
-                  : "cursor-pointer border-white/10 hover:border-emerald-300/30",
+                  ? "cursor-not-allowed border-[var(--rl-border)] opacity-45"
+                  : "cursor-pointer border-[var(--rl-border)] hover:border-emerald-300/30",
               ].join(" ")}
             >
               <input
@@ -898,20 +898,20 @@ export default function Home() {
                 className="mt-0.5 accent-emerald-300"
               />
               <span>
-                <span className="block text-[12px] font-medium text-neutral-100">Maximum precision</span>
-                <span className="mt-1 block text-[11px] leading-relaxed text-neutral-400">
+                <span className="block text-[12px] font-medium text-[var(--rl-fg)]">Maximum precision</span>
+                <span className="mt-1 block text-[13px] leading-relaxed text-[var(--rl-fg-muted)]">
                   Keeps all 64 player ticks per second. Slower and only available when the demo fits safely in browser memory.
                 </span>
               </span>
             </label>
           </fieldset>
           {pendingSource.file.size >= LARGE_DEMO_HIGH_QUALITY_THRESHOLD && (
-            <p role="status" className="mt-3 text-[11px] leading-relaxed text-amber-200/80">
+            <p role="status" className="mt-3 text-[13px] leading-relaxed text-[var(--rl-warning)]">
               This file is already too large for maximum precision. The safe mode is required to prevent another memory crash.
             </p>
           )}
           {sourceIsZstd(pendingSource) && pendingSource.file.size < LARGE_DEMO_HIGH_QUALITY_THRESHOLD && (
-            <p className="mt-3 text-[10px] leading-relaxed text-neutral-500">
+            <p className="mt-3 text-xs leading-relaxed text-[var(--rl-fg-dim)]">
               Compressed demos are checked again after decompression. If the expanded file is too large, RoundLab will ask you to use safe mode.
             </p>
           )}
@@ -972,7 +972,7 @@ function Modal({
         style={{ background: "var(--rl-panel)", borderColor: "var(--rl-border)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 id={titleId} className="mb-3 text-[13px] font-semibold text-neutral-100">{title}</h3>
+        <h3 id={titleId} className="mb-3 text-[13px] font-semibold text-[var(--rl-fg)]">{title}</h3>
         {children}
       </div>
     </div>
@@ -1005,18 +1005,18 @@ function MatchRow({
         first ? "" : "border-t border-white/[0.05]",
       ].join(" ")}
     >
-      <FileArchive className="size-4 shrink-0 text-neutral-400 group-hover:text-emerald-300" />
+      <FileArchive className="size-4 shrink-0 text-[var(--rl-fg-muted)] group-hover:text-[var(--rl-positive)]" />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[13px] font-medium text-neutral-100">
+        <div className="truncate text-[13px] font-medium text-[var(--rl-fg)]">
           {m.name}
         </div>
-        <div className="mt-0.5 text-[11px] text-neutral-400">
+        <div className="mt-0.5 text-[13px] text-[var(--rl-fg-muted)]">
           {date.toLocaleString()} · {(m.size / 1024 / 1024).toFixed(1)} MB
         </div>
       </div>
       <Button
         size="sm"
-        className="h-7 gap-1.5 bg-emerald-300 px-3 text-[11px] font-medium text-[#06100b] hover:bg-emerald-200"
+        className="h-7 gap-1.5 bg-emerald-300 px-3 text-[13px] font-medium text-[#06100b] hover:bg-emerald-200"
       >
         <Play className="size-3 fill-current" />
         Open
@@ -1029,7 +1029,7 @@ function MatchRow({
               aria-label="Match actions"
               variant="ghost"
               size="icon-sm"
-              className="text-neutral-400 hover:bg-white/[0.04] hover:text-neutral-100"
+              className="text-[var(--rl-fg-muted)] hover:bg-white/[0.04] hover:text-[var(--rl-fg)]"
             />
           }
         >
@@ -1037,7 +1037,7 @@ function MatchRow({
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          className="w-36 border border-white/10 bg-[#171a1a] text-neutral-100"
+          className="w-36 border border-[var(--rl-border)] bg-[#171a1a] text-[var(--rl-fg)]"
           onClick={(e) => e.stopPropagation()}
         >
           <DropdownMenuItem onClick={onRename} className="text-xs">

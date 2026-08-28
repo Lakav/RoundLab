@@ -26,14 +26,14 @@ export function Controls() {
   };
 
   return (
-    <div className="flex shrink-0 items-center gap-1.5 rounded-[4px] border border-white/[0.06] bg-white/[0.03] px-1.5 py-1 text-neutral-400">
+    <div className="flex shrink-0 items-center gap-1.5 rounded-[4px] border border-white/[0.06] bg-white/[0.03] px-1.5 py-1 text-[var(--rl-fg-muted)]">
       <Button
         variant="ghost"
         size="icon"
         onClick={() => skip(-5)}
         disabled={!roundReady}
         title={roundReady ? "-5s (J)" : "Loading round..."}
-        className="size-7 rounded-[3px] text-neutral-400 hover:bg-white/[0.08] hover:text-neutral-200 disabled:pointer-events-none disabled:opacity-40"
+        className="size-7 rounded-[3px] text-[var(--rl-fg-muted)] hover:bg-white/[0.08] hover:text-[var(--rl-fg)] disabled:pointer-events-none disabled:opacity-40"
       >
         <SkipBack className="size-4" />
       </Button>
@@ -52,12 +52,12 @@ export function Controls() {
         onClick={() => skip(5)}
         disabled={!roundReady}
         title={roundReady ? "+5s (L)" : "Loading round..."}
-        className="size-7 rounded-[3px] text-neutral-400 hover:bg-white/[0.08] hover:text-neutral-200 disabled:pointer-events-none disabled:opacity-40"
+        className="size-7 rounded-[3px] text-[var(--rl-fg-muted)] hover:bg-white/[0.08] hover:text-[var(--rl-fg)] disabled:pointer-events-none disabled:opacity-40"
       >
         <SkipForward className="size-4" />
       </Button>
 
-      <div className="ml-1 flex items-center gap-1 border-l border-white/10 pl-2">
+      <div className="ml-1 flex items-center gap-1 border-l border-[var(--rl-border)] pl-2">
         {SPEEDS.map((s) => (
           <button
             key={s}
@@ -67,10 +67,10 @@ export function Controls() {
             onClick={() => setSpeed(s)}
             disabled={!roundReady}
             className={cn(
-              "h-6 min-w-8 rounded-[3px] px-1.5 text-[11px] font-semibold tabular-nums transition-colors disabled:pointer-events-none disabled:opacity-40",
+              "h-6 min-w-8 rounded-[3px] px-1.5 text-[13px] font-semibold tabular-nums transition-colors disabled:pointer-events-none disabled:opacity-40",
               speed === s
                 ? "bg-white text-neutral-950"
-                : "text-neutral-300 hover:bg-white/[0.05] hover:text-white"
+                : "text-[var(--rl-fg-muted)] hover:bg-white/[0.05] hover:text-white"
             )}
           >
             {s}×

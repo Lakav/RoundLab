@@ -10,7 +10,7 @@ function MatchPageInner() {
   const visualTest = params.get("visualTest") === "1";
   if (!id) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-300">
+      <div className="min-h-screen flex items-center justify-center bg-neutral-950 text-[var(--rl-fg-muted)]">
         Missing match id.
       </div>
     );

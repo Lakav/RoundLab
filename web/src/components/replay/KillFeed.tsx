@@ -64,7 +64,7 @@ export function KillFeed() {
 
             {kill.assist && kill.assist !== kill.killer && (
               <>
-                <span className="text-[11px] font-bold text-white/55">+</span>
+                <span className="text-[13px] font-bold text-white/55">+</span>
                 {kill.flashAssist && <KillFeedIcon kind="flash-assist" />}
                 <PlayerName name={name(kill.assist)} side={assistSide} />
               </>
@@ -88,7 +88,7 @@ export function KillFeed() {
                 }}
               />
             ) : (
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-white/55">
+              <span className="text-xs font-semibold uppercase tracking-wide text-white/55">
                 {kill.weapon || (suicide ? "death" : "kill")}
               </span>
             )}
