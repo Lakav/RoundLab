@@ -42,6 +42,7 @@ function sample(
       survivalRate: 0,
       clutchOpportunities: null,
       clutchWins: null,
+      clutchOutcomes: null,
       tradeAttempts: 0,
       tradeKills: 0,
       tradeDeaths: 0,

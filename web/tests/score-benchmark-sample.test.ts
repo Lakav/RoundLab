@@ -50,6 +50,7 @@ function sample(): BenchmarkPlayerSideSample {
       survivalRate: 0.5,
       clutchOpportunities: null,
       clutchWins: null,
+      clutchOutcomes: null,
       tradeAttempts: 2,
       tradeKills: 1,
       tradeDeaths: 0,

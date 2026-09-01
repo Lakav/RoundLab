@@ -12,6 +12,7 @@ import {
   MATCH_ANALYSIS_SPEC_VERSION,
   type AnalysisEvidence,
   type ClutchCounts,
+  type ClutchOutcomes,
   type EconomyCategory,
   type GrenadeCounts,
   type LogicalTeamAnalysis,
@@ -75,6 +76,7 @@ type MutablePlayerAnalysis = {
   clutchAvailable: boolean;
   clutchOpportunities: ClutchCounts;
   clutchWins: ClutchCounts;
+  clutchOutcomes: ClutchOutcomes;
   tradeAttemptsAvailable: boolean;
   tradeAvailable: boolean;
   tradeAttempts: number;
@@ -138,6 +140,7 @@ function emptyEvidence(): PlayerMetricEvidence {
     survivedRounds: [],
     clutchOpportunities: [],
     clutchWins: [],
+    clutchOutcomes: [],
     tradeAttempts: [],
     tradeKills: [],
     tradeDeaths: [],
@@ -155,6 +158,18 @@ function emptyMultiKillCounts(): MultiKillRoundCounts {
 
 function emptyClutchCounts(): ClutchCounts {
   return { oneVsOne: 0, oneVsTwo: 0, oneVsThree: 0, oneVsFour: 0, oneVsFivePlus: 0 };
+}
+
+function emptyClutchOutcomes(): ClutchOutcomes {
+  return {
+    won: 0,
+    lost: 0,
+    saved: 0,
+    died: 0,
+    afterPlant: 0,
+    wonByDefuse: 0,
+    wonByExplosion: 0,
+  };
 }
 
 function emptyGrenadeCounts(): GrenadeCounts {
@@ -1225,6 +1240,7 @@ function analyzeMatchBase(match: MatchData, context: AnalyzeMatchContext): BaseM
       clutchAvailable: true,
       clutchOpportunities: emptyClutchCounts(),
       clutchWins: emptyClutchCounts(),
+      clutchOutcomes: emptyClutchOutcomes(),
       tradeAttemptsAvailable: true,
       tradeAvailable: true,
       tradeAttempts: 0,
@@ -1719,6 +1735,14 @@ function analyzeMatchBase(match: MatchData, context: AnalyzeMatchContext): BaseM
     const missingTeamContext = [...participants].some((id) => !teams.has(id));
     const missingDisconnectEvents = round.disconnects === undefined;
     const winnerTeam = roundWinnerTeam(round);
+    // Bomb context for clutch outcomes. Ticks are absent in legacy stored
+    // matches, so an unknown plant tick simply leaves `afterPlant` false rather
+    // than guessing.
+    const bombPlantedAt = round.events.find(
+      (event) => event.type === "bomb_planted",
+    )?.tick ?? null;
+    const bombDefused = round.events.some((event) => event.type === "bomb_defused");
+    const bombExploded = round.events.some((event) => event.type === "bomb_exploded");
 
     for (const id of participants) {
       const participant = players.get(id);
@@ -1741,7 +1765,10 @@ function analyzeMatchBase(match: MatchData, context: AnalyzeMatchContext): BaseM
 
     const alive = new Set(participants);
     const uncertainSurvival = new Set<string>();
-    const clutchOpportunities = new Map<string, { opponents: number; proofId: string }>();
+    const clutchOpportunities = new Map<
+      string,
+      { opponents: number; proofId: string; afterPlant: boolean }
+    >();
     const inspectClutches = (proof: AnalysisEvidence) => {
       if (missingTeamContext || winnerTeam === null || missingDisconnectEvents) return;
       for (const team of [2, 3]) {
@@ -1753,7 +1780,13 @@ function analyzeMatchBase(match: MatchData, context: AnalyzeMatchContext): BaseM
         if (clutchOpportunities.has(id)) continue;
         const participant = players.get(id);
         if (!participant) continue;
-        clutchOpportunities.set(id, { opponents, proofId: proof.evidenceId });
+        clutchOpportunities.set(id, {
+          opponents,
+          proofId: proof.evidenceId,
+          afterPlant: bombPlantedAt !== null && proof.tick !== null
+            ? proof.tick >= bombPlantedAt
+            : false,
+        });
         incrementClutch(participant.clutchOpportunities, opponents);
         participant.metricEvidence.clutchOpportunities.push(proof.evidenceId);
         recordEvidence(proof);
@@ -1891,10 +1924,30 @@ function analyzeMatchBase(match: MatchData, context: AnalyzeMatchContext): BaseM
     for (const [id, opportunity] of clutchOpportunities) {
       const participant = players.get(id);
       if (!participant || !participant.clutchAvailable) continue;
-      if (alive.has(id) && teams.get(id) === winnerTeam) {
+      const outcomes = participant.clutchOutcomes;
+      const won = teams.get(id) === winnerTeam;
+      const survived = alive.has(id);
+      if (opportunity.afterPlant) outcomes.afterPlant++;
+      if (survived && won) {
         incrementClutch(participant.clutchWins, opportunity.opponents);
         participant.metricEvidence.clutchWins.push(opportunity.proofId, roundEnd.evidenceId);
       }
+      if (won) {
+        outcomes.won++;
+        // A clutcher on the CT side wins by defusing; on the T side, by the
+        // bomb going off. Only one can apply to a given round.
+        if (bombDefused && teams.get(id) === 3) outcomes.wonByDefuse++;
+        else if (bombExploded && teams.get(id) === 2) outcomes.wonByExplosion++;
+      } else {
+        outcomes.lost++;
+        // Surviving a lost round is a save: the equipment carries over.
+        if (survived && !uncertainSurvival.has(id)) outcomes.saved++;
+        else if (!survived) outcomes.died++;
+      }
+      participant.metricEvidence.clutchOutcomes.push(
+        opportunity.proofId,
+        roundEnd.evidenceId,
+      );
     }
 
     for (const id of participants) {
@@ -1969,6 +2022,7 @@ function analyzeMatchBase(match: MatchData, context: AnalyzeMatchContext): BaseM
             : survivedRounds / player.roundsPlayed,
           clutchOpportunities: player.clutchAvailable ? player.clutchOpportunities : null,
           clutchWins: player.clutchAvailable ? player.clutchWins : null,
+          clutchOutcomes: player.clutchAvailable ? player.clutchOutcomes : null,
           tradeAttempts: player.tradeAttemptsAvailable ? player.tradeAttempts : null,
           tradeKills: player.tradeAvailable ? player.tradeKills : null,
           tradeDeaths: player.tradeAvailable ? player.tradeDeaths : null,

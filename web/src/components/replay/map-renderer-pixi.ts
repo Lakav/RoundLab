@@ -21,8 +21,6 @@ export type MapRendererPixiLayers = {
   utilities: Container;
   bomb: Container;
   players: Container;
-  /** Names sit above every marker so a sprite can never cover one. */
-  labels: Container;
   deaths: Container;
 };
 
@@ -40,7 +38,6 @@ export function createMapRendererPixiLayers(
     utilities: new Container(),
     bomb: new Container(),
     players: new Container(),
-    labels: new Container(),
     deaths: new Container(),
   };
   stage.addChild(
@@ -49,7 +46,6 @@ export function createMapRendererPixiLayers(
     layers.utilities,
     layers.bomb,
     layers.players,
-    layers.labels,
     layers.deaths,
   );
   return layers;

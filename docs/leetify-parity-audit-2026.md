@@ -650,16 +650,16 @@ Elles restent hors priorité.
 
 - [x] ajouter une vue par arme avec tirs, tirs associés à des dégâts, précision,
   dégâts, kills et headshot kills ;
-- [ ] enrichir les clutches avec issue sauvée et contexte bombe ; les
-  opportunités, victoires, défaites et taux de réussite sont maintenant exposés,
-  mais un save n'est pas encore prouvé ;
+- [x] enrichir les clutches avec issue sauvée et contexte bombe ; le save est
+  déduit du vainqueur du round et de la survie du clutcheur, `round_end` ne
+  portant aucun motif de fin de round ;
 - [x] compléter Opening Duels avec adversaire, arme et T/CT ;
 - [x] exposer le spacing joueur en plus des statistiques par zone ;
 - [x] ajouter les filtres joueur, équipe, côté et round à la vue par arme ;
-- [ ] généraliser ces filtres aux autres tableaux du rapport ;
+- [x] généraliser ces filtres aux autres tableaux du rapport ;
 - [x] ne pas afficher `0 %` quand l'association tir-dégât est absente et
   expliquer explicitement l'indisponibilité ;
-- [ ] généraliser l'affichage de couverture à toutes les sous-pages.
+- [x] généraliser l'affichage de couverture à toutes les sous-pages.
 
 ### Phase 2 — Fiabiliser Aim, trades et smokes
 
