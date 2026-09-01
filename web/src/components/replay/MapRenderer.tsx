@@ -7,7 +7,6 @@ import { type HabitOverlay, type HabitOverlayTrail, type HabitReplayEffect, type
 import { MAP_CALIBRATION, RADAR_SIZE, radarImagePath, radarLayerForPositions, type RadarLayer, worldToRadar } from "@/lib/maps";
 import type { MatchData, PlayerId, ProjectilePos, Round, UtilityEffect, WeaponFireEvent } from "@/lib/types";
 import { iconPathFor } from "@/lib/icons";
-import { layoutPlayerLabels } from "./map-renderer-labels";
 import {
   activeBombPlantTime,
   activeDefuse,
@@ -54,8 +53,6 @@ import {
   type PlayerSprite,
   updateHabitGhostVisual,
   updatePlayerSprite,
-  PLAYER_LABEL_OFFSET_Y,
-  PLAYER_MARKER_RADIUS,
 } from "./map-renderer-player";
 import {
   PROJECTILE_EFFECT_HANDOFF_LOOKBACK,
@@ -568,7 +565,6 @@ export function MapRenderer({
   const utilityLayerRef = useRef<Container | null>(null);
   const bombLayerRef = useRef<Container | null>(null);
   const playerLayerRef = useRef<Container | null>(null);
-  const labelLayerRef = useRef<Container | null>(null);
   const deathLayerRef = useRef<Container | null>(null);
   const spritesRef = useRef<Map<PlayerId, PlayerSprite>>(new Map());
   const bombSpriteRef = useRef<BombSprite | null>(null);
@@ -631,7 +627,6 @@ export function MapRenderer({
       utilityLayerRef.current = scene.layers.utilities;
       bombLayerRef.current = scene.layers.bomb;
       playerLayerRef.current = scene.layers.players;
-      labelLayerRef.current = scene.layers.labels;
       deathLayerRef.current = scene.layers.deaths;
     });
 
@@ -761,7 +756,6 @@ export function MapRenderer({
         time === lastRenderedTime &&
         overlay === lastRenderedOverlay;
       const layer = playerLayerRef.current;
-      const labelLayer = labelLayerRef.current ?? undefined;
       const utilityLayer = utilityLayerRef.current;
       const bombLayer = bombLayerRef.current;
       const deathLayer = deathLayerRef.current;
@@ -843,7 +837,6 @@ export function MapRenderer({
       const bombExplosion = recentBombExplosion(round, bombFrames, time);
       const throwerTeams = lastKnownTeams(round.frames, time);
       const seen = new Set<PlayerId>();
-      const laidOut: Array<{ sprite: PlayerSprite; alive: boolean }> = [];
       const utilityChildrenBeforeCleanup = utilityLayer.children.length;
       queueLayerChildrenForDestroy(utilityLayer, deferredDestroyRef.current);
       if (deathMarkerRoundRef.current !== round) {
@@ -1249,7 +1242,7 @@ export function MapRenderer({
         let s = spritesRef.current.get(p.id);
         if (!s) {
           const playerInfo = match.players.find((pl) => pl.steamId === p.id);
-          s = createPlayerSprite(layer, playerInfo?.name, labelLayer);
+          s = createPlayerSprite(layer, playerInfo?.name);
           spritesRef.current.set(p.id, s);
         }
         const carriesBomb =
@@ -1267,30 +1260,6 @@ export function MapRenderer({
           recentFire: recentFireByShooter.get(p.id),
           loadTexture: loadIconTexture,
         });
-        laidOut.push({ sprite: s, alive: p.hp > 0 });
-      }
-
-      // Names are placed once every marker has moved, so players stacked on the
-      // same spot get a slot each instead of an unreadable pile.
-      const placements = layoutPlayerLabels(
-        laidOut.map(({ sprite, alive }) => ({
-          x: sprite.container.x,
-          y: sprite.container.y,
-          width: sprite.labelEmpty.width,
-          height: sprite.labelEmpty.height,
-          // A living player's name matters more than a dead one's, so the
-          // living keep their default slot when the two compete.
-          priority: alive ? 1 : 0,
-        })),
-        PLAYER_LABEL_OFFSET_Y,
-        PLAYER_MARKER_RADIUS,
-      );
-      for (const [labelIndex, placement] of placements.entries()) {
-        const { sprite } = laidOut[labelIndex];
-        sprite.labelBadge.position.set(
-          sprite.container.x + placement.dx,
-          sprite.container.y + placement.dy,
-        );
       }
 
       for (const [id, s] of spritesRef.current) {

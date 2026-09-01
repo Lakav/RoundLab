@@ -19,10 +19,6 @@ import type {
 
 const BOMB_MARKER_COLOR = REPLAY_COLORS.danger;
 const HP_RING_RADIUS = 11;
-/** Default label offset above the marker; the layout pass works from this. */
-export const PLAYER_LABEL_OFFSET_Y = -22;
-/** Radius the label layout keeps clear around each marker. */
-export const PLAYER_MARKER_RADIUS = HP_RING_RADIUS + 1;
 const SHOOT_ROTATION_OFFSET = 0;
 const PLAYER_ARROW_TIP_OFFSET = 9;
 
@@ -165,11 +161,7 @@ function playerLabel(text: string, fill: number, halo = false): Text {
   return label;
 }
 
-export function createPlayerSprite(
-  layer: Container,
-  name?: string,
-  labelLayer?: Container,
-): PlayerSprite {
+export function createPlayerSprite(layer: Container, name?: string): PlayerSprite {
   const container = new Container();
   const held = new Sprite();
   held.anchor.set(0.5, 1);
@@ -189,7 +181,7 @@ export function createPlayerSprite(
   labelBadge.addChild(labelEmptyMask);
   labelBadge.addChild(labelFill);
   labelBadge.addChild(labelEmpty);
-  labelBadge.position.set(0, PLAYER_LABEL_OFFSET_Y);
+  labelBadge.position.set(0, -22);
 
   const dot = new Graphics();
   const hpRing = new Graphics();
@@ -218,13 +210,13 @@ export function createPlayerSprite(
   const flashArc = new Graphics();
 
   container.addChild(held);
+  container.addChild(labelBadge);
   container.addChild(dot);
   container.addChild(hpRing);
   container.addChild(arrowRotator);
   container.addChild(deadMark);
   container.addChild(flashArc);
   layer.addChild(container);
-  (labelLayer ?? container).addChild(labelBadge);
 
   return {
     container,
@@ -252,11 +244,6 @@ export function createPlayerSprite(
 
 export function destroyPlayerSprite(layer: Container, sprite: PlayerSprite): void {
   layer.removeChild(sprite.container);
-  // The label lives in the shared label layer, so it needs removing too.
-  sprite.labelBadge.parent?.removeChild(sprite.labelBadge);
-  if (!sprite.labelBadge.destroyed) {
-    sprite.labelBadge.destroy(PLAYER_DESTROY_OPTIONS);
-  }
   if (!sprite.container.destroyed) sprite.container.destroy(PLAYER_DESTROY_OPTIONS);
 }
 
