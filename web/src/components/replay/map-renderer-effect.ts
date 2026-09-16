@@ -1,4 +1,4 @@
-import { Container, Graphics } from "pixi.js";
+import { Container, FillGradient, Graphics } from "pixi.js";
 import { smokeBlastClearAlpha } from "@/lib/replay-logic";
 import type { HabitReplayEffect } from "@/lib/replay-store";
 import type { ProjectilePos, UtilityEffect } from "@/lib/types";
@@ -7,7 +7,7 @@ import {
   fireIsSmoked,
   fireRadiusWorld,
 } from "@/lib/utility-geometry";
-import { teamColor, teamDarkColor } from "./map-renderer-player";
+import { teamColor } from "./map-renderer-player";
 import { REPLAY_COLORS } from "./map-renderer-colors";
 import {
   projectileTypeToEffect,
@@ -349,7 +349,69 @@ function effectRandom(effect: UtilityEffect, index: number): number {
   return value - Math.floor(value);
 }
 
-function drawImpactFragments(
+/** Radar-space position of a player blinded by a flash, for the victim links. */
+export type FlashVictimPoint = { x: number; y: number; blind: number };
+
+const SMOKE_RADIUS_PX_WORLD = 156;
+const HE_RADIUS_WORLD = 165;
+const FLASH_VEIL_RADIUS_WORLD = 420;
+const DECOY_FOOTPRINT_WORLD = 70;
+const DECOY_SHOT_CADENCE = [0, 0.11, 0.22, 0.9, 1.02, 1.7, 1.81, 1.92, 2.6] as const;
+const DECOY_SHOT_LOOP = 3.2;
+
+function radialFill(
+  colorStops: Array<{ offset: number; color: number; alpha: number }>,
+): FillGradient {
+  return new FillGradient({
+    type: "radial",
+    center: { x: 0.5, y: 0.5 },
+    innerRadius: 0,
+    outerCenter: { x: 0.5, y: 0.5 },
+    outerRadius: 0.5,
+    textureSpace: "local",
+    colorStops: colorStops.map(({ offset, color, alpha }) => ({
+      offset,
+      color: { r: (color >> 16) & 0xff, g: (color >> 8) & 0xff, b: color & 0xff, a: alpha },
+    })),
+  });
+}
+
+/** A gradient-filled disc needs its own Graphics so `local` space is the disc itself. */
+function gradientDisc(
+  layer: Container,
+  x: number,
+  y: number,
+  radius: number,
+  colorStops: Array<{ offset: number; color: number; alpha: number }>,
+): void {
+  if (radius <= 0.5) return;
+  const disc = new Graphics();
+  disc.circle(x, y, radius).fill(radialFill(colorStops));
+  layer.addChild(disc);
+}
+
+function dashedCircle(
+  graphics: Graphics,
+  x: number,
+  y: number,
+  radius: number,
+  color: number,
+  alpha: number,
+  width: number,
+  dashes = 40,
+): void {
+  if (alpha <= 0.005) return;
+  const step = (Math.PI * 2) / dashes;
+  for (let index = 0; index < dashes; index++) {
+    const from = index * step;
+    graphics.moveTo(x + Math.cos(from) * radius, y + Math.sin(from) * radius);
+    graphics.arc(x, y, radius, from, from + step * 0.55);
+  }
+  graphics.stroke({ color, width, alpha, cap: "round" });
+}
+
+/** Sparks that arc and fall instead of flying straight: debris, not rays. */
+function drawSparks(
   graphics: Graphics,
   effect: UtilityEffect,
   centerX: number,
@@ -358,25 +420,27 @@ function drawImpactFragments(
   radius: number,
   color: number,
   count: number,
+  seedOffset = 0,
 ): void {
   const alpha = 1 - progress;
+  if (alpha <= 0) return;
   for (let index = 0; index < count; index++) {
-    const angle = effectRandom(effect, index) * Math.PI * 2;
-    const distance =
-      radius *
-      progress *
-      (0.45 + effectRandom(effect, index + 20) * 0.55);
-    const length = 3 + effectRandom(effect, index + 40) * 7;
+    const seed = index + seedOffset;
+    const angle = effectRandom(effect, seed) * Math.PI * 2;
+    const distance = radius * progress * (0.45 + effectRandom(effect, seed + 20) * 0.55);
+    const length = 3 + effectRandom(effect, seed + 40) * 7;
     const x = centerX + Math.cos(angle) * distance;
     const y = centerY + Math.sin(angle) * distance;
+    const fall = 4 * progress;
     graphics
       .moveTo(x, y)
-      .lineTo(x - Math.cos(angle) * length, y - Math.sin(angle) * length)
-      .stroke({
-        color,
-        width: index % 3 === 0 ? 2 : 1.2,
-        alpha: alpha * 0.85,
-      });
+      .quadraticCurveTo(
+        x - Math.cos(angle) * length * 0.6,
+        y - Math.sin(angle) * length * 0.6 + fall * 0.5,
+        x - Math.cos(angle) * length,
+        y - Math.sin(angle) * length + fall,
+      )
+      .stroke({ color, width: index % 3 === 0 ? 2 : 1.2, alpha: alpha * 0.85, cap: "round" });
   }
 }
 
@@ -388,6 +452,7 @@ export function drawEffectVisual(
   unitsToPx: number,
   contextualEffects: UtilityEffect[],
   drawIcon: DrawProjectileIcon,
+  flashVictims: readonly FlashVictimPoint[] = [],
 ): void {
   const position = toRadar(effect.x, effect.y, 0);
   const age = Math.max(0, time - effect.start);
@@ -397,112 +462,101 @@ export function drawEffectVisual(
   const graphics = new Graphics();
 
   if (effect.type === "smoke") {
-    const fadeIn = Math.min(1, age / 0.6);
-    const fadeOut = life > 0.92 ? 1 - (life - 0.92) / 0.08 : 1;
-    const alpha = Math.max(0, fadeIn * fadeOut);
-    const radius = 156 * unitsToPx;
+    // The edge is what hides players, so the volume is densest at the edge and
+    // the true boundary stays crisp until the very end. Lobes drift slowly so
+    // the smoke breathes without crawling; there are no fragments because a
+    // smoke does not shatter. The body dissipates over the last 2.5 s and the
+    // countdown only appears for the final 5 s: the arc is enough before that.
+    const radius = SMOKE_RADIUS_PX_WORLD * unitsToPx;
     const team = teamColor(effect.team);
     const clearAlpha = smokeBlastClearAlpha(effect, contextualEffects, time);
-    graphics
-      .circle(position.x, position.y, radius)
-      .fill({ color: 0x737983, alpha: 0.31 * alpha * clearAlpha })
-      // A crisp edge answers the question the blur cannot: where the smoke
-      // actually stops.
-      .circle(position.x, position.y, radius)
-      .stroke({
-        color: REPLAY_COLORS.smoke,
-        width: 1.6,
-        alpha: 0.75 * alpha * clearAlpha,
-      });
-    for (let index = 0; index < 9; index++) {
-      const angle = effectRandom(effect, index) * Math.PI * 2;
-      const distance =
-        radius * (0.18 + effectRandom(effect, index + 10) * 0.46) * fadeIn;
+    const bloom = easeOutCubic(age / 0.9);
+    const dissipation = clamp01((age - (total - 2.5)) / 2.5);
+    const body = (1 - dissipation * 0.8) * clearAlpha;
+    const bloomRadius = radius * bloom;
+
+    gradientDisc(layer, position.x, position.y, bloomRadius, [
+      { offset: 0, color: 0x8c929a, alpha: 0.22 * body },
+      { offset: 0.75, color: 0x969ca4, alpha: 0.36 * body },
+      { offset: 1, color: 0x969ca4, alpha: 0.42 * body },
+    ]);
+    for (let index = 0; index < 8; index++) {
+      const phase = effectRandom(effect, index + 60) * Math.PI * 2;
+      const angle = effectRandom(effect, index) * Math.PI * 2 + Math.sin(time * 0.35 + phase) * 0.25;
+      const distance = radius * (0.25 + effectRandom(effect, index + 10) * 0.4) * bloom * (1 - dissipation * 0.5);
       const lobeRadius =
-        radius * (0.23 + effectRandom(effect, index + 20) * 0.16) * fadeIn;
+        radius * (0.22 + effectRandom(effect, index + 20) * 0.14) * bloom
+        * (0.9 + Math.sin(time * 0.9 + phase) * 0.1) * (1 - dissipation * 0.6);
       graphics
-        .circle(
-          position.x + Math.cos(angle) * distance,
-          position.y + Math.sin(angle) * distance,
-          lobeRadius,
-        )
-        .fill({
-          color: index % 2 ? 0xaeb3ba : 0x8d939c,
-          alpha: 0.16 * alpha * clearAlpha,
-        });
+        .circle(position.x + Math.cos(angle) * distance, position.y + Math.sin(angle) * distance, lobeRadius)
+        .fill({ color: index % 2 ? 0xbec3ca : 0xa0a6ae, alpha: 0.13 * body });
     }
-    if (age < 0.75) {
-      const burst = easeOutCubic(age / 0.75);
+    graphics
+      .circle(position.x, position.y, bloomRadius)
+      .stroke({ color: REPLAY_COLORS.smoke, width: 1.6, alpha: 0.8 * (1 - dissipation * 0.6) * clearAlpha });
+    if (age < 0.9) {
       graphics
-        .circle(position.x, position.y, radius * (0.2 + burst * 0.8))
-        .stroke({
-          color: 0xd8dbe0,
-          width: 3 - burst * 1.5,
-          alpha: (1 - burst) * 0.8 * clearAlpha,
-        });
-      drawImpactFragments(
-        graphics,
-        effect,
-        position.x,
-        position.y,
-        burst,
-        radius * 0.82,
-        0xc7cbd1,
-        7,
-      );
+        .circle(position.x, position.y, radius * (0.2 + bloom * 0.8))
+        .stroke({ color: 0xd8dbe0, width: 3 - bloom * 1.5, alpha: (1 - bloom) * 0.8 * clearAlpha });
     }
-    drawTimerArc(graphics, position.x, position.y, radius, remaining, team, 1.7);
+    drawTimerArc(graphics, position.x, position.y, radius + 3, remaining, team, 1.5);
     layer.addChild(graphics);
-    drawCountdownLabel(
-      layer,
-      String(Math.max(0, Math.ceil(effect.end - time))),
-      position.x,
-      position.y,
-      0xb8b8b8,
-    );
+    const secondsLeft = effect.end - time;
+    if (secondsLeft <= 5) {
+      drawCountdownLabel(layer, String(Math.max(0, Math.ceil(secondsLeft))), position.x, position.y, 0xf2f5f4);
+    }
     return;
   }
 
   if (effect.type === "flash") {
-    // A flashbang is a very short, very bright event. The detonation reads as a
-    // hard white core with a rapidly expanding falloff, then a thin ring that
-    // keeps travelling after the core is gone, so the blast stays visible for
-    // a beat instead of simply vanishing.
-    const burst = clamp01(age / 0.42);
+    // The veil is bounded to the flash's own reach, not the whole radar, so it
+    // reads as "this area got lit", and each player actually blinded by this
+    // flash is linked to it while their blindness lasts. That is the honest
+    // answer to "who got flashed": the data, not a guess.
+    const burst = clamp01(age / 0.5);
     const eased = easeOutCubic(burst);
-    const fade = 1 - burst;
-
-    const wave = 6 + eased * 46;
-    graphics
-      .circle(position.x, position.y, wave)
-      .stroke({
-        color: REPLAY_COLORS.flash,
-        width: 2.6 - eased * 2,
-        alpha: fade * 0.85,
-      });
-
-    // Three concentric falloff steps stand in for a radial gradient, which
-    // Pixi's Graphics cannot fill directly.
-    const glow = 4 + eased * 17;
-    for (const [scale, strength] of [[1, 0.16], [0.66, 0.3], [0.34, 0.72]] as const) {
-      graphics
-        .circle(position.x, position.y, glow * scale)
-        .fill({ color: 0xffffff, alpha: fade * strength });
+    const veilRadius = FLASH_VEIL_RADIUS_WORLD * unitsToPx * (0.45 + eased * 0.55);
+    if (burst < 1) {
+      gradientDisc(layer, position.x, position.y, veilRadius, [
+        { offset: 0, color: 0xffffff, alpha: 0.55 * (1 - burst) },
+        { offset: 0.35, color: REPLAY_COLORS.flash, alpha: 0.3 * (1 - burst) },
+        { offset: 1, color: REPLAY_COLORS.flash, alpha: 0 },
+      ]);
+      gradientDisc(layer, position.x, position.y, 10 + eased * 44, [
+        { offset: 0, color: 0xffffff, alpha: 0.95 * (1 - burst) },
+        { offset: 0.35, color: REPLAY_COLORS.flash, alpha: 0.5 * (1 - burst) },
+        { offset: 1, color: REPLAY_COLORS.flash, alpha: 0 },
+      ]);
     }
-
-    // Spokes give the burst a direction and disappear faster than the core.
-    const spokeFade = Math.max(0, 1 - burst * 1.8);
-    if (spokeFade > 0) {
-      for (let index = 0; index < 6; index++) {
-        const angle = (index * Math.PI) / 3 + effectRandom(effect, index) * 0.4;
-        // Start beyond the core so the spokes read as scattered light rather
-        // than as spokes attached to a hub.
-        const start = glow * 1.15;
-        const end = start + 6 + eased * 22;
+    const rayFade = Math.max(0, 1 - burst * 1.6);
+    if (rayFade > 0) {
+      for (let index = 0; index < 8; index++) {
+        const angle = (index * Math.PI) / 4 + 0.2;
+        const length = (index % 2 ? 14 : 30) + eased * 16;
         graphics
-          .moveTo(position.x + Math.cos(angle) * start, position.y + Math.sin(angle) * start)
-          .lineTo(position.x + Math.cos(angle) * end, position.y + Math.sin(angle) * end)
-          .stroke({ color: 0xffffff, width: 1.2, alpha: spokeFade * 0.34, cap: "round" });
+          .moveTo(position.x + Math.cos(angle) * 6, position.y + Math.sin(angle) * 6)
+          .lineTo(position.x + Math.cos(angle) * length, position.y + Math.sin(angle) * length)
+          .stroke({ color: 0xffffff, width: index % 2 ? 0.8 : 1.4, alpha: rayFade * 0.6, cap: "round" });
+      }
+    }
+    const linger = clamp01((age - 0.2) / 1.2);
+    if (linger < 1) {
+      graphics
+        .circle(position.x, position.y, 9)
+        .stroke({ color: REPLAY_COLORS.flash, width: 1.2, alpha: 0.5 * (1 - linger) });
+    }
+    for (const victim of flashVictims) {
+      const linkFade = clamp01(1 - age / 0.6);
+      if (linkFade > 0) {
+        graphics
+          .moveTo(position.x, position.y)
+          .lineTo(victim.x, victim.y)
+          .stroke({ color: 0xffffff, width: 1, alpha: 0.45 * linkFade });
+      }
+      if (victim.blind > 0) {
+        graphics
+          .circle(victim.x, victim.y, 11)
+          .fill({ color: 0xffffff, alpha: 0.5 * victim.blind });
       }
     }
     layer.addChild(graphics);
@@ -510,173 +564,113 @@ export function drawEffectVisual(
   }
 
   if (effect.type === "he") {
-    // The damage radius is the useful fact, so the shockwave races out to it
-    // and a faint ring stays behind at full radius for the rest of the effect.
-    // A second, slower wave and a few fragments give the blast some weight.
-    const maximumRadius = 165 * unitsToPx;
-    const progress = clamp01(age / 0.38);
-    const shock = easeOutCubic(progress);
-    const alpha = 1 - progress;
-
-    graphics
-      .circle(position.x, position.y, maximumRadius)
-      .stroke({ color: REPLAY_COLORS.he, width: 1, alpha: alpha * 0.28 });
-
-    graphics
-      .circle(position.x, position.y, maximumRadius * shock)
-      .stroke({
-        color: REPLAY_COLORS.he,
-        width: 3 - shock * 1.4,
-        alpha: alpha * 0.9,
-      });
-
-    const trailing = easeOutCubic(clamp01((age - 0.06) / 0.38));
-    if (trailing > 0) {
-      graphics
-        .circle(position.x, position.y, maximumRadius * trailing)
-        .stroke({
-          color: 0xfbbf24,
-          width: 1.6,
-          alpha: (1 - trailing) * 0.45,
-        });
+    // One hard frame, a shockwave that fills the damage radius exactly once, a
+    // dotted ring that keeps the true reach for a beat, debris that falls, and
+    // three smoke puffs that give the blast the weight the ring alone lacks.
+    const maximumRadius = HE_RADIUS_WORLD * unitsToPx;
+    if (age < 0.06) {
+      const frame = 1 - age / 0.06;
+      gradientDisc(layer, position.x, position.y, maximumRadius * 1.6, [
+        { offset: 0, color: 0xffdc96, alpha: 0.28 * frame },
+        { offset: 1, color: 0xffdc96, alpha: 0 },
+      ]);
+      const points: number[] = [];
+      for (let index = 0; index < 12; index++) {
+        const angle = (index * Math.PI) / 6;
+        const spike = index % 2 ? 9 : 24 + effectRandom(effect, index) * 8;
+        points.push(position.x + Math.cos(angle) * spike, position.y + Math.sin(angle) * spike);
+      }
+      graphics.poly(points).fill({ color: 0xfff7e0, alpha: 1 });
     }
-
-    const core = Math.max(2.5, 9 - shock * 6);
-    graphics
-      .circle(position.x, position.y, core * 1.9)
-      .fill({ color: REPLAY_COLORS.he, alpha: alpha * 0.3 })
-      .circle(position.x, position.y, core)
-      .fill({ color: 0xfff3c4, alpha: alpha * 0.95 });
-
-    drawImpactFragments(
-      graphics,
-      effect,
-      position.x,
-      position.y,
-      shock,
-      maximumRadius * 0.7,
-      0xfbbf24,
-      8,
-    );
+    const progress = clamp01(age / 0.34);
+    const shock = easeOutCubic(progress);
+    if (progress < 1) {
+      gradientDisc(layer, position.x, position.y, maximumRadius * shock, [
+        { offset: 0, color: REPLAY_COLORS.he, alpha: 0 },
+        { offset: 0.7, color: REPLAY_COLORS.he, alpha: 0 },
+        { offset: 1, color: REPLAY_COLORS.he, alpha: 0.28 * (1 - progress) },
+      ]);
+      graphics
+        .circle(position.x, position.y, maximumRadius * shock)
+        .stroke({ color: 0xffe4b5, width: 3.2 - shock * 2.4, alpha: (1 - progress) * 0.95 });
+    }
+    if (age < 0.7) {
+      dashedCircle(
+        graphics, position.x, position.y, maximumRadius, REPLAY_COLORS.he,
+        0.55 * (1 - clamp01((age - 0.3) / 0.4)), 1.2,
+      );
+    }
+    const core = Math.max(0, 11 - easeOutCubic(age / 0.5) * 11);
+    if (core > 0) {
+      gradientDisc(layer, position.x, position.y, core * 2.2, [
+        { offset: 0, color: 0xffffff, alpha: 0.95 },
+        { offset: 0.4, color: 0xfbbf24, alpha: 0.8 },
+        { offset: 1, color: REPLAY_COLORS.he, alpha: 0 },
+      ]);
+    }
+    drawSparks(graphics, effect, position.x, position.y, easeOutCubic(age / 0.55), maximumRadius * 0.8, 0xfbbf24, 10);
+    const puff = clamp01((age - 0.12) / 1.4);
+    if (puff > 0 && puff < 1) {
+      for (let index = 0; index < 3; index++) {
+        const angle = effectRandom(effect, 30 + index) * Math.PI * 2;
+        const distance = 6 + easeOutCubic(puff) * (10 + effectRandom(effect, 40 + index) * 10);
+        const puffRadius = 6 + easeOutCubic(puff) * (14 + effectRandom(effect, 50 + index) * 6);
+        graphics
+          .circle(position.x + Math.cos(angle) * distance, position.y + Math.sin(angle) * distance - puff * 8, puffRadius)
+          .fill({ color: 0x786e64, alpha: 0.32 * (1 - puff) * (1 - puff) });
+      }
+    }
     layer.addChild(graphics);
     return;
   }
 
   if (effect.type === "fire") {
+    // One warm disc that breathes slowly, the true damage edge in dashed
+    // danger red, the timer arc and the flame glyph. Fire is danger, not team
+    // identity, so nothing here takes the team colour except the timer.
     const radius = fireRadiusWorld(effect) * unitsToPx;
-    const alpha =
-      Math.min(1, age / 0.25) *
-      (life > 0.92 ? 1 - (life - 0.92) / 0.08 : 1);
+    const spread = easeOutCubic(age / 0.45);
+    const fade = 1 - clamp01((age - (total - 1)) / 1);
+    const breathe = 0.94 + 0.06 * Math.sin(time * 2.4);
     const color = teamColor(effect.team);
-    graphics
-      .circle(position.x, position.y, radius)
-      // Fire is danger, not team identity: a team-tinted fill turned CT fires
-      // blue and made the flames read brown.
-      .fill({ color: 0x4a1d1d, alpha: 0.4 * alpha })
-      // Dashes separate fire from the solid HE ring even in greyscale.
-      .circle(position.x, position.y, radius)
-      .stroke({ color: REPLAY_COLORS.danger, width: 1.6, alpha: 0.8 * alpha });
-
-    // Flame tongues inside the zone. Each keeps a fixed seeded position and
-    // only breathes in size, so the fire looks alive without the whole patch
-    // crawling around between frames.
-    for (let index = 0; index < 7; index++) {
-      const angle = effectRandom(effect, index) * Math.PI * 2;
-      const distance = radius * (0.15 + effectRandom(effect, index + 30) * 0.6);
-      const phase = effectRandom(effect, index + 60) * Math.PI * 2;
-      const breathe = 0.72 + Math.sin(time * 6 + phase) * 0.28;
-      graphics
-        .circle(
-          position.x + Math.cos(angle) * distance,
-          position.y + Math.sin(angle) * distance,
-          radius * 0.2 * breathe,
-        )
-        .fill({
-          // Higher alpha so the flame reads as fire rather than muddying into
-          // the team-tinted zone fill underneath it.
-          color: index % 2 ? REPLAY_COLORS.danger : 0xf97316,
-          alpha: 0.42 * alpha,
-        });
-    }
-
-    if (age < 0.7) {
-      const ignition = easeOutCubic(age / 0.7);
-      graphics
-        .circle(position.x, position.y, radius * (0.18 + ignition * 0.82))
-        .stroke({
-          color,
-          width: 3.5 - ignition * 1.8,
-          alpha: (1 - ignition) * 0.9,
-        });
-      drawImpactFragments(
-        graphics,
-        effect,
-        position.x,
-        position.y,
-        ignition,
-        radius * 1.15,
-        color,
-        9,
-      );
-    }
-    drawTimerArc(
-      graphics,
-      position.x,
-      position.y,
-      radius,
-      remaining,
-      color,
-      1.7,
-    );
+    gradientDisc(layer, position.x, position.y, radius * spread * breathe, [
+      { offset: 0, color: 0xff963c, alpha: 0.5 * fade },
+      { offset: 0.7, color: 0xdc4628, alpha: 0.3 * fade },
+      { offset: 1, color: 0xc83228, alpha: 0.08 * fade },
+    ]);
+    dashedCircle(graphics, position.x, position.y, radius * spread, REPLAY_COLORS.danger, 0.8 * fade, 1.4, 36);
+    drawTimerArc(graphics, position.x, position.y, radius + 4, remaining, color, 1.5);
     layer.addChild(graphics);
-    drawFireMarker(
-      layer,
-      position.x,
-      position.y,
-      color,
-      teamDarkColor(effect.team),
-    );
+    drawFireMarker(layer, position.x, position.y, 0xf97316, 0x7c2d12);
     return;
   }
 
   if (effect.type === "decoy") {
-    const shotPhase = (age % 0.72) / 0.72;
-    if (shotPhase < 0.42) {
-      const pulse = easeOutCubic(shotPhase / 0.42);
+    // A decoy is a grenade lying on the ground: it does not wobble. Each fake
+    // shot is a muzzle tick in a random direction plus a sound ring, on an
+    // irregular cadence like a real burst, inside a faint dotted footprint.
+    const footprint = DECOY_FOOTPRINT_WORLD * unitsToPx;
+    dashedCircle(graphics, position.x, position.y, footprint, REPLAY_COLORS.decoy, 0.3, 1, 28);
+    const loopAge = age % DECOY_SHOT_LOOP;
+    const loopIndex = Math.floor(age / DECOY_SHOT_LOOP);
+    for (let index = 0; index < DECOY_SHOT_CADENCE.length; index++) {
+      const shotAge = loopAge - DECOY_SHOT_CADENCE[index];
+      if (shotAge < 0 || shotAge > 0.5) continue;
+      const pulse = easeOutCubic(shotAge / 0.5);
       graphics
-        .circle(position.x, position.y, 6 + pulse * 16)
-        .stroke({
-          color: 0xc4b5fd,
-          width: 2.2 - pulse,
-          alpha: (1 - pulse) * 0.72,
-        });
-      const angle = effectRandom(effect, Math.floor(age / 0.72)) * Math.PI * 2;
-      graphics
-        .moveTo(
-          position.x + Math.cos(angle) * 7,
-          position.y + Math.sin(angle) * 7,
-        )
-        .lineTo(
-          position.x + Math.cos(angle) * (13 + pulse * 5),
-          position.y + Math.sin(angle) * (13 + pulse * 5),
-        )
-        .stroke({
-          color: 0xede9fe,
-          width: 1.8,
-          alpha: (1 - pulse) * 0.85,
-        });
-      layer.addChild(graphics);
+        .circle(position.x, position.y, 8 + pulse * 22)
+        .stroke({ color: 0xc4b5fd, width: 1.6 - pulse, alpha: (1 - pulse) * 0.55 });
+      const tick = clamp01(shotAge / 0.12);
+      if (tick < 1) {
+        const angle = effectRandom(effect, index + loopIndex * 9) * Math.PI * 2;
+        graphics
+          .moveTo(position.x + Math.cos(angle) * 7, position.y + Math.sin(angle) * 7)
+          .lineTo(position.x + Math.cos(angle) * 15, position.y + Math.sin(angle) * 15)
+          .stroke({ color: 0xfff0c8, width: 2, alpha: 1 - tick, cap: "round" });
+      }
     }
-    const wobbleX = Math.sin(time * 17) * 2.2;
-    const wobbleY = Math.cos(time * 13) * 1.6;
-    const rotation = Math.sin(time * 20) * 0.22;
-    drawIcon(
-      layer,
-      "decoy",
-      position.x + wobbleX + Math.cos(rotation) * 1.5,
-      position.y + wobbleY + Math.sin(rotation) * 1.5,
-      0xa78bfa,
-    );
+    layer.addChild(graphics);
+    drawIcon(layer, "decoy", position.x, position.y, REPLAY_COLORS.decoy);
     return;
   }
 

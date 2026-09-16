@@ -1,4 +1,4 @@
-import { Container, Graphics, Sprite, Text, type Texture } from "pixi.js";
+import { Container, FillGradient, Graphics, Sprite, Text, type Texture } from "pixi.js";
 import { iconPathFor } from "@/lib/icons";
 import {
   REPLAY_ALPHA,
@@ -18,9 +18,10 @@ import type {
 } from "@/lib/replay-store";
 
 const BOMB_MARKER_COLOR = REPLAY_COLORS.danger;
-const HP_RING_RADIUS = 11;
+const BOMB_BADGE_OFFSET = 9.5;
+const BOMB_ICON_SIZE = 9;
 const SHOOT_ROTATION_OFFSET = 0;
-const PLAYER_ARROW_TIP_OFFSET = 9;
+const PLAYER_ARROW_TIP_OFFSET = 10;
 
 const PLAYER_DESTROY_OPTIONS = { children: true, context: true, style: true } as const;
 
@@ -37,6 +38,8 @@ export type PlayerSprite = {
   labelEmpty: Text;
   labelFillMask: Graphics;
   labelEmptyMask: Graphics;
+  bombIcon: Sprite;
+  bombPath: string | null;
   held: Sprite;
   heldPath: string | null;
   actionGroup: Container;
@@ -120,12 +123,38 @@ export function playerArrowRotation(yaw: number): number {
   return (-yaw * Math.PI) / 180;
 }
 
+/**
+ * The arrow is the whole marker. Health lives inside it: the tip keeps the
+ * team colour so the facing stays readable, and lost health darkens the shape
+ * from the tail forward, with a short soft edge so it reads as damage rather
+ * than as a gauge bolted onto the sprite.
+ */
 export function drawDirectionalPlayerArrow(
   graphics: Graphics,
   color: number,
   alpha = 1,
+  hpPct = 1,
+  darkColor: number = REPLAY_COLORS.neutralDark,
 ): void {
-  const markerRadius = 8;
+  const markerRadius = 9;
+  const health = clamp01(hpPct);
+  const fill = health >= 0.995
+    ? { color, alpha: 0.98 * alpha }
+    : {
+      fill: new FillGradient({
+        type: "linear",
+        start: { x: 0, y: 0.5 },
+        end: { x: 1, y: 0.5 },
+        textureSpace: "local",
+        colorStops: [
+          { offset: 0, color: darkColor },
+          { offset: clamp01(1 - health - 0.06), color: darkColor },
+          { offset: clamp01(1 - health + 0.06), color },
+          { offset: 1, color },
+        ],
+      }),
+      alpha: 0.98 * alpha,
+    };
   graphics
     .clear()
     .moveTo(markerRadius + 1, 0)
@@ -133,7 +162,7 @@ export function drawDirectionalPlayerArrow(
     .lineTo(-markerRadius + 4, 0)
     .lineTo(-markerRadius + 1, 5.2)
     .lineTo(markerRadius + 1, 0)
-    .fill({ color, alpha: 0.98 * alpha })
+    .fill(fill)
     .stroke({ color: 0xffffff, width: 1.7, alpha: 0.96 * alpha });
 }
 
@@ -165,7 +194,9 @@ export function createPlayerSprite(layer: Container, name?: string): PlayerSprit
   const container = new Container();
   const held = new Sprite();
   held.anchor.set(0.5, 1);
-  held.position.set(0, -22);
+  // Stacked above the arrow: name first, held weapon above the name, so the
+  // two never overlap.
+  held.position.set(0, -27);
   held.visible = false;
 
   const labelBadge = new Container();
@@ -181,7 +212,7 @@ export function createPlayerSprite(layer: Container, name?: string): PlayerSprit
   labelBadge.addChild(labelEmptyMask);
   labelBadge.addChild(labelFill);
   labelBadge.addChild(labelEmpty);
-  labelBadge.position.set(0, -22);
+  labelBadge.position.set(0, -17);
 
   const dot = new Graphics();
   const hpRing = new Graphics();
@@ -208,12 +239,17 @@ export function createPlayerSprite(layer: Container, name?: string): PlayerSprit
   actionGroup.addChild(actionFill);
   arrowRotator.addChild(actionGroup);
   const flashArc = new Graphics();
+  const bombIcon = new Sprite();
+  bombIcon.anchor.set(0.5);
+  bombIcon.visible = false;
+  bombIcon.position.set(BOMB_BADGE_OFFSET, BOMB_BADGE_OFFSET);
 
   container.addChild(held);
   container.addChild(labelBadge);
   container.addChild(dot);
-  container.addChild(hpRing);
   container.addChild(arrowRotator);
+  container.addChild(hpRing);
+  container.addChild(bombIcon);
   container.addChild(deadMark);
   container.addChild(flashArc);
   layer.addChild(container);
@@ -231,6 +267,8 @@ export function createPlayerSprite(layer: Container, name?: string): PlayerSprit
     labelEmpty,
     labelFillMask,
     labelEmptyMask,
+    bombIcon,
+    bombPath: null,
     held,
     heldPath: null,
     actionGroup,
@@ -298,7 +336,7 @@ export function updatePlayerSprite({
   const markerRadius = 8;
 
   sprite.dot.clear();
-  drawDirectionalPlayerArrow(sprite.arrow, baseColor);
+  drawDirectionalPlayerArrow(sprite.arrow, baseColor, 1, hpPct, teamDarkColor(player.team));
   // The cross replaces the arrow on death, rather than stacking on top of it.
   sprite.arrowRotator.visible = alive;
 
@@ -314,29 +352,36 @@ export function updatePlayerSprite({
     sprite.arrowRotator.scale.set(1);
   }
 
-  // Health rides its own ring so the name stays a name at every HP value, and
-  // the bomb gets a dashed ring instead of overwriting the player's team colour.
+  // The bomb carrier wears the C4 glyph itself, on a small dark disc at the
+  // arrow's rear so it never competes with the facing. Hidden while the
+  // player actually holds the C4, since the held-weapon icon already shows it.
   sprite.hpRing.clear();
-  if (alive) {
-    sprite.hpRing
-      .circle(0, 0, HP_RING_RADIUS)
-      .stroke({ color: REPLAY_COLORS.ink, width: 2.6, alpha: REPLAY_ALPHA.outline })
-      .circle(0, 0, HP_RING_RADIUS)
-      .stroke({ color: baseColor, width: 1.6, alpha: REPLAY_ALPHA.ringTrack });
-    if (hpPct > 0) {
-      sprite.hpRing
-        .arc(0, 0, HP_RING_RADIUS, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * hpPct)
-        .stroke({ color: baseColor, width: 1.6, alpha: REPLAY_ALPHA.ring, cap: "round" });
+  const holdsBombInHand = /c4|bomb/.test(player.active?.toLowerCase() ?? "");
+  const showBombBadge = carriesBomb && alive && !holdsBombInHand;
+  const bombPath = showBombBadge ? iconPathFor("c4") : null;
+  if (bombPath !== sprite.bombPath) {
+    sprite.bombPath = bombPath;
+    if (!bombPath) {
+      sprite.bombIcon.visible = false;
+    } else {
+      const bombSprite = sprite.bombIcon;
+      void loadTexture(bombPath)
+        .then((texture) => {
+          if (bombSprite.destroyed || sprite.bombPath !== bombPath) return;
+          bombSprite.texture = texture;
+          fitSprite(bombSprite, BOMB_ICON_SIZE);
+          bombSprite.visible = true;
+        })
+        .catch(() => {});
     }
   }
-  if (carriesBomb) {
+  if (showBombBadge) {
     sprite.hpRing
-      .circle(0, 0, HP_RING_RADIUS + 4)
-      .stroke({
-        color: BOMB_MARKER_COLOR,
-        width: 1.4,
-        alpha: alive ? 0.55 : REPLAY_ALPHA.faint,
-      });
+      .circle(BOMB_BADGE_OFFSET, BOMB_BADGE_OFFSET, BOMB_ICON_SIZE / 2 + 2.5)
+      .fill({ color: REPLAY_COLORS.ink, alpha: 0.78 })
+      .stroke({ color: BOMB_MARKER_COLOR, width: 1, alpha: 0.9 });
+    sprite.bombIcon.tint = BOMB_MARKER_COLOR;
+    sprite.bombIcon.alpha = REPLAY_ALPHA.strong;
   }
 
   // A dead player reads as a different shape, not merely a fainter one.
@@ -525,15 +570,41 @@ export function drawPlayerIdentityMarker(
   return container;
 }
 
+/**
+ * Where a player died: a cross in the team colour with the name beneath.
+ * A different shape from the arrow, so a body is never mistaken for a
+ * faded living player, and no facing, because a corpse has none.
+ */
 export function drawDeathMarker(
   layer: Container,
   x: number,
   y: number,
-  yaw = 0,
+  _yaw = 0,
   team?: number,
   name = "",
 ): Container {
-  return drawPlayerIdentityMarker(layer, x, y, yaw, team, displayName(name), 0.18);
+  void _yaw;
+  const container = new Container();
+  container.position.set(x, y);
+  container.alpha = 0.42;
+  const cross = new Graphics();
+  cross
+    .moveTo(-4.5, -4.5).lineTo(4.5, 4.5)
+    .moveTo(4.5, -4.5).lineTo(-4.5, 4.5)
+    .stroke({ color: REPLAY_COLORS.ink, width: 3.4, alpha: 0.7, cap: "round" })
+    .moveTo(-4.5, -4.5).lineTo(4.5, 4.5)
+    .moveTo(4.5, -4.5).lineTo(-4.5, 4.5)
+    .stroke({ color: teamColor(team), width: 1.8, alpha: 1, cap: "round" });
+  container.addChild(cross);
+  const text = displayName(name);
+  if (text) {
+    const label = playerLabel(text, REPLAY_COLORS.labelDim, true);
+    label.scale.set(0.21);
+    label.position.set(0, 10);
+    container.addChild(label);
+  }
+  layer.addChild(container);
+  return container;
 }
 
 export function framePair<T extends { t: number }>(

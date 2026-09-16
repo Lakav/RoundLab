@@ -40,13 +40,15 @@ export function createMapRendererPixiLayers(
     players: new Container(),
     deaths: new Container(),
   };
+  // Bodies sit under the living: a player walking over a death cross must
+  // stay readable.
   stage.addChild(
     layers.background,
     layers.habits,
     layers.utilities,
     layers.bomb,
-    layers.players,
     layers.deaths,
+    layers.players,
   );
   return layers;
 }

@@ -37,6 +37,21 @@ Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
       strokeText() {},
       setTransform() {},
       getImageData: () => ({ data: new Uint8ClampedArray(4) }),
+      // Pixi's FillGradient bakes its stops into a small canvas texture.
+      createLinearGradient: () => ({ addColorStop() {} }),
+      createRadialGradient: () => ({ addColorStop() {} }),
+      translate() {},
+      rotate() {},
+      save() {},
+      restore() {},
+      beginPath() {},
+      closePath() {},
+      moveTo() {},
+      lineTo() {},
+      arc() {},
+      fill() {},
+      stroke() {},
+      drawImage() {},
     };
   },
 });
