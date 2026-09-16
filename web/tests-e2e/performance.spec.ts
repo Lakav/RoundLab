@@ -159,9 +159,9 @@ test.describe("reproducible local browser performance", () => {
 
         const startedAt = await page.evaluate(() => performance.now());
         await page.getByTestId("demo-file-input").setInputFiles(demo);
-        const parseDialog = page.getByRole("dialog", { name: "Parsing demo" });
+        const parseDialog = page.getByRole("dialog", { name: "Analyse de la démo" });
         await expect(parseDialog).toBeVisible();
-        const parsedDialog = page.getByRole("dialog", { name: "Match parsed" });
+        const parsedDialog = page.getByRole("dialog", { name: "Démo analysée" });
         await expect(parsedDialog).toBeVisible({ timeout: 10 * 60_000 });
         const phaseEvents = await page.evaluate(() => (
           (window as Window & { __roundlabBenchmarkEvents?: WorkerBenchmarkEvent[] }).__roundlabBenchmarkEvents ?? []
@@ -182,7 +182,7 @@ test.describe("reproducible local browser performance", () => {
         await memorySampler;
 
         const openStartedAt = await page.evaluate(() => performance.now());
-        await parsedDialog.getByRole("button", { name: "Save & open" }).click();
+        await parsedDialog.getByRole("button", { name: "Enregistrer et ouvrir" }).click();
         await expect(page.getByRole("img", { name: "Interactive replay radar" })).toBeVisible({ timeout: 2 * 60_000 });
         await expect(page.getByTitle("Play/Pause (Space)")).toBeEnabled();
         const roundOpenEndedAt = await page.evaluate(() => performance.now());

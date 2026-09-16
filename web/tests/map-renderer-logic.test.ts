@@ -496,7 +496,7 @@ describe("MapRenderer bomb and player state", () => {
       toRadar: (x, y) => ({ x, y }),
       loadTexture,
     });
-    expect(state.sprite?.icon.tint).toBe(0x22c55e);
+    expect(state.sprite?.icon.tint).toBe(0x47cbff);
     expect(state.defuse).toBeNull();
 
     state = bombLogic.updateBombRender({
@@ -550,7 +550,7 @@ describe("MapRenderer bomb and player state", () => {
     expect(logic.mixColor(0x000000, 0xffffff, 0.5)).toBe(0x808080);
     expect(logic.displayName("L999")).toBe("grosNoob");
     expect(logic.displayName()).toBe("");
-    expect(logic.heightLift(-1000)).toBe(22);
+    expect(logic.heightLift(-1000)).toBe(34);
   });
 
   it("reconstructs carried and planted bomb states when frame data is incomplete", () => {
@@ -595,7 +595,8 @@ describe("MapRenderer bomb and player state", () => {
     expect(logic.plantedBombAt(frames, 2)).toEqual(bomb);
     const exploded = round({ events: [{ t: 1, type: "bomb_exploded" }] });
     expect(logic.recentBombExplosion(exploded, frames, 1.5)).toMatchObject({ age: 0.5 });
-    expect(logic.recentBombExplosion(exploded, frames, 3)).toBeNull();
+    expect(logic.recentBombExplosion(exploded, frames, 2.5)).toMatchObject({ age: 1.5 });
+    expect(logic.recentBombExplosion(exploded, frames, 4)).toBeNull();
     expect(logic.bombPulseProgress(0, 0)).toBe(0);
     expect(logic.bombPulseProgress(0, 40)).toBeCloseTo(0);
   });
@@ -687,8 +688,8 @@ describe("MapRenderer cache and cleanup", () => {
       layers.habits,
       layers.utilities,
       layers.bomb,
-      layers.players,
       layers.deaths,
+      layers.players,
     ]);
 
     const parent = new Container();
@@ -890,7 +891,8 @@ describe("MapRenderer Pixi drawing primitives", () => {
     effectLogic.drawFireMarker(layer, 1, 2, logic.teamColor(2));
     expect(layer.children.at(-1)?.scale.x).toBeCloseTo(18 / 16);
     const death = logic.drawDeathMarker(layer, 1, 2, 90, 3, "Player");
-    expect(death.alpha).toBe(0.18);
+    expect(death.alpha).toBe(0.42);
+    expect(death.children.length).toBe(2);
     expect(logic.playerArrowRotation(90)).toBeCloseTo(-Math.PI / 2);
     expect(logic.playerArrowRotation(-90)).toBeCloseTo(Math.PI / 2);
     const frames: ProjectileFrame[] = [

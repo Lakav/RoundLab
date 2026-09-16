@@ -23,6 +23,7 @@ import {
   Metric,
   QualityMetricCell,
   metricQualityTitle,
+  ReportEmptyState,
 } from "./ReportQuality";
 import {
   average,
@@ -42,6 +43,7 @@ import {
   scopeMatcher,
   type ReportScope,
 } from "./ReportScopeFilters";
+import type { PlayerAnalysis } from "@/lib/analysis/types";
 import type {
   DetailSection,
   MatchReportProps,
@@ -470,14 +472,63 @@ export function MatchReport({
   const closestTeammateDistance = selectedSpacing.length === 0
     ? null
     : Math.min(...selectedSpacing.map((spacing) => spacing.minDistance3d));
-  const farthestTeammateDistance = selectedSpacing.length === 0
-    ? null
-    : Math.max(...selectedSpacing.map((spacing) => spacing.maxDistance3d));
   const playerSectionActive =
     tab === "rating" ||
     tab === "headToHead" ||
     tab === "mapZones" ||
     (tab === "details" && detailSection !== "timeline");
+  // One entry per family of metrics the report can show. The hero states how
+  // many of them this demo actually carries so a sparse import is never
+  // mistaken for a complete one. Player-level tables reuse the same counts.
+  const totalPlayers = analysis.players.length;
+  const countPlayers = (predicate: (player: PlayerAnalysis) => boolean) =>
+    analysis.players.filter(predicate).length;
+  // A player counts as covered for Aim as soon as the demo recorded shots for
+  // them; precision may still be null when damage association is missing.
+  const mechanicsCount = [...mechanicsByPlayer.values()].filter((value) => (value.shots ?? 0) > 0).length;
+  const dataCoverage = [
+    { key: "kills", label: "Kills", available: countPlayers((player) => player.metrics.kills !== null) },
+    { key: "damage", label: "Damage", available: countPlayers((player) => player.metrics.adr !== null) },
+    { key: "kast", label: "KAST", available: countPlayers((player) => player.metrics.kastRate !== null) },
+    { key: "aim", label: "Shots", available: mechanicsCount },
+    { key: "openings", label: "Openings", available: countPlayers((player) => player.metrics.openingAttempts !== null) },
+    { key: "trades", label: "Trade kills", available: countPlayers((player) => player.metrics.tradeKills !== null) },
+    { key: "clutches", label: "Clutches", available: countPlayers((player) => player.metrics.clutchOpportunities !== null) },
+    { key: "utility", label: "Utility", available: countPlayers((player) => player.utility !== null && player.utility !== undefined) },
+  ] as const;
+  const coverageOf = (key: (typeof dataCoverage)[number]["key"]) =>
+    dataCoverage.find((entry) => entry.key === key)?.available ?? 0;
+  const sectionUnavailable = (
+    key: (typeof dataCoverage)[number]["key"],
+    reason: string,
+  ): string | undefined => (totalPlayers > 0 && coverageOf(key) === 0 ? reason : undefined);
+  const aimUnavailable = sectionUnavailable("aim", "aucun événement de tir dans cette démo");
+  const utilityUnavailable = sectionUnavailable("utility", "aucun flux utilitaire dans cette démo");
+  const tradesUnavailable = sectionUnavailable("trades", "aucun événement de dégâts pour mesurer les trades");
+  const openingsUnavailable = sectionUnavailable("openings", "aucun opening exploitable dans cette démo");
+  const clutchesUnavailable = sectionUnavailable("clutches", "aucune situation de clutch détectée");
+  const overviewEmptyState = (() => {
+    if (totalPlayers === 0) return null;
+    if (overviewMetricSet === "aim" && aimUnavailable) {
+      return {
+        title: "Aim indisponible pour cette démo",
+        description: "Aucun événement de tir n’a été enregistré : précision, sprays et arrêts avant tir ne peuvent pas être calculés. Les kills et headshots restent disponibles dans l’onglet Général.",
+      };
+    }
+    if (overviewMetricSet === "utility" && utilityUnavailable) {
+      return {
+        title: "Utility indisponible pour cette démo",
+        description: "Aucun lancer de grenade ni événement de flash n’a été enregistré. Rien n’est estimé à leur place.",
+      };
+    }
+    if (overviewMetricSet === "positioning" && openingsUnavailable && tradesUnavailable && clutchesUnavailable) {
+      return {
+        title: "Openings, trades et clutches indisponibles",
+        description: "Cette démo ne contient pas les événements nécessaires pour reconstruire les duels d’ouverture, les trades ni les clutchs.",
+      };
+    }
+    return null;
+  })();
   const primaryNavigation = [
     {
       value: "overview",
@@ -531,6 +582,7 @@ export function MatchReport({
     },
     {
       value: "aim",
+      unavailableReason: aimUnavailable,
       label: "Aim",
       active: tab === "details" && detailSection === "aim",
       onSelect: () => {
@@ -540,7 +592,8 @@ export function MatchReport({
     },
     {
       value: "utility",
-      label: "Utilitaires",
+      unavailableReason: utilityUnavailable,
+      label: "Utility",
       active: tab === "details" && detailSection === "utility",
       onSelect: () => {
         setDetailSection("utility");
@@ -558,6 +611,7 @@ export function MatchReport({
     },
     {
       value: "trades",
+      unavailableReason: tradesUnavailable,
       label: "Trades",
       active: tab === "details" && detailSection === "trades",
       onSelect: () => {
@@ -576,7 +630,8 @@ export function MatchReport({
     },
     {
       value: "openings",
-      label: "Opening duels",
+      unavailableReason: openingsUnavailable,
+      label: "Openings",
       active: tab === "details" && detailSection === "openings",
       onSelect: () => {
         setDetailSection("openings");
@@ -585,6 +640,7 @@ export function MatchReport({
     },
     {
       value: "clutches",
+      unavailableReason: clutchesUnavailable,
       label: "Clutches",
       active: tab === "details" && detailSection === "clutches",
       onSelect: () => {
@@ -599,7 +655,7 @@ export function MatchReport({
       aria-label="Rapport de partie"
       className="report-shell mx-auto flex min-h-full w-full max-w-[1480px] flex-col px-4 pb-16 pt-24 sm:px-6"
     >
-      <ReportHero analysis={analysis} spatial={spatial} />
+      <ReportHero analysis={analysis} spatial={spatial} coverage={dataCoverage} />
 
       <ReportPrimaryNavigation items={primaryNavigation} />
 
@@ -622,18 +678,14 @@ export function MatchReport({
             <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
               <div className="flex flex-col gap-4 border-b border-[var(--rl-border)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <span className="text-xs font-bold uppercase tracking-[0.15em] text-[var(--rl-positive)]">
-                    Vue d’ensemble
-                  </span>
-                  <h2 className="mt-1 text-base font-semibold tracking-[-0.02em] text-[var(--rl-fg)]">Joueurs</h2>
-                  <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">Compare les deux équipes sans changer de page.</p>
+                  <h2 className="mt-1 text-base font-semibold tracking-[-0.02em] text-[var(--rl-fg)]"><DefinitionTerm label="Joueurs" definition="Compare les deux équipes sans changer de page." /></h2>
                 </div>
                 <div className="flex overflow-x-auto rounded-md border border-white/[0.055] bg-black/25 p-1">
                   {([
                     ["general", "Général"],
                     ["aim", "Aim"],
                     ["positioning", "Positionnement"],
-                    ["utility", "Utilitaires"],
+                    ["utility", "Utility"],
                   ] as const).map(([value, label]) => (
                     <button
                       key={value}
@@ -652,6 +704,12 @@ export function MatchReport({
                   ))}
                 </div>
               </div>
+              {overviewEmptyState ? (
+                <ReportEmptyState
+                  title={overviewEmptyState.title}
+                  description={overviewEmptyState.description}
+                />
+              ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[50rem] text-left text-sm">
                   <thead className="bg-white/[0.018] text-xs font-semibold uppercase tracking-[0.08em] text-[var(--rl-fg-dim)]">
@@ -669,37 +727,38 @@ export function MatchReport({
                       )}
                       {overviewMetricSet === "aim" && (
                         <>
-                          <th className="px-3 py-2.5 text-right">Tirs</th>
-                          <th className="px-3 py-2.5 text-right"><DefinitionTerm label="HS kill %" /></th>
+                          <th className="px-3 py-2.5 text-right">Shots</th>
+                          <th className="px-3 py-2.5 text-right"><DefinitionTerm label="HS%" /></th>
                           <th className="px-3 py-2.5 text-right">
-                            <DefinitionTerm label="Précision tous tirs" />
+                            <DefinitionTerm label="Accuracy" />
                           </th>
                           <th className="px-3 py-2.5 text-right"><DefinitionTerm label="Spray accuracy" /></th>
-                          <th className="px-4 py-2.5 text-right"><DefinitionTerm label="Arrêt avant tir" /></th>
+                          <th className="px-4 py-2.5 text-right"><DefinitionTerm label="Counter-strafing" /></th>
                         </>
                       )}
                       {overviewMetricSet === "positioning" && (
                         <>
                           <th className="px-3 py-2.5 text-right">Openings</th>
-                          <th className="px-3 py-2.5 text-right">Succès</th>
+                          <th className="px-3 py-2.5 text-right">Success</th>
                           <th className="px-3 py-2.5 text-right"><DefinitionTerm label="Trade kills" /></th>
-                          <th className="px-3 py-2.5 text-right"><DefinitionTerm label="Morts tradées" /></th>
+                          <th className="px-3 py-2.5 text-right"><DefinitionTerm label="Traded deaths" /></th>
                           <th className="px-4 py-2.5 text-right">Clutches</th>
                         </>
                       )}
                       {overviewMetricSet === "utility" && (
                         <>
-                          <th className="px-3 py-2.5 text-right">Lancers</th>
-                          <th className="px-3 py-2.5 text-right">Ennemis flashés</th>
-                          <th className="px-3 py-2.5 text-right"><DefinitionTerm label="Blind moyen" /></th>
+                          <th className="px-3 py-2.5 text-right">Utility thrown</th>
+                          <th className="px-3 py-2.5 text-right">Enemies flashed</th>
+                          <th className="px-3 py-2.5 text-right"><DefinitionTerm label="Flash blind duration" /></th>
                           <th className="px-3 py-2.5 text-right">Flash assists</th>
-                          <th className="px-4 py-2.5 text-right">Non utilisés</th>
+                          <th className="px-4 py-2.5 text-right">Unused utility</th>
                         </>
                       )}
                     </tr>
                   </thead>
                   {overviewPlayerGroups.map((team) => (
                     <tbody key={team.key}>
+                      {!(team.key === "unassigned" && overviewPlayerGroups.length === 1) && (
                       <tr className={[
                         "border-t border-[var(--rl-border)]",
                         team.accent === "sky"
@@ -725,6 +784,7 @@ export function MatchReport({
                           )}
                         </th>
                       </tr>
+                      )}
                       {analysis.players
                         .filter((player) => team.playerIds.includes(player.playerId))
                         .sort((left, right) => (right.metrics.kills ?? -1) - (left.metrics.kills ?? -1))
@@ -833,6 +893,7 @@ export function MatchReport({
                   ))}
                 </table>
               </div>
+              )}
             </article>
 
           </div>
@@ -847,11 +908,11 @@ export function MatchReport({
           ) && (
             <div className="rounded-md border border-[color-mix(in_oklab,var(--rl-warning)_22%,transparent)] bg-[color-mix(in_oklab,var(--rl-warning)_7%,transparent)] px-4 py-3">
               <div className="text-sm font-semibold text-[var(--rl-warning)]">
-                Événements avancés absents de cette importation
+                <DefinitionTerm
+                  label="Dégâts, flashes et KAST absents de cette importation"
+                  definition="Les kills ont été conservés, mais pas les dégâts, les flashes ni certains états de fin de round. Réimporte la démo originale avec le parseur actuel pour les récupérer ; ils ne peuvent pas être reconstruits depuis les seuls kills."
+                />
               </div>
-              <p className="mt-1 text-xs leading-relaxed text-[var(--rl-fg-muted)]">
-                Les kills ont été conservés, mais pas les dégâts, les flashes et certains états de fin de round nécessaires à l’ADR et au KAST. La démo originale doit être réimportée avec le parseur actuel pour récupérer ces valeurs ; elles ne peuvent pas être reconstruites fidèlement depuis les seuls kills.
-              </p>
               <Link
                 href="/"
                 className="mt-2 inline-flex text-xs font-semibold text-[var(--rl-warning)] hover:text-[var(--rl-warning)] hover:underline"
@@ -880,17 +941,14 @@ export function MatchReport({
               total={analysis.players.length}
             />
             <CoverageBadge
-              label="Précision"
+              label="Accuracy"
               available={[...mechanicsByPlayer.values()].filter((value) => value.accuracy !== null).length}
               total={analysis.players.length}
             />
           </div>
           <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
             <div className="border-b border-[var(--rl-border)] px-4 py-3">
-              <h3 className="text-sm font-semibold text-[var(--rl-fg)]">Conversion des avantages</h3>
-              <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">
-                Avantage numérique acquis après une mort ou une déconnexion pendant le round.
-              </p>
+              <h3 className="text-sm font-semibold text-[var(--rl-fg)]"><DefinitionTerm label="Advantage conversion" definition="Avantage numérique acquis après une mort ou une déconnexion pendant le round." /></h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[36rem] text-left text-sm">
@@ -898,11 +956,11 @@ export function MatchReport({
                   <tr>
                     <th className="px-4 py-3 font-medium">Équipe</th>
                     <th className="px-3 py-3 text-right font-medium">
-                      <DefinitionTerm label="Rounds en avantage" />
+                      <DefinitionTerm label="Man-advantage rounds" />
                     </th>
-                    <th className="px-3 py-3 text-right font-medium">Victoires</th>
+                    <th className="px-3 py-3 text-right font-medium">Wins</th>
                     <th className="px-4 py-3 text-right font-medium">
-                      <DefinitionTerm label="Conversion de l’avantage" />
+                      <DefinitionTerm label="Advantage conversion" />
                     </th>
                   </tr>
                 </thead>
@@ -937,17 +995,10 @@ export function MatchReport({
                 </tbody>
               </table>
             </div>
-            <p className="border-t border-[var(--rl-border)] px-4 py-3 text-xs text-[var(--rl-fg-dim)]">
-              Chaque équipe compte au plus une opportunité par round, même si l’avantage change
-              plusieurs fois de camp. Un contexte de roster ou de fin de round incomplet invalide l’agrégat.
-            </p>
           </article>
           <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
             <div className="border-b border-[var(--rl-border)] px-4 py-3">
-              <h3 className="text-sm font-semibold text-[var(--rl-fg)]">Performance anti-eco</h3>
-              <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">
-                La catégorie adverse vient du snapshot d’équipement à la fin du freeze time.
-              </p>
+              <h3 className="text-sm font-semibold text-[var(--rl-fg)]"><DefinitionTerm label="Performance anti-eco" definition="La catégorie adverse vient du snapshot d’équipement à la fin du freeze time." /></h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[42rem] text-left text-sm">
@@ -955,14 +1006,14 @@ export function MatchReport({
                   <tr>
                     <th className="px-4 py-3 font-medium">Équipe</th>
                     <th className="px-3 py-3 text-right font-medium">
-                      <DefinitionTerm label="Rounds anti-eco" />
+                      <DefinitionTerm label="Anti-eco rounds" />
                     </th>
-                    <th className="px-3 py-3 text-right font-medium">Victoires</th>
+                    <th className="px-3 py-3 text-right font-medium">Wins</th>
                     <th className="px-3 py-3 text-right font-medium">
-                      <DefinitionTerm label="Conversion anti-eco" />
+                      <DefinitionTerm label="Anti-eco conversion" />
                     </th>
                     <th className="px-4 py-3 text-right font-medium">
-                      <DefinitionTerm label="Pertes contre eco" />
+                      <DefinitionTerm label="Losses vs eco" />
                     </th>
                   </tr>
                 </thead>
@@ -997,17 +1048,10 @@ export function MatchReport({
                 </tbody>
               </table>
             </div>
-            <p className="border-t border-[var(--rl-border)] px-4 py-3 text-xs text-[var(--rl-fg-dim)]">
-              Si une économie adverse ou l’issue d’un round manque, RoundLab laisse les agrégats
-              concernés indisponibles au lieu de publier un total partiel.
-            </p>
           </article>
           <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
             <div className="border-b border-[var(--rl-border)] px-4 py-3">
-              <h3 className="text-sm font-semibold text-[var(--rl-fg)]">Économie du joueur</h3>
-              <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">
-                Équipement observé avant la mort et inventaire conservé à la fin des rounds perdus.
-              </p>
+              <h3 className="text-sm font-semibold text-[var(--rl-fg)]"><DefinitionTerm label="Économie du joueur" definition="Équipement observé avant la mort et inventaire conservé à la fin des rounds perdus." /></h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[56rem] text-left text-sm">
@@ -1015,16 +1059,16 @@ export function MatchReport({
                   <tr>
                     <th className="px-4 py-3 font-medium">Joueur</th>
                     <th className="px-3 py-3 text-right font-medium">
-                      <DefinitionTerm label="Dépenses nettes" />
+                      <DefinitionTerm label="Net spend" />
                     </th>
                     <th className="px-3 py-3 text-right font-medium">
-                      <DefinitionTerm label="Valeur perdue à la mort" />
+                      <DefinitionTerm label="Equipment value lost on death" />
                     </th>
                     <th className="px-3 py-3 text-right font-medium">
-                      <DefinitionTerm label="Valeur moyenne perdue" />
+                      <DefinitionTerm label="Avg value lost" />
                     </th>
                     <th className="px-3 py-3 text-right font-medium">
-                      <DefinitionTerm label="Armes principales sauvegardées" />
+                      <DefinitionTerm label="Saved weapons" />
                     </th>
                     <th className="px-4 py-3 text-right font-medium">Preuve</th>
                   </tr>
@@ -1105,10 +1149,6 @@ export function MatchReport({
                 </tbody>
               </table>
             </div>
-            <p className="border-t border-[var(--rl-border)] px-4 py-3 text-xs text-[var(--rl-fg-dim)]">
-              La valeur correspond à <code>current_equip_value</code>, pas au prix d’achat historique.
-              Une arme sauvegardée signifie ici une arme principale conservée en vie lors d’un round perdu.
-            </p>
           </article>
           <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
             <div className="overflow-x-auto">
@@ -1240,9 +1280,6 @@ export function MatchReport({
             <article>
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <div>
-                  <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--rl-fg-dim)]">
-                    Analyse du round
-                  </span>
                   <h2 className="mt-1 text-2xl font-semibold text-white">
                     Round {displayRound(selectedRound.roundNumber)}
                   </h2>
@@ -1270,7 +1307,7 @@ export function MatchReport({
                 />
                 <Metric
                   label="Côté gagnant"
-                  value={selectedRound.winner}
+                  value={selectedRound.winner === "T" || selectedRound.winner === "CT" ? selectedRound.winner : "—"}
                 />
                 <Metric
                   label="Joueurs"
@@ -1321,7 +1358,7 @@ export function MatchReport({
                       <th className="pb-2 font-medium">Équipe</th>
                       <th className="pb-2 font-medium">Côté</th>
                       <th className="pb-2 font-medium">K / D / A</th>
-                      <th className="pb-2 font-medium">Dégâts</th>
+                      <th className="pb-2 font-medium">Damage</th>
                       <th className="pb-2 font-medium"><DefinitionTerm label="KAST" /></th>
                     </tr>
                   </thead>
@@ -1362,21 +1399,18 @@ export function MatchReport({
 
       {tab === "details" && detailSection === "activity" && (
         <div className="mt-6 grid gap-3">
-          <p className="text-xs text-[var(--rl-fg-dim)]">
-            Les tirs proviennent des événements de tir de la démo. Les dégâts utilitaires restent vides quand la démo ne permet pas de les attribuer sans ambiguïté.
-          </p>
           <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[58rem] text-left text-sm">
                 <thead className="bg-white/[0.02] text-[13px] text-[var(--rl-fg-dim)]">
                   <tr>
                     <th className="px-4 py-3 font-medium">Joueur</th>
-                    <th className="px-3 py-3 text-right font-medium">Dégâts</th>
-                    <th className="px-3 py-3 text-right font-medium">Dégâts HE</th>
-                    <th className="px-3 py-3 text-right font-medium">Dégâts molotov</th>
-                    <th className="px-3 py-3 text-right font-medium">Ennemis flashés</th>
-                    <th className="px-3 py-3 text-right font-medium">Tirs</th>
-                    <th className="px-4 py-3 text-right font-medium"><DefinitionTerm label="Survie" /></th>
+                    <th className="px-3 py-3 text-right font-medium">Damage</th>
+                    <th className="px-3 py-3 text-right font-medium">HE damage</th>
+                    <th className="px-3 py-3 text-right font-medium">Molotov damage</th>
+                    <th className="px-3 py-3 text-right font-medium">Enemies flashed</th>
+                    <th className="px-3 py-3 text-right font-medium">Shots</th>
+                    <th className="px-4 py-3 text-right font-medium"><DefinitionTerm label="Survival" /></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1412,35 +1446,36 @@ export function MatchReport({
 
       {tab === "details" && detailSection === "trades" && (
         <div className="mt-6 grid gap-6">
+          {tradesUnavailable && (
+            <div className="rounded-md border border-[color-mix(in_oklab,var(--rl-warning)_22%,transparent)] bg-[#121515]">
+              <ReportEmptyState
+                title="Trades indisponibles pour cette démo"
+                description="Les trades se mesurent à partir des dégâts infligés après la mort d’un coéquipier ; cette démo n’en contient pas. Les tableaux ci-dessous restent vides plutôt que remplis de zéros."
+              />
+            </div>
+          )}
           <CoverageStrip
             total={scopedPlayers.length}
             entries={[
-                { label: "Trades", available: scopedPlayers.filter((player) => player.metrics.tradeKills !== null).length },
-                { label: "Opportunités", available: scopedPlayers.filter((player) => player.metrics.tradeAttempts !== null).length },
+                { label: "Trade kills", available: scopedPlayers.filter((player) => player.metrics.tradeKills !== null).length },
+                { label: "Trade kill opportunities", available: scopedPlayers.filter((player) => player.metrics.tradeAttempts !== null).length },
               ]}
           />
           <article>
-            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--rl-fg-dim)]">
-              Réponse collective
-            </span>
-            <h2 className="mt-1 text-2xl font-semibold text-white">Trades</h2>
-            <p className="mt-1 max-w-2xl text-sm text-[var(--rl-fg-dim)]">
-              Trades tentés, réussis et morts tradées.
-            </p>
+            <h2 className="mt-1 text-2xl font-semibold text-white"><DefinitionTerm label="Trades" definition="Trades tentés, réussis et morts tradées." /></h2>
           </article>
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
             <Metric
-              label="Tentatives de trade"
+              label="Trade kill attempts"
               value={number(totalTradeAttempts)}
-              detail="Dégâts de réponse valides"
             />
             <Metric
               label="Trade kills"
               value={number(totalTradeKills)}
             />
             <Metric
-              label="Réussite des trades"
+              label="Trade kill success"
               value={percent(
                 totalTradeAttempts === null ||
                     totalTradeAttempts === 0 ||
@@ -1450,11 +1485,11 @@ export function MatchReport({
               )}
             />
             <Metric
-              label="Morts tradées"
+              label="Traded deaths"
               value={number(totalTradeDeaths)}
             />
             <Metric
-              label="Morts tradées / morts"
+              label="Traded deaths %"
               value={percent(
                 totalTradeDeaths === null || totalDeaths === 0
                   ? null
@@ -1471,10 +1506,10 @@ export function MatchReport({
                   <thead className="text-xs text-[var(--rl-fg-dim)]">
                     <tr>
                       <th className="pb-2 font-medium">Joueur</th>
-                      <th className="pb-2 font-medium"><DefinitionTerm label="Tentatives de trade" /></th>
+                      <th className="pb-2 font-medium"><DefinitionTerm label="Trade kill attempts" /></th>
                       <th className="pb-2 font-medium"><DefinitionTerm label="Trade kills" /></th>
-                      <th className="pb-2 font-medium"><DefinitionTerm label="Réussite des trades" /></th>
-                      <th className="pb-2 font-medium"><DefinitionTerm label="Morts tradées" /></th>
+                      <th className="pb-2 font-medium"><DefinitionTerm label="Trade kill success" /></th>
+                      <th className="pb-2 font-medium"><DefinitionTerm label="Traded deaths" /></th>
                       <th className="pb-2 font-medium"><DefinitionTerm label="KAST" /></th>
                     </tr>
                   </thead>
@@ -1514,10 +1549,7 @@ export function MatchReport({
             </article>
 
             <article className="rounded-md border border-[var(--rl-border)] bg-[#121515] p-5">
-              <h3 className="text-sm font-semibold text-white">Actions de trade</h3>
-              <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">
-                Les morts tradées ouvrent la mort initiale ; les trade kills ouvrent l’élimination de réponse.
-              </p>
+              <h3 className="text-sm font-semibold text-white"><DefinitionTerm label="Trade actions" definition="Les morts tradées ouvrent la mort initiale ; les trade kills ouvrent l’élimination de réponse." /></h3>
               <div className="mt-4 max-h-[28rem] overflow-y-auto">
                 <div className="grid gap-2">
                   {replayableTradeActions.map((action) => {
@@ -1552,47 +1584,48 @@ export function MatchReport({
 
       {tab === "details" && detailSection === "utility" && (
         <div className="mt-6 grid gap-6">
+          {utilityUnavailable && (
+            <div className="rounded-md border border-[color-mix(in_oklab,var(--rl-warning)_22%,transparent)] bg-[#121515]">
+              <ReportEmptyState
+                title="Utility indisponible pour cette démo"
+                description="Aucun lancer de grenade ni événement de flash n’a été enregistré. Rien n’est estimé à leur place."
+              />
+            </div>
+          )}
           <CoverageStrip
             total={scopedPlayers.length}
             entries={[
-                { label: "Utilitaires", available: scopedPlayers.filter((player) => player.metrics.grenadesThrown !== null).length },
+                { label: "Utility", available: scopedPlayers.filter((player) => player.metrics.grenadesThrown !== null).length },
                 { label: "Flashes", available: scopedPlayers.filter((player) => player.metrics.flashes != null).length },
               ]}
           />
           <article>
-            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--rl-fg-dim)]">
-              Usage vérifiable
-            </span>
-            <h2 className="mt-1 text-2xl font-semibold text-white">Utilitaires</h2>
-            <p className="mt-1 max-w-2xl text-sm text-[var(--rl-fg-dim)]">
-              Lancers, efficacité des flashes et utilitaires conservés à la mort.
-            </p>
+            <h2 className="mt-1 text-2xl font-semibold text-white"><DefinitionTerm label="Utility" definition="Lancers, efficacité des flashes et utilitaires conservés à la mort." /></h2>
           </article>
 
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
             <Metric
-              label="Quantité"
+              label="Utility quantity"
               value={number(selectedUtilityQuality?.utilityQuantityRating.value ?? null)}
-              detail="Score 0–100"
               quality={selectedUtilityQuality?.utilityQuantityRating}
             />
             <Metric
-              label="Ennemis / flash"
+              label="Enemies flashed per flash"
               value={number(selectedUtilityQuality?.enemiesPerFlash.value ?? null, 2)}
               quality={selectedUtilityQuality?.enemiesPerFlash}
             />
             <Metric
-              label="Alliés / flash"
+              label="Teammates flashed per flash"
               value={number(selectedUtilityQuality?.teammatesPerFlash.value ?? null, 2)}
               quality={selectedUtilityQuality?.teammatesPerFlash}
             />
             <Metric
-              label="Kills / flash"
+              label="Flashbangs leading to kills"
               value={number(selectedUtilityQuality?.flashKillsPerFlash.value ?? null, 2)}
               quality={selectedUtilityQuality?.flashKillsPerFlash}
             />
             <Metric
-              label="Blind moyen"
+              label="Flash blind duration"
               value={selectedUtilityQuality?.averageEnemyBlindDuration.value === null ||
                   selectedUtilityQuality?.averageEnemyBlindDuration.value === undefined
                 ? "—"
@@ -1600,12 +1633,12 @@ export function MatchReport({
               quality={selectedUtilityQuality?.averageEnemyBlindDuration}
             />
             <Metric
-              label="Dégâts / HE"
+              label="HE damage per grenade"
               value={number(selectedUtilityQuality?.heDamagePerGrenade.value ?? null, 1)}
               quality={selectedUtilityQuality?.heDamagePerGrenade}
             />
             <Metric
-              label="Dégâts alliés / HE"
+              label="Teammate HE damage"
               value={number(
                 selectedUtilityQuality?.teammateHeDamagePerGrenade.value ?? null,
                 1,
@@ -1613,12 +1646,11 @@ export function MatchReport({
               quality={selectedUtilityQuality?.teammateHeDamagePerGrenade}
             />
             <Metric
-              label="Inutilisés / mort"
+              label="Unused utility on death"
               value={selectedUtilityQuality?.averageUnusedUtilityValue.value === null ||
                   selectedUtilityQuality?.averageUnusedUtilityValue.value === undefined
                 ? "—"
                 : `$${number(selectedUtilityQuality.averageUnusedUtilityValue.value)}`}
-              detail="Valeur moyenne"
               quality={selectedUtilityQuality?.averageUnusedUtilityValue}
             />
           </div>
@@ -1631,19 +1663,19 @@ export function MatchReport({
                   <thead className="text-xs text-[var(--rl-fg-dim)]">
                     <tr>
                       <th className="pb-2 font-medium">Joueur</th>
-                      <th className="pb-2 font-medium">Quantité</th>
+                      <th className="pb-2 font-medium">Utility quantity</th>
                       <th className="pb-2 font-medium">Total</th>
                       <th className="pb-2 font-medium">Flash</th>
                       <th className="pb-2 font-medium">Smoke</th>
                       <th className="pb-2 font-medium">HE</th>
-                      <th className="pb-2 font-medium"><DefinitionTerm label="Dégâts / HE" /></th>
-                      <th className="pb-2 font-medium"><DefinitionTerm label="Alliés / HE" /></th>
+                      <th className="pb-2 font-medium"><DefinitionTerm label="HE damage per grenade" /></th>
+                      <th className="pb-2 font-medium"><DefinitionTerm label="Teammate HE damage per grenade" /></th>
                       <th className="pb-2 font-medium">Feu</th>
-                      <th className="pb-2 font-medium"><DefinitionTerm label="Ennemis / flash" /></th>
-                      <th className="pb-2 font-medium"><DefinitionTerm label="Alliés / flash" /></th>
-                      <th className="pb-2 font-medium"><DefinitionTerm label="Blind moyen" /></th>
-                      <th className="pb-2 font-medium"><DefinitionTerm label="Kills / flash" /></th>
-                      <th className="pb-2 font-medium"><DefinitionTerm label="Inutilisés / mort" /></th>
+                      <th className="pb-2 font-medium"><DefinitionTerm label="Enemies flashed per flash" /></th>
+                      <th className="pb-2 font-medium"><DefinitionTerm label="Teammates flashed per flash" /></th>
+                      <th className="pb-2 font-medium"><DefinitionTerm label="Flash blind duration" /></th>
+                      <th className="pb-2 font-medium"><DefinitionTerm label="Flashbangs leading to kills" /></th>
+                      <th className="pb-2 font-medium"><DefinitionTerm label="Unused utility on death" /></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1786,9 +1818,6 @@ export function MatchReport({
                 <h3 className="text-sm font-semibold text-white">
                   Répartition de {selectedPlayer?.name ?? "ce joueur"}
                 </h3>
-                <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">
-                  Volume total et composition des lancers, sans score propriétaire.
-                </p>
               </div>
               <div className="grid gap-px bg-white/8">
                 {overviewPlayerGroups
@@ -1905,26 +1934,28 @@ export function MatchReport({
 
       {tab === "details" && detailSection === "aim" && (
         <div className="mt-6 grid gap-6">
+          {aimUnavailable && (
+            <div className="rounded-md border border-[color-mix(in_oklab,var(--rl-warning)_22%,transparent)] bg-[#121515]">
+              <ReportEmptyState
+                title="Aim indisponible pour cette démo"
+                description="Aucun événement de tir n’a été enregistré : précision, sprays et arrêts avant tir ne peuvent pas être calculés. Les tableaux ci-dessous restent vides plutôt que remplis de zéros."
+              />
+            </div>
+          )}
           <CoverageStrip
             total={scopedPlayers.length}
             entries={[
-                { label: "Précision", available: [...mechanicsByPlayer.values()].filter((value) => value.accuracy !== null).length },
-                { label: "Temps avant dégâts", available: [...mechanicsByPlayer.values()].filter((value) => value.timeToDamageMs !== null).length },
+                { label: "Accuracy", available: [...mechanicsByPlayer.values()].filter((value) => value.accuracy !== null).length },
+                { label: "Time to damage", available: [...mechanicsByPlayer.values()].filter((value) => value.timeToDamageMs !== null).length },
               ]}
           />
           <article>
-            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--rl-fg-dim)]">
-              Mécaniques de tir
-            </span>
-            <h2 className="mt-1 text-2xl font-semibold text-white">Aim</h2>
-            <p className="mt-1 max-w-3xl text-sm text-[var(--rl-fg-dim)]">
-              Mesures observées, reconstruites ou estimées depuis la démo, avec couverture et limites explicites.
-            </p>
+            <h2 className="mt-1 text-2xl font-semibold text-white"><DefinitionTerm label="Aim" definition="Mesures observées, reconstruites ou estimées depuis la démo, avec couverture et limites explicites." /></h2>
           </article>
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
             <Metric
-              label="Précision tous tirs"
+              label="Accuracy"
               value={percent(
                 totalAimShots === null ||
                 totalAimShots === 0 ||
@@ -1934,17 +1965,15 @@ export function MatchReport({
               )}
             />
             <Metric
-              label="Précision sur ennemi repéré"
+              label="Accuracy (enemy spotted)"
               value={percent(spottedAccuracy)}
-              detail={totalSpottedShots === null ? undefined : `${totalSpottedShots} tirs évalués`}
             />
             <Metric
-              label="Temps avant dégâts"
+              label="Time to damage"
               value={averageTimeToDamage === null ? "—" : `${number(averageTimeToDamage)} ms`}
-              detail="Nécessite la géométrie de carte"
             />
             <Metric
-              label="Erreur initiale du viseur"
+              label="Crosshair placement"
               value={averageCrosshairError === null ? "—" : `${number(averageCrosshairError, 1)}°`}
             />
             <Metric
@@ -1952,7 +1981,7 @@ export function MatchReport({
               value={percent(averageSprayAccuracy)}
             />
             <Metric
-              label="Arrêt avant tir"
+              label="Counter-strafing"
               value={percent(averageCounterStrafe)}
             />
           </div>
@@ -1961,9 +1990,6 @@ export function MatchReport({
             <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 hover:bg-white/[0.025]">
               <span>
                 <span className="block text-sm font-semibold text-[var(--rl-fg)]">Données brutes de tir</span>
-                <span className="mt-1 block text-xs text-[var(--rl-fg-dim)]">
-                  Volumes, zones d’impact et séquences utilisés pour calculer les métriques.
-                </span>
               </span>
               <span className="shrink-0 text-xs font-semibold text-[var(--rl-fg-dim)] group-open:hidden">Afficher</span>
               <span className="hidden shrink-0 text-xs font-semibold text-[var(--rl-fg-dim)] group-open:inline">Masquer</span>
@@ -1973,17 +1999,17 @@ export function MatchReport({
                 <thead className="bg-white/[0.02] text-[13px] text-[var(--rl-fg-dim)]">
                   <tr>
                     <th className="px-4 py-3 font-medium">Joueur</th>
-                    <th className="px-3 py-3 text-right font-medium">Tirs</th>
-                    <th className="px-3 py-3 text-right font-medium">Touchés</th>
-                    <th className="px-3 py-3 text-right font-medium">Dégâts</th>
-                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Dégâts / impact" /></th>
-                    <th className="px-3 py-3 text-right font-medium">Tête</th>
-                    <th className="px-3 py-3 text-right font-medium">Corps</th>
+                    <th className="px-3 py-3 text-right font-medium">Shots</th>
+                    <th className="px-3 py-3 text-right font-medium">Hits</th>
+                    <th className="px-3 py-3 text-right font-medium">Damage</th>
+                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Damage per hit" /></th>
+                    <th className="px-3 py-3 text-right font-medium">Head</th>
+                    <th className="px-3 py-3 text-right font-medium">Body</th>
                     <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Tap" /></th>
                     <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Burst" /></th>
                     <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Spray" /></th>
                     <th className="px-4 py-3 text-right font-medium">
-                      <DefinitionTerm label="Tirs en mouvement" />
+                      <DefinitionTerm label="Shots while moving" />
                     </th>
                   </tr>
                 </thead>
@@ -2044,38 +2070,31 @@ export function MatchReport({
                 </tbody>
               </table>
             </div>
-            <p className="border-t border-[var(--rl-border)] px-4 py-3 text-xs text-[var(--rl-fg-dim)]">
-              Toutes les valeurs utilisent le contrat Aim V3. Les impacts et dégâts restent vides si
-              leur association aux tirs n’est pas assez fiable.
-            </p>
           </details>
 
           <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
             <div className="border-b border-[var(--rl-border)] px-4 py-3">
-              <h3 className="text-sm font-semibold text-[var(--rl-fg)]">Métriques avancées</h3>
-              <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">
-                Chaque valeur affiche son nombre d’échantillons lorsqu’il est disponible.
-              </p>
+              <h3 className="text-sm font-semibold text-[var(--rl-fg)]"><DefinitionTerm label="Métriques avancées" definition="Chaque valeur affiche son nombre d’échantillons lorsqu’il est disponible." /></h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[96rem] text-left text-sm">
                 <thead className="bg-white/[0.02] text-[13px] text-[var(--rl-fg-dim)]">
                   <tr>
                     <th className="px-4 py-3 font-medium">Joueur</th>
-                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Tirs ennemi repéré" /></th>
-                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Précision sur ennemi repéré" /></th>
+                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Shots (enemy spotted)" /></th>
+                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Accuracy (enemy spotted)" /></th>
                     <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Time to damage" /></th>
-                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Erreur initiale du viseur" /></th>
-                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Head accuracy" /></th>
-                    <th className="px-3 py-3 text-right font-medium">Première balle</th>
+                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Crosshair placement" /></th>
+                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Headshot accuracy" /></th>
+                    <th className="px-3 py-3 text-right font-medium">First bullet accuracy</th>
                     <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Spray accuracy" /></th>
-                    <th className="px-3 py-3 text-right font-medium">Tirs accroupis</th>
-                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Tirs scoped" /></th>
+                    <th className="px-3 py-3 text-right font-medium">Crouched shots</th>
+                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Scoped shots" /></th>
                     <th className="px-3 py-3 text-right font-medium">Wallbangs</th>
-                    <th className="px-3 py-3 text-right font-medium">Distance / hit</th>
+                    <th className="px-3 py-3 text-right font-medium">Distance per hit</th>
                     <th className="px-3 py-3 text-right font-medium">Exposition avant tir</th>
-                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Arrêt avant tir" /></th>
-                    <th className="px-4 py-3 text-right font-medium"><DefinitionTerm label="Accuracy all" /></th>
+                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Counter-strafing" /></th>
+                    <th className="px-4 py-3 text-right font-medium"><DefinitionTerm label="Accuracy" /></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2182,13 +2201,6 @@ export function MatchReport({
                 </tbody>
               </table>
             </div>
-            <p className="border-t border-[var(--rl-border)] px-4 py-3 text-xs text-[var(--rl-fg-dim)]">
-              La précision sur ennemi repéré utilise le masque réseau comme signal secondaire. Les délais,
-              distances, postures et erreurs angulaires sont des estimations dépendantes de l’échantillonnage GOTV.
-              « Erreur initiale du viseur » mesure l’angle à notre première visibilité combinée ; « Arrêt avant tir »
-              détecte un freinage cinématique rapide, pas une touche clavier. « Tirs scoped » utilise la dernière
-              frame strictement antérieure au tir dans une fenêtre de 250 ms ; cette valeur reste donc une estimation.
-            </p>
           </article>
 
         </div>
@@ -2197,10 +2209,7 @@ export function MatchReport({
       {tab === "details" && detailSection === "weapons" && (
         <div className="mt-6 grid gap-4">
           <article className="rounded-md border border-[var(--rl-border)] bg-[#121515] p-4">
-            <h3 className="text-sm font-semibold text-[var(--rl-fg)]">Périmètre</h3>
-            <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">
-              Les filtres s’appliquent aux tirs, dégâts et kills du tableau.
-            </p>
+            <h3 className="text-sm font-semibold text-[var(--rl-fg)]"><DefinitionTerm label="Périmètre" definition="Les filtres s’appliquent aux tirs, dégâts et kills du tableau." /></h3>
             <ReportScopeFilters
               analysis={analysis}
               scope={weaponScope}
@@ -2213,10 +2222,7 @@ export function MatchReport({
           <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
             <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--rl-border)] px-4 py-3">
               <div>
-                <h3 className="text-sm font-semibold text-[var(--rl-fg)]">Statistiques par arme</h3>
-                <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">
-                  Un tir touché est un tir associé à au moins un événement de dégâts.
-                </p>
+                <h3 className="text-sm font-semibold text-[var(--rl-fg)]"><DefinitionTerm label="Statistiques par arme" definition="Un tir touché est un tir associé à au moins un événement de dégâts." /></h3>
               </div>
               <span className={[
                 "rounded px-2 py-1 text-xs font-semibold uppercase tracking-wide",
@@ -2233,10 +2239,10 @@ export function MatchReport({
                 <thead className="bg-white/[0.02] text-[13px] text-[var(--rl-fg-dim)]">
                   <tr>
                     <th className="px-4 py-3 font-medium">Arme</th>
-                    <th className="px-3 py-3 text-right font-medium">Tirs</th>
-                    <th className="px-3 py-3 text-right font-medium">Tirs touchés</th>
-                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Précision tous tirs" /></th>
-                    <th className="px-3 py-3 text-right font-medium">Dégâts</th>
+                    <th className="px-3 py-3 text-right font-medium">Shots</th>
+                    <th className="px-3 py-3 text-right font-medium">Shots hit</th>
+                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Accuracy" /></th>
+                    <th className="px-3 py-3 text-right font-medium">Damage</th>
                     <th className="px-3 py-3 text-right font-medium">Kills</th>
                     <th className="px-4 py-3 text-right font-medium">HS kills</th>
                   </tr>
@@ -2293,19 +2299,20 @@ export function MatchReport({
                 Aucune donnée d’arme ne correspond à ces filtres.
               </p>
             )}
-            {mechanics && weaponRows.length > 0 &&
-              weaponAssociationUsable < weaponAssociationSamples && (
-              <p className="border-t border-[color-mix(in_oklab,var(--rl-warning)_16%,transparent)] bg-[color-mix(in_oklab,var(--rl-warning)_4%,transparent)] px-4 py-3 text-xs leading-relaxed text-[var(--rl-warning)]">
-                Les lignes calculent la précision uniquement sur les tirs fiables et affichent leur
-                couverture. Une ligne sans tir fiable reste volontairement vide.
-              </p>
-            )}
           </article>
         </div>
       )}
 
       {tab === "details" && detailSection === "openings" && (
         <div className="mt-6 grid gap-6">
+          {openingsUnavailable && (
+            <div className="rounded-md border border-[color-mix(in_oklab,var(--rl-warning)_22%,transparent)] bg-[#121515]">
+              <ReportEmptyState
+                title="Openings indisponibles pour cette démo"
+                description="Aucun duel d’ouverture exploitable n’a pu être reconstruit à partir des kills de cette démo."
+              />
+            </div>
+          )}
           <CoverageStrip
             total={scopedPlayers.length}
             entries={[
@@ -2315,10 +2322,7 @@ export function MatchReport({
           <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
             <div className="flex flex-col gap-3 border-b border-[var(--rl-border)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-sm font-semibold text-[var(--rl-fg)]">Opening duels</h2>
-                <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">
-                  Fréquence d’engagement, réussite et réponse de l’équipe après une mort d’ouverture.
-                </p>
+                <h2 className="text-sm font-semibold text-[var(--rl-fg)]"><DefinitionTerm label="Openings" definition="Fréquence d’engagement, réussite et réponse de l’équipe après une mort d’ouverture." /></h2>
               </div>
               <div className="flex rounded-[4px] bg-black/25 p-0.5" aria-label="Filtrer les openings par côté">
                 {([
@@ -2349,12 +2353,12 @@ export function MatchReport({
                 <thead className="bg-white/[0.02] text-[13px] text-[var(--rl-fg-dim)]">
                   <tr>
                     <th className="px-4 py-3 font-medium">Joueur</th>
-                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Tentatives d'opening" /></th>
-                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Réussite opening" /></th>
-                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Morts tradées" /></th>
-                    <th className="px-3 py-3 text-right font-medium">Adversaire principal</th>
-                    <th className="px-3 py-3 text-right font-medium">Meilleure arme</th>
-                    <th className="px-4 py-3 text-right font-medium">Plus souvent tué par</th>
+                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Opening attempts" /></th>
+                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Opening success" /></th>
+                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Traded deaths" /></th>
+                    <th className="px-3 py-3 text-right font-medium">Main opponent</th>
+                    <th className="px-3 py-3 text-right font-medium">Best weapon</th>
+                    <th className="px-4 py-3 text-right font-medium">Most killed by</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2485,18 +2489,23 @@ export function MatchReport({
 
       {tab === "details" && detailSection === "clutches" && (
         <div className="mt-6 grid gap-6">
+          {clutchesUnavailable && (
+            <div className="rounded-md border border-[color-mix(in_oklab,var(--rl-warning)_22%,transparent)] bg-[#121515]">
+              <ReportEmptyState
+                title="Clutches indisponibles pour cette démo"
+                description="Aucune situation où un joueur reste seul face à l’adversaire n’a été détectée dans cette démo."
+              />
+            </div>
+          )}
           <CoverageStrip
             total={scopedPlayers.length}
             entries={[
-                { label: "Clutchs", available: scopedPlayers.filter((player) => player.metrics.clutchOpportunities !== null).length },
-                { label: "Issues", available: scopedPlayers.filter((player) => player.metrics.clutchOutcomes !== null).length },
+                { label: "Clutches", available: scopedPlayers.filter((player) => player.metrics.clutchOpportunities !== null).length },
+                { label: "Clutch outcomes", available: scopedPlayers.filter((player) => player.metrics.clutchOutcomes !== null).length },
               ]}
           />
           <article className="rounded-md border border-[var(--rl-border)] bg-[#121515] px-4 py-4">
-            <h3 className="text-sm font-semibold text-[var(--rl-fg)]">Portée</h3>
-            <p className="mt-1 text-[13px] text-[var(--rl-fg-dim)]">
-              Restreint les clutchs comptés ci-dessous.
-            </p>
+            <h3 className="text-sm font-semibold text-[var(--rl-fg)]"><DefinitionTerm label="Portée" definition="Restreint les clutchs comptés ci-dessous." /></h3>
             <ReportScopeFilters
               analysis={analysis}
               scope={clutchScope}
@@ -2517,12 +2526,12 @@ export function MatchReport({
                     <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="1v3" /></th>
                     <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="1v4" /></th>
                     <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="1v5+" /></th>
-                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Opportunités" /></th>
-                    <th className="px-3 py-3 text-right font-medium">Gagnés</th>
-                    <th className="px-3 py-3 text-right font-medium">Perdus</th>
-                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Sauvés" /></th>
-                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Après plant" /></th>
-                    <th className="px-4 py-3 text-right font-medium">Réussite</th>
+                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Trade kill opportunities" /></th>
+                    <th className="px-3 py-3 text-right font-medium">Won</th>
+                    <th className="px-3 py-3 text-right font-medium">Lost</th>
+                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Saves" /></th>
+                    <th className="px-3 py-3 text-right font-medium"><DefinitionTerm label="Post-plant" /></th>
+                    <th className="px-4 py-3 text-right font-medium">Success</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2672,9 +2681,9 @@ export function MatchReport({
                 <div className="flex justify-between"><span className="text-[var(--rl-fg-dim)]">Dégâts directs</span><span>{number(headToHeadDamage(headToHeadPlayerA.playerId, headToHeadPlayerB.playerId))} / {number(headToHeadDamage(headToHeadPlayerB.playerId, headToHeadPlayerA.playerId))}</span></div>
                 <div className="flex justify-between"><span className="text-[var(--rl-fg-dim)]">HS kill %</span><span>{percent(headToHeadPlayerA.metrics.headshotRate)} / {percent(headToHeadPlayerB.metrics.headshotRate)}</span></div>
                 <div className="flex justify-between"><span className="text-[var(--rl-fg-dim)]">Accuracy all</span><span>{percent(mechanicsByPlayer.get(headToHeadPlayerA.playerId)?.accuracy ?? null)} / {percent(mechanicsByPlayer.get(headToHeadPlayerB.playerId)?.accuracy ?? null)}</span></div>
-                <div className="flex justify-between"><span className="text-[var(--rl-fg-dim)]">Arrêt avant tir</span><span>{percent(mechanicsByPlayer.get(headToHeadPlayerA.playerId)?.counterStrafeRate ?? null)} / {percent(mechanicsByPlayer.get(headToHeadPlayerB.playerId)?.counterStrafeRate ?? null)}</span></div>
+                <div className="flex justify-between"><span className="text-[var(--rl-fg-dim)]">Counter-strafing</span><span>{percent(mechanicsByPlayer.get(headToHeadPlayerA.playerId)?.counterStrafeRate ?? null)} / {percent(mechanicsByPlayer.get(headToHeadPlayerB.playerId)?.counterStrafeRate ?? null)}</span></div>
                 <div className="flex justify-between">
-                  <span className="text-[var(--rl-fg-dim)]">Erreur initiale du viseur</span>
+                  <span className="text-[var(--rl-fg-dim)]">Crosshair placement</span>
                   <span>
                     {number(mechanicsByPlayer.get(headToHeadPlayerA.playerId)?.crosshairErrorDegrees ?? null, 1)}° / {number(mechanicsByPlayer.get(headToHeadPlayerB.playerId)?.crosshairErrorDegrees ?? null, 1)}°
                   </span>
@@ -2729,13 +2738,7 @@ export function MatchReport({
         <div className="mt-6 grid gap-6">
           <div>
             <div>
-              <span className="text-xs font-semibold uppercase tracking-[0.13em] text-[var(--rl-fg-dim)]">
-                Profil joueur
-              </span>
               <h2 className="mt-1 text-xl font-semibold text-white">{selectedPlayer.name}</h2>
-              <p className="mt-1 text-sm text-[var(--rl-fg-dim)]">
-                Synthèse de ses contributions mesurées et détail round par round.
-              </p>
             </div>
           </div>
 
@@ -2748,7 +2751,7 @@ export function MatchReport({
                 <Metric label="K/D" value={ratio(selectedPlayer.metrics.kdRatio)} />
                 <Metric label="ADR" value={number(selectedPlayer.metrics.adr, 1)} />
                 <Metric label="KAST" value={percent(selectedPlayer.metrics.kastRate)} />
-                <Metric label="Dégâts" value={number(selectedPlayer.metrics.damageHealth)} />
+                <Metric label="Damage" value={number(selectedPlayer.metrics.damageHealth)} />
               </div>
             </section>
             <section className="border-t border-[var(--rl-border)] p-5 md:border-l md:border-t-0">
@@ -2756,34 +2759,34 @@ export function MatchReport({
                 Aim
               </h3>
               <div className="mt-4 grid grid-cols-2 gap-4">
-                <Metric label="Précision" value={percent(mechanicsByPlayer.get(selectedPlayer.playerId)?.accuracy ?? null)} />
+                <Metric label="Accuracy" value={percent(mechanicsByPlayer.get(selectedPlayer.playerId)?.accuracy ?? null)} />
                 <Metric label="Spray" value={percent(mechanicsByPlayer.get(selectedPlayer.playerId)?.sprayAccuracy ?? null)} />
-                <Metric label="HS kill" value={percent(selectedPlayer.metrics.headshotRate)} />
-                <Metric label="Arrêt avant tir" value={percent(mechanicsByPlayer.get(selectedPlayer.playerId)?.counterStrafeRate ?? null)} />
+                <Metric label="HS%" value={percent(selectedPlayer.metrics.headshotRate)} />
+                <Metric label="Counter-strafing" value={percent(mechanicsByPlayer.get(selectedPlayer.playerId)?.counterStrafeRate ?? null)} />
               </div>
             </section>
             <section className="border-t border-[var(--rl-border)] p-5 xl:border-l xl:border-t-0">
               <h3 className="text-xs font-semibold uppercase tracking-[0.13em] text-[var(--rl-fg-dim)]">
-                Utilitaires
+                Utility
               </h3>
               <div className="mt-4 grid grid-cols-2 gap-4">
                 <Metric
-                  label="Lancers"
+                  label="Utility thrown"
                   value={number(selectedUtilityQuality?.grenadesThrown.value ?? null)}
                   quality={selectedUtilityQuality?.grenadesThrown}
                 />
                 <Metric
-                  label="Quantité"
+                  label="Utility quantity"
                   value={number(selectedUtilityQuality?.utilityQuantityRating.value ?? null)}
                   quality={selectedUtilityQuality?.utilityQuantityRating}
                 />
                 <Metric
-                  label="Ennemis flashés"
+                  label="Enemies flashed"
                   value={number(selectedUtilityQuality?.effectiveEnemiesFlashed.value ?? null)}
                   quality={selectedUtilityQuality?.effectiveEnemiesFlashed}
                 />
                 <Metric
-                  label="Dégâts HE"
+                  label="HE damage"
                   value={number(selectedUtilityQuality?.heDamage.value ?? null)}
                   quality={selectedUtilityQuality?.heDamage}
                 />
@@ -2791,10 +2794,10 @@ export function MatchReport({
             </section>
             <section className="border-t border-[var(--rl-border)] p-5 md:border-l xl:border-t-0">
               <h3 className="text-xs font-semibold uppercase tracking-[0.13em] text-[var(--rl-fg-dim)]">
-                Jeu collectif
+                Teamplay
               </h3>
               <div className="mt-4 grid grid-cols-2 gap-4">
-                <Metric label="Openings gagnés" value={number(selectedPlayer.metrics.openingWins)} />
+                <Metric label="Opening kills" value={number(selectedPlayer.metrics.openingWins)} />
                 <Metric label="Trade kills" value={number(selectedPlayer.metrics.tradeKills)} />
                 <Metric label="Rotations" value={spatial ? String(selectedRotations.length) : "—"} />
                 <Metric
@@ -2821,7 +2824,7 @@ export function MatchReport({
                     <th className="px-3 py-2 text-right font-medium">K</th>
                     <th className="px-3 py-2 text-right font-medium">A</th>
                     <th className="px-3 py-2 text-right font-medium">D</th>
-                    <th className="px-3 py-2 text-right font-medium">Dégâts</th>
+                    <th className="px-3 py-2 text-right font-medium">Damage</th>
                     <th className="px-4 py-2 text-right font-medium"><DefinitionTerm label="KAST" /></th>
                   </tr>
                 </thead>
@@ -2849,13 +2852,7 @@ export function MatchReport({
       {tab === "mapZones" && selectedPlayer && (
         <div className="mt-6 grid gap-6">
           <article>
-            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--rl-fg-dim)]">
-              Lecture visuelle
-            </span>
-            <h2 className="mt-1 text-2xl font-semibold text-white">Positionnement</h2>
-            <p className="mt-1 max-w-3xl text-sm text-[var(--rl-fg-dim)]">
-              Trajectoires et positions enregistrées dans la démo.
-            </p>
+            <h2 className="mt-1 text-2xl font-semibold text-white"><DefinitionTerm label="Positionnement" definition="Trajectoires et positions enregistrées dans la démo." /></h2>
           </article>
 
           <div className="grid gap-6 lg:grid-cols-[16rem_1fr]">
@@ -2886,9 +2883,6 @@ export function MatchReport({
                 <div className="flex flex-wrap items-start justify-between gap-5">
                   <div>
                     <h3 className="text-lg font-semibold text-white">{selectedPlayer.name}</h3>
-                    <p className="mt-1 max-w-xl text-sm text-[var(--rl-fg-dim)]">
-                      La vue condensée superpose les déplacements, le point de mort et les trajectoires d’utilitaires de tous ses rounds.
-                    </p>
                   </div>
                   <button
                     type="button"
@@ -2920,14 +2914,13 @@ export function MatchReport({
                     quality={selectedSpatialQuality?.repeatedTrajectoryHabits}
                   />
                   <Metric
-                    label="Distance équipiers"
+                    label="Teammate distance"
                     value={
                       selectedSpatialQuality?.meanTeammateDistance.value === null ||
                         selectedSpatialQuality?.meanTeammateDistance.value === undefined
                         ? "—"
                         : `${selectedSpatialQuality.meanTeammateDistance.value.toFixed(0)} u`
                     }
-                    detail="moyenne horizontale"
                     quality={selectedSpatialQuality?.meanTeammateDistance}
                   />
                   <Metric
@@ -2940,10 +2933,7 @@ export function MatchReport({
 
               <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
                 <div className="border-b border-[var(--rl-border)] px-4 py-3">
-                  <h3 className="text-sm font-semibold text-[var(--rl-fg)]">Occupation par zone</h3>
-                  <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">
-                    Temps passé calculé à partir des positions enregistrées dans chaque round.
-                  </p>
+                  <h3 className="text-sm font-semibold text-[var(--rl-fg)]"><DefinitionTerm label="Occupation par zone" definition="Temps passé calculé à partir des positions enregistrées dans chaque round." /></h3>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[38rem] text-left text-sm">
@@ -2952,7 +2942,7 @@ export function MatchReport({
                         <th className="px-4 py-2 font-medium">Zone</th>
                         <th className="px-3 py-2 text-right font-medium">Rounds</th>
                         <th className="px-3 py-2 text-right font-medium">Visites</th>
-                        <th className="px-4 py-2 text-right font-medium">Temps cumulé</th>
+                        <th className="px-4 py-2 text-right font-medium">Total time</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2978,32 +2968,22 @@ export function MatchReport({
 
               <div className="grid gap-6 md:grid-cols-3">
                 <article className="rounded-md border border-[var(--rl-border)] bg-[#121515] p-5">
-                  <h3 className="text-sm font-semibold text-white">Rotations</h3>
+                  <h3 className="text-sm font-semibold text-white"><DefinitionTerm label="Rotations" definition="Déplacements collectifs auxquels le joueur participe." /></h3>
                   <div className="mt-3 text-3xl font-semibold tabular-nums text-white">
                     {spatial ? selectedRotations.length : "—"}
                   </div>
-                  <p className="mt-2 text-xs text-[var(--rl-fg-dim)]">
-                    Déplacements collectifs auxquels le joueur participe.
-                  </p>
                 </article>
                 <article className="rounded-md border border-[var(--rl-border)] bg-[#121515] p-5">
                   <h3 className="text-sm font-semibold text-white"><DefinitionTerm label="Tradeability" /></h3>
                   <div className="mt-3 text-3xl font-semibold tabular-nums text-white">
                     {spatial ? selectedTradeability.length : "—"}
                   </div>
-                  <p className="mt-2 text-xs text-[var(--rl-fg-dim)]">
-                    Morts ou couvertures où sa capacité de trade est analysable.
-                  </p>
                 </article>
                 <article className="rounded-md border border-[var(--rl-border)] bg-[#121515] p-5">
-                  <h3 className="text-sm font-semibold text-white">Espacement</h3>
+                  <h3 className="text-sm font-semibold text-white"><DefinitionTerm label="Spacing" definition="Distance 3D minimale observée avec un équipier." /></h3>
                   <div className="mt-3 text-3xl font-semibold tabular-nums text-white">
                     {closestTeammateDistance === null ? "—" : `${closestTeammateDistance.toFixed(0)} u`}
                   </div>
-                  <p className="mt-2 text-xs text-[var(--rl-fg-dim)]">
-                    Distance 3D minimale observée avec un équipier.
-                    {farthestTeammateDistance !== null && ` Maximum : ${farthestTeammateDistance.toFixed(0)} u.`}
-                  </p>
                 </article>
               </div>
             </div>

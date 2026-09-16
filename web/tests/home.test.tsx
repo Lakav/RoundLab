@@ -61,7 +61,7 @@ describe("Home", () => {
     const user = userEvent.setup();
     render(<Home />);
     expect(await screen.findByText("Practice match")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Open" }));
+    await user.click(screen.getByRole("button", { name: "Ouvrir" }));
     await waitFor(() => expect(mocks.getMatchMetadata).toHaveBeenCalledWith("match-1"));
     expect(mocks.push).toHaveBeenCalledWith("/match/?id=match-1");
   });
@@ -81,9 +81,9 @@ describe("Home", () => {
 
   it("rejects an unsupported local file without invoking the parser", async () => {
     render(<Home />);
-    const input = screen.getByLabelText("Choose a local CS2 demo file");
+    const input = screen.getByLabelText("Choisir une démo CS2 locale");
     fireEvent.change(input, { target: { files: [new File(["x"], "notes.txt", { type: "text/plain" })] } });
-    expect(await screen.findByRole("alert")).toHaveTextContent("Choose a .dem or .dem.zst file");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Choisis un fichier .dem ou .dem.zst");
     expect(mocks.parseDemo).not.toHaveBeenCalled();
   });
 
@@ -91,14 +91,14 @@ describe("Home", () => {
     const user = userEvent.setup();
     mocks.parseDemo.mockResolvedValue("match-1");
     render(<Home />);
-    const input = screen.getByLabelText("Choose a local CS2 demo file");
+    const input = screen.getByLabelText("Choisir une démo CS2 locale");
     fireEvent.change(input, { target: { files: [new File(["demo"], "round.dem")] } });
-    expect(await screen.findByRole("dialog", { name: "Import settings" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Start import" }));
-    expect(await screen.findByRole("dialog", { name: "Match parsed" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Paramètres d’import" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Lancer l’import" }));
+    expect(await screen.findByRole("dialog", { name: "Démo analysée" })).toBeInTheDocument();
     expect(mocks.parseDemo).toHaveBeenCalledWith(expect.anything(), { mode: "fast" });
     await user.type(screen.getByPlaceholderText("Practice match"), "Final review");
-    await user.click(screen.getByRole("button", { name: "Save & open" }));
+    await user.click(screen.getByRole("button", { name: "Enregistrer et ouvrir" }));
     await waitFor(() => expect(mocks.renameMatch).toHaveBeenCalledWith("match-1", "Final review"));
     expect(mocks.push).toHaveBeenCalledWith("/match/?id=match-1");
   });
@@ -110,26 +110,26 @@ describe("Home", () => {
     }));
     const user = userEvent.setup();
     render(<Home />);
-    const input = screen.getByLabelText("Choose a local CS2 demo file");
+    const input = screen.getByLabelText("Choisir une démo CS2 locale");
 
     fireEvent.change(input, { target: { files: [new File(["first"], "first.dem")] } });
     fireEvent.change(input, { target: { files: [new File(["second"], "second.dem")] } });
 
-    await user.click(screen.getByRole("button", { name: "Start import" }));
+    await user.click(screen.getByRole("button", { name: "Lancer l’import" }));
     expect(mocks.parseDemo).toHaveBeenCalledTimes(1);
     finishParse?.("match-1");
-    expect(await screen.findByRole("dialog", { name: "Match parsed" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Démo analysée" })).toBeInTheDocument();
   });
 
   it("lets the user choose maximum precision for a normal demo", async () => {
     const user = userEvent.setup();
     mocks.parseDemo.mockResolvedValue("match-1");
     render(<Home />);
-    fireEvent.change(screen.getByLabelText("Choose a local CS2 demo file"), {
+    fireEvent.change(screen.getByLabelText("Choisir une démo CS2 locale"), {
       target: { files: [new File(["demo"], "round.dem")] },
     });
-    await user.click(screen.getByRole("radio", { name: /Maximum precision/ }));
-    await user.click(screen.getByRole("button", { name: "Start import" }));
+    await user.click(screen.getByRole("radio", { name: /Précision maximale/ }));
+    await user.click(screen.getByRole("button", { name: "Lancer l’import" }));
     expect(mocks.parseDemo).toHaveBeenCalledWith(expect.anything(), { mode: "precise" });
   });
 
@@ -137,18 +137,18 @@ describe("Home", () => {
     render(<Home />);
     const large = new File(["x"], "large.dem");
     Object.defineProperty(large, "size", { value: 384 * 1024 * 1024 });
-    fireEvent.change(screen.getByLabelText("Choose a local CS2 demo file"), {
+    fireEvent.change(screen.getByLabelText("Choisir une démo CS2 locale"), {
       target: { files: [large] },
     });
-    expect(await screen.findByRole("radio", { name: /Maximum precision/ })).toBeDisabled();
-    expect(screen.getByRole("status")).toHaveTextContent("too large for maximum precision");
+    expect(await screen.findByRole("radio", { name: /Précision maximale/ })).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent("trop volumineux pour la précision maximale");
   });
 
   it("does not expose the internal benchmark contribution export", async () => {
     const user = userEvent.setup();
     render(<Home />);
     expect(await screen.findByText("Practice match")).toBeInTheDocument();
-    await user.click(screen.getByLabelText("Match actions"));
+    await user.click(screen.getByLabelText("Actions du match"));
     expect(screen.queryByText("Benchmark export")).not.toBeInTheDocument();
   });
 

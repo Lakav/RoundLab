@@ -5,6 +5,8 @@ export type ReportNavigationItem = {
   label: string;
   active: boolean;
   onSelect: () => void;
+  /** Set when the demo carries no data for this section; the tab is dimmed and explains why. */
+  unavailableReason?: string;
 };
 
 export function ReportPrimaryNavigation({ items }: { items: readonly ReportNavigationItem[] }) {
@@ -40,19 +42,21 @@ export function ReportSecondaryNavigation({ items }: { items: readonly ReportNav
       aria-label="Analyses des joueurs"
       className="report-secondary-nav mt-3 flex overflow-x-auto border-b border-white/[0.075] px-1"
     >
-      {items.map(({ value, label, active, onSelect }) => (
+      {items.map(({ value, label, active, onSelect, unavailableReason }) => (
         <button
           key={value}
           type="button"
           aria-label={label}
-          title={STAT_DEFINITIONS[label]}
+          title={unavailableReason ? `Indisponible : ${unavailableReason}` : STAT_DEFINITIONS[label]}
           aria-current={active ? "page" : undefined}
           onClick={onSelect}
           className={[
             "relative h-11 shrink-0 px-3.5 text-xs font-semibold transition-colors",
             active
               ? "text-[var(--rl-fg)] after:absolute after:inset-x-3.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-emerald-300"
-              : "text-[var(--rl-fg-dim)] hover:text-[var(--rl-fg)]",
+              : unavailableReason
+                ? "text-[var(--rl-fg-dim)] opacity-45 hover:opacity-80"
+                : "text-[var(--rl-fg-dim)] hover:text-[var(--rl-fg)]",
           ].join(" ")}
         >
           {label}

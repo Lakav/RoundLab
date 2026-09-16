@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Container, Graphics, Sprite } from "pixi.js";
 import { type HabitOverlay, type HabitOverlayTrail, type HabitReplayEffect, type HabitReplayProjectile, type HabitReplayRound, useReplay } from "@/lib/replay-store";
 import { MAP_CALIBRATION, RADAR_SIZE, radarImagePath, radarLayerForPositions, type RadarLayer, worldToRadar } from "@/lib/maps";
-import type { MatchData, PlayerId, ProjectilePos, Round, UtilityEffect, WeaponFireEvent } from "@/lib/types";
+import type { MatchData, PlayerId, PlayerPos, ProjectilePos, Round, UtilityEffect, WeaponFireEvent } from "@/lib/types";
 import { iconPathFor } from "@/lib/icons";
 import {
   activeBombPlantTime,
@@ -122,6 +122,7 @@ import {
   resolveEffects,
   resolveFireEffect,
   sampleProjectilesFixed,
+  type FlashVictimPoint,
 } from "./map-renderer-effect";
 import {
   MAX_DEFERRED_DESTROY_OBJECTS,
@@ -403,6 +404,7 @@ function drawEffect(
   toRadar: (x: number, y: number, z?: number) => { x: number; y: number },
   unitsToPx: number,
   contextualEffects: UtilityEffect[] = [],
+  flashVictims: readonly FlashVictimPoint[] = [],
 ): void {
   drawEffectVisual(
     layer,
@@ -412,7 +414,37 @@ function drawEffect(
     unitsToPx,
     contextualEffects,
     drawUtilityIcon,
+    flashVictims,
   );
+}
+
+/**
+ * Players actually blinded by this flash, from the flash events, with how much
+ * of their blindness is left. The renderer links them to the detonation.
+ */
+function flashVictimsFor(
+  effect: UtilityEffect,
+  round: Round,
+  positions: PlayerPos[],
+  toRadar: (x: number, y: number, z?: number) => { x: number; y: number },
+): FlashVictimPoint[] {
+  if (effect.type !== "flash") return [];
+  const victims: FlashVictimPoint[] = [];
+  const seen = new Set<PlayerId>();
+  for (const flash of round.flashes ?? []) {
+    if (!flash.victim || Math.abs(flash.t - effect.start) > 0.25) continue;
+    if (seen.has(flash.victim)) continue;
+    const player = positions.find((candidate) => candidate.id === flash.victim);
+    if (!player || player.hp <= 0) continue;
+    seen.add(flash.victim);
+    const point = toRadar(player.x, player.y, 0);
+    const blind =
+      player.flashLeft && player.flashTotal && player.flashTotal > 0
+        ? Math.max(0, Math.min(1, player.flashLeft / player.flashTotal))
+        : 0;
+    victims.push({ x: point.x, y: point.y, blind });
+  }
+  return victims;
 }
 
 function drawProjectile(
@@ -921,7 +953,15 @@ export function MapRenderer({
           }
           if (smoked) continue;
         }
-        drawEffect(utilityLayer, resolved, time, toRadar, unitsToPx, roundEffects);
+        drawEffect(
+          utilityLayer,
+          resolved,
+          time,
+          toRadar,
+          unitsToPx,
+          roundEffects,
+          flashVictimsFor(resolved, round, positions, toRadar),
+        );
       }
 
       for (const sprite of deathMarkerSpritesRef.current.values()) sprite.visible = false;

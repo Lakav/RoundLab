@@ -212,6 +212,98 @@ export function projectileHistoryFromTrack(
   return points;
 }
 
+export type ProjectileTrajectory = {
+  /** Height-lifted points, what the eye follows. */
+  lifted: { x: number; y: number }[];
+  /** The same samples projected on the ground: the footprint of the throw. */
+  ground: { x: number; y: number }[];
+  /** Lifted points where the grenade bounced (floor or wall). */
+  bounces: { x: number; y: number }[];
+};
+
+/**
+ * Full trajectory with perspective: the lifted path, its ground footprint and
+ * the bounces. Both point lists share indices so hairlines can join them.
+ */
+export function projectileTrajectoryFromTrack(
+  track: ProjectileTrack | undefined,
+  projectile: ProjectilePos,
+  time: number,
+  toRadar: (x: number, y: number, z?: number) => { x: number; y: number },
+): ProjectileTrajectory {
+  const lifted: { x: number; y: number }[] = [];
+  const ground: { x: number; y: number }[] = [];
+  const bounces: { x: number; y: number }[] = [];
+  if (!track) {
+    const point = toRadar(projectile.x, projectile.y, 0);
+    return { lifted: [point], ground: [point], bounces };
+  }
+  const groundZ = projectileGroundZ(track, projectile.z);
+  const samples = track.samples.filter((sample) => sample.t <= time);
+  let lastSampleTime: number | null = null;
+  for (let index = 0; index < samples.length; index++) {
+    const sample = samples[index];
+    const world = sample.projectile;
+    const height = Math.max(0, world.z - groundZ);
+    const point = toRadar(world.x, world.y, height);
+    const staleGap = lastSampleTime !== null && sample.t - lastSampleTime > 0.9;
+    if (staleGap) {
+      lifted.length = 0;
+      ground.length = 0;
+      bounces.length = 0;
+    }
+    const last = lifted[lifted.length - 1];
+    if (!last || Math.hypot(last.x - point.x, last.y - point.y) > 0.5) {
+      lifted.push(point);
+      ground.push(toRadar(world.x, world.y, 0));
+    }
+    lastSampleTime = sample.t;
+
+    // A bounce is a floor hit (falling then rising) or a wall hit (a sharp
+    // turn while still moving fast); either way the path folds there.
+    const previous = samples[index - 1]?.projectile;
+    const next = samples[index + 1]?.projectile;
+    if (previous && next) {
+      const fell = world.z - previous.z;
+      const rose = next.z - world.z;
+      const floorBounce = fell < -6 && rose > 6;
+      const inX = world.x - previous.x;
+      const inY = world.y - previous.y;
+      const outX = next.x - world.x;
+      const outY = next.y - world.y;
+      const inLength = Math.hypot(inX, inY);
+      const outLength = Math.hypot(outX, outY);
+      const turn =
+        inLength > 8 && outLength > 8
+          ? Math.acos(Math.max(-1, Math.min(1, (inX * outX + inY * outY) / (inLength * outLength))))
+          : 0;
+      const wallBounce = turn > Math.PI / 3.6;
+      if (floorBounce || wallBounce) bounces.push(point);
+    }
+  }
+  const current = toRadar(projectile.x, projectile.y, Math.max(0, projectile.z - groundZ));
+  const last = lifted[lifted.length - 1];
+  if (!last || Math.hypot(last.x - current.x, last.y - current.y) > 0.5) {
+    lifted.push(current);
+    ground.push(toRadar(projectile.x, projectile.y, 0));
+  }
+  return { lifted, ground, bounces };
+}
+
+export function drawBounceMarks(
+  graphics: Graphics,
+  bounces: { x: number; y: number }[],
+  color: number,
+): void {
+  for (const bounce of bounces) {
+    graphics
+      .circle(bounce.x, bounce.y, 2.8)
+      .stroke({ color: 0xffffff, width: 1.2, alpha: 0.85 })
+      .circle(bounce.x, bounce.y, 1.2)
+      .fill({ color, alpha: 0.95 });
+  }
+}
+
 export function drawSmoothTrail(
   graphics: Graphics,
   points: { x: number; y: number }[],
@@ -754,22 +846,27 @@ export function drawProjectileVisual(
     ? throwerTeams.get(projectile.thrower)
     : undefined;
   const color = teamColor(throwerTeam);
-  const trajectory = projectileHistoryFromTrack(
+  const fullTrajectory = projectileTrajectoryFromTrack(
     projectileTrack,
     projectile,
     time,
     toRadar,
   );
+  const trajectory = fullTrajectory.lifted;
   if (handoff?.active) {
     const impact = toRadar(handoff.effect.x, handoff.effect.y, 0);
     const tail = trajectory[trajectory.length - 1];
     if (!tail || Math.hypot(impact.x - tail.x, impact.y - tail.y) > 0.5) {
       trajectory.push(impact);
+      fullTrajectory.ground.push(impact);
     }
   }
 
   const trail = new Graphics();
+  // The dashed arc and the grenade's ground shadow are enough to read the
+  // height; footprint lines and hairlines cluttered the map.
   drawSmoothTrail(trail, trajectory, color);
+  drawBounceMarks(trail, fullTrajectory.bounces, color);
   if (handoff?.active) {
     trail.alpha = Math.max(
       0,

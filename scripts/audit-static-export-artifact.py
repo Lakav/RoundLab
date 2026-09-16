@@ -170,9 +170,9 @@ def assert_html_content(errors: list[str]) -> None:
         text = read(index)
         for snippet in [
             "RoundLab",
-            "Open a CS2 demo",
+            "Ouvrir une démo CS2",
             "data-testid=\"demo-file-input\"",
-            "Glisse un fichier ou clique pour le sélectionner",
+            "Glisse un fichier ou clique",
             "/logo.png",
         ]:
             if snippet not in text:

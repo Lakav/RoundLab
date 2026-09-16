@@ -98,8 +98,8 @@ async function parseDemo(request: ParseRequest): Promise<string> {
   if (!strategy.allowed) {
     const mb = Math.round(bytes.byteLength / 1024 / 1024);
     throw new Error(
-      `Maximum precision is unavailable for this ${mb} MB decompressed demo because it would exceed ` +
-      "the browser memory limit. Choose Fast / memory-safe mode instead.",
+      `La précision maximale est indisponible pour cette démo de ${mb} Mo décompressés : elle dépasserait ` +
+      "la mémoire du navigateur. Choisis le mode Rapide / mémoire sûre.",
     );
   }
 

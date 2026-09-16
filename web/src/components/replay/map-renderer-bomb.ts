@@ -11,6 +11,12 @@ import { drawCountdownLabel } from "./map-renderer-effect";
 import { fitSprite } from "./map-renderer-player";
 
 const BOMB_SECONDS = 40;
+/** How long the detonation stays on screen: the shockwave needs time to cross the map. */
+export const BOMB_EXPLOSION_SECONDS = 2.6;
+/** In the last stretch the beep becomes a continuous tone: no more pulse, the C4 bleaches instead. */
+const BOMB_FINAL_TONE_SECONDS = 1.6;
+/** Radar pixels; larger than any calibrated map so the wave always leaves the frame. */
+const BOMB_SHOCKWAVE_RADIUS = 1300;
 const bombFrameFallbackCache = new WeakMap<Round, Frame[]>();
 
 export function isBombWeapon(name?: string): boolean {
@@ -218,7 +224,7 @@ export function recentBombExplosion(
     if (event.t > time) break;
     if (event.type === "bomb_exploded") explodedAt = event.t;
   }
-  if (explodedAt === null || time - explodedAt > 1.15) return null;
+  if (explodedAt === null || time - explodedAt > BOMB_EXPLOSION_SECONDS) return null;
   const bomb = plantedBombAt(frames, explodedAt);
   return bomb ? { bomb, age: time - explodedAt } : null;
 }
@@ -237,6 +243,7 @@ export type BombSprite = {
   container: Container;
   marker: Graphics;
   icon: Sprite;
+  iconPath: string | null;
 };
 
 export type DefuseVisualState = {
@@ -257,10 +264,7 @@ type BombRadarPoint = {
 
 type BombTextureLoader = (path: string) => Promise<Texture>;
 
-function createBombSprite(
-  layer: Container,
-  loadTexture: BombTextureLoader,
-): BombSprite {
+function createBombSprite(layer: Container): BombSprite {
   const container = new Container();
   const marker = new Graphics();
   const icon = new Sprite();
@@ -268,55 +272,77 @@ function createBombSprite(
   container.addChild(marker);
   container.addChild(icon);
   layer.addChild(container);
-  const sprite = { container, marker, icon };
-  void loadTexture("/icons/c4.svg")
-    .then((texture) => {
-      if (container.destroyed) return;
-      icon.texture = texture;
-      fitSprite(icon, 18);
-    })
-    .catch(() => {
-      if (!container.destroyed) icon.visible = false;
-    });
+  const sprite: BombSprite = { container, marker, icon, iconPath: null };
   return sprite;
 }
 
+function setBombIcon(
+  sprite: BombSprite,
+  path: string,
+  loadTexture: BombTextureLoader,
+): void {
+  if (sprite.iconPath === path) return;
+  sprite.iconPath = path;
+  void loadTexture(path)
+    .then((texture) => {
+      if (sprite.container.destroyed || sprite.iconPath !== path) return;
+      sprite.icon.texture = texture;
+      fitSprite(sprite.icon, 18);
+      sprite.icon.visible = true;
+    })
+    .catch(() => {
+      if (!sprite.container.destroyed) sprite.icon.visible = false;
+    });
+}
+
+function mixColor(from: number, to: number, amount: number): number {
+  const t = Math.max(0, Math.min(1, amount));
+  const channel = (shift: number) => {
+    const a = (from >> shift) & 0xff;
+    const b = (to >> shift) & 0xff;
+    return Math.round(a + (b - a) * t) << shift;
+  };
+  return channel(16) | channel(8) | channel(0);
+}
+
+function easeOutQuad(value: number): number {
+  const clamped = Math.max(0, Math.min(1, value));
+  return 1 - Math.pow(1 - clamped, 2);
+}
+
+/**
+ * The detonation is a pressure wave that crosses the whole map: a white-hot
+ * frame at the site, then a wide translucent band racing outwards with a
+ * bright leading edge, a slower second wave behind it, and a scorched disc
+ * that stays where the bomb was. Nothing spins, nothing sparkles: the size of
+ * the thing is the effect.
+ */
 function drawBombExplosion(
   layer: Container,
   explosion: { bomb: BombState; age: number },
   toRadar: (x: number, y: number, z?: number) => BombRadarPoint,
 ): Graphics {
-  const point = toRadar(
-    explosion.bomb.x,
-    explosion.bomb.y,
-    explosion.bomb.z,
-  );
-  const life = Math.max(0, Math.min(1, explosion.age / 1.15));
-  const flash = 1 - life;
+  const point = toRadar(explosion.bomb.x, explosion.bomb.y, explosion.bomb.z);
+  const age = Math.max(0, explosion.age);
+  const life = Math.max(0, Math.min(1, age / BOMB_EXPLOSION_SECONDS));
   const visual = new Graphics();
-  visual
-    .circle(point.x, point.y, 12 + life * 46)
-    .fill({ color: 0xff6b35, alpha: 0.18 * flash });
-  visual
-    .circle(point.x, point.y, 8 + life * 24)
-    .stroke({ color: 0xffd166, width: 3.4, alpha: 0.9 * flash });
-  visual
-    .circle(point.x, point.y, 18 + life * 42)
-    .stroke({ color: 0xef4444, width: 2.2, alpha: 0.65 * flash });
-  for (let index = 0; index < 7; index++) {
-    const angle = index * ((Math.PI * 2) / 7) + life * 0.45;
-    const inner = 10 + life * 16;
-    const outer = 18 + life * 48;
-    visual.moveTo(
-      point.x + Math.cos(angle) * inner,
-      point.y + Math.sin(angle) * inner,
-    );
-    visual.lineTo(
-      point.x + Math.cos(angle) * outer,
-      point.y + Math.sin(angle) * outer,
-    );
+
+  // A single line. It leaves the site orange-red and a few pixels wide, and
+  // as it travels it turns white, thins and fades: the damage falling off.
+  const wave = easeOutQuad(age / 2.4);
+  const radius = BOMB_SHOCKWAVE_RADIUS * wave;
+  const strength = Math.pow(1 - wave, 1.4);
+  const rise = age < 0.05 ? age / 0.05 : 1;
+  if (radius > 1 && strength > 0.005) {
+    visual
+      .circle(point.x, point.y, radius)
+      .stroke({
+        color: mixColor(0xff6a3c, 0xffffff, 1 - strength),
+        width: 1 + 5 * strength,
+        alpha: (0.15 + 0.85 * strength) * rise * Math.max(0, 1 - life),
+      });
   }
-  visual.stroke({ color: 0xffb703, width: 1.4, alpha: 0.75 * flash });
+
   layer.addChild(visual);
   return visual;
 }
@@ -363,12 +389,21 @@ export function updateBombRender({
   const bombIsDefused = Boolean(defusedBomb);
   let defuseState = state.defuse;
   if (displayBomb.status === "planted" && !bombIsDefused) {
-    const pulse =
-      plantedAt === null ? time % 1 : bombPulseProgress(plantedAt, time);
-    const ring = new Graphics()
-      .circle(point.x, point.y, 19 * pulse)
-      .stroke({ color: 0xef4444, width: 2, alpha: 0.75 * (1 - pulse) });
-    utilityLayer.addChild(ring);
+    // The planted bomb beeps: a ring leaves the C4 on every beat and the beat
+    // quickens as the timer runs out, like the in-game sound. A thin arc shows
+    // the 40 s left and turns white for the final five, and the site glows a
+    // little redder the closer it gets.
+    const secondsLeft = plantedAt === null ? BOMB_SECONDS : BOMB_SECONDS - (time - plantedAt);
+    if (secondsLeft > BOMB_FINAL_TONE_SECONDS) {
+      const pulse =
+        plantedAt === null ? time % 1 : bombPulseProgress(plantedAt, time);
+      const eased = 1 - Math.pow(1 - pulse, 3);
+      const ring = new Graphics();
+      ring
+        .circle(point.x, point.y, 10 + eased * 24)
+        .stroke({ color: 0xef4444, width: 2.2 - eased * 1.6, alpha: 0.8 * (1 - eased) });
+      utilityLayer.addChild(ring);
+    }
 
     const defuse = activeDefuse(events, positions, displayBomb, time);
     if (!defuse) {
@@ -429,17 +464,38 @@ export function updateBombRender({
 
   let sprite = state.sprite;
   if (!sprite || sprite.container.destroyed) {
-    sprite = createBombSprite(bombLayer, loadTexture);
+    sprite = createBombSprite(bombLayer);
   }
+  // Defused stays on the map, turned CT blue: the bomb is still there, it is
+  // just no longer a threat.
+  // Planted: red while it beeps. Once the beep turns into the continuous tone
+  // the pulse stops and the C4 bleaches to white until it goes off.
+  const secondsLeft = plantedAt === null ? BOMB_SECONDS : BOMB_SECONDS - (time - plantedAt);
+  const finalPhase = Math.max(0, Math.min(1, (BOMB_FINAL_TONE_SECONDS - secondsLeft) / BOMB_FINAL_TONE_SECONDS));
   const bombColor = bombIsDefused
-    ? 0x22c55e
+    ? 0x47cbff
     : displayBomb.status === "planted"
-      ? 0xef4444
+      ? mixColor(0xef4444, 0xffffff, finalPhase)
       : 0xf59e0b;
+  // Always the C4 itself: the planted state is told by the beat, the LED and
+  // the colour, not by swapping the glyph for an explosion symbol.
+  setBombIcon(sprite, "/icons/c4.svg", loadTexture);
   sprite.container.visible = true;
   sprite.container.position.set(point.x, point.y);
   sprite.marker.clear();
+  if (displayBomb.status === "planted" && !bombIsDefused) {
+    // LED blink on the beat.
+    const pulse =
+      plantedAt === null ? time % 1 : bombPulseProgress(plantedAt, time);
+    // The LED blinks with the beep and stays lit through the final tone.
+    if (pulse < 0.15 || finalPhase > 0) {
+      sprite.marker
+        .circle(7, -5, 1.8)
+        .fill({ color: 0xff5a5a, alpha: 1 })
+        .circle(7, -5, 3.6)
+        .fill({ color: 0xff5a5a, alpha: 0.35 });
+    }
+  }
   sprite.icon.tint = bombColor;
-  sprite.icon.visible = true;
   return { sprite, defuse: defuseState };
 }

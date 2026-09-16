@@ -40,6 +40,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { StoragePanel, downloadLibraryBackup } from "@/components/storage/StoragePanel";
+import { DefinitionTerm } from "@/components/ui/definition-term";
 
 const PARSE_DURATION_KEY = "roundlab.parseDurationMs";
 const PARSE_ESTIMATE_KEY = "roundlab.parseEstimate.v2";
@@ -170,12 +171,12 @@ function browserSupportError(): string | null {
   if (typeof File === "undefined" || typeof Blob === "undefined") missing.push("File API");
   if (!globalThis.crypto?.randomUUID) missing.push("crypto.randomUUID");
   if (!missing.length) return null;
-  return `This browser cannot run RoundLab's local parser. Missing: ${missing.join(", ")}.`;
+  return `Ce navigateur ne peut pas exécuter le parseur local de RoundLab. Manque : ${missing.join(", ")}.`;
 }
 
 function demoFileSizeError(file: File): string | null {
   if (file.size <= MAX_DEMO_SIZE) return null;
-  return "Demo file is larger than the 1 GB browser parser limit.";
+  return "La démo dépasse la limite de 1 Go du parseur navigateur.";
 }
 
 export default function Home() {
@@ -253,7 +254,7 @@ export default function Home() {
       }
       if (mode === "precise" && source.file.size >= LARGE_DEMO_HIGH_QUALITY_THRESHOLD) {
         setError(
-          "Maximum precision is unavailable for this large demo because it would exceed the browser memory limit. Use Fast / memory-safe mode.",
+          "La précision maximale est indisponible pour cette démo : elle dépasserait la mémoire du navigateur. Utilise le mode Rapide / mémoire sûre.",
         );
         return;
       }
@@ -268,7 +269,7 @@ export default function Home() {
         parseEffectiveBytesRef.current = parseSourceSize(source);
         parseMinMsPerMbRef.current = sourceIsZstd(source) ? MIN_ZSTD_WEB_MS_PER_MB : 0;
         setParseEstimateMs(estimate);
-        setParseProgress({ phase: "starting", progress: 0.02, message: "Preparing parser…" });
+        setParseProgress({ phase: "starting", progress: 0.02, message: "Préparation du parseur…" });
         const id = await parseDemo(source, { mode });
         const duration = Date.now() - started;
         saveParseEstimate(source, duration, parseEffectiveBytesRef.current);
@@ -376,7 +377,7 @@ export default function Home() {
       return;
     }
     if (!isDemoFile(file)) {
-      setError("Choose a .dem or .dem.zst file.");
+      setError("Choisis un fichier .dem ou .dem.zst.");
       return;
     }
     queueImport(file);
@@ -399,7 +400,7 @@ export default function Home() {
     }
     const file = Array.from(event.dataTransfer.files).find(isDemoFile);
     if (!file) {
-      setError("Drop a .dem or .dem.zst file.");
+      setError("Dépose un fichier .dem ou .dem.zst.");
       return;
     }
     queueImport(file);
@@ -507,7 +508,7 @@ export default function Home() {
         >
           <div className="flex flex-col items-center gap-3">
             <Loader2 className="size-7 animate-spin text-[var(--rl-positive)]" />
-            <div className="text-[12px] text-[var(--rl-fg-muted)]">Loading match…</div>
+            <div className="text-[12px] text-[var(--rl-fg-muted)]">Ouverture du match…</div>
           </div>
         </div>
       )}
@@ -523,9 +524,9 @@ export default function Home() {
           <div className="w-full max-w-md rounded-xl border border-[var(--rl-border)] bg-[#171a1a] p-5 shadow-2xl">
             <div className="mb-4 flex items-start justify-between gap-4">
               <div>
-                <div id="parse-dialog-title" className="text-[13px] font-semibold text-[var(--rl-fg)]">Parsing demo</div>
+                <div id="parse-dialog-title" className="text-[13px] font-semibold text-[var(--rl-fg)]">Analyse de la démo</div>
                 <div id="parse-dialog-description" className="mt-1 text-[13px] text-[var(--rl-fg-muted)]">
-                  Interactions are locked until parsing finishes or is cancelled.
+                  L’interface est verrouillée jusqu’à la fin ou l’annulation de l’analyse.
                 </div>
               </div>
               <Loader2 className="mt-0.5 size-4 animate-spin text-[var(--rl-positive)]" />
@@ -537,12 +538,12 @@ export default function Home() {
               />
             </div>
             <div className="mt-3 flex items-center justify-between text-[13px] text-[var(--rl-fg-muted)]">
-              <span>{parseProgress.message || "Parsing…"}</span>
+              <span>{parseProgress.message || "Analyse…"}</span>
               <span>{Math.round(shownProgress * 100)}%</span>
             </div>
             <div className="mt-1 flex items-center justify-between text-[13px] text-[var(--rl-fg-muted)]">
-              <span>Elapsed {formatDuration(elapsedMs)}</span>
-              <span>{estimateExceeded ? "Still parsing" : `About ${formatDuration(remainingMs)} left`}</span>
+              <span>Écoulé : {formatDuration(elapsedMs)}</span>
+              <span>{estimateExceeded ? "Analyse toujours en cours" : `Environ ${formatDuration(remainingMs)} restantes`}</span>
             </div>
             <div className="mt-5 flex justify-end">
               <Button
@@ -552,7 +553,7 @@ export default function Home() {
                 className="gap-1.5 border-red-400/30 bg-[var(--rl-critical)]/10 text-[var(--rl-critical)] hover:bg-[var(--rl-critical)]/20"
               >
                 <X className="size-3.5" />
-                Cancel parsing
+                Annuler l’analyse
               </Button>
             </div>
           </div>
@@ -580,7 +581,7 @@ export default function Home() {
               href="/feedback"
               className="rounded-md px-3 py-2 text-xs font-semibold text-[var(--rl-fg-muted)] transition-colors hover:bg-white/[0.04] hover:text-[var(--rl-fg)]"
             >
-              Signaler un bug
+              Signaler un problème
             </Link>
           </nav>
         </div>
@@ -592,46 +593,31 @@ export default function Home() {
           data-testid="demo-file-input"
           type="file"
           accept=".dem,.zst,.dem.zst"
-          aria-label="Choose a local CS2 demo file"
+          aria-label="Choisir une démo CS2 locale"
           className="sr-only"
           tabIndex={-1}
           onChange={onFileSelected}
         />
         <section className="grid items-stretch gap-8 lg:grid-cols-[0.92fr_1.08fr]">
           <div className="flex flex-col justify-center py-3 lg:py-8">
-            <span className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--rl-positive)]">
-              Analyse locale de démos CS2
-            </span>
-            <h2 className="mt-4 max-w-xl text-4xl font-semibold leading-[1.08] tracking-[-0.035em] text-white sm:text-5xl">
+            <h2 className="max-w-xl text-4xl font-semibold leading-[1.08] tracking-[-0.035em] text-white sm:text-5xl">
               Lis ton match avec des faits, pas des approximations.
             </h2>
             <p className="mt-5 max-w-lg text-[15px] leading-7 text-[var(--rl-fg-muted)]">
-              RoundLab transforme une démo CS2 en replay interactif et en rapport statistique détaillé.
-              L’analyse reste dans ton navigateur.
+              Replay et statistiques d’une démo CS2, calculés dans ton navigateur.
             </p>
-            <div className="mt-7 grid max-w-lg grid-cols-3 border-y border-white/[0.07] py-4">
-              <div>
-                <div className="text-sm font-semibold text-[var(--rl-fg)]">Local</div>
-                <div className="mt-1 text-[13px] text-[var(--rl-fg-dim)]">Aucun upload serveur</div>
-              </div>
-              <div className="border-l border-white/[0.07] pl-4">
-                <div className="text-sm font-semibold text-[var(--rl-fg)]">Détaillé</div>
-                <div className="mt-1 text-[13px] text-[var(--rl-fg-dim)]">Rounds et joueurs</div>
-              </div>
-              <div className="border-l border-white/[0.07] pl-4">
-                <div className="text-sm font-semibold text-[var(--rl-fg)]">Rejouable</div>
-                <div className="mt-1 text-[13px] text-[var(--rl-fg-dim)]">Preuves sur la map</div>
-              </div>
+            <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold text-[var(--rl-fg)]">
+              <DefinitionTerm label="Local" definition="La démo n’est jamais envoyée sur un serveur. Tout est lu et stocké dans ton navigateur." />
+              <DefinitionTerm label="Vérifiable" definition="Chaque statistique montre sa formule et les actions qui la justifient." />
+              <DefinitionTerm label="Rejouable" definition="Chaque round se rejoue sur un radar 2D avec joueurs, tirs et grenades." />
             </div>
           </div>
 
           <article className="overflow-hidden rounded-xl border border-white/[0.09] bg-[#131716]/95 shadow-[0_30px_90px_rgba(0,0,0,0.35)]">
-            <div className="flex items-center justify-between border-b border-white/[0.07] px-5 py-4">
-              <div>
-                <h3 className="text-sm font-semibold text-[var(--rl-fg)]">Importer une démo</h3>
-                <p className="mt-1 text-[13px] text-[var(--rl-fg-dim)]">Formats .dem et .dem.zst · limite 1 Go</p>
-              </div>
-              <span className="text-xs font-medium text-[var(--rl-fg-dim)]">Traitement local</span>
+            <div className="border-b border-white/[0.07] px-5 py-4">
+              <h3 className="text-sm font-semibold text-[var(--rl-fg)]">
+                <DefinitionTerm label="Importer une démo" definition="Fichiers .dem ou .dem.zst, jusqu’à 1 Go. Le traitement est local." />
+              </h3>
             </div>
             <div
               onClick={onPickAndParse}
@@ -650,7 +636,7 @@ export default function Home() {
               }}
               onDrop={onBrowserDrop}
               role="button"
-              aria-label="Open a local CS2 demo file"
+              aria-label="Ouvrir une démo CS2 locale"
               aria-disabled={uploading}
               tabIndex={0}
               className={[
@@ -685,15 +671,12 @@ export default function Home() {
                   </div>
                   <div className="mt-4">
                     <div className="text-[14px] font-semibold text-[var(--rl-fg)]">
-                      {dragging ? "Dépose la démo ici" : "Open a CS2 demo"}
+                      {dragging ? "Dépose la démo ici" : "Ouvrir une démo CS2"}
                     </div>
                     <div className="mt-1.5 text-[12px] text-[var(--rl-fg-dim)]">
-                      Glisse un fichier ou clique pour le sélectionner
+                      Glisse un fichier ou clique
                     </div>
                   </div>
-                  <span className="mt-5 rounded border border-white/[0.08] px-2.5 py-1 text-xs font-medium text-[var(--rl-fg-dim)]">
-                    Les données ne quittent pas cet appareil
-                  </span>
                 </>
               )}
             </div>
@@ -706,35 +689,12 @@ export default function Home() {
           </div>
         )}
 
-        <aside className="grid gap-5 rounded-xl border border-[color-mix(in_oklab,var(--rl-warning)_20%,transparent)] bg-[#171714] px-5 py-5 sm:grid-cols-[1fr_auto] sm:items-center sm:px-6">
-          <div>
-            <div className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--rl-warning)]">Version bêta</div>
-            <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-[var(--rl-fg)]">
-              RoundLab évolue régulièrement : certaines statistiques et interfaces peuvent encore changer.
-            </p>
-            <p className="mt-1 text-xs leading-5 text-[var(--rl-fg-muted)]">
-              La bêta est entièrement gratuite. L’application finale sera payante lorsque sa version stable sera disponible.
-            </p>
-          </div>
-          <Link
-            href="/feedback"
-            className="inline-flex h-10 items-center justify-center rounded-md border border-[var(--rl-border)] bg-white/[0.035] px-4 text-xs font-semibold text-[var(--rl-fg)] transition-colors hover:border-[var(--rl-border-strong)] hover:bg-white/[0.07]"
-          >
-            Signaler un problème
-          </Link>
-        </aside>
-
-        <StoragePanel matchCount={matches.length} onLibraryChanged={refreshMatches} />
-
         {matches.length > 0 && (
           <section className="space-y-3">
             <div className="flex items-end justify-between px-1">
-              <div>
-                <span className="text-xs font-bold uppercase tracking-[0.15em] text-[var(--rl-fg-muted)]">Bibliothèque locale</span>
-                <h2 className="mt-1 text-lg font-semibold tracking-[-0.02em] text-[var(--rl-fg)]">
-                  Matchs récents
-                </h2>
-              </div>
+              <h2 className="text-lg font-semibold tracking-[-0.02em] text-[var(--rl-fg)]">
+                Mes matchs
+              </h2>
               <span className="text-[13px] tabular-nums text-[var(--rl-fg-muted)]">{matches.length} enregistré{matches.length > 1 ? "s" : ""}</span>
             </div>
             <div className="overflow-hidden rounded-xl border border-white/[0.08] bg-[#121514]/85 shadow-[0_18px_50px_rgba(0,0,0,0.16)]">
@@ -752,15 +712,29 @@ export default function Home() {
             </div>
           </section>
         )}
+
+        <StoragePanel matchCount={matches.length} onLibraryChanged={refreshMatches} />
+
+        <aside className="flex flex-col gap-3 rounded-lg border border-[color-mix(in_oklab,var(--rl-warning)_18%,transparent)] bg-[color-mix(in_oklab,var(--rl-warning)_4%,transparent)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-[13px] leading-6 text-[var(--rl-fg-muted)]">
+            La bêta est entièrement gratuite. L’application finale sera payante.
+          </p>
+          <Link
+            href="/feedback"
+            className="inline-flex h-9 shrink-0 items-center justify-center rounded-md border border-[var(--rl-border)] bg-white/[0.035] px-4 text-xs font-semibold text-[var(--rl-fg)] transition-colors hover:border-[var(--rl-border-strong)] hover:bg-white/[0.07]"
+          >
+            Signaler un problème
+          </Link>
+        </aside>
       </main>
 
       <footer className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between border-t border-white/[0.06] px-5 py-6 text-[13px] text-[var(--rl-fg-muted)] sm:px-8">
         <span>RoundLab · Analyse locale de démos CS2</span>
-        <Link href="/feedback" className="transition-colors hover:text-[var(--rl-fg-muted)]">Signaler un bug</Link>
+        <Link href="/feedback" className="transition-colors hover:text-[var(--rl-fg)]">Signaler un problème</Link>
       </footer>
 
       {renameTarget && (
-        <Modal onClose={() => setRenameTarget(null)} title="Rename match">
+        <Modal onClose={() => setRenameTarget(null)} title="Renommer le match">
           <input
             autoFocus
             value={renameValue}
@@ -779,45 +753,43 @@ export default function Home() {
             }}
             className="w-full rounded-md border bg-black/40 px-3 py-2 text-[13px] text-[var(--rl-fg)] outline-none focus:border-emerald-300/40"
             style={{ borderColor: "var(--rl-border)" }}
-            placeholder="Match name"
+            placeholder="Nom du match"
           />
           <div className="mt-4 flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setRenameTarget(null)}>
-              Cancel
+              Annuler
             </Button>
             <Button size="sm" onClick={() => void confirmRename()}>
-              Save
+              Enregistrer
             </Button>
           </div>
         </Modal>
       )}
 
       {deleteTarget && (
-        <Modal onClose={() => setDeleteTarget(null)} title="Delete match?">
+        <Modal onClose={() => setDeleteTarget(null)} title="Supprimer le match ?">
           <p className="text-[12px] text-[var(--rl-fg-muted)]">
-            &ldquo;{deleteTarget.name}&rdquo; will be removed from your history.
-            This cannot be undone.
+            « {deleteTarget.name} » sera retiré de ta bibliothèque. Cette action est irréversible.
           </p>
           <div className="mt-4 flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setDeleteTarget(null)}>
-              Cancel
+              Annuler
             </Button>
             <Button
               size="sm"
               onClick={() => void confirmDelete()}
               className="bg-[var(--rl-critical)]/20 text-[var(--rl-critical)] hover:bg-[var(--rl-critical)]/30"
             >
-              Delete
+              Supprimer
             </Button>
           </div>
         </Modal>
       )}
 
       {postParse && (
-        <Modal onClose={() => setPostParse(null)} title="Match parsed">
+        <Modal onClose={() => setPostParse(null)} title="Démo analysée">
           <p className="mb-3 text-[13px] text-[var(--rl-fg-muted)]">
-            Give it a name so it&rsquo;s easy to find later. Leave empty to
-            skip.
+            Donne-lui un nom pour le retrouver facilement. Laisse vide pour garder le nom du fichier.
           </p>
           <input
             autoFocus
@@ -845,24 +817,24 @@ export default function Home() {
               size="sm"
               onClick={() => void confirmPostParse(false)}
             >
-              Save &amp; stay
+              Enregistrer
             </Button>
             <Button size="sm" onClick={() => void confirmPostParse(true)}>
-              Save &amp; open
+              Enregistrer et ouvrir
             </Button>
           </div>
         </Modal>
       )}
 
       {pendingSource && (
-        <Modal onClose={() => setPendingSource(null)} title="Import settings">
+        <Modal onClose={() => setPendingSource(null)} title="Paramètres d’import">
           <div className="mb-4 rounded-md border border-[var(--rl-border)] bg-black/20 px-3 py-2">
             <div className="truncate text-[12px] text-[var(--rl-fg)]">{pendingSource.file.name}</div>
             <div className="mt-0.5 text-xs text-[var(--rl-fg-dim)]">{formatFileSize(pendingSource.file.size)}</div>
           </div>
           <fieldset className="space-y-2">
             <legend className="mb-2 text-[13px] font-medium uppercase tracking-wider text-[var(--rl-fg-muted)]">
-              Parsing mode
+              Mode d’analyse
             </legend>
             <label className="flex cursor-pointer gap-3 rounded-md border border-[var(--rl-border)] px-3 py-3 hover:border-emerald-300/30">
               <input
@@ -874,9 +846,9 @@ export default function Home() {
                 className="mt-0.5 accent-emerald-300"
               />
               <span>
-                <span className="block text-[12px] font-medium text-[var(--rl-fg)]">Fast / memory-safe</span>
+                <span className="block text-[12px] font-medium text-[var(--rl-fg)]">Rapide / mémoire sûre</span>
                 <span className="mt-1 block text-[13px] leading-relaxed text-[var(--rl-fg-muted)]">
-                  About 4 player positions per second, smoothly interpolated. Utilities and events are preserved.
+                  Environ 4 positions par seconde et par joueur, interpolées. Utilitaires et événements conservés.
                 </span>
               </span>
             </label>
@@ -898,29 +870,29 @@ export default function Home() {
                 className="mt-0.5 accent-emerald-300"
               />
               <span>
-                <span className="block text-[12px] font-medium text-[var(--rl-fg)]">Maximum precision</span>
+                <span className="block text-[12px] font-medium text-[var(--rl-fg)]">Précision maximale</span>
                 <span className="mt-1 block text-[13px] leading-relaxed text-[var(--rl-fg-muted)]">
-                  Keeps all 64 player ticks per second. Slower and only available when the demo fits safely in browser memory.
+                  Conserve les 64 ticks par seconde. Plus lent, et uniquement si la démo tient en mémoire.
                 </span>
               </span>
             </label>
           </fieldset>
           {pendingSource.file.size >= LARGE_DEMO_HIGH_QUALITY_THRESHOLD && (
             <p role="status" className="mt-3 text-[13px] leading-relaxed text-[var(--rl-warning)]">
-              This file is already too large for maximum precision. The safe mode is required to prevent another memory crash.
+              Ce fichier est déjà trop volumineux pour la précision maximale. Le mode sûr est imposé pour éviter un dépassement mémoire.
             </p>
           )}
           {sourceIsZstd(pendingSource) && pendingSource.file.size < LARGE_DEMO_HIGH_QUALITY_THRESHOLD && (
             <p className="mt-3 text-xs leading-relaxed text-[var(--rl-fg-dim)]">
-              Compressed demos are checked again after decompression. If the expanded file is too large, RoundLab will ask you to use safe mode.
+              Les démos compressées sont revérifiées après décompression. Si le fichier décompressé est trop gros, RoundLab demandera le mode sûr.
             </p>
           )}
           <div className="mt-5 flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setPendingSource(null)}>
-              Cancel
+              Annuler
             </Button>
             <Button size="sm" onClick={startPendingImport}>
-              Start import
+              Lancer l’import
             </Button>
           </div>
         </Modal>
@@ -1016,17 +988,17 @@ function MatchRow({
       </div>
       <Button
         size="sm"
-        className="h-7 gap-1.5 bg-emerald-300 px-3 text-[13px] font-medium text-[#06100b] hover:bg-emerald-200"
+        className="h-8 gap-1.5 bg-emerald-300 px-3 text-[13px] font-medium text-[#06100b] hover:bg-emerald-200"
       >
         <Play className="size-3 fill-current" />
-        Open
+        Ouvrir
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger
           onClick={(e) => e.stopPropagation()}
           render={
             <Button
-              aria-label="Match actions"
+              aria-label="Actions du match"
               variant="ghost"
               size="icon-sm"
               className="text-[var(--rl-fg-muted)] hover:bg-white/[0.04] hover:text-[var(--rl-fg)]"
@@ -1042,7 +1014,7 @@ function MatchRow({
         >
           <DropdownMenuItem onClick={onRename} className="text-xs">
             <Pencil className="size-3.5" />
-            Rename
+            Renommer
           </DropdownMenuItem>
           <DropdownMenuItem onClick={onExport} className="text-xs">
             <Download className="size-3.5" />
@@ -1054,7 +1026,7 @@ function MatchRow({
             className="text-xs"
           >
             <Trash2 className="size-3.5" />
-            Delete
+            Supprimer
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

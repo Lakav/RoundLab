@@ -34,5 +34,7 @@ export function mixColor(from: number, to: number, amount: number): number {
 }
 
 export function heightLift(z: number): number {
-  return Math.max(0, Math.min(22, Math.abs(z) / 35));
+  // Stronger than before so a lobbed grenade actually reads as an arc on the
+  // radar; still capped so a high ledge does not fly off its own footprint.
+  return Math.max(0, Math.min(34, Math.abs(z) / 26));
 }

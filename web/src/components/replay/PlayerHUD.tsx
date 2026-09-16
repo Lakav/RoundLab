@@ -80,14 +80,14 @@ export function PlayerHUD({ side }: { side: "CT" | "T" }) {
         className="mb-1 flex items-center gap-2 px-0.5"
       >
         <div
-          className="flex size-5 shrink-0 items-center justify-center rounded-full border text-xs font-bold"
+          className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full border px-1 text-[10px] font-bold tracking-wide"
           style={{
             background: cols.bgDark,
             borderColor: cols.soft,
             color: "#fff",
           }}
         >
-          {(teamName || side).slice(0, 1).toUpperCase()}
+          {currentSide}
         </div>
         <span
           className="flex-1 truncate text-[13px] font-bold uppercase tracking-wide"

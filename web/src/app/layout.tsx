@@ -1,9 +1,25 @@
 import type { Metadata } from "next";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import { DebugConsoleHost } from "@/components/DebugConsoleHost";
 import { UnhandledErrorMonitor } from "@/components/UnhandledErrorMonitor";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { assetPath } from "@/lib/paths";
 import "./globals.css";
+
+// Self-hosted by next/font at build time, so the strict `font-src 'self'`
+// CSP below keeps working and the report is typeset in the face it was
+// designed for instead of whatever the OS substitutes.
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-jetbrains-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "RoundLab",
@@ -21,7 +37,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="fr" className="h-full antialiased dark">
+    <html lang="fr" className={`h-full antialiased dark ${inter.variable} ${jetbrainsMono.variable}`}>
       <head>
         <meta
           httpEquiv="Content-Security-Policy"
@@ -30,12 +46,12 @@ export default function RootLayout({
         <meta name="referrer" content="no-referrer" />
       </head>
       <body className="min-h-full flex flex-col bg-neutral-950 text-[var(--rl-fg)]">
-        <nav aria-label="Skip navigation">
+        <nav aria-label="Accès rapide">
           <a
             href="#main-content"
             className="fixed left-3 top-3 z-[100] -translate-y-24 rounded-md bg-white px-4 py-2 font-medium text-black shadow-lg transition-transform focus:translate-y-0 focus:outline-none focus:ring-4 focus:ring-emerald-400"
           >
-            Skip to main content
+            Aller au contenu principal
           </a>
         </nav>
         <TooltipProvider delay={300}>{children}</TooltipProvider>
