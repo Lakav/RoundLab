@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { DefinitionTerm } from "@/components/ui/definition-term";
 import { Database, Download, HardDrive, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -138,7 +139,12 @@ export function StoragePanel({
             <Database className="size-4 text-[var(--rl-positive)]" />
           </div>
           <div>
-            <h2 className="text-sm font-semibold text-[var(--rl-fg)]">Stockage local</h2>
+            <h2 className="text-sm font-semibold text-[var(--rl-fg)]">
+              <DefinitionTerm
+                label="Stockage local"
+                definition="Les matchs restent sur cet appareil. Une sauvegarde est créée en mémoire avant le téléchargement ; pour une grosse bibliothèque, exporte plutôt les matchs un par un."
+              />
+            </h2>
             <p className="mt-1 text-xs text-[var(--rl-fg-muted)]">{persistenceLabel}</p>
             {status && (
               <p className="mt-1 text-[13px] text-[var(--rl-fg-muted)]">
@@ -178,9 +184,6 @@ export function StoragePanel({
           />
         </div>
       </div>
-      <p className="mt-3 text-[13px] leading-5 text-[var(--rl-fg-muted)]">
-        Les données restent sur cet appareil. Une sauvegarde est créée en mémoire avant le téléchargement ; pour une grosse bibliothèque, exporte plutôt les matchs un par un.
-      </p>
       {message && <p role="status" className="mt-3 text-xs text-[var(--rl-positive)]">{message}</p>}
       {error && <p role="alert" className="mt-3 text-xs text-[var(--rl-critical)]">{error}</p>}
       {pendingBackup && (

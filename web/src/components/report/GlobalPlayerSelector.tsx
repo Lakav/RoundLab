@@ -1,3 +1,4 @@
+import { DefinitionTerm } from "@/components/ui/definition-term";
 import type { PlayerAnalysis } from "@/lib/analysis/types";
 
 export function GlobalPlayerSelector({
@@ -10,15 +11,13 @@ export function GlobalPlayerSelector({
   onChange: (playerId: string) => void;
 }) {
   return (
-    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-emerald-200/10 bg-emerald-200/[0.035] px-3 py-2">
-      <div>
-        <div className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--rl-positive)]">
-          Joueur analysé
-        </div>
-        <div className="mt-0.5 text-xs text-[var(--rl-fg-dim)]">
-          Ce choix reste actif dans toutes les sections du rapport.
-        </div>
-      </div>
+    <div className="mt-3 flex items-center gap-3">
+      <span className="text-[13px] font-semibold text-[var(--rl-fg-muted)]">
+        <DefinitionTerm
+          label="Joueur"
+          definition="Le joueur choisi ici reste sélectionné dans toutes les sections du rapport."
+        />
+      </span>
       <select
         aria-label="Joueur analysé dans toutes les statistiques"
         value={selectedPlayerId}

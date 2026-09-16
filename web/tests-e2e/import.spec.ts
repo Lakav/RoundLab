@@ -30,12 +30,12 @@ test("imports the licensed zstd demo through WASM and keeps the report after rel
 
   await page.goto("./");
   await page.getByTestId("demo-file-input").setInputFiles(fixture);
-  const settings = page.getByRole("dialog", { name: "Import settings" });
+  const settings = page.getByRole("dialog", { name: "Paramètres d’import" });
   await expect(settings).toBeVisible();
-  await settings.getByRole("button", { name: "Start import" }).click();
-  await expect(page.getByRole("dialog", { name: "Parsing demo" })).toBeVisible();
+  await settings.getByRole("button", { name: "Lancer l’import" }).click();
+  await expect(page.getByRole("dialog", { name: "Analyse de la démo" })).toBeVisible();
 
-  const parsed = page.getByRole("dialog", { name: "Match parsed" });
+  const parsed = page.getByRole("dialog", { name: "Démo analysée" });
   await expect(parsed).toBeVisible({ timeout: 4 * 60_000 });
   const phases = await page.evaluate(() => (
     (window as Window & { __roundlabImportPhases?: string[] }).__roundlabImportPhases ?? []
@@ -47,7 +47,7 @@ test("imports the licensed zstd demo through WASM and keeps the report after rel
   await expect(page.getByText("Fixture 2v2 sous licence", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByText("Fixture 2v2 sous licence", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Open", exact: true }).click();
+  await page.getByRole("button", { name: "Ouvrir", exact: true }).click();
   await expect(page.getByRole("img", { name: "Interactive replay radar" })).toBeVisible({ timeout: 2 * 60_000 });
 
   await page.getByRole("button", { name: "Rapport" }).click();

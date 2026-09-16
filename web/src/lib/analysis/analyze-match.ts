@@ -1369,7 +1369,14 @@ function analyzeMatchBase(match: MatchData, context: AnalyzeMatchContext): BaseM
       });
     }
 
-    if (round.damages === undefined) {
+    // A kill always produces a player_hurt event, so a round that recorded
+    // kills but no damage at all is missing its damage stream, not reporting
+    // zero damage. Treat it like an absent stream so ADR reads "—" not "0.0".
+    const damageStreamMissing =
+      round.damages === undefined
+      || (round.damages.length === 0
+        && canonicalEvents.some((event) => event.type === "kill"));
+    if (damageStreamMissing) {
       for (const id of participants) {
         const player = players.get(id);
         if (!player) continue;

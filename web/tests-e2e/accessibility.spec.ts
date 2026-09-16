@@ -78,11 +78,11 @@ test("home, import and library expose accessible controls", async ({ page }) => 
   await seedReplay(page);
   await expect(page.getByRole("heading", { level: 1, name: "RoundLab" })).toBeVisible();
   await page.keyboard.press("Tab");
-  const skipLink = page.getByRole("link", { name: "Skip to main content" });
+  const skipLink = page.getByRole("link", { name: "Aller au contenu principal" });
   await expect(skipLink).toBeFocused();
   await skipLink.press("Enter");
   await expect(page.locator("#main-content")).toBeFocused();
-  const importer = page.getByRole("button", { name: "Open a local CS2 demo file" });
+  const importer = page.getByRole("button", { name: "Ouvrir une démo CS2 locale" });
   await expect(importer).toBeVisible();
   await importer.focus();
   await expect(importer).toBeFocused();
@@ -102,21 +102,21 @@ test("import errors and library dialogs announce state and manage focus", async 
   });
   await expect(page.getByText("Choose a .dem or .dem.zst file.", { exact: true })).toHaveAttribute("role", "alert");
 
-  await page.getByRole("button", { name: "Match actions" }).click();
-  await page.getByRole("menuitem", { name: "Rename" }).click();
-  const renameDialog = page.getByRole("dialog", { name: "Rename match" });
+  await page.getByRole("button", { name: "Actions du match" }).click();
+  await page.getByRole("menuitem", { name: "Renommer" }).click();
+  const renameDialog = page.getByRole("dialog", { name: "Renommer le match" });
   await expect(renameDialog).toBeVisible();
   await expect(renameDialog.getByRole("textbox")).toBeFocused();
   expect((await new AxeBuilder({ page }).include('[role="dialog"]').analyze()).violations).toEqual([]);
   await page.keyboard.press("Escape");
   await expect(renameDialog).toBeHidden();
 
-  await page.getByRole("button", { name: "Match actions" }).click();
-  await page.getByRole("menuitem", { name: "Delete" }).click();
-  const deleteDialog = page.getByRole("dialog", { name: "Delete match?" });
+  await page.getByRole("button", { name: "Actions du match" }).click();
+  await page.getByRole("menuitem", { name: "Supprimer" }).click();
+  const deleteDialog = page.getByRole("dialog", { name: "Supprimer le match ?" });
   await expect(deleteDialog).toBeVisible();
-  await expect(deleteDialog.getByRole("button", { name: "Cancel" })).toBeVisible();
-  await deleteDialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(deleteDialog.getByRole("button", { name: "Annuler" })).toBeVisible();
+  await deleteDialog.getByRole("button", { name: "Annuler" }).click();
   await expect(deleteDialog).toBeHidden();
 });
 
@@ -245,7 +245,7 @@ test("essential content survives disabled styles and custom text spacing", async
   await page.goto("./");
   await page.locator('link[rel="stylesheet"], style').evaluateAll((nodes) => nodes.forEach((node) => node.remove()));
   await expect(page.getByRole("heading", { level: 1, name: "RoundLab" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Open a local CS2 demo file" })).toContainText("Open a CS2 demo");
+  await expect(page.getByRole("button", { name: "Ouvrir une démo CS2 locale" })).toContainText("Ouvrir une démo CS2");
 
   await page.reload();
   await page.setViewportSize({ width: 320, height: 720 });
@@ -255,6 +255,6 @@ test("essential content survives disabled styles and custom text spacing", async
       p { margin-bottom: 2em !important; }
     `,
   });
-  await expect(page.getByRole("button", { name: "Open a local CS2 demo file" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ouvrir une démo CS2 locale" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
 });

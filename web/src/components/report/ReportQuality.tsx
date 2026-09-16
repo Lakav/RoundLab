@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { DefinitionTerm } from "@/components/ui/definition-term";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { MatchAnalysis } from "@/lib/analysis/types";
 import type { MechanicsAnalysis } from "@/lib/analysis/mechanics-types";
 import type { SpatialAnalysis } from "@/lib/analysis/spatial-types";
@@ -115,6 +116,39 @@ export function metricQualityTitle(metric: QualityMetric<unknown>): string {
     + `${QUALITY_CONFIDENCE_LABELS[metric.confidence]}, ${metric.formulaVersion}${reasons}`;
 }
 
+/** Wraps a value so its provenance shows on hover instead of on screen. */
+function QualityHint({
+  metric,
+  children,
+  className = "",
+}: {
+  metric: QualityMetric<unknown>;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={(
+          <span
+            tabIndex={0}
+            className={["cursor-help outline-none", className].join(" ")}
+          />
+        )}
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipContent
+        side="top"
+        sideOffset={8}
+        className="max-w-[19rem] border border-[var(--rl-border)] bg-[#eef2ef] px-3 py-2 text-[12px] leading-relaxed text-[#17201d] shadow-2xl"
+      >
+        {metricQualityTitle(metric)}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function Metric({
   label,
   value,
@@ -127,25 +161,14 @@ export function Metric({
   quality?: QualityMetric<number>;
 }) {
   return (
-    <div
-      className="report-metric group relative min-h-[6.25rem] overflow-hidden rounded-lg border border-white/[0.075] px-4 py-3.5"
-      title={quality ? metricQualityTitle(quality) : undefined}
-      tabIndex={quality ? 0 : undefined}
-    >
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-200/20 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
-      <div className="text-xs font-semibold uppercase tracking-[0.11em] text-[var(--rl-fg-dim)]">
+    <div className="report-metric group relative min-h-[6.25rem] overflow-hidden rounded-lg border border-white/[0.075] px-4 py-3.5">
+      <div className="text-[13px] font-medium text-[var(--rl-fg-muted)]">
         <DefinitionTerm label={label} />
       </div>
       <div className="mt-2 text-[1.65rem] font-semibold leading-none tracking-[-0.035em] tabular-nums text-[var(--rl-fg)]">
-        {value}
+        {quality ? <QualityHint metric={quality}>{value}</QualityHint> : value}
       </div>
       {detail && <div className="mt-2 text-[13px] leading-snug text-[var(--rl-fg-dim)]">{detail}</div>}
-      {quality && (
-        <div className="mt-2 text-xs leading-snug text-[var(--rl-fg-dim)]">
-          {quality.usableSampleCount}/{quality.sampleCount} ·{" "}
-          {QUALITY_PROVENANCE_LABELS[quality.provenance]}
-        </div>
-      )}
     </div>
   );
 }
@@ -220,20 +243,10 @@ export function QualityMetricCell({
   metric: QualityMetric<number>;
   format: (value: number | null) => string;
 }) {
-  const qualityDescription = metricQualityTitle(metric);
   return (
-    <span
-      className="inline-flex flex-col items-end"
-      title={qualityDescription}
-      aria-label={`${format(metric.value)}. ${qualityDescription}`}
-      tabIndex={0}
-    >
-      <span>{format(metric.value)}</span>
-      <span className="text-xs font-normal text-[var(--rl-fg-muted)]">
-        {metric.usableSampleCount}/{metric.sampleCount} ·{" "}
-        {QUALITY_PROVENANCE_LABELS[metric.provenance]}
-      </span>
-    </span>
+    <QualityHint metric={metric} className="inline-flex">
+      <span aria-label={`${format(metric.value)}. ${metricQualityTitle(metric)}`}>{format(metric.value)}</span>
+    </QualityHint>
   );
 }
 
@@ -349,13 +362,12 @@ export function DataQualityPanel({
     <article className="overflow-hidden rounded-md border border-[var(--rl-border)] bg-[#121515]">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--rl-border)] px-4 py-3">
         <div>
-          <h3 className="text-sm font-semibold text-[var(--rl-fg)]">Qualité des données</h3>
-          <p className="mt-1 text-xs text-[var(--rl-fg-dim)]">
-            Parseur {quality?.parserVersion ?? analysis.parserVersion} · schéma{" "}
-            {quality?.replaySchemaVersion ?? analysis.inputSchemaVersion} · formules{" "}
-            {quality?.mechanicsFormulaVersion ?? "non-Aim uniquement"} · géométrie{" "}
-            {quality?.geometryVersion ?? "absente"}
-          </p>
+          <h3 className="text-sm font-semibold text-[var(--rl-fg)]">
+            <DefinitionTerm
+              label="Qualité des données"
+              definition={`Parseur ${quality?.parserVersion ?? analysis.parserVersion} · schéma ${quality?.replaySchemaVersion ?? analysis.inputSchemaVersion} · formules ${quality?.mechanicsFormulaVersion ?? "non-Aim uniquement"} · géométrie ${quality?.geometryVersion ?? "absente"}`}
+            />
+          </h3>
         </div>
         <span className="rounded border border-[var(--rl-border)] px-2 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--rl-fg-muted)]">
           Import {quality?.importQuality ?? "non diagnostiqué"}
@@ -412,5 +424,38 @@ export function DataQualityPanel({
         </table>
       </div>
     </article>
+  );
+}
+
+/**
+ * Replaces a table when the demo carries none of the data it would show.
+ *
+ * A grid of dashes reads as "the parser failed"; a sentence that names the
+ * missing event family reads as "this demo does not have it".
+ */
+export function ReportEmptyState({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col items-start gap-2 px-5 py-6 sm:flex-row sm:items-center sm:gap-4">
+      <span
+        aria-hidden="true"
+        className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md border border-[color-mix(in_oklab,var(--rl-warning)_30%,transparent)] bg-[color-mix(in_oklab,var(--rl-warning)_8%,transparent)] text-sm font-bold text-[var(--rl-warning)]"
+      >
+        —
+      </span>
+      <div className="max-w-2xl">
+        <p className="text-sm font-semibold text-[var(--rl-fg)]">
+          <DefinitionTerm label={title} definition={description} />
+        </p>
+        {action && <div className="mt-3">{action}</div>}
+      </div>
+    </div>
   );
 }

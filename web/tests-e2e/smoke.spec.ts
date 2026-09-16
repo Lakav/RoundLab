@@ -74,21 +74,21 @@ test("exports, deletes, restores and opens replay plus report", async ({ page })
   await page.goto("./");
   await seedMatch(page);
 
-  await page.getByRole("button", { name: "Match actions" }).click();
+  await page.getByRole("button", { name: "Actions du match" }).click();
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("menuitem", { name: "Exporter" }).click();
   const download = await downloadPromise;
   const backupPath = await download.path();
   if (!backupPath) throw new Error("The browser did not expose the downloaded backup path.");
 
-  await page.getByRole("button", { name: "Match actions" }).click();
-  await page.getByRole("menuitem", { name: "Delete" }).click();
-  await page.getByRole("dialog", { name: "Delete match?" }).getByRole("button", { name: "Delete" }).click();
+  await page.getByRole("button", { name: "Actions du match" }).click();
+  await page.getByRole("menuitem", { name: "Supprimer" }).click();
+  await page.getByRole("dialog", { name: "Supprimer le match ?" }).getByRole("button", { name: "Supprimer" }).click();
   await expect(page.getByText("Cross-browser fixture", { exact: true })).toBeHidden();
 
   await page.getByLabel("Choisir une sauvegarde RoundLab").setInputFiles(backupPath);
   await expect(page.getByText("1 match(s) restauré(s).", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Open", exact: true }).click();
+  await page.getByRole("button", { name: "Ouvrir", exact: true }).click();
   await expect(page.getByRole("img", { name: "Interactive replay radar" })).toBeVisible();
   await page.waitForLoadState("networkidle");
   const replayScripts = new Set(await page.evaluate(() =>
