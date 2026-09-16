@@ -43,7 +43,7 @@ test("imports the licensed zstd demo through WASM and keeps the report after rel
   expect(phases).toEqual(expect.arrayContaining(["decompressing", "starting", "parsing", "storing", "done"]));
 
   await parsed.getByRole("textbox").fill("Fixture 2v2 sous licence");
-  await parsed.getByRole("button", { name: "Save & stay" }).click();
+  await parsed.getByRole("button", { name: "Enregistrer", exact: true }).click();
   await expect(page.getByText("Fixture 2v2 sous licence", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByText("Fixture 2v2 sous licence", { exact: true })).toBeVisible();

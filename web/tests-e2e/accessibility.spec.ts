@@ -100,7 +100,7 @@ test("import errors and library dialogs announce state and manage focus", async 
     mimeType: "text/plain",
     buffer: Buffer.from("invalid"),
   });
-  await expect(page.getByText("Choose a .dem or .dem.zst file.", { exact: true })).toHaveAttribute("role", "alert");
+  await expect(page.getByText("Choisis un fichier .dem ou .dem.zst.", { exact: true })).toHaveAttribute("role", "alert");
 
   await page.getByRole("button", { name: "Actions du match" }).click();
   await page.getByRole("menuitem", { name: "Renommer" }).click();
